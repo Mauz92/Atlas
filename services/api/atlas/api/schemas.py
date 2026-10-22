@@ -5,9 +5,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from ..models import TaskPriority, TaskStatus
+from ..tasks import is_valid_time_zone
 
 
 class LoginRequest(BaseModel):
@@ -108,6 +109,12 @@ class ReconcileOut(BaseModel):
 # --- Tasks ---------------------------------------------------------------
 
 
+def _validate_time_zone(value: str | None) -> str | None:
+    if value is not None and not is_valid_time_zone(value):
+        raise ValueError("unknown IANA time zone")
+    return value
+
+
 class TaskCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=512)
     description: str | None = Field(default=None, max_length=20000)
@@ -122,6 +129,11 @@ class TaskCreateRequest(BaseModel):
     recurrence_rule: str | None = Field(default=None, max_length=2000)
     external_provider: str | None = Field(default=None, max_length=32)
     external_id: str | None = Field(default=None, max_length=255)
+
+    @field_validator("time_zone")
+    @classmethod
+    def _check_time_zone(cls, value: str | None) -> str | None:
+        return _validate_time_zone(value)
 
 
 class TaskUpdateRequest(BaseModel):
@@ -141,6 +153,11 @@ class TaskUpdateRequest(BaseModel):
     external_provider: str | None = Field(default=None, max_length=32)
     external_id: str | None = Field(default=None, max_length=255)
     base_revision: int | None = Field(default=None, ge=0)
+
+    @field_validator("time_zone")
+    @classmethod
+    def _check_time_zone(cls, value: str | None) -> str | None:
+        return _validate_time_zone(value)
 
 
 class TaskOut(BaseModel):

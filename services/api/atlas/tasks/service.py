@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Task
 from .state import transition_fields, validate_transition
+from .timezones import InvalidTimeZoneError, NonexistentWallTimeError, to_utc
 
 # Columns a client may set. Identity, owner and sync fields are managed by the service.
 _WRITABLE = frozenset(
@@ -56,6 +57,18 @@ class TaskRevisionConflictError(RuntimeError):
         self.current_revision = current_revision
 
 
+def _normalize_instants(fields: dict[str, Any], tz_name: str | None) -> None:
+    """Store start/due instants as UTC, interpreting naive wall-clock input in ``tz_name``."""
+    for name in ("start_at", "due_at"):
+        value = fields.get(name)
+        if value is None:
+            continue
+        try:
+            fields[name] = to_utc(value, tz_name)
+        except (NonexistentWallTimeError, InvalidTimeZoneError) as exc:
+            raise TaskValidationError(str(exc)) from exc
+
+
 class TasksService:
     def __init__(self, session: AsyncSession, user_id: uuid.UUID) -> None:
         self.session = session
@@ -84,6 +97,7 @@ class TasksService:
     async def create(self, data: Mapping[str, Any]) -> Task:
         fields = {name: value for name, value in data.items() if name in _WRITABLE}
         await self._check_parent(fields.get("parent_task_id"))
+        _normalize_instants(fields, fields.get("time_zone"))
         task = Task(user_id=self.user_id)
         for name, value in fields.items():
             setattr(task, name, value)
@@ -108,6 +122,7 @@ class TasksService:
         previous_status = task.status
         if "status" in fields:
             validate_transition(previous_status, fields["status"])
+        _normalize_instants(fields, fields.get("time_zone", task.time_zone))
         for name, value in fields.items():
             setattr(task, name, value)
         if "status" in fields:

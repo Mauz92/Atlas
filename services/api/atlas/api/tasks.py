@@ -83,7 +83,7 @@ async def create_task(
         if stored is not None:
             return JSONResponse(status_code=stored.status_code, content=stored.body)
     try:
-        task = await TasksService(session, user.id).create(payload.model_dump(mode="json"))
+        task = await TasksService(session, user.id).create(payload.model_dump())
     except Exception as exc:
         _translate(exc)
     out = _out(task)
@@ -117,6 +117,7 @@ async def update_task(
     idempotency_key: IdempotencyKey = None,
 ) -> Any:
     store = IdempotencyStore(session, user.id)
+    changes = payload.model_dump(exclude_unset=True)
     request_payload = {
         "task_id": str(task_id),
         **payload.model_dump(exclude_unset=True, mode="json"),
@@ -131,9 +132,7 @@ async def update_task(
         if stored is not None:
             return JSONResponse(status_code=stored.status_code, content=stored.body)
     try:
-        task = await TasksService(session, user.id).update(
-            task_id, payload.model_dump(exclude_unset=True, mode="json"), payload.base_revision
-        )
+        task = await TasksService(session, user.id).update(task_id, changes, payload.base_revision)
     except Exception as exc:
         _translate(exc)
     out = _out(task)

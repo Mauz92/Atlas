@@ -251,6 +251,46 @@ cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:
 board columns (M4) must reuse it. A status write equal to the current status is rejected by design
 (clients omit unchanged fields; our `PATCH` uses `exclude_unset`).
 
+### M3-04 — Priorities, due dates, time zones
+
+Verified 2026-10-22 on Linux with Python 3.14 (`zoneinfo`, 598 zones available). The rules are pure
+and covered without a database; the DB-backed checks are `BLOCKED` (no PostgreSQL).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Wall-clock → UTC uses the correct standard/daylight offset | `PASS` | `tests/unit/test_task_timezones.py::test_winter_wall_time_converts_with_the_standard_offset`, `test_summer_wall_time_converts_with_the_daylight_offset` |
+| Aware input → UTC; naive (no zone) → UTC | `PASS` | `test_aware_input_is_converted_to_utc`, `test_naive_input_without_a_zone_is_utc` |
+| DST spring-forward gap rejected | `PASS` | `test_dst_spring_forward_gap_is_rejected` (`NonexistentWallTimeError`) |
+| DST fall-back overlap resolved deterministically | `PASS` | `test_dst_fall_back_overlap_resolves_deterministically` (fold 0/1), `test_ordinary_times_are_not_ambiguous` |
+| Round-trip across a DST change | `PASS` | `test_round_trip_across_a_dst_change` (47 h over two calendar days) |
+| Invalid IANA zone rejected | `PASS` | `test_invalid_time_zone_is_rejected`, `test_an_unknown_time_zone_is_rejected` (schema → `422`) |
+| Calendar-day ("today") is zone-correct | `PASS` | `test_local_date_uses_the_zone_calendar_day`, `test_due_state_today_depends_on_the_zone_calendar_day` |
+| `due_state` none/overdue/today/upcoming | `PASS` | `test_due_state_without_a_due_date`, `test_due_state_overdue_today_and_upcoming` |
+| Priority ordering | `PASS` | `tests/unit/test_task_priority.py` (4 tests) |
+| Naive due date stored in the task's zone over HTTP | `BLOCKED` | `tests/integration/test_tasks_api.py` (4 due-date tests) — no PostgreSQL |
+| Lint, format, types, unit suite | `PASS` | `ruff check .`, `ruff format --check .`, `mypy` clean; `pytest tests/unit -q` → `125 passed` |
+
+**Commands run.**
+
+- `cd services/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy` → clean (43 files).
+- `cd services/api && .venv/bin/python -m pytest tests/unit -q` → `125 passed` (19 new).
+- Contract check: `TaskCreateRequest(...).model_dump()` keeps `due_at` as a `datetime` and `status`
+  as `TaskStatus`; `to_utc(due_at, "Europe/Amsterdam")` → `2026-01-02 08:30:00+00:00`.
+- OpenAPI drift simulation → **PASS** (no contract change); `npm run typecheck`/`build` unaffected.
+- `./scripts/verify.sh` → `verification: PASS` (exit 0).
+
+**Blocked commands (run in CI / a machine with PostgreSQL 14+).**
+
+```
+docker compose -f deploy/docker-compose.yml up -d db
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas \
+  .venv/bin/python -m pytest -q
+```
+
+**Scope note.** Deterministic zone rules live in `atlas/tasks/timezones.py`; the API stores UTC
+instants and validates `time_zone` at the boundary (ADR-0014). Handling also fixed the M3-02
+handlers to pass real `datetime` objects to the service (they previously passed JSON strings).
+
 ---
 
 ## Milestones M4–M9

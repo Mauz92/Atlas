@@ -222,3 +222,44 @@ async def test_an_archived_task_cannot_be_completed(client: AsyncClient) -> None
         f"/api/tasks/{task['id']}", json={"status": "completed"}, headers=headers
     )
     assert response.status_code == 409
+
+
+async def test_a_naive_due_date_is_interpreted_in_the_tasks_time_zone(
+    client: AsyncClient,
+) -> None:
+    headers = await _auth(client)
+    task = await _create_task(
+        client, headers, time_zone="Europe/Amsterdam", due_at="2026-01-02T09:30:00"
+    )
+    # 09:30 CET == 08:30 UTC.
+    assert task["due_at"].startswith("2026-01-02T08:30:00")
+
+
+async def test_updating_a_due_date_uses_the_stored_time_zone(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    task = await _create_task(client, headers, time_zone="Europe/Amsterdam")
+
+    updated = await client.patch(
+        f"/api/tasks/{task['id']}", json={"due_at": "2026-07-02T09:30:00"}, headers=headers
+    )
+    assert updated.status_code == 200
+    # 09:30 CEST == 07:30 UTC.
+    assert updated.json()["due_at"].startswith("2026-07-02T07:30:00")
+
+
+async def test_an_unknown_time_zone_is_rejected(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    response = await client.post(
+        "/api/tasks", json={"title": "x", "time_zone": "Mars/Phobos"}, headers=headers
+    )
+    assert response.status_code == 422
+
+
+async def test_a_due_date_in_the_dst_gap_is_rejected(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    response = await client.post(
+        "/api/tasks",
+        json={"title": "x", "time_zone": "Europe/Amsterdam", "due_at": "2026-03-29T02:30:00"},
+        headers=headers,
+    )
+    assert response.status_code == 400

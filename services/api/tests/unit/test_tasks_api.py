@@ -46,3 +46,15 @@ def test_create_rejects_an_unknown_priority() -> None:
 def test_update_rejects_a_negative_base_revision() -> None:
     with pytest.raises(ValidationError):
         TaskUpdateRequest(base_revision=-1)
+
+
+def test_a_known_time_zone_is_accepted() -> None:
+    request = TaskCreateRequest(title="x", time_zone="Europe/Amsterdam")
+    assert request.time_zone == "Europe/Amsterdam"
+
+
+def test_an_unknown_time_zone_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        TaskCreateRequest(title="x", time_zone="Mars/Phobos")
+    with pytest.raises(ValidationError):
+        TaskUpdateRequest(time_zone="Mars/Phobos")

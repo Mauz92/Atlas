@@ -251,6 +251,31 @@ columns and quick actions must reuse this table rather than inventing their own 
 
 ---
 
+## ADR-0014 — Task due-date time-zone semantics
+
+**Context.** A task's due/start instants are stored as UTC (`timestamptz`), but users think in
+wall-clock terms ("09:30"). Daylight-saving transitions create a spring-forward gap (times that do
+not exist) and a fall-back overlap (times that occur twice), and the calendar day of an instant
+depends on the zone.
+
+**Decision.** `services/api/atlas/tasks/timezones.py` is the canonical implementation:
+
+- an aware `due_at`/`start_at` is converted to its UTC instant; a naive one is interpreted as
+  wall-clock time in the task's IANA `time_zone` (UTC when unset);
+- a wall-clock time inside the DST gap is **rejected** (`400`), rather than silently shifted;
+- an ambiguous (overlap) wall-clock time resolves to the first occurrence unless `fold=1` is given;
+- the `time_zone` is validated as a real IANA zone at the API boundary (`422` if unknown);
+- "today"/"overdue" compare the UTC instant for overdue and the **calendar date in the task's
+  zone** for today, so they are correct across DST changes and zone boundaries.
+
+**Consequences.** Clients may send either an offset-aware instant or a naive wall-clock time; the
+stored value is always a UTC instant plus the task's zone. Recurrence (M3-05) and date-range views
+(M3-07) build on these helpers.
+
+**Status.** Accepted (M3-04).
+
+---
+
 ## Open decisions deferred to later milestones
 
 | # | Question | Milestone |
