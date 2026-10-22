@@ -1,0 +1,15 @@
+# Workflow preferences
+
+- Prefers milestone-based development with explicit approval gates; a milestone must pass its acceptance criteria before the next one begins. Confidence: 0.95
+- Wants an architecture/spec approval gate before implementation starts. Confidence: 0.9
+- Breaks work into small, reviewable tasks that each carry acceptance criteria and test requirements. Confidence: 0.9
+- Writes automated tests alongside implementation rather than after the fact. Confidence: 0.9
+- Expects tests, type checking and linting to be run before declaring a task complete. Confidence: 0.95
+- Requires test evidence or a documented manual verification before any feature is claimed to work; never report a test or deployment that was not actually performed. Confidence: 0.95
+- Maintains living documentation (spec, architecture, data model, decision log, risk register, roadmap, changelog) and expects it kept consistent with the code. Confidence: 0.9
+- Records limitations and partially-implemented features explicitly instead of overstating completeness. Confidence: 0.9
+- When blocked, wants the exact blocker, the evidence collected, the options, and a recommended next action. Confidence: 0.9
+- Avoids speculative features that are outside the approved roadmap/scope. Confidence: 0.9
+- Prefers work to be done completely and rigorously ("no shortcuts") — closing out the full scope and remediating real defects rather than taking expedient paths, even when thoroughness surfaces additional work. Confidence: 0.8
+- Prefers preserving a reproducible, working state at each milestone. Confidence: 0.85
+- Insists that planned end-to-end verification actually be executed (e.g. "run the docker container then") rather than left as a documented "not run" when it can be pursued, and is willing to perform privileged setup steps themselves (such as adding their user to the docker group) to unblock the agent. Confidence: 0.7

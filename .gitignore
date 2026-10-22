@@ -1,0 +1,52 @@
+# --- Secrets and local configuration ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- User data (never commit) ---
+/data/
+*.md.bak
+conflict-*.md
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# --- Node / frontend ---
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+.npm/
+.pnpm-store/
+
+# --- Mobile (Expo / React Native) ---
+.expo/
+.expo-shared/
+apps/mobile/ios/
+apps/mobile/android/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Logs and dumps ---
+*.log
+*.sql
+*.dump
+
+# --- Generated artifacts ---
+services/api/openapi.json
