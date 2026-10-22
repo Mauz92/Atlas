@@ -16,7 +16,7 @@ max_turns = 500
 timeout_seconds = 2700
 # default | plan | accept-edits | yolo | dont-ask
 permission_mode = "yolo"
-extra_args = []
+extra_args = ["--yolo", "--skip-onboarding"]
 require_clean_git = true
 
 [safety]
