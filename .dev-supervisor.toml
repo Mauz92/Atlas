@@ -1,0 +1,24 @@
+# dev-supervisor project configuration for Atlas.
+# dry_run stays true until you deliberately change it.
+[project]
+name = "Atlas"
+instructions = "AGENTS.md"
+backlog = "docs/ROADMAP.md"
+current_task = "project/CURRENT_TASK.md"
+approvals = "project/APPROVAL_REQUESTS.md"
+# Trusted project configuration. Executed through bash after each agent run.
+verification_command = "./scripts/verify.sh"
+
+[agent]
+executable = "cmd"
+dry_run = false
+max_turns = 25
+timeout_seconds = 2700
+# default | plan | accept-edits | yolo | dont-ask
+permission_mode = "accept-edits"
+extra_args = []
+require_clean_git = true
+
+[safety]
+# The config file and the verification target are always protected as well.
+protected_paths = ["AGENTS.md"]
