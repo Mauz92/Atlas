@@ -3,6 +3,9 @@
 Environment is configured before Atlas is imported so that settings (and the cached
 settings object) point at the test database. Integration tests require a real PostgreSQL;
 set ``DATABASE_URL`` (or ``TEST_DATABASE_URL``) to point at it.
+
+The database fixtures are opt-in: only tests that request ``app``/``client``/``notes_client``
+touch PostgreSQL, so the DB-free unit tests run without a database.
 """
 
 from __future__ import annotations
@@ -36,7 +39,7 @@ _TRUNCATE = (
 )
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def _schema() -> Iterator[None]:
     from atlas.migrations import downgrade, upgrade
 
@@ -46,7 +49,20 @@ def _schema() -> Iterator[None]:
 
 
 @pytest.fixture
-async def app() -> FastAPI:
+async def _db(_schema: None) -> AsyncIterator[None]:
+    """Per-test database isolation, requested only by DB-backed fixtures."""
+    from atlas.api.auth import _login_limiter
+    from atlas.db import dispose_engine, session_scope
+
+    _login_limiter.reset()
+    yield
+    async with session_scope() as session:
+        await session.execute(text(_TRUNCATE))
+    await dispose_engine()
+
+
+@pytest.fixture
+async def app(_db: None) -> FastAPI:
     from atlas.main import create_app
 
     return create_app()
@@ -78,18 +94,6 @@ async def notes_client(app: FastAPI, notes_storage: NotesStorage) -> AsyncIterat
     async with AsyncClient(transport=transport, base_url="http://test") as async_client:
         yield async_client
     app.dependency_overrides.clear()
-
-
-@pytest.fixture(autouse=True)
-async def _reset_state() -> AsyncIterator[None]:
-    from atlas.api.auth import _login_limiter
-    from atlas.db import dispose_engine, session_scope
-
-    _login_limiter.reset()
-    yield
-    async with session_scope() as session:
-        await session.execute(text(_TRUNCATE))
-    await dispose_engine()
 
 
 def csrf_headers(client: AsyncClient) -> dict[str, str]:

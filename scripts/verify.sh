@@ -7,18 +7,18 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API="$ROOT/services/api"
 WEB="$ROOT/apps/web"
 
-echo "== backend: lint, format, types =="
+echo "== backend: lint, format, types, unit tests =="
 cd "$API"
 .venv/bin/ruff check .
 .venv/bin/ruff format --check .
 .venv/bin/mypy
+.venv/bin/python -m pytest tests/unit -q
 
-# Backend tests: BLOCKED in this environment — they require a real PostgreSQL
-# (docs/TESTING.md), and no database is reachable. Enable once one is:
+# Integration tests: BLOCKED here — they require a real PostgreSQL (docs/TESTING.md).
+# Enable once one is reachable by appending the full suite:
 #   docker compose -f deploy/docker-compose.yml up -d db
 #   cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas \
 #     .venv/bin/python -m pytest -q
-# Then replace this comment with those two commands; do not weaken it.
 
 echo "== frontend: lint, types, tests =="
 cd "$WEB"
