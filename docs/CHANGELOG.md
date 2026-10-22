@@ -42,6 +42,10 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Nothing yet.
 
 ### Fixed
+- **Developer/CI:** the frontend component tests now run under `NODE_ENV=test`. An inherited
+  `NODE_ENV=production` previously made React 19 resolve its production build (which has no
+  `act`), so every `render()` failed with `TypeError: React.act is not a function`; the vitest
+  config now pins the test environment (`apps/web/vite.config.ts`). No tests were weakened.
 - **Security:** structured logging now redacts sensitive top-level fields (`password`,
   `refresh_token`, `authorization`, …) — previously only nested values were redacted.
 - **Security:** login rejects unknown accounts with the same cost and response as a wrong

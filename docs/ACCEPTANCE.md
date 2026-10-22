@@ -1,7 +1,7 @@
 # Atlas — Acceptance Record
 
 **Status:** Active (Milestone 0)
-**Last updated:** 2026-10-20
+**Last updated:** 2026-10-22
 
 Records verification evidence for milestone gates. A milestone is not complete until its criteria
 are marked `PASS` here with evidence, or explicitly recorded as `BLOCKED`/`NOT RUN`.
@@ -99,6 +99,38 @@ the running stack).
 
 **Not run (recorded, not waived):** Playwright end-to-end tests. The frontend is covered by
 component tests and the API by integration tests, but no browser-driven journey is executed yet.
+
+---
+
+## Defect Fixes
+
+### SUP-001 — Frontend test suite (`React.act is not a function`)
+
+Verified 2026-10-22 on Linux with Node 26, React/React-DOM 19.3.1, `@testing-library/react` 16.3.3.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| `cd apps/web && npm run test` exits 0, all tests pass | `PASS` | `Test Files 4 passed (4)`, `Tests 8 passed (8)` |
+| No tests removed, skipped or weakened | `PASS` | Diff adds one guard test only; existing assertions unchanged; no `it.skip`/`test.skip` |
+| Failing tests now pass for a real reason | `PASS` | Root cause fixed (inherited `NODE_ENV=production` → React production build with no `act`); guard fails when the fix is removed |
+
+**Root cause.** The runner shell exported `NODE_ENV=production`. Vitest only defaults `NODE_ENV`
+to `test` when unset, so React 19 resolved its production build, which does not export `act`
+(`react.development.js` does). `@testing-library/react` fell back to the deprecated
+`react-dom/test-utils` shim and threw `TypeError: React.act is not a function` on every render.
+
+**Fix.** `apps/web/vite.config.ts` pins `test.env = { NODE_ENV: "test" }` (test-scoped, does not
+affect `npm run build`); `apps/web/src/test/environment.test.tsx` is a regression guard.
+
+**Commands run.**
+
+- `cd apps/web && npm run test` → before: 7 failed; after: 8 passed.
+- `cd apps/web && env -u NODE_ENV npm run test` (CI-like) → 8 passed.
+- Failure path: with the `env` line removed the new guard fails; restored it passes.
+- `cd apps/web && npm run lint && npm run typecheck && npm run build` → clean.
+
+**Not changed:** `scripts/verify.sh` (trusted/protected). It still runs only lint/typecheck for
+the frontend; wiring `npm run test` in is a follow-up for the maintainer.
 
 ---
 
