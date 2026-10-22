@@ -134,7 +134,50 @@ the frontend; wiring `npm run test` in is a follow-up for the maintainer.
 
 ---
 
-## Milestones M3–M9
+## M3 — Core Task Management
+
+### M3-01 — Task schema + migration
+
+Verified 2026-10-22 on Linux with Python 3.14, SQLAlchemy 2.x, Alembic 1.x. No PostgreSQL was
+reachable in this environment, so the DB-backed checks were recorded `BLOCKED` (see below).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| `tasks` has the fields in `DATA_MODEL.md` §2.3 | `PASS` | `tests/unit/test_task_schema.py::test_tasks_table_has_the_documented_columns` (22 columns) |
+| Required columns are `NOT NULL`; status/priority/revision have defaults | `PASS` | `test_required_task_columns_are_not_nullable`, `test_task_status_and_priority_defaults` |
+| Foreign keys and indexes match the model | `PASS` | `test_task_foreign_keys_and_indexes` (`users` CASCADE; self-refs SET NULL; 5 indexes) |
+| Migration renders the schema and is reversible | `PASS` | `test_migration_renders_the_task_schema`, `test_migration_is_reversible` (offline SQL) |
+| Migration matches the models on a real DB | `BLOCKED` | `tests/integration/test_tasks_schema.py::test_migrations_match_models` — no PostgreSQL |
+| DB defaults / FK / cascade enforced on a real DB | `BLOCKED` | `tests/integration/test_tasks_schema.py` (6 tests) — no PostgreSQL |
+| Lint, format and types clean | `PASS` | `services/api`: `ruff check .`, `ruff format --check .`, `mypy` → clean (35 files) |
+
+**Commands run.**
+
+- `cd services/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy` → clean.
+- `cd services/api && .venv/bin/alembic upgrade head --sql` → renders `CREATE TABLE tasks …`
+  with all columns, `pk_tasks`, `fk_tasks_user_id_users`, `fk_tasks_parent_task_id_tasks` and the
+  `ix_tasks_*` indexes, plus `recurrence_series`, `task_tags`, `task_links`.
+- The eight `tests/unit/test_task_schema.py` assertions were executed directly (bypassing the
+  DB-only pytest fixtures) → all passed; the migration-render test was shown to fail when a column
+  is renamed, so it is not a no-op.
+- `./scripts/verify.sh` → `verification: PASS` (exit 0).
+
+**Blocked commands (run in CI / a machine with PostgreSQL 14+).**
+
+```
+docker compose -f deploy/docker-compose.yml up -d db
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas \
+  .venv/bin/python -m pytest -q
+```
+
+**Scope note.** `project_id` and `reminder_policy_id` are stored as bare UUIDs; their foreign keys
+are added with the `projects` (M4-01) and reminder-policy (M8) tables. `recurrence_series`,
+`task_tags` and `task_links` (all in §2.3) are created here; their behaviour arrives with M3-05,
+M3-08 and the note-link work respectively.
+
+---
+
+## Milestones M4–M9
 
 Acceptance criteria are listed in `ROADMAP.md`. Results are recorded here as each milestone is
 executed. Entries remain `NOT RUN` until there is real evidence.

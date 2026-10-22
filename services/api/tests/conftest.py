@@ -30,7 +30,10 @@ from sqlalchemy import text
 if TYPE_CHECKING:
     from atlas.notes import NotesStorage
 
-_TRUNCATE = "TRUNCATE TABLE jobs, sessions, users, notes, tags, note_links, note_tags CASCADE"
+_TRUNCATE = (
+    "TRUNCATE TABLE jobs, sessions, users, notes, tags, note_links, note_tags, "
+    "tasks, recurrence_series, task_tags, task_links CASCADE"
+)
 
 
 @pytest.fixture(scope="session", autouse=True)

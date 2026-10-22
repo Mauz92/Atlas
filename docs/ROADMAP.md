@@ -1,7 +1,7 @@
 # Atlas — Roadmap and Backlog
 
 **Status:** Draft for approval (Milestone 0)
-**Last updated:** 2026-10-20
+**Last updated:** 2026-10-22
 
 This is the canonical project state. Milestones are worked in dependency order. A task is
 `DONE` only when its acceptance criteria pass and verification evidence is recorded in
@@ -16,7 +16,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M0 | Discovery and architecture | `DONE` | Architecture approved before implementation ✔ (approved 2026-10-20) |
 | M1 | Foundation and secure deployment | `DONE` | Deployment + security basics verified ✔ |
 | M2 | Markdown notes | `DONE` | Markdown portability and integrity verified ✔ |
-| M3 | Core task management | `BACKLOG` | Tasks usable as a standalone daily tool |
+| M3 | Core task management | `IN_PROGRESS` | Tasks usable as a standalone daily tool |
 | M4 | Projects and planning | `BACKLOG` | Notes + tasks + projects form one workflow |
 | M5 | Unified read-only calendar | `BACKLOG` | Real calendar data synced safely (no writes) |
 | M6 | Bidirectional calendar sync | `BACKLOG` | External event editing reliable for daily use |
@@ -166,7 +166,7 @@ subtasks; completion and archival; Today and Upcoming views; search and filters.
 
 | ID | Title | Depends on | Acceptance | Tests | Status |
 |---|---|---|---|---|---|
-| M3-01 | Task schema + migration | M1-04 | Fields per DATA_MODEL §2.3 | Migration test | `BACKLOG` |
+| M3-01 | Task schema + migration | M1-04 | Fields per DATA_MODEL §2.3 | Migration test | `IN_REVIEW` |
 | M3-02 | Task CRUD API + idempotency keys | M3-01 | Duplicate key returns original result | Integration | `BACKLOG` |
 | M3-03 | Task state machine + transitions | M3-02 | Only valid transitions allowed | Unit | `BACKLOG` |
 | M3-04 | Priorities, due dates, time zones | M3-02 | DST-correct due handling | Unit | `BACKLOG` |
@@ -175,6 +175,15 @@ subtasks; completion and archival; Today and Upcoming views; search and filters.
 | M3-07 | Inbox / Today / Upcoming views | M3-02,M1-06 | Views match spec §5.7; quick capture | Frontend + E2E | `BACKLOG` |
 | M3-08 | Task search and filters | M3-02 | Filter by status/priority/date/project | Integration | `BACKLOG` |
 | M3-09 | Change log for tasks (client pull) | M3-02 | Incremental pull after revision N | Integration | `BACKLOG` |
+
+**M3-01 verification (2026-10-22).** `tasks` plus the §2.3 task-side tables (`recurrence_series`,
+`task_tags`, `task_links`) modelled in `atlas/models/task.py` and applied by migration
+`51b31762f974`. `ruff`, `ruff format --check` and `mypy` clean; the model→migration mapping is
+checked by `tests/unit/test_task_schema.py` (8 assertions, incl. offline-rendered DDL and
+reversibility). `project_id`/`reminder_policy_id` are carried as bare UUIDs — their foreign keys
+are added when the `projects` (M4) and reminder-policy (M8) tables exist. The DB-backed
+`tests/integration/test_tasks_schema.py` is **`BLOCKED`** here (no PostgreSQL reachable); see
+`ACCEPTANCE.md`. Evidence recorded in `ACCEPTANCE.md`.
 
 **Gate:** tasks usable as a standalone daily tool.
 
@@ -357,7 +366,8 @@ review; data export; upgrade docs; user docs; release checklist; known-limitatio
 
 ## Immediate Next Tasks
 
-- **M2-01** — safe Markdown storage layer (atomic writes, path-traversal guard, symlink policy).
-- then **M2-02** → **M2-03** — note metadata/revision index and the revision-aware note CRUD API.
+- **M3-02** — Task CRUD API + idempotency keys (depends on M3-01, `DONE`): create/read/update/delete
+  with an `idempotency_key` so a retry returns the original result.
+- then **M3-03** → **M3-04** — task state machine and priorities/due dates/time zones.
 
-These are the smallest safe next steps. M2 does not start until the M1 gate is approved.
+These are the smallest safe next steps for the current milestone (M3).
