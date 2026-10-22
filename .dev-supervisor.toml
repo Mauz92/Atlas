@@ -15,7 +15,7 @@ dry_run = false
 max_turns = 500
 timeout_seconds = 2700
 # default | plan | accept-edits | yolo | dont-ask
-permission_mode = "accept-edits"
+permission_mode = "yolo"
 extra_args = []
 require_clean_git = true
 

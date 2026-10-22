@@ -1,28 +1,16 @@
 {
   "permissions": {
-    "defaultMode": "accept-edits",
-    "allow": [
-      "Shell(npm run lint:*)",
-      "Shell(npm run typecheck:*)",
-      "Shell(npm run test:*)",
-      "Shell(npm run build:*)",
-      "Shell(npm test:*)",
-      "Shell(npm ci:*)",
-      "Shell(npm install:*)",
-      "Shell(npx vitest:*)",
-      "Shell(npx tsc:*)",
-      "Shell(git status:*)",
-      "Shell(git diff:*)",
-      "Shell(git log:*)",
-      "Shell(git show:*)",
-      "Shell(git ls-files:*)"
-    ],
+    "defaultMode": "yolo",
     "deny": [
       "Shell(git push:*)",
+      "Shell(git commit:*)",
+      "Shell(git merge:*)",
+      "Shell(git rebase:*)",
       "Shell(git reset --hard:*)",
       "Shell(git clean -*)",
       "Edit(.dev-supervisor.toml)",
-      "Edit(scripts/verify.sh)"
+      "Edit(scripts/verify.sh)",
+      "Edit(AGENTS.md)"
     ]
   }
 }
