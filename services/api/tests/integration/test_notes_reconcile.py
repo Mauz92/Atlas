@@ -1,5 +1,6 @@
 import uuid
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
@@ -7,6 +8,8 @@ from atlas.db import session_scope
 from atlas.models import NoteIndex, User
 from atlas.notes import NotesReconciler, NotesStorage
 from tests.conftest import create_user_via_setup, csrf_headers
+
+pytestmark = pytest.mark.usefixtures("_db")
 
 
 async def _owner() -> uuid.UUID:
