@@ -168,7 +168,7 @@ subtasks; completion and archival; Today and Upcoming views; search and filters.
 |---|---|---|---|---|---|
 | M3-01 | Task schema + migration | M1-04 | Fields per DATA_MODEL §2.3 | Migration test | `IN_REVIEW` |
 | M3-02 | Task CRUD API + idempotency keys | M3-01 | Duplicate key returns original result | Integration | `IN_REVIEW` |
-| M3-03 | Task state machine + transitions | M3-02 | Only valid transitions allowed | Unit | `BACKLOG` |
+| M3-03 | Task state machine + transitions | M3-02 | Only valid transitions allowed | Unit | `IN_REVIEW` |
 | M3-04 | Priorities, due dates, time zones | M3-02 | DST-correct due handling | Unit | `BACKLOG` |
 | M3-05 | Recurring tasks (RRULE) | M3-03 | Completing an occurrence keeps the series; next generated | Unit + integration | `BACKLOG` |
 | M3-06 | Subtasks | M3-03 | Parent/child rules; completion rollup documented | Unit | `BACKLOG` |
@@ -193,6 +193,13 @@ revision-aware updates. Idempotency via an optional `Idempotency-Key` header, re
 OpenAPI + `apps/web/src/api/schema.d.ts` regenerated (CI drift check passes). The DB-backed
 `tests/integration/test_tasks_api.py` is **`BLOCKED`** here. Also fixed a regression from the
 opt-in DB fixtures: `test_jobs.py` and `test_tasks_schema.py` now request `_db` explicitly.
+
+**M3-03 verification (2026-10-22).** Server-enforced status state machine in
+`atlas/tasks/state.py` (`TRANSITIONS`, `validate_transition`, `transition_fields`), applied by
+`TasksService` on create and update; invalid transitions → `409` with current/requested/allowed
+(ADR-0013). `completed_at` is set exactly when a task is `completed`. `ruff`/`format`/`mypy` clean;
+`pytest tests/unit` → 106 passed (22 new). DB-backed transition tests live in
+`tests/integration/test_tasks_api.py` (`BLOCKED` here).
 
 **Gate:** tasks usable as a standalone daily tool.
 
@@ -375,8 +382,7 @@ review; data export; upgrade docs; user docs; release checklist; known-limitatio
 
 ## Immediate Next Tasks
 
-- **M3-03** — Task state machine + transitions (depends on M3-02): allow only valid status
-  transitions and complete `completed_at` when a task reaches `completed`.
-- then **M3-04** — priorities, due dates and time zones (DST-correct due handling).
+- **M3-04** — Priorities, due dates and time zones (depends on M3-02): DST-correct due handling.
+- then **M3-05** (recurring tasks) and **M3-06** (subtasks), both depending on M3-03 (`IN_REVIEW`).
 
 These are the smallest safe next steps for the current milestone (M3).

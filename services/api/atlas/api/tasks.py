@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from ..idempotency import IdempotencyConflictError, IdempotencyStore, fingerprint
 from ..models import Task
 from ..tasks import (
+    InvalidTaskTransitionError,
     TaskNotFoundError,
     TaskRevisionConflictError,
     TasksService,
@@ -44,6 +45,16 @@ def _translate(exc: Exception) -> NoReturn:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="idempotency key reused with a different request",
+        ) from exc
+    if isinstance(exc, InvalidTaskTransitionError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "invalid status transition",
+                "current": exc.current,
+                "requested": exc.requested,
+                "allowed": sorted(exc.allowed),
+            },
         ) from exc
     if isinstance(exc, TaskValidationError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

@@ -1,4 +1,4 @@
-"""Task service: PostgreSQL-backed CRUD (Milestone 3)."""
+"""Task service: PostgreSQL-backed CRUD and status transitions (Milestone 3)."""
 
 from .service import (
     TaskNotFoundError,
@@ -6,10 +6,20 @@ from .service import (
     TasksService,
     TaskValidationError,
 )
+from .state import (
+    InvalidTaskTransitionError,
+    allowed_transitions,
+    can_transition,
+    validate_transition,
+)
 
 __all__ = [
+    "InvalidTaskTransitionError",
     "TaskNotFoundError",
     "TaskRevisionConflictError",
     "TaskValidationError",
     "TasksService",
+    "allowed_transitions",
+    "can_transition",
+    "validate_transition",
 ]

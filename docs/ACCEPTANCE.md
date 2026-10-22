@@ -216,6 +216,41 @@ so they still get schema setup and per-test truncation.
 so later mutations can reuse it. `status`/`priority` are validated as enums here; the transition
 rules and `completed_at` semantics are M3-03.
 
+### M3-03 — Task state machine + transitions
+
+Verified 2026-10-22 on Linux with Python 3.14. The rules are pure and covered without a database;
+the DB-backed HTTP checks are `BLOCKED` (no PostgreSQL).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Every status has a defined transition set | `PASS` | `tests/unit/test_task_state.py::test_every_status_has_an_entry`, `test_transition_matrix_matches_the_documented_rules` |
+| Every allowed transition is accepted | `PASS` | `test_every_allowed_transition_is_accepted` (parametrized over all 17 edges) |
+| Self-transitions are rejected | `PASS` | `test_a_status_is_never_its_own_successor` (all 5 statuses) |
+| Disallowed / terminal transitions are rejected | `PASS` | `test_disallowed_transitions_are_rejected` (`completed→inbox`, `completed→next`, `archived→in_progress`, `archived→completed`) |
+| Unknown status has no transitions | `PASS` | `test_unknown_status_has_no_transitions` |
+| Error carries current/requested/allowed | `PASS` | `test_error_reports_the_allowed_targets`, `test_disallowed_transitions_are_rejected` |
+| `completed_at` set exactly when completed | `PASS` | `test_entering_completed_records_the_time`, `test_leaving_completed_clears_the_time`, `test_other_transitions_have_no_side_effects`, `test_creating_a_completed_task_records_the_time` |
+| Enforcement over HTTP (`409`, nothing changes) | `BLOCKED` | `tests/integration/test_tasks_api.py` (5 transition tests) — no PostgreSQL |
+| Lint, format, types, unit suite | `PASS` | `ruff check .`, `ruff format --check .`, `mypy` clean; `pytest tests/unit -q` → `106 passed` |
+
+**Commands run.**
+
+- `cd services/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy` → clean (41 files).
+- `cd services/api && .venv/bin/python -m pytest tests/unit -q` → `106 passed` (22 new state-machine tests).
+- `./scripts/verify.sh` → `verification: PASS` (exit 0).
+
+**Blocked commands (run in CI / a machine with PostgreSQL 14+).**
+
+```
+docker compose -f deploy/docker-compose.yml up -d db
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas \
+  .venv/bin/python -m pytest -q
+```
+
+**Scope note.** The transition table is the canonical source (`atlas/tasks/state.py`, ADR-0013);
+board columns (M4) must reuse it. A status write equal to the current status is rejected by design
+(clients omit unchanged fields; our `PATCH` uses `exclude_unset`).
+
 ---
 
 ## Milestones M4–M9

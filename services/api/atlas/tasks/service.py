@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Task
+from .state import transition_fields, validate_transition
 
 # Columns a client may set. Identity, owner and sync fields are managed by the service.
 _WRITABLE = frozenset(
@@ -86,6 +87,8 @@ class TasksService:
         task = Task(user_id=self.user_id)
         for name, value in fields.items():
             setattr(task, name, value)
+        for name, value in transition_fields(None, task.status, now=datetime.now(UTC)).items():
+            setattr(task, name, value)
         self.session.add(task)
         await self.session.flush()
         await self.session.refresh(task)
@@ -102,8 +105,17 @@ class TasksService:
             raise TaskRevisionConflictError(task.revision)
         fields = {name: value for name, value in changes.items() if name in _WRITABLE}
         await self._check_parent(fields.get("parent_task_id"), itself=task.id)
+        previous_status = task.status
+        if "status" in fields:
+            validate_transition(previous_status, fields["status"])
         for name, value in fields.items():
             setattr(task, name, value)
+        if "status" in fields:
+            side_effects = transition_fields(
+                previous_status, fields["status"], now=datetime.now(UTC)
+            )
+            for name, value in side_effects.items():
+                setattr(task, name, value)
         task.revision += 1
         await self.session.flush()
         await self.session.refresh(task)

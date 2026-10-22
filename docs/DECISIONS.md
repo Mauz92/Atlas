@@ -227,6 +227,30 @@ TypeScript types and a thin client. The client never re-implements business rule
 
 ---
 
+## ADR-0013 — Task status is an explicit, server-enforced state machine
+
+**Context.** A task's `status` (`inbox`, `next`, `in_progress`, `completed`, `archived`) drives
+views, board columns (M4) and completion. Uncontrolled status writes make those inconsistent.
+
+**Decision.** Transitions are validated server-side against one table
+(`services/api/atlas/tasks/state.py`, the canonical source):
+
+- the three active statuses (`inbox`, `next`, `in_progress`) may move among themselves and into
+  `completed` or `archived`;
+- a `completed` task may be reopened (`in_progress`) or archived;
+- an `archived` task may be restored to `inbox` or `next`.
+
+A move to the current status is not a transition and is rejected. An invalid transition returns
+`409` with the current status, the requested status and the allowed targets; nothing is changed.
+`completed_at` is maintained so that it is set exactly when a task is in `completed`.
+
+**Consequences.** Clients must omit unchanged fields (our `PATCH` uses `exclude_unset`). Board
+columns and quick actions must reuse this table rather than inventing their own rules.
+
+**Status.** Accepted (M3-03).
+
+---
+
 ## Open decisions deferred to later milestones
 
 | # | Question | Milestone |

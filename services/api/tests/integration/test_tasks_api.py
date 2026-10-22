@@ -147,3 +147,78 @@ async def test_delete_with_an_idempotency_key_replays(client: AsyncClient) -> No
 
     replay = await client.delete(f"/api/tasks/{created['id']}", headers=key_headers)
     assert replay.status_code == 204
+
+
+async def _create_task(client: AsyncClient, headers: dict[str, str], **payload: object) -> dict:
+    response = await client.post("/api/tasks", json={"title": "T", **payload}, headers=headers)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+async def test_completing_a_task_sets_completed_at_and_reopening_clears_it(
+    client: AsyncClient,
+) -> None:
+    headers = await _auth(client)
+    task = await _create_task(client, headers)
+
+    completed = await client.patch(
+        f"/api/tasks/{task['id']}", json={"status": "completed"}, headers=headers
+    )
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "completed"
+    assert completed.json()["completed_at"] is not None
+
+    reopened = await client.patch(
+        f"/api/tasks/{task['id']}", json={"status": "in_progress"}, headers=headers
+    )
+    assert reopened.status_code == 200
+    assert reopened.json()["completed_at"] is None
+
+
+async def test_creating_a_completed_task_records_completed_at(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    task = await _create_task(client, headers, status="completed")
+    assert task["status"] == "completed"
+    assert task["completed_at"] is not None
+
+
+async def test_invalid_status_transition_is_rejected(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    task = await _create_task(client, headers)
+    completed = await client.patch(
+        f"/api/tasks/{task['id']}", json={"status": "completed"}, headers=headers
+    )
+    assert completed.status_code == 200
+
+    rejected = await client.patch(
+        f"/api/tasks/{task['id']}", json={"status": "inbox"}, headers=headers
+    )
+    assert rejected.status_code == 409
+    assert rejected.json()["detail"]["current"] == "completed"
+    assert rejected.json()["detail"]["requested"] == "inbox"
+
+    unchanged = await client.get(f"/api/tasks/{task['id']}")
+    assert unchanged.json()["status"] == "completed"
+
+
+async def test_self_transition_is_rejected(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    task = await _create_task(client, headers)
+    response = await client.patch(
+        f"/api/tasks/{task['id']}", json={"status": "inbox"}, headers=headers
+    )
+    assert response.status_code == 409
+
+
+async def test_an_archived_task_cannot_be_completed(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    task = await _create_task(client, headers)
+    archived = await client.patch(
+        f"/api/tasks/{task['id']}", json={"status": "archived"}, headers=headers
+    )
+    assert archived.status_code == 200
+
+    response = await client.patch(
+        f"/api/tasks/{task['id']}", json={"status": "completed"}, headers=headers
+    )
+    assert response.status_code == 409
