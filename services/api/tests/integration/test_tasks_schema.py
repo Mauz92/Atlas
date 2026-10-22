@@ -18,6 +18,8 @@ from sqlalchemy.exc import IntegrityError
 from atlas.db import Base, get_engine, session_scope
 from atlas.models import Tag, Task, TaskPriority, TaskStatus, TaskTag, User
 
+pytestmark = pytest.mark.usefixtures("_db")
+
 
 async def _create_user(session) -> User:
     user = User(

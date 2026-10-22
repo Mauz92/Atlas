@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import __version__
-from .api import auth_router, folders_router, health_router, notes_router
+from .api import auth_router, folders_router, health_router, notes_router, tasks_router
 from .config import get_settings
 from .db import dispose_engine
 from .logging import configure_logging
@@ -60,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(notes_router)
     app.include_router(folders_router)
+    app.include_router(tasks_router)
     return app
 
 

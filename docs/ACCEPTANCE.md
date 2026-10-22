@@ -175,6 +175,47 @@ are added with the `projects` (M4-01) and reminder-policy (M8) tables. `recurren
 `task_tags` and `task_links` (all in §2.3) are created here; their behaviour arrives with M3-05,
 M3-08 and the note-link work respectively.
 
+### M3-02 — Task CRUD API + idempotency keys
+
+Verified 2026-10-22 on Linux with Python 3.14, FastAPI/SQLAlchemy 2.x, Alembic 1.x. No PostgreSQL
+was reachable, so the DB-backed checks are `BLOCKED` (see below).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Task CRUD endpoints exist (`POST`/`GET`/`GET {id}`/`PATCH`/`DELETE`) | `PASS` | `tests/unit/test_tasks_api.py::test_task_routes_are_registered` (OpenAPI) |
+| Mutations accept an `Idempotency-Key` header | `PASS` | `test_mutations_accept_an_idempotency_key_header` |
+| Request validation (empty title, unknown priority, negative revision) | `PASS` | `test_create_requires_a_non_empty_title`, `test_create_rejects_an_unknown_priority`, `test_update_rejects_a_negative_base_revision`, `test_create_defaults_status_and_priority` |
+| Idempotency fingerprint/decision logic | `PASS` | `tests/unit/test_idempotency.py` (7 tests, incl. payload mismatch → conflict) |
+| Migration adds `idempotency_keys` | `PASS` | `test_migration_adds_the_idempotency_table` (offline SQL, upgrade + downgrade) |
+| Duplicate key returns the original result (live) | `BLOCKED` | `tests/integration/test_tasks_api.py::test_create_is_idempotent_for_the_same_key` — no PostgreSQL |
+| CRUD, soft delete, stale-revision `409`, CSRF | `BLOCKED` | `tests/integration/test_tasks_api.py` (9 tests) — no PostgreSQL |
+| OpenAPI contract and TS types in sync | `PASS` | `openapi.json` regenerated; `npm run gen:api`; CI drift diff → in sync |
+| Lint, format, types, unit suite | `PASS` | `ruff check .`, `ruff format --check .`, `mypy` clean; `pytest tests/unit -q` → `84 passed` |
+
+**Commands run.**
+
+- `cd services/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy` → clean (40 files).
+- `cd services/api && .venv/bin/python -m pytest tests/unit -q` → `84 passed` (no database).
+- `cd services/api && .venv/bin/python -c "import json; from atlas.main import app; open('openapi.json','w').write(json.dumps(app.openapi()))"` then `cd apps/web && npm run gen:api` → `schema.d.ts` regenerated; `npm run typecheck` and `npm run build` clean.
+- CI drift simulation (`cp schema.d.ts /tmp; npm run gen:api; diff`) → **PASS** (types in sync).
+- `./scripts/verify.sh` → `verification: PASS` (exit 0; backend lint/format/mypy/`pytest tests/unit`, frontend lint/typecheck/tests).
+
+**Blocked commands (run in CI / a machine with PostgreSQL 14+).**
+
+```
+docker compose -f deploy/docker-compose.yml up -d db
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas \
+  .venv/bin/python -m pytest -q
+```
+
+**Regression fixed.** Commit `70ed410` made the DB fixtures opt-in but left `test_jobs.py` and
+`test_tasks_schema.py` requesting them; both now declare `pytestmark = pytest.mark.usefixtures("_db")`
+so they still get schema setup and per-test truncation.
+
+**Scope note.** Idempotency is generic (`idempotency_keys`, keyed per user, storing the response),
+so later mutations can reuse it. `status`/`priority` are validated as enums here; the transition
+rules and `completed_at` semantics are M3-03.
+
 ---
 
 ## Milestones M4–M9

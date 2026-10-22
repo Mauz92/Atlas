@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 _TRUNCATE = (
     "TRUNCATE TABLE jobs, sessions, users, notes, tags, note_links, note_tags, "
-    "tasks, recurrence_series, task_tags, task_links CASCADE"
+    "tasks, recurrence_series, task_tags, task_links, idempotency_keys CASCADE"
 )
 
 

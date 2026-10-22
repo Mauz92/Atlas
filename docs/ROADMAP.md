@@ -167,7 +167,7 @@ subtasks; completion and archival; Today and Upcoming views; search and filters.
 | ID | Title | Depends on | Acceptance | Tests | Status |
 |---|---|---|---|---|---|
 | M3-01 | Task schema + migration | M1-04 | Fields per DATA_MODEL §2.3 | Migration test | `IN_REVIEW` |
-| M3-02 | Task CRUD API + idempotency keys | M3-01 | Duplicate key returns original result | Integration | `BACKLOG` |
+| M3-02 | Task CRUD API + idempotency keys | M3-01 | Duplicate key returns original result | Integration | `IN_REVIEW` |
 | M3-03 | Task state machine + transitions | M3-02 | Only valid transitions allowed | Unit | `BACKLOG` |
 | M3-04 | Priorities, due dates, time zones | M3-02 | DST-correct due handling | Unit | `BACKLOG` |
 | M3-05 | Recurring tasks (RRULE) | M3-03 | Completing an occurrence keeps the series; next generated | Unit + integration | `BACKLOG` |
@@ -184,6 +184,15 @@ reversibility). `project_id`/`reminder_policy_id` are carried as bare UUIDs — 
 are added when the `projects` (M4) and reminder-policy (M8) tables exist. The DB-backed
 `tests/integration/test_tasks_schema.py` is **`BLOCKED`** here (no PostgreSQL reachable); see
 `ACCEPTANCE.md`. Evidence recorded in `ACCEPTANCE.md`.
+
+**M3-02 verification (2026-10-22).** Task CRUD at `/api/tasks` (`POST`/`GET`/`GET {id}`/`PATCH`/
+`DELETE`) in `atlas/api/tasks.py` + `atlas/tasks/service.py`; soft delete (tombstone) and
+revision-aware updates. Idempotency via an optional `Idempotency-Key` header, reserved with
+`INSERT … ON CONFLICT DO NOTHING` and replayed from a new `idempotency_keys` table (migration
+`f403c1b05be3`). `ruff`/`format`/`mypy` clean; `pytest tests/unit` → 84 passed (no database);
+OpenAPI + `apps/web/src/api/schema.d.ts` regenerated (CI drift check passes). The DB-backed
+`tests/integration/test_tasks_api.py` is **`BLOCKED`** here. Also fixed a regression from the
+opt-in DB fixtures: `test_jobs.py` and `test_tasks_schema.py` now request `_db` explicitly.
 
 **Gate:** tasks usable as a standalone daily tool.
 
@@ -366,8 +375,8 @@ review; data export; upgrade docs; user docs; release checklist; known-limitatio
 
 ## Immediate Next Tasks
 
-- **M3-02** — Task CRUD API + idempotency keys (depends on M3-01, `DONE`): create/read/update/delete
-  with an `idempotency_key` so a retry returns the original result.
-- then **M3-03** → **M3-04** — task state machine and priorities/due dates/time zones.
+- **M3-03** — Task state machine + transitions (depends on M3-02): allow only valid status
+  transitions and complete `completed_at` when a task reaches `completed`.
+- then **M3-04** — priorities, due dates and time zones (DST-correct due handling).
 
 These are the smallest safe next steps for the current milestone (M3).

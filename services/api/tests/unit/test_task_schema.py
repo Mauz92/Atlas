@@ -1,4 +1,4 @@
-"""Task schema (M3-01): the models and migration match ``DATA_MODEL.md`` §2.3.
+"""Task schema (M3-01) and idempotency table (M3-02) against ``DATA_MODEL.md``.
 
 These checks need no database: they inspect the ORM metadata and render the Alembic
 migrations to SQL in offline mode.
@@ -159,3 +159,13 @@ def test_migration_is_reversible() -> None:
     assert "DROP TABLE recurrence_series" in sql
     assert "DROP TABLE task_links" in sql
     assert "DROP TABLE task_tags" in sql
+
+
+def test_migration_adds_the_idempotency_table() -> None:
+    upgrade_sql = _offline_sql("upgrade")
+    assert "CREATE TABLE idempotency_keys" in upgrade_sql
+    assert "uq_idempotency_keys_user_id" in upgrade_sql
+    assert "fk_idempotency_keys_user_id_users" in upgrade_sql
+
+    downgrade_sql = _offline_sql("downgrade")
+    assert "DROP TABLE idempotency_keys" in downgrade_sql

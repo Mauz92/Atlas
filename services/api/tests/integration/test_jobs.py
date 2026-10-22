@@ -6,6 +6,8 @@ from atlas.db import session_scope
 from atlas.jobs import queue, worker
 from atlas.models import Job
 
+pytestmark = pytest.mark.usefixtures("_db")
+
 
 async def test_enqueue_claim_and_complete() -> None:
     async with session_scope() as session:

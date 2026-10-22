@@ -263,6 +263,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Tasks */
+        get: operations["list_tasks_api_tasks_get"];
+        put?: never;
+        /** Create Task */
+        post: operations["create_task_api_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Task */
+        get: operations["get_task_api_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Task */
+        delete: operations["delete_task_api_tasks__task_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Task */
+        patch: operations["update_task_api_tasks__task_id__patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -408,6 +445,133 @@ export interface components {
         SetupStatus: {
             /** Setup Required */
             setup_required: boolean;
+        };
+        /** TaskCreateRequest */
+        TaskCreateRequest: {
+            /** Title */
+            title: string;
+            /** Description */
+            description?: string | null;
+            /** @default inbox */
+            status: components["schemas"]["TaskStatus"];
+            /** @default none */
+            priority: components["schemas"]["TaskPriority"];
+            /** Project Id */
+            project_id?: string | null;
+            /** Parent Task Id */
+            parent_task_id?: string | null;
+            /** Start At */
+            start_at?: string | null;
+            /** Due At */
+            due_at?: string | null;
+            /** Time Zone */
+            time_zone?: string | null;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** Recurrence Rule */
+            recurrence_rule?: string | null;
+            /** External Provider */
+            external_provider?: string | null;
+            /** External Id */
+            external_id?: string | null;
+        };
+        /** TaskListOut */
+        TaskListOut: {
+            /** Tasks */
+            tasks: components["schemas"]["TaskOut"][];
+        };
+        /** TaskOut */
+        TaskOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            /** Status */
+            status: string;
+            /** Priority */
+            priority: string;
+            /** Project Id */
+            project_id: string | null;
+            /** Parent Task Id */
+            parent_task_id: string | null;
+            /** Start At */
+            start_at: string | null;
+            /** Due At */
+            due_at: string | null;
+            /** Time Zone */
+            time_zone: string | null;
+            /** Duration Minutes */
+            duration_minutes: number | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Recurrence Rule */
+            recurrence_rule: string | null;
+            /** Recurrence Parent Id */
+            recurrence_parent_id: string | null;
+            /** External Provider */
+            external_provider: string | null;
+            /** External Id */
+            external_id: string | null;
+            /** Revision */
+            revision: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * TaskPriority
+         * @enum {string}
+         */
+        TaskPriority: "none" | "low" | "medium" | "high" | "urgent";
+        /**
+         * TaskStatus
+         * @enum {string}
+         */
+        TaskStatus: "inbox" | "next" | "in_progress" | "completed" | "archived";
+        /** TaskUpdateRequest */
+        TaskUpdateRequest: {
+            /** Title */
+            title?: string | null;
+            /** Description */
+            description?: string | null;
+            status?: components["schemas"]["TaskStatus"] | null;
+            priority?: components["schemas"]["TaskPriority"] | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Parent Task Id */
+            parent_task_id?: string | null;
+            /** Start At */
+            start_at?: string | null;
+            /** Due At */
+            due_at?: string | null;
+            /** Time Zone */
+            time_zone?: string | null;
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** Completed At */
+            completed_at?: string | null;
+            /** Recurrence Rule */
+            recurrence_rule?: string | null;
+            /** Recurrence Parent Id */
+            recurrence_parent_id?: string | null;
+            /** External Provider */
+            external_provider?: string | null;
+            /** External Id */
+            external_id?: string | null;
+            /** Base Revision */
+            base_revision?: number | null;
         };
         /** UserPublic */
         UserPublic: {
@@ -978,6 +1142,160 @@ export interface operations {
                     "application/json": {
                         [key: string]: number | string;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tasks_api_tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskListOut"];
+                };
+            };
+        };
+    };
+    create_task_api_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_task_api_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_task_api_tasks__task_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_task_api_tasks__task_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
                 };
             };
             /** @description Validation Error */
