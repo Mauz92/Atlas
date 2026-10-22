@@ -166,7 +166,7 @@ subtasks; completion and archival; Today and Upcoming views; search and filters.
 
 | ID | Title | Depends on | Acceptance | Tests | Status |
 |---|---|---|---|---|---|
-| M3-01 | Task schema + migration | M1-04 | Fields per DATA_MODEL §2.3 | Migration test | `IN_REVIEW` |
+| M3-01 | Task schema + migration | M1-04 | Fields per DATA_MODEL §2.3 | Migration test | `DONE` |
 | M3-02 | Task CRUD API + idempotency keys | M3-01 | Duplicate key returns original result | Integration | `IN_REVIEW` |
 | M3-03 | Task state machine + transitions | M3-02 | Only valid transitions allowed | Unit | `IN_REVIEW` |
 | M3-04 | Priorities, due dates, time zones | M3-02 | DST-correct due handling | Unit | `IN_REVIEW` |
@@ -182,7 +182,7 @@ subtasks; completion and archival; Today and Upcoming views; search and filters.
 checked by `tests/unit/test_task_schema.py` (8 assertions, incl. offline-rendered DDL and
 reversibility). `project_id`/`reminder_policy_id` are carried as bare UUIDs — their foreign keys
 are added when the `projects` (M4) and reminder-policy (M8) tables exist. The DB-backed
-`tests/integration/test_tasks_schema.py` is **`BLOCKED`** here (no PostgreSQL reachable); see
+`tests/integration/test_tasks_schema.py` **passed** against PostgreSQL 17.11 on 2026-10-22 (migration executed: downgrade base → upgrade head); see
 `ACCEPTANCE.md`. Evidence recorded in `ACCEPTANCE.md`.
 
 **M3-02 verification (2026-10-22).** Task CRUD at `/api/tasks` (`POST`/`GET`/`GET {id}`/`PATCH`/

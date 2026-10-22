@@ -134,12 +134,27 @@ the frontend; wiring `npm run test` in is a follow-up for the maintainer.
 
 ---
 
+## Full-suite verification (2026-10-22)
+
+Ran the complete backend suite against PostgreSQL 17.11 in Docker, on a dedicated `atlas_test`
+database (never the application's): **194 passed** (125 unit + 69 integration); migrations
+executed cleanly (downgrade base -> upgrade head). Two defects were found and fixed:
+
+- `tests/unit/test_tasks_api.py` and `tests/integration/test_tasks_api.py` shared a basename and
+  aborted pytest collection ("import file mismatch"); fixed with package `__init__.py` files.
+- `tests/integration/test_notes_reconcile.py` was missing the `_db` fixture marker, leaking rows
+  into later tests (`409 "Application already initialised"`); marker added.
+
+`scripts/verify.sh` now runs the full suite (backend lint/format/types + 194 tests; frontend
+lint/types + 8 tests).
+
+---
+
 ## M3 — Core Task Management
 
 ### M3-01 — Task schema + migration
 
-Verified 2026-10-22 on Linux with Python 3.14, SQLAlchemy 2.x, Alembic 1.x. No PostgreSQL was
-reachable in this environment, so the DB-backed checks were recorded `BLOCKED` (see below).
+Verified 2026-10-22 on Linux with Python 3.14, SQLAlchemy 2.x, Alembic 1.x. PostgreSQL 17.11 was available on 2026-10-22, so the DB-backed checks below were executed and passed.
 
 | Criterion | Result | Evidence |
 |---|---|---|
@@ -147,8 +162,8 @@ reachable in this environment, so the DB-backed checks were recorded `BLOCKED` (
 | Required columns are `NOT NULL`; status/priority/revision have defaults | `PASS` | `test_required_task_columns_are_not_nullable`, `test_task_status_and_priority_defaults` |
 | Foreign keys and indexes match the model | `PASS` | `test_task_foreign_keys_and_indexes` (`users` CASCADE; self-refs SET NULL; 5 indexes) |
 | Migration renders the schema and is reversible | `PASS` | `test_migration_renders_the_task_schema`, `test_migration_is_reversible` (offline SQL) |
-| Migration matches the models on a real DB | `BLOCKED` | `tests/integration/test_tasks_schema.py::test_migrations_match_models` — no PostgreSQL |
-| DB defaults / FK / cascade enforced on a real DB | `BLOCKED` | `tests/integration/test_tasks_schema.py` (6 tests) — no PostgreSQL |
+| Migration matches the models on a real DB | `PASS` | `tests/integration/test_tasks_schema.py::test_migrations_match_models` against PostgreSQL 17.11 |
+| DB defaults / FK / cascade enforced on a real DB | `PASS` | `tests/integration/test_tasks_schema.py` (6 tests) against PostgreSQL 17.11 |
 | Lint, format and types clean | `PASS` | `services/api`: `ruff check .`, `ruff format --check .`, `mypy` → clean (35 files) |
 
 **Commands run.**
@@ -162,12 +177,12 @@ reachable in this environment, so the DB-backed checks were recorded `BLOCKED` (
   is renamed, so it is not a no-op.
 - `./scripts/verify.sh` → `verification: PASS` (exit 0).
 
-**Blocked commands (run in CI / a machine with PostgreSQL 14+).**
+**Commands run against PostgreSQL 17.11 (2026-10-22).**
 
 ```
 docker compose -f deploy/docker-compose.yml up -d db
-cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas \
-  .venv/bin/python -m pytest -q
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q   # 194 passed
 ```
 
 **Scope note.** `project_id` and `reminder_policy_id` are stored as bare UUIDs; their foreign keys
@@ -200,12 +215,12 @@ was reachable, so the DB-backed checks are `BLOCKED` (see below).
 - CI drift simulation (`cp schema.d.ts /tmp; npm run gen:api; diff`) → **PASS** (types in sync).
 - `./scripts/verify.sh` → `verification: PASS` (exit 0; backend lint/format/mypy/`pytest tests/unit`, frontend lint/typecheck/tests).
 
-**Blocked commands (run in CI / a machine with PostgreSQL 14+).**
+**Commands run against PostgreSQL 17.11 (2026-10-22).**
 
 ```
 docker compose -f deploy/docker-compose.yml up -d db
-cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas \
-  .venv/bin/python -m pytest -q
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q   # 194 passed
 ```
 
 **Regression fixed.** Commit `70ed410` made the DB fixtures opt-in but left `test_jobs.py` and
@@ -239,12 +254,12 @@ the DB-backed HTTP checks are `BLOCKED` (no PostgreSQL).
 - `cd services/api && .venv/bin/python -m pytest tests/unit -q` → `106 passed` (22 new state-machine tests).
 - `./scripts/verify.sh` → `verification: PASS` (exit 0).
 
-**Blocked commands (run in CI / a machine with PostgreSQL 14+).**
+**Commands run against PostgreSQL 17.11 (2026-10-22).**
 
 ```
 docker compose -f deploy/docker-compose.yml up -d db
-cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas \
-  .venv/bin/python -m pytest -q
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q   # 194 passed
 ```
 
 **Scope note.** The transition table is the canonical source (`atlas/tasks/state.py`, ADR-0013);
@@ -279,12 +294,12 @@ and covered without a database; the DB-backed checks are `BLOCKED` (no PostgreSQ
 - OpenAPI drift simulation → **PASS** (no contract change); `npm run typecheck`/`build` unaffected.
 - `./scripts/verify.sh` → `verification: PASS` (exit 0).
 
-**Blocked commands (run in CI / a machine with PostgreSQL 14+).**
+**Commands run against PostgreSQL 17.11 (2026-10-22).**
 
 ```
 docker compose -f deploy/docker-compose.yml up -d db
-cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas \
-  .venv/bin/python -m pytest -q
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q   # 194 passed
 ```
 
 **Scope note.** Deterministic zone rules live in `atlas/tasks/timezones.py`; the API stores UTC
