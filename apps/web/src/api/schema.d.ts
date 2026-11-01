@@ -194,6 +194,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/notes/{note_id}/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Note Projects
+         * @description List the caller's projects linked to one note (M4-05).
+         *
+         *     The association references the note's stable id, so it is unaffected by a rename. Each project
+         *     carries its derived ``progress`` (M4-04). The note must exist and be the caller's: an unknown,
+         *     another user's or deleted note is reported as ``404 Not found``. A note may be linked to any
+         *     number of projects.
+         */
+        get: operations["list_note_projects_api_notes__note_id__projects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notes/{note_id}/conflict": {
         parameters: {
             query?: never;
@@ -270,11 +295,61 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Tasks */
+        /**
+         * List Tasks
+         * @description List tasks.
+         *
+         *     With ``parent_task_id`` only that task's direct subtasks are returned. With ``view`` one of
+         *     the primary views is returned — ``inbox`` (captured, not yet triaged), ``today`` (overdue or
+         *     due today) or ``upcoming`` (due on a later day). ``tz`` is the caller's IANA time zone, used
+         *     to resolve "today" for tasks that carry no zone of their own (ADR-0014). ``view`` and
+         *     ``parent_task_id`` are mutually exclusive.
+         *
+         *     The optional M3-08 filters narrow the result further and compose with each other, with
+         *     ``parent_task_id`` and with ``view`` (ADR-0018): ``status`` (repeated or comma-separated),
+         *     ``priority``, an inclusive ``due_from``/``due_to`` range on ``due_at``, an inclusive
+         *     ``start_from``/``start_to`` range on ``start_at``, ``project_id`` and the text search ``q``
+         *     over title/description. An unknown status/priority, a malformed or inverted date range or an
+         *     over-long search term is rejected with ``422``. Results are bounded by ``limit``. A listing
+         *     without filters keeps its original capture order; a filtered listing is ordered most urgent
+         *     first, then by earliest due date.
+         */
         get: operations["list_tasks_api_tasks_get"];
         put?: never;
         /** Create Task */
         post: operations["create_task_api_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Task Changes
+         * @description Incremental change feed for the calling user's tasks (M3-09).
+         *
+         *     Returns the tasks whose ``revision`` is strictly greater than ``since``, ordered by ``revision``
+         *     ascending, **including soft-deleted tombstones** (a non-null ``deleted_at``) so a client
+         *     observes deletions and converges without re-downloading the whole list. A task bumped twice
+         *     between two pulls appears once, at its latest revision.
+         *
+         *     The response carries the caller's new high-water mark ``next_since`` and ``has_more``: send back
+         *     ``since=next_since`` until ``has_more`` is false and the whole change set has been seen exactly
+         *     once. Because ``revision`` is per-task (several tasks can share one), a page never splits a run
+         *     of equal revisions, so paging has no gaps and no duplicates. ``since`` (0…2147483647) and
+         *     ``limit`` (1…500) are validated at the boundary — an invalid value returns ``422`` and changes
+         *     nothing; the endpoint is read-only and strictly user-scoped.
+         */
+        get: operations["task_changes_api_tasks_changes_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -300,10 +375,728 @@ export interface paths {
         patch: operations["update_task_api_tasks__task_id__patch"];
         trace?: never;
     };
+    "/api/tasks/{task_id}/reminder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Task Reminder
+         * @description One of the caller's tasks' reminder timing (M8-05): override, effective timing and fire time.
+         *
+         *     Strictly user-scoped: another user's task id is a ``404``, so a task cannot be probed across
+         *     users. A task with no reminder has ``effective`` and ``remind_at`` null and ``override`` null.
+         */
+        get: operations["get_task_reminder_api_tasks__task_id__reminder_get"];
+        /**
+         * Set Task Reminder
+         * @description Set (or clear) a per-entity reminder override and reschedule that task's durable reminder.
+         *
+         *     A ``timing`` sets an override that takes precedence over the caller's default; ``null`` clears
+         *     it, so the task falls back to the default. Idempotent. The reminder is re-materialised through
+         *     the M8-01 scheduler in the same transaction, so a later timing fires later and an earlier one
+         *     earlier (``no new scheduling logic``). An invalid timing is rejected at the boundary with no
+         *     side effects, and another user's task id is a ``404``.
+         */
+        put: operations["set_task_reminder_api_tasks__task_id__reminder_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Projects
+         * @description List the caller's live projects in capture order.
+         *
+         *     Soft-deleted projects are omitted. ``limit`` bounds the number of returned rows. Each project
+         *     carries its derived ``progress`` (M4-04), computed for the whole page in one grouped count
+         *     rather than a query per project.
+         */
+        get: operations["list_projects_api_projects_get"];
+        put?: never;
+        /** Create Project */
+        post: operations["create_project_api_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Projects
+         * @description Export the caller's projects, their tasks and linked notes (M4-07, REQ-015).
+         *
+         *     Returns a single, versioned, open JSON document (``format: atlas.project-export``,
+         *     ``version: 1``; the contract is documented in ``DECISIONS.md`` ADR-0026). Every project carries
+         *     its derived ``progress`` and every live task of the project with its documented fields (stable
+         *     ids, ISO-8601 UTC instants), plus the notes linked to the project (M4-05). Only live rows are
+         *     exported; soft-deleted projects, tasks and notes are excluded.
+         *
+         *     The whole document is read as **one consistent snapshot** (a single REPEATABLE READ
+         *     transaction), so a concurrent write cannot tear it. The number of projects is bounded by
+         *     ``limit`` (1…500, default 200); ``truncated`` reports whether further projects were omitted.
+         *     The endpoint is read-only and strictly user-scoped: it never returns another user's data.
+         */
+        get: operations["export_projects_api_projects_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Project
+         * @description Export a single project, its tasks and linked notes (M4-07, REQ-015).
+         *
+         *     Returns the same versioned document as ``GET /api/projects/export`` with exactly one entry in
+         *     ``projects`` (``truncated`` is always ``false``). An unknown project, another user's project or
+         *     a deleted (tombstoned) project is reported as ``404 Not found``. Read as one consistent
+         *     snapshot; read-only and strictly user-scoped.
+         */
+        get: operations["export_project_api_projects__project_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project */
+        get: operations["get_project_api_projects__project_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Project
+         * @description Soft delete (tombstone) a project.
+         */
+        delete: operations["delete_project_api_projects__project_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Project
+         * @description Update a project, optionally guarded by ``base_revision``.
+         *
+         *     A stale ``base_revision`` — the project has a newer revision — returns ``409`` and changes
+         *     nothing. Fields not present in the request are left untouched.
+         */
+        patch: operations["update_project_api_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/api/projects/{project_id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Tasks
+         * @description List the caller's tasks filed under one project (M4-02).
+         *
+         *     Membership is optional — a task belongs to at most one project and may belong to none — so
+         *     this returns exactly the live tasks whose ``project_id`` is the given project, plus each task's
+         *     derived subtask counts and ``due_state``. It is the same set (and the same most-urgent-first
+         *     ordering) as ``GET /api/tasks?project_id={project_id}``; the difference is that this endpoint
+         *     *checks the project exists*: an unknown project, another user's project or a deleted
+         *     (tombstoned) project is reported as ``404 Not found`` rather than as an empty list.
+         *     Soft-deleted tasks are omitted, as in every task listing. ``limit`` (1…500, default 200)
+         *     bounds the result. The endpoint is read-only and strictly user-scoped.
+         */
+        get: operations["list_project_tasks_api_projects__project_id__tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Notes
+         * @description List the caller's notes linked to one project (M4-05).
+         *
+         *     The association references the note's **stable id**, not its path, so a note that has been
+         *     renamed still appears (with its new path). Only live notes are returned, in path order. The
+         *     project must exist and be the caller's: an unknown, another user's or deleted (tombstoned)
+         *     project is reported as ``404 Not found`` rather than as an empty list.
+         */
+        get: operations["list_project_notes_api_projects__project_id__notes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/notes/{note_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Link Project Note
+         * @description Link a note to a project (**idempotent**).
+         *
+         *     Linking a note to a project it is already linked to is a no-op (both return ``204``). The
+         *     project *and* the note must be the caller's and live: an unknown, another user's or deleted
+         *     target is reported as ``404 Not found`` before anything is written, so a rejected link has no
+         *     side effects. A note may be linked to any number of projects.
+         */
+        put: operations["link_project_note_api_projects__project_id__notes__note_id__put"];
+        post?: never;
+        /**
+         * Unlink Project Note
+         * @description Remove a note↔project link (**idempotent**).
+         *
+         *     Deleting a link that does not exist is a no-op (both return ``204``). The project and the note
+         *     must be the caller's and live; an unknown, another user's or deleted target is reported as
+         *     ``404 Not found``.
+         */
+        delete: operations["unlink_project_note_api_projects__project_id__notes__note_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calendar/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Credentials
+         * @description List the caller's stored credentials (metadata only), ordered by provider.
+         */
+        get: operations["list_credentials_api_calendar_credentials_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calendar/credentials/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Credential
+         * @description Return metadata for one stored credential; ``404`` when none exists for the caller.
+         */
+        get: operations["get_credential_api_calendar_credentials__provider__get"];
+        /**
+         * Upsert Credential
+         * @description Store (create or replace) the caller's credential for ``provider``.
+         *
+         *     Naturally idempotent — one credential per ``(user, provider)`` — so no ``Idempotency-Key`` is
+         *     needed. The tokens are encrypted before the row is written; the response is metadata only.
+         */
+        put: operations["upsert_credential_api_calendar_credentials__provider__put"];
+        post?: never;
+        /**
+         * Delete Credential
+         * @description Delete the caller's credential for ``provider``; ``404`` when none exists.
+         */
+        delete: operations["delete_credential_api_calendar_credentials__provider__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calendar/credentials/{provider}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Credential
+         * @description Record the result of an OAuth token refresh for an existing credential.
+         *
+         *     This endpoint does **not** contact the provider — the refresh exchange belongs to the adapter
+         *     (M5-03/M5-04). It stores the new tokens/expiry the caller already obtained. ``404`` when no
+         *     credential exists.
+         */
+        post: operations["refresh_credential_api_calendar_credentials__provider__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calendar/sync-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sync Status
+         * @description The caller's calendar sync status, derived from the M5-06 cursor store.
+         *
+         *     Per provider/calendar it reports ``connected``, ``last_success_at`` (UTC), the derived ``state``
+         *     (``never_synced`` | ``idle`` | ``error``), ``cursor_health`` and the last error (a bounded,
+         *     content-free message). Read-only and strictly user-scoped; it never contacts a provider.
+         */
+        get: operations["sync_status_api_calendar_sync_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calendar/providers/{provider}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Provider
+         * @description Trigger one read-only sync for ``provider``, reusing the M5-06 service.
+         *
+         *     Naturally idempotent — a repeat re-applies the same changes on the projection's unique keys and
+         *     never duplicates an event — so no ``Idempotency-Key`` is required. It builds the adapter through
+         *     the M5-02 registry seam: a provider with no adapter (M5-03/M5-04 pending M5-00/AR-001) is a
+         *     ``503`` and a provider the caller has not connected a ``409``. It never contacts a provider
+         *     itself, and the response carries counts only — never a cursor value or event content.
+         */
+        post: operations["sync_provider_api_calendar_providers__provider__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Changes
+         * @description Incremental change feed for the calling user (M7-01).
+         *
+         *     Returns the caller's changes with ``cursor`` strictly greater than ``since``, ordered by cursor
+         *     ascending. Each change reports its ``entity_type``, ``entity_id``, ``operation`` (``upsert`` or
+         *     ``delete``) and the ``cursor`` it was recorded at. Because each entity is stored once at its
+         *     latest change, an entity bumped twice between two pulls appears **once**, at its latest cursor;
+         *     a soft delete appears once as a ``delete`` tombstone so a client removes its local copy.
+         *
+         *     The response carries the new high-water mark ``next_since`` and ``has_more``: send back
+         *     ``since=next_since`` until ``has_more`` is false and the whole change set has been seen exactly
+         *     once. ``since`` (0…2^63-1) and ``limit`` (1…500) are validated at the boundary — an invalid
+         *     value returns ``422`` and changes nothing; the endpoint is read-only and strictly user-scoped.
+         *
+         *     If ``since`` predates the retention floor (``users.change_purge_floor``) the changes it misses
+         *     have been purged and can never be delivered, so instead of a partial set that could resurrect a
+         *     deleted entity the response sets ``resync_required`` to ``True`` with an empty ``changes`` list
+         *     and ``next_since`` at the current high-water mark (M7-02). The client must full-resync, then
+         *     resume from ``next_since``.
+         */
+        get: operations["list_changes_api_changes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Web Push Config
+         * @description Whether Web Push is available and the VAPID public key the browser subscribes with (M8-02).
+         *
+         *     Server-side configuration only — it reads the VAPID settings and never the database. The
+         *     **public** key is returned when configured (it is a client-side key); the private key is never
+         *     returned (``AGENTS.md`` §11). When a key is missing, ``enabled`` is false and the client shows
+         *     the feature as unavailable instead of offering a subscription the server could not deliver.
+         */
+        get: operations["web_push_config_api_notifications_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Devices
+         * @description List the caller's registered destinations, oldest first (including disabled ones).
+         *
+         *     ``disabled_at`` is non-null for a destination the delivery path invalidated, so a client can
+         *     show it as no longer deliverable without it being retried.
+         */
+        get: operations["list_devices_api_notifications_devices_get"];
+        put?: never;
+        /**
+         * Register Device
+         * @description Register (create or refresh) the caller's destination.
+         *
+         *     Naturally idempotent — the row is keyed by ``(user, channel, endpoint)`` — so no
+         *     ``Idempotency-Key`` is needed: re-registering the same destination updates it in place,
+         *     refreshes ``last_seen_at`` and revives a previously invalidated row. A ``web`` destination
+         *     requires ``p256dh`` and ``auth``; a native destination must not send them (``422`` otherwise,
+         *     with no side effects).
+         */
+        post: operations["register_device_api_notifications_devices_post"];
+        /**
+         * Unregister Device
+         * @description Unregister one of the caller's destinations by ``channel`` + ``endpoint``.
+         *
+         *     Idempotent: unregistering a destination that is not registered (or belongs to another user) is
+         *     a no-op and still returns ``204``. An unknown ``channel`` or an out-of-range ``endpoint`` is a
+         *     ``422`` with no side effects.
+         */
+        delete: operations["unregister_device_api_notifications_devices_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Reminder Preferences
+         * @description The caller's reminder timing (M8-05): the default that governs their tasks.
+         *
+         *     Read-only and strictly user-scoped. ``default`` is ``null`` when no default is set — the client
+         *     then shows the reminder as off and offers a timing to choose.
+         */
+        get: operations["get_reminder_preferences_api_notifications_reminders_get"];
+        /**
+         * Set Reminder Preferences
+         * @description Set (or clear) the caller's default reminder timing and reschedule the affected reminders.
+         *
+         *     Idempotent: the single per-user default is upserted. Every task that inherits the default is
+         *     re-materialised through the M8-01 scheduler in the same transaction, so a later timing fires
+         *     later and an earlier one fires earlier (``no new scheduling logic``). An invalid timing is
+         *     rejected at the boundary (``422``) with no side effects. ``{ "default": null }`` turns the
+         *     default off.
+         */
+        put: operations["set_reminder_preferences_api_notifications_reminders_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Workspace
+         * @description Download the caller's full data export as a zip (M9-03, REQ-015).
+         *
+         *     The archive holds the user's real Markdown notes, their tasks and projects (the versioned M4-07
+         *     document plus the tasks filed under no project) and a checksummed manifest. It is a portability
+         *     artifact — everything a third-party tool needs to read the workspace without Atlas — not a
+         *     backup; for disaster recovery use the M9-01 backup sets / M9-02 restore procedure.
+         */
+        get: operations["export_workspace_api_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * CalendarCursorStatusOut
+         * @description The derived sync status of one ``(provider, calendar)``.
+         *
+         *     Everything here is derived from the M5-06 ``sync_cursors`` row: ``state`` (``never_synced`` |
+         *     ``idle`` | ``error``), ``cursor_health`` (``ok`` | ``missing`` | ``error``) and the last
+         *     success/error. ``has_cursor``/``cursor_type`` describe the cursor without ever exposing its
+         *     opaque value. ``last_error`` is the bounded, content-free diagnostic M5-06 recorded — it never
+         *     contains token material or event contents (ADR-0029/ADR-0030).
+         */
+        CalendarCursorStatusOut: {
+            /** Calendar Id */
+            calendar_id: string;
+            state: components["schemas"]["SyncState"];
+            cursor_health: components["schemas"]["CursorHealth"];
+            /** Cursor Type */
+            cursor_type: string;
+            /** Has Cursor */
+            has_cursor: boolean;
+            /** Last Success At */
+            last_success_at: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Error At */
+            last_error_at: string | null;
+        };
+        /**
+         * CalendarSyncResultOut
+         * @description The outcome of one calendar's manual sync pass (M5-08).
+         *
+         *     Counts only — no cursor value or event content is returned. ``cursor_advanced`` says whether the
+         *     stored cursor moved (it does not when the provider issued no new cursor or nothing changed).
+         */
+        CalendarSyncResultOut: {
+            /** Calendar Id */
+            calendar_id: string;
+            /** Pages */
+            pages: number;
+            /** Events Seen */
+            events_seen: number;
+            /** Deletions Seen */
+            deletions_seen: number;
+            /** Created */
+            created: number;
+            /** Updated */
+            updated: number;
+            /** Unchanged */
+            unchanged: number;
+            /** Tombstoned */
+            tombstoned: number;
+            /** Cursor Advanced */
+            cursor_advanced: boolean;
+        };
+        /**
+         * CalendarSyncStatusOut
+         * @description The caller's calendar sync status, one entry per connected/provider-with-a-cursor provider.
+         *
+         *     An empty ``providers`` list means no calendar account is connected and no sync has ever run.
+         */
+        CalendarSyncStatusOut: {
+            /** Providers */
+            providers: components["schemas"]["ProviderSyncStatusOut"][];
+        };
+        /**
+         * ChangeOut
+         * @description One item of the per-user change feed (M7-01).
+         *
+         *     ``entity_type`` is one of ``task`` | ``project`` | ``note`` | ``note_project_link`` |
+         *     ``task_note_link``; ``operation`` is ``upsert`` (created/updated) or ``delete`` (soft-deleted
+         *     tombstone). ``entity_id`` identifies the entity within its type — the entity's UUID for a
+         *     task/project/note, or ``"{note_id}:{project_id}"`` for a note↔project link. ``cursor`` is the
+         *     change's position on the caller's monotonic cursor, which a client sends back as ``since`` to
+         *     continue. The feed carries **no** entity payload: a client fetches the entity it cares about
+         *     from the ordinary endpoint, or removes it locally when the operation is ``delete``.
+         */
+        ChangeOut: {
+            /** Entity Type */
+            entity_type: string;
+            /** Entity Id */
+            entity_id: string;
+            /** Operation */
+            operation: string;
+            /** Cursor */
+            cursor: number;
+            /**
+             * Changed At
+             * Format: date-time
+             */
+            changed_at: string;
+        };
+        /**
+         * ChangesOut
+         * @description One page of the per-user change feed.
+         *
+         *     ``changes`` are the caller's changes after the requested cursor, ordered by ``cursor``
+         *     ascending (each entity appears once, at its latest change). ``since`` echoes the requested
+         *     cursor; ``next_since`` is the new high-water mark to send on the next pull; ``has_more`` says
+         *     whether further changes remain after ``next_since``.
+         *
+         *     ``resync_required`` (M7-02) is normally ``False``. It is ``True`` when the requested ``since``
+         *     predates the retention floor: the changes in between have been purged and can never be
+         *     delivered, so the client must **full-resync** (fetch the entities afresh) rather than trust the
+         *     — empty — ``changes`` list, then resume from ``next_since``. Adding it defaults to ``False`` so
+         *     existing clients are unaffected.
+         */
+        ChangesOut: {
+            /** Changes */
+            changes: components["schemas"]["ChangeOut"][];
+            /** Since */
+            since: number;
+            /** Next Since */
+            next_since: number;
+            /** Has More */
+            has_more: boolean;
+            /**
+             * Resync Required
+             * @default false
+             */
+            resync_required: boolean;
+        };
+        /**
+         * CredentialProvider
+         * @description The calendar providers Atlas stores credentials for (M5).
+         *
+         *     Deliberately small: it grows only when an adapter is built. The value is what is persisted and
+         *     what appears in URLs/API payloads.
+         * @enum {string}
+         */
+        CredentialProvider: "google" | "microsoft";
+        /**
+         * CursorHealth
+         * @description The health of one calendar's stored cursor.
+         *
+         *     ``ok`` — a successful pass established a durable cursor and no error is outstanding;
+         *     ``missing`` — no successful baseline yet (no cursor row, or the provider issued no cursor);
+         *     ``error`` — the most recent pass failed, so the cursor did not advance.
+         * @enum {string}
+         */
+        CursorHealth: "ok" | "missing" | "error";
+        /**
+         * DeviceListOut
+         * @description The caller's registered push destinations, oldest first.
+         */
+        DeviceListOut: {
+            /** Devices */
+            devices: components["schemas"]["DeviceOut"][];
+        };
+        /**
+         * DeviceOut
+         * @description One registered push destination.
+         *
+         *     The endpoint and the Web Push keys are **write-only**: they are never echoed back — only
+         *     non-secret metadata is returned (``AGENTS.md`` §11). ``disabled_at`` is non-null when the
+         *     delivery path reported the destination invalid/expired, so it is no longer targeted.
+         */
+        DeviceOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Channel */
+            channel: string;
+            /** Platform */
+            platform: string | null;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Disabled At */
+            disabled_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * DeviceRegisterRequest
+         * @description Register (or refresh) one push destination.
+         *
+         *     ``channel`` selects the transport: ``web`` is a Web Push subscription and **requires**
+         *     ``p256dh`` and ``auth`` (its client keys); ``android``/``ios`` carry the push token in
+         *     ``endpoint`` and must **not** send the Web Push keys. ``platform`` is an optional display hint.
+         *     Registering the same ``(channel, endpoint)`` twice is idempotent — it updates the existing row.
+         */
+        DeviceRegisterRequest: {
+            channel: components["schemas"]["PushChannel"];
+            /** Endpoint */
+            endpoint: string;
+            /** P256Dh */
+            p256dh?: string | null;
+            /** Auth */
+            auth?: string | null;
+            /** Platform */
+            platform?: string | null;
+        };
+        /**
+         * DueState
+         * @enum {string}
+         */
+        DueState: "none" | "overdue" | "today" | "upcoming";
         /** FolderCreateRequest */
         FolderCreateRequest: {
             /** Path */
@@ -418,6 +1211,349 @@ export interface components {
             /** Base Revision */
             base_revision: number;
         };
+        /** ProjectCreateRequest */
+        ProjectCreateRequest: {
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** @default active */
+            status: components["schemas"]["ProjectStatus"];
+            /** Start Date */
+            start_date?: string | null;
+            /** Target Date */
+            target_date?: string | null;
+        };
+        /**
+         * ProjectExportOut
+         * @description One project and its tasks/notes in a project export document (M4-07).
+         *
+         *     ``progress`` is the derived figure (``completed`` of ``total``, ADR-0023). ``tasks`` are every
+         *     live task of the project (including ``archived`` ones — they are real data), while ``progress``
+         *     excludes ``archived`` tasks by definition.
+         */
+        ProjectExportOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /** Status */
+            status: string;
+            /** Start Date */
+            start_date: string | null;
+            /** Target Date */
+            target_date: string | null;
+            /** Revision */
+            revision: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            progress: components["schemas"]["ProjectProgressOut"];
+            /** Tasks */
+            tasks: components["schemas"]["ProjectExportTaskOut"][];
+            /** Notes */
+            notes: components["schemas"]["NoteSummaryOut"][];
+        };
+        /**
+         * ProjectExportTaskOut
+         * @description A task inside a project export document (M4-07).
+         *
+         *     The documented task fields (``DATA_MODEL.md`` §2.3) with their stored values — no transient,
+         *     request-relative derivation such as ``due_state``, so the same row always exports identically.
+         *     Instants are ISO-8601 UTC; only live (non-deleted) tasks are exported.
+         */
+        ProjectExportTaskOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            /** Status */
+            status: string;
+            /** Priority */
+            priority: string;
+            /** Project Id */
+            project_id: string | null;
+            /** Parent Task Id */
+            parent_task_id: string | null;
+            /** Start At */
+            start_at: string | null;
+            /** Due At */
+            due_at: string | null;
+            /** Time Zone */
+            time_zone: string | null;
+            /** Duration Minutes */
+            duration_minutes: number | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Recurrence Rule */
+            recurrence_rule: string | null;
+            /** Recurrence Parent Id */
+            recurrence_parent_id: string | null;
+            /** External Provider */
+            external_provider: string | null;
+            /** External Id */
+            external_id: string | null;
+            /** Revision */
+            revision: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ProjectListOut */
+        ProjectListOut: {
+            /** Projects */
+            projects: components["schemas"]["ProjectOut"][];
+        };
+        /**
+         * ProjectNotesOut
+         * @description A project's linked notes (M4-05), in path order.
+         *
+         *     Notes are listed with the standard :class:`NoteSummaryOut` shape, so a client needs no
+         *     project-specific note model. Only live notes are returned; a note deleted from the notes side
+         *     disappears from the list.
+         */
+        ProjectNotesOut: {
+            /** Notes */
+            notes: components["schemas"]["NoteSummaryOut"][];
+        };
+        /** ProjectOut */
+        ProjectOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /** Status */
+            status: string;
+            /** Start Date */
+            start_date: string | null;
+            /** Target Date */
+            target_date: string | null;
+            progress: components["schemas"]["ProjectProgressOut"];
+            /** Revision */
+            revision: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ProjectProgressOut
+         * @description Derived progress of a project (``completed`` of ``total``).
+         *
+         *     Progress is derived, not stored (``DATA_MODEL.md`` §2.3). ``total`` counts the project's live,
+         *     non-``archived`` tasks; ``completed`` those whose status is ``completed``; ``percent`` is
+         *     ``round(completed * 100 / total)`` to the nearest whole percent, halves rounded up, and ``0``
+         *     when ``total`` is 0 (a project with no countable tasks is not complete). The exact rule,
+         *     including the exclusions, is recorded in ``DECISIONS.md`` ADR-0023 and ``PRODUCT_SPEC.md`` §5.3.
+         */
+        ProjectProgressOut: {
+            /** Total */
+            total: number;
+            /** Completed */
+            completed: number;
+            /** Percent */
+            percent: number;
+        };
+        /**
+         * ProjectStatus
+         * @description Lifecycle of a project. Kept deliberately small for the first milestone.
+         * @enum {string}
+         */
+        ProjectStatus: "active" | "completed" | "archived";
+        /** ProjectUpdateRequest */
+        ProjectUpdateRequest: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            status?: components["schemas"]["ProjectStatus"] | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Target Date */
+            target_date?: string | null;
+            /** Base Revision */
+            base_revision?: number | null;
+        };
+        /**
+         * ProjectsExportOut
+         * @description The versioned, open project-export document (M4-07, REQ-015).
+         *
+         *     ``format`` identifies the document (``atlas.project-export``) and ``version`` its schema
+         *     version; both are stable contract, documented in ``DECISIONS.md`` ADR-0026. ``truncated`` is
+         *     ``true`` when the project bound omitted further projects. Timestamps are ISO-8601 UTC.
+         */
+        ProjectsExportOut: {
+            /** Format */
+            format: string;
+            /** Version */
+            version: number;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Truncated */
+            truncated: boolean;
+            /** Projects */
+            projects: components["schemas"]["ProjectExportOut"][];
+        };
+        /** ProviderCredentialListOut */
+        ProviderCredentialListOut: {
+            /** Credentials */
+            credentials: components["schemas"]["ProviderCredentialOut"][];
+        };
+        /**
+         * ProviderCredentialOut
+         * @description Non-secret metadata about a stored credential.
+         *
+         *     Deliberately contains **no** token material and **no** ciphertext: the encryption key never
+         *     leaves the server, and tokens are never returned by an API.
+         */
+        ProviderCredentialOut: {
+            /** Provider */
+            provider: string;
+            /** Key Id */
+            key_id: string;
+            /** Scopes */
+            scopes: string[];
+            /** Access Expires At */
+            access_expires_at: string | null;
+            /** Refresh Expires At */
+            refresh_expires_at: string | null;
+            /** Has Refresh Token */
+            has_refresh_token: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ProviderCredentialRefreshRequest
+         * @description Record the result of a token refresh for an existing credential (M5-01).
+         *
+         *     The OAuth refresh exchange itself belongs to the provider adapter; this body carries its result
+         *     so the store can update the (re-encrypted) tokens and expiry. ``access_token`` is required.
+         */
+        ProviderCredentialRefreshRequest: {
+            /** Access Token */
+            access_token: string;
+            /** Refresh Token */
+            refresh_token?: string | null;
+            /** Scopes */
+            scopes?: string[] | null;
+            /** Access Expires At */
+            access_expires_at?: string | null;
+            /** Refresh Expires At */
+            refresh_expires_at?: string | null;
+        };
+        /**
+         * ProviderCredentialUpsertRequest
+         * @description Write (create or replace) the caller's OAuth credential for one provider.
+         *
+         *     The token material is accepted only over an authenticated, CSRF-protected request and is
+         *     encrypted before it touches the database. At least one token must be supplied. ``scopes`` and
+         *     the expiry instants are the non-secret metadata that a later sync needs.
+         */
+        ProviderCredentialUpsertRequest: {
+            /** Access Token */
+            access_token?: string | null;
+            /** Refresh Token */
+            refresh_token?: string | null;
+            /**
+             * Token Type
+             * @default Bearer
+             */
+            token_type: string;
+            /** Scopes */
+            scopes?: string[];
+            /** Access Expires At */
+            access_expires_at?: string | null;
+            /** Refresh Expires At */
+            refresh_expires_at?: string | null;
+        };
+        /**
+         * ProviderSyncOut
+         * @description The outcome of a manual provider sync: one result per calendar the account exposes.
+         */
+        ProviderSyncOut: {
+            /** Provider */
+            provider: string;
+            /** Calendars */
+            calendars: components["schemas"]["CalendarSyncResultOut"][];
+        };
+        /**
+         * ProviderSyncStatusOut
+         * @description One provider's rolled-up sync status plus its per-calendar detail.
+         *
+         *     ``connected`` reflects whether the caller has a stored credential for the provider; ``state``/
+         *     ``last_success_at``/``last_error`` roll the calendars up (any failing calendar makes the
+         *     provider ``error``). No token or cursor value is ever included.
+         */
+        ProviderSyncStatusOut: {
+            /** Provider */
+            provider: string;
+            /** Connected */
+            connected: boolean;
+            state: components["schemas"]["SyncState"];
+            /** Last Success At */
+            last_success_at: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Error At */
+            last_error_at: string | null;
+            /** Calendars */
+            calendars: components["schemas"]["CalendarCursorStatusOut"][];
+        };
+        /**
+         * PushChannel
+         * @description The delivery channels a destination can belong to (M8-03).
+         *
+         *     Deliberately small: ``web`` is the PWA/Web Push subscription (M8-02); ``android``/``ios`` are
+         *     native push tokens (M8-04). The value is what is persisted and what appears in API payloads.
+         * @enum {string}
+         */
+        PushChannel: "web" | "android" | "ios";
         /** ReconcileOut */
         ReconcileOut: {
             /** Added */
@@ -428,6 +1564,44 @@ export interface components {
             removed: number;
             /** Unchanged */
             unchanged: number;
+        };
+        /**
+         * ReminderPreferencesOut
+         * @description The caller's reminder preferences: the default timing, or ``null`` when none is set.
+         */
+        ReminderPreferencesOut: {
+            default: components["schemas"]["ReminderTiming"] | null;
+        };
+        /**
+         * ReminderPreferencesRequest
+         * @description Set the caller's default reminder timing, or clear it.
+         *
+         *     A ``default`` timing sets (or updates) the single per-user default applied to the caller's tasks
+         *     that carry no override; ``null`` clears it, so those tasks stop reminding. Idempotent. Every
+         *     change reschedules the affected durable reminders through the M8-01 machinery.
+         */
+        ReminderPreferencesRequest: {
+            default?: components["schemas"]["ReminderTiming"] | null;
+        };
+        /**
+         * ReminderTiming
+         * @description When a reminder is sent, as an M8-01 policy: ``days_before`` whole days before the entity's
+         *     due calendar day, at ``at_time`` local wall-clock time (``PRODUCT_SPEC.md`` §5.6, ADR-0037).
+         *
+         *     ``days_before`` is bounded at the boundary (0…``MAX_DAYS_BEFORE``) and ``at_time`` must be a
+         *     24-hour ``HH:MM`` string, so an invalid timing is rejected with no side effects.
+         */
+        ReminderTiming: {
+            /**
+             * Days Before
+             * @description Whole days before the due date (0 = the due day).
+             */
+            days_before: number;
+            /**
+             * At Time
+             * @description Local wall-clock time of day, 24-hour HH:MM.
+             */
+            at_time: string;
         };
         /** SetupRequest */
         SetupRequest: {
@@ -445,6 +1619,102 @@ export interface components {
         SetupStatus: {
             /** Setup Required */
             setup_required: boolean;
+        };
+        /**
+         * SyncState
+         * @description The derived sync state of a provider or one of its calendars.
+         *
+         *     Exactly the states the durable ``sync_cursors`` row can prove (see the module docstring).
+         * @enum {string}
+         */
+        SyncState: "never_synced" | "in_progress" | "idle" | "error";
+        /**
+         * TaskChangeOut
+         * @description A task in the incremental change feed (M3-09).
+         *
+         *     Same shape as :class:`TaskOut` plus ``deleted_at``: a non-null value marks a *tombstone* — the
+         *     task was soft-deleted and the client should remove its local copy.
+         */
+        TaskChangeOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            /** Status */
+            status: string;
+            /** Priority */
+            priority: string;
+            /** Project Id */
+            project_id: string | null;
+            /** Parent Task Id */
+            parent_task_id: string | null;
+            /**
+             * Subtasks Total
+             * @default 0
+             */
+            subtasks_total: number;
+            /**
+             * Subtasks Done
+             * @default 0
+             */
+            subtasks_done: number;
+            /** Start At */
+            start_at: string | null;
+            /** Due At */
+            due_at: string | null;
+            /** @default none */
+            due_state: components["schemas"]["DueState"];
+            /** Time Zone */
+            time_zone: string | null;
+            /** Duration Minutes */
+            duration_minutes: number | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Recurrence Rule */
+            recurrence_rule: string | null;
+            /** Recurrence Parent Id */
+            recurrence_parent_id: string | null;
+            /** External Provider */
+            external_provider: string | null;
+            /** External Id */
+            external_id: string | null;
+            /** Revision */
+            revision: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Deleted At */
+            deleted_at?: string | null;
+        };
+        /**
+         * TaskChangesOut
+         * @description One page of the task change feed.
+         *
+         *     ``tasks`` are the changed tasks (live and tombstoned) ordered by ``revision`` ascending.
+         *     ``since`` echoes the requested cursor; ``next_since`` is the new high-water mark to send on the
+         *     next pull; ``has_more`` says whether further changes remain after ``next_since``.
+         */
+        TaskChangesOut: {
+            /** Tasks */
+            tasks: components["schemas"]["TaskChangeOut"][];
+            /** Since */
+            since: number;
+            /** Next Since */
+            next_since: number;
+            /** Has More */
+            has_more: boolean;
         };
         /** TaskCreateRequest */
         TaskCreateRequest: {
@@ -499,10 +1769,22 @@ export interface components {
             project_id: string | null;
             /** Parent Task Id */
             parent_task_id: string | null;
+            /**
+             * Subtasks Total
+             * @default 0
+             */
+            subtasks_total: number;
+            /**
+             * Subtasks Done
+             * @default 0
+             */
+            subtasks_done: number;
             /** Start At */
             start_at: string | null;
             /** Due At */
             due_at: string | null;
+            /** @default none */
+            due_state: components["schemas"]["DueState"];
             /** Time Zone */
             time_zone: string | null;
             /** Duration Minutes */
@@ -535,6 +1817,31 @@ export interface components {
          * @enum {string}
          */
         TaskPriority: "none" | "low" | "medium" | "high" | "urgent";
+        /**
+         * TaskReminderOut
+         * @description One task's reminder timing (M8-05).
+         *
+         *     ``override`` is the task's own timing (``null`` when it inherits the default); ``effective`` is
+         *     the timing actually governing the task (``null`` when it has no reminder); ``remind_at`` is the
+         *     UTC instant the durable reminder is currently scheduled to fire, or ``null`` when there is none.
+         */
+        TaskReminderOut: {
+            override: components["schemas"]["ReminderTiming"] | null;
+            effective: components["schemas"]["ReminderTiming"] | null;
+            /** Remind At */
+            remind_at: string | null;
+        };
+        /**
+         * TaskReminderRequest
+         * @description Set (or clear) one task's reminder override.
+         *
+         *     A ``timing`` sets a per-entity override that takes precedence over the caller's default;
+         *     ``null`` clears the override, so the task falls back to the default. Idempotent, and the change
+         *     reschedules that task's durable reminder (M8-05).
+         */
+        TaskReminderRequest: {
+            timing?: components["schemas"]["ReminderTiming"] | null;
+        };
         /**
          * TaskStatus
          * @enum {string}
@@ -573,6 +1880,12 @@ export interface components {
             /** Base Revision */
             base_revision?: number | null;
         };
+        /**
+         * TaskView
+         * @description The primary task views. ``Task``, ``Projects`` and ``Search`` are separate concerns.
+         * @enum {string}
+         */
+        TaskView: "inbox" | "today" | "upcoming";
         /** UserPublic */
         UserPublic: {
             /**
@@ -597,6 +1910,21 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * WebPushConfigOut
+         * @description Whether Web Push is available, and the VAPID public key a browser subscribes with.
+         *
+         *     ``enabled`` is false when the server has no VAPID key pair configured; the client then shows the
+         *     feature as unavailable rather than offering a subscription the server could never deliver. The
+         *     **public** key is safe to expose (it is the client-side key); the private key is never returned
+         *     (``AGENTS.md`` §11).
+         */
+        WebPushConfigOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Vapid Public Key */
+            vapid_public_key: string | null;
         };
     };
     responses: never;
@@ -986,6 +2314,37 @@ export interface operations {
             };
         };
     };
+    list_note_projects_api_notes__note_id__projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_conflict_copy_api_notes__note_id__conflict_post: {
         parameters: {
             query?: never;
@@ -1157,7 +2516,29 @@ export interface operations {
     };
     list_tasks_api_tasks_get: {
         parameters: {
-            query?: never;
+            query?: {
+                parent_task_id?: string | null;
+                view?: components["schemas"]["TaskView"] | null;
+                tz?: string | null;
+                /** @description Only these task statuses; repeat the parameter or use comma-separated values (inbox, next, in_progress, completed, archived). */
+                status?: string[] | null;
+                /** @description Only this priority (none, low, medium, high, urgent). */
+                priority?: string | null;
+                /** @description Inclusive lower bound on due_at (ISO 8601 date or instant, UTC). */
+                due_from?: string | null;
+                /** @description Inclusive upper bound on due_at (ISO 8601 date or instant, UTC). */
+                due_to?: string | null;
+                /** @description Inclusive lower bound on start_at (ISO 8601 date or instant, UTC). */
+                start_from?: string | null;
+                /** @description Inclusive upper bound on start_at (ISO 8601 date or instant, UTC). */
+                start_to?: string | null;
+                /** @description Only tasks in this project. */
+                project_id?: string | null;
+                /** @description Case-insensitive text search over title and description. Percent and underscore match literally. */
+                q?: string | null;
+                /** @description Maximum number of tasks to return (default 200). */
+                limit?: number | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1171,6 +2552,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1197,6 +2587,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    task_changes_api_tasks_changes_get: {
+        parameters: {
+            query?: {
+                /** @description Only return tasks whose revision is strictly greater than this cursor. Defaults to 0 (the whole change set, including tombstones). */
+                since?: number | null;
+                /** @description Maximum number of tasks per page (default 200); a revision group is never split, so a page can extend to the end of that group. */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskChangesOut"];
                 };
             };
             /** @description Validation Error */
@@ -1305,6 +2729,839 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_task_reminder_api_tasks__task_id__reminder_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskReminderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_task_reminder_api_tasks__task_id__reminder_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskReminderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskReminderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_projects_api_projects_get: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of projects to return (default 200). */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_project_api_projects_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_projects_api_projects_export_get: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of projects to export (default 200). When more projects exist, the document's `truncated` flag is true. */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectsExportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_project_api_projects__project_id__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectsExportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_api_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_api_projects__project_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_project_api_projects__project_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_tasks_api_projects__project_id__tasks_get: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of tasks to return (default 200). */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_notes_api_projects__project_id__notes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectNotesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_project_note_api_projects__project_id__notes__note_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_project_note_api_projects__project_id__notes__note_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_credentials_api_calendar_credentials_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCredentialListOut"];
+                };
+            };
+        };
+    };
+    get_credential_api_calendar_credentials__provider__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["schemas"]["CredentialProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCredentialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upsert_credential_api_calendar_credentials__provider__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["schemas"]["CredentialProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderCredentialUpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCredentialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_credential_api_calendar_credentials__provider__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["schemas"]["CredentialProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_credential_api_calendar_credentials__provider__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["schemas"]["CredentialProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderCredentialRefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCredentialOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_status_api_calendar_sync_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSyncStatusOut"];
+                };
+            };
+        };
+    };
+    sync_provider_api_calendar_providers__provider__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["schemas"]["CredentialProvider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderSyncOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_changes_api_changes_get: {
+        parameters: {
+            query?: {
+                /** @description Only return changes after this cursor. Defaults to 0 (the whole change set, including tombstones). Use the previous response's `next_since` to page. A cursor older than the retention floor returns `resync_required=true` instead of a partial set. */
+                since?: number | null;
+                /** @description Maximum number of changes per page (default 200, max 500). */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    web_push_config_api_notifications_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebPushConfigOut"];
+                };
+            };
+        };
+    };
+    list_devices_api_notifications_devices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceListOut"];
+                };
+            };
+        };
+    };
+    register_device_api_notifications_devices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceRegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unregister_device_api_notifications_devices_delete: {
+        parameters: {
+            query: {
+                /** @description The destination's channel. */
+                channel: components["schemas"]["PushChannel"];
+                /** @description The destination identifier (Web Push endpoint or push token). */
+                endpoint: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_reminder_preferences_api_notifications_reminders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderPreferencesOut"];
+                };
+            };
+        };
+    };
+    set_reminder_preferences_api_notifications_reminders_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderPreferencesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderPreferencesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_workspace_api_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A complete export set (notes/ + data.json + notes.json + manifest.json) as a zip. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
                 };
             };
         };
