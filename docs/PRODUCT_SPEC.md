@@ -2,7 +2,7 @@
 
 **Status:** Draft for approval (Milestone 0)
 **Owner:** Product owner (user)
-**Last updated:** 2026-10-20
+**Last updated:** 2026-11-01
 
 This document is the approved source of truth for *what* Atlas must do. It states
 requirements, boundaries and acceptance principles. It does not prescribe *how* —
@@ -29,6 +29,26 @@ A user must be able to:
 8. Receive reminders on supported devices.
 9. Access the same information from another device.
 10. Back up, export and recover all essential data without a commercial SaaS dependency.
+
+### 1.1 Product direction (owner statement, 2026-11-01)
+
+Atlas is the owner's **personal operating system**: an Obsidian/Notion-class knowledge workspace
+with the planning functions built in, instead of bolted on through plugins. Notes, tasks, projects
+and calendar events are one connected workspace, not four apps sharing a login. Concretely:
+
+- **Notes are the centre.** Everything else hangs off them: a task can come from a note, a note
+  can belong to a project, a day has a daily note, and links run in both directions.
+- **Everything is reachable in a keystroke.** One command palette / quick switcher opens any note,
+  task or project and runs any common action. The product is judged by how fast the daily loop is
+  (capture → triage → plan → do → review), not by how many endpoints exist.
+- **Built in, not configured.** Tasks, projects, planning, calendar and reminders work out of the box;
+  the user does not assemble them from plugins.
+- **A feature exists only when a person can use it.** A capability that is reachable only through the
+  API counts as *not delivered* for the owner-facing requirement (see §3 closing paragraph).
+
+Notion-style user-defined databases/views, graph view and a canvas are **not** adopted by this
+statement. They are recorded as open scope decisions (`DECISIONS.md` ADR-0043, D-1…D-4) and need an
+explicit owner decision because they risk a second source of truth (AGENTS.md §2, §15).
 
 ## 2. Product Principles
 
@@ -67,7 +87,8 @@ A user must be able to:
 
 A requirement is **not** satisfied because a button or settings screen exists. It is
 satisfied only when demonstrated to work under realistic conditions, with evidence recorded
-in `ACCEPTANCE.md`.
+in `ACCEPTANCE.md`. Conversely, a capability reachable only through the API does **not** satisfy a
+user-facing requirement: the owner must be able to perform it in the interface (decision ADR-0043).
 
 ### 3.1 Cost and platform qualifications (disclosed, not violations)
 
@@ -88,7 +109,9 @@ never described as "free on iOS" without qualification.
 
 ### 4.1 Included in the initial release
 
-- Markdown notes and folders; full-text search; wiki-style links; tags.
+- Markdown notes and folders; full-text search; wiki-style links; tags; daily notes; note templates.
+- A global command palette / quick switcher and unified search across notes, tasks and projects.
+- Explicit note↔task↔project linking, including creating a task from a note.
 - Task capture, task lists, priorities, due dates, reminders, recurrence, subtasks.
 - Projects, project boards (Kanban), project notes, derived progress.
 - Daily and weekly planning; Today and Upcoming views.

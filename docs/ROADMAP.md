@@ -23,6 +23,11 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M7 | Cross-device sync and offline | `DONE` | Sync recoverable under realistic failure ✔ (verified 2026-10-27) |
 | M8 | Notifications and mobile apps | `IN_PROGRESS` | Platform behaviour tested on real devices |
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
+| **MU** | **Usable core — personal-OS UX** (ADR-0043) | `READY` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
+
+**Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
+blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
+owner-usable behaviour.
 
 **Rule:** do not start the next milestone until the current milestone's exit criteria pass.
 If a criterion cannot be verified, record it as unverified — never silently waive it.
@@ -575,24 +580,79 @@ recorded not waived. See `docs/RELEASE.md`.
 
 ---
 
+## MU — Usable Core (personal-OS UX)
+
+**Why this exists.** The 2026-11-01 function audit showed the backend runs ahead of the interface (see
+ADR-0043, risk R-22). The owner's goal is a **personal operating system** — an Obsidian/Notion-class
+workspace with tasks, projects, planning, calendar and reminders built in (`PRODUCT_SPEC.md` §1.1). MU
+turns what already exists into something that can be used every day. It adds **no new data store**;
+notes remain Markdown files, tasks/projects/links remain in PostgreSQL.
+
+**Definition of done for every MU task.** Its journey passes **in a browser against the real API and a
+real database** (MU-00), evidence is recorded in `ACCEPTANCE.md`, and the usual lint/type/unit/integration
+checks pass. A task that is reachable only via the API is not `DONE`.
+
+**Design rules for all MU work.**
+- Keyboard-first: every action reachable without a mouse; shortcuts listed in one help overlay.
+- One task detail surface, reused from Today, Inbox, Upcoming, Day, Week, Board, project pages and search.
+- Optimistic updates through the existing offline queue; stale edits show the conflict UI, never overwrite.
+- Show the server's real validation message; never a bare status text such as "Unprocessable Content".
+- Server-side rules stay on the server (AGENTS.md §7.4): the UI does not reimplement recurrence,
+  state transitions or access control.
+- Prefer building on what exists (`useTaskView`, `useBoard`, offline queue, Notes page) over rewriting.
+
+**Owner journeys (the exit criteria).**
+
+| # | Journey | Passes when |
+|---|---|---|
+| J1 | **Capture and plan.** Add "Buy milk" on Today, open it, set priority High and due tomorrow | It shows in Today immediately after capture, moves to Upcoming after the date edit, survives reload, and a stale second-tab edit shows a conflict |
+| J2 | **Triage the inbox.** Process five inbox items | Each can be scheduled (today/tomorrow/pick date), filed to a project, or deleted (with undo) in ≤2 interactions, keyboard only |
+| J3 | **Run a project.** Create a project, add tasks, move them on its board | Create/edit/archive works; the project page shows progress, tasks, board and linked notes |
+| J4 | **Write and link.** Write a note, turn a line into a task, link the note to a project | The task keeps a link back to the note, the note lists its tasks, backlinks include tasks and projects |
+| J5 | **Find anything.** Press the palette shortcut, type part of a note, task or project name | Results from all three appear grouped; Enter opens; a "new note/task" action works from the same box |
+| J6 | **Daily review.** Open Today | It shows today's tasks, overdue items, today's daily note (created on demand) and — once M5 lands — today's calendar events |
+| J7 | **Stay in control.** Open Settings | Account, theme, reminder timing/notifications, export and backup status are all reachable and work |
+
+**Tasks** (one at a time; dependencies in order).
+
+| ID | Title | Depends on | Scope and acceptance | Tests | Status |
+|---|---|---|---|---|---|
+| MU-00 | **Real-stack journey harness** | M1-02 | Playwright runs against the real API + PostgreSQL (compose or CI service) with a fresh database per run and a helper that creates the owner account. The existing mocked-API specs stay as unit-level E2E. A trivial journey (setup → login → add task → see it in Inbox) passes in CI | Playwright (real API) | `READY` |
+| MU-01 | **Task detail and editing; capture lands where expected** | MU-00, M3-02…M3-09 | One task detail panel (side sheet on desktop, full page on mobile) opened from any list: edit title, description, status, priority, due date/time/time zone, start, tags; delete with undo. Today capture sets due = today; Inbox rows get schedule/file/delete actions. Opens with Enter, closes with Esc. Server validation errors shown verbatim. **J1, J2 pass** | Component + Playwright J1, J2 | `BACKLOG` |
+| MU-02 | **Projects UI** | MU-01, M4-01…M4-07 | Replace the Projects placeholder: list, create, edit, archive/restore; project page with description, derived progress (ADR-0023), task list, board and linked notes; assign/move tasks to a project from the task detail. Sidebar shows active projects. **J3 passes** | Component + Playwright J3 | `BACKLOG` |
+| MU-03 | **Tasks page: all tasks, filters, sort** | MU-01, M3-08 | Replace the Tasks placeholder with the existing server filters (status, priority, due range, project, text) plus sort and a saved-filters shortcut list stored client-side; bulk complete/delete/move to project | Component + Playwright | `BACKLOG` |
+| MU-04 | **Recurrence, subtasks and reminders in the UI** | MU-01, M3-05, M3-06, M8-05 | Repeat picker (daily/weekly/monthly/custom RRULE preview) with server validation; completing a recurring task shows the next occurrence; subtask list with progress; per-task reminder override; delivery behaviour unchanged | Component + Playwright | `BACKLOG` |
+| MU-05 | **Command palette, quick switcher and unified search** | MU-01, MU-02, M2-06 | Global shortcut opens a palette: fuzzy find notes, tasks, projects; actions (new note/task/project, go to view, toggle theme). Backend adds one `GET /api/search` over notes (existing FTS), tasks and projects, user-scoped, bounded and indexed (resolves R-20). Replace the Search placeholder. **J5 passes** | Backend integration + Component + Playwright J5 | `BACKLOG` |
+| MU-06 | **Note ↔ task ↔ project linking** | MU-02, MU-05, M2-07, M4-05 | Create a task from the selected text/line in a note (explicit action; the task stores a link to the note; Markdown checkboxes are **not** parsed as tasks — AGENTS.md §8); note shows its tasks and project; task detail shows linked notes; `[[` autocomplete picks notes; backlinks list tasks and projects too. **J4 passes** | Backend + Component + Playwright J4 | `BACKLOG` |
+| MU-07 | **Daily note, templates and Today as home** | MU-06 | "Today's note" creates/opens `daily/YYYY-MM-DD.md` on demand (a normal Markdown file); template notes from a `templates/` folder when creating a note; Today shows overdue, due today, scheduled work, the daily note and an events slot that stays empty until M5. **J6 passes** | Backend + Component + Playwright J6 | `BACKLOG` |
+| MU-08 | **Settings and shell polish** | MU-01 | Replace the Settings placeholder: account (name, password change), theme, reminder timing + notification status, export download, backup status/last run, instance info and version. Fix layout defects (squashed note-name field), loading/empty/error states, mobile layout, shortcut help overlay, accessibility pass; accept any syntactically valid email at setup (self-hosted, single owner). **J7 passes** | Component + Playwright J7 + axe check | `BACKLOG` |
+
+**Exit criteria for MU.** J1–J7 pass in CI against the real API; every sidebar item is a working
+screen (no "Not implemented yet" placeholders remain); `ACCEPTANCE.md` records the journey evidence;
+the release table is re-scored from user-reachable behaviour.
+
+**After MU.** Resume calendar: M5-00 (needs owner accounts, AR-001) → M5-03/04 → M5-05/07 so events
+appear in Today/Day/Week. Mobile (M8-06/07) waits for decision A-09; the installable PWA is the
+default mobile path until then. Open scope decisions D-1…D-4 (ADR-0043) are revisited after MU-06.
+
+---
+
 ## Immediate Next Tasks
 
-**All buildable work is `DONE`; the remaining work is blocked on external resources and cannot be
-started here** — see [`RELEASE.md`](RELEASE.md) §6 and the Release Readiness table in
-`ACCEPTANCE.md`. The next actions each require a resource this environment does not have:
+**Next: milestone MU (usable core), starting with `MU-00` (real-stack journey harness), then `MU-01`
+(task detail and editing).** See the MU section and ADR-0043 for why this precedes calendar and mobile
+work. Everything else is blocked on a resource this environment does not have:
 
-- **M5-00** — Validate the Microsoft tenant + Google publishing mode with **real accounts** (the M5
-  entry gate; approval request **AR-001**). Until it unblocks, the M5 calendar adapters
-  (**M5-03/M5-04** → **M5-05/M5-07/M5-09**) and all of **M6** stay `BACKLOG`.
-- **M8-04 / M8-06 / M8-07 / M8-08** — mobile/native push, the Android and iOS clients and the
-  Linux/Windows/macOS desktop matrix need **real devices** and a live push service; the M8 gate stays
-  open until then.
+- **M5-00** — validate Microsoft tenant + Google publishing mode with **real accounts** (AR-001). Until
+  it unblocks, **M5-03/M5-04** → **M5-05/M5-07/M5-09** and all of **M6** stay `BACKLOG`; they resume
+  after MU so calendar events land in already-usable Today/Day/Week views.
+- **M8-04 / M8-06 / M8-07 / M8-08** — native push, Android/iOS clients and the desktop matrix need
+  **real devices** and a live push service (decision A-09).
 
-**M0–M4 and M7 are `DONE`.** **M5** is `DONE` for its buildable scope (`M5-01/02/06/08/10`) with
-`M5-00` `BLOCKED`; **M8** is `DONE` for its buildable scope (`M8-01/02/03/05`) with the device tasks
-`BACKLOG`; **M9** (`M9-01…M9-08`) is `DONE`. The M5/M6/M8 gates remain open on AR-001 and hardware,
-so the release is **not production-ready** ([`RELEASE.md`](RELEASE.md) §1).
-
+The M0–M9 `DONE` statuses mean "buildable backend scope verified by API tests". They do **not** mean the
+owner can use the feature; the release table (`ACCEPTANCE.md`) is the user-reachable view and currently
+reads 7 `PASS`, 5 `PARTIAL`, 3 `NOT RUN`. The release is **not production-ready**
+([`RELEASE.md`](RELEASE.md) §1).
 
 ---
 
@@ -612,6 +672,7 @@ decisions below are made.
 | A-06 | Docs: condense roadmap verification narrative to pointers (evidence lives in `ACCEPTANCE.md`); remove stale `project/BACKLOG.md` | `DONE` | `ROADMAP.md` 105 KB → 44 KB; original text in git history |
 | A-07 | Decide the supported Python version (image/CI use 3.13; local venv 3.14; `mypy` targets 3.12) | `READY` | Needs a decision; see `DECISIONS.md` when taken |
 | A-08 | M5-00 real-account validation (AR-001) | `BLOCKED` | Needs owner to supply throwaway Google/Microsoft test accounts |
+| A-10 | Function audit; adopt the personal-OS direction; add milestone MU; re-score REQ-005/006 `PARTIAL` (ADR-0043, R-22) | `DONE` | `PRODUCT_SPEC.md` §1.1, `DECISIONS.md` ADR-0043, this section |
 | A-09 | Decide mobile strategy: PWA-only v1 vs native Android/iOS (M8-06/07) | `BLOCKED` | Owner decision (iOS needs a paid Apple developer account) |
 
 **Caveats recorded by the audit.**

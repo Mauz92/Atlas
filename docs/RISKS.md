@@ -189,6 +189,18 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   approved** (`DECISIONS.md`); recorded here so it is not silently forgotten.
 - **Owner milestone:** M8. **Status:** Accepted (M9-05).
 
+### R-22 — Backend-heavy, interface-light delivery
+- **Severity/Likelihood:** High / High (realised — found by the 2026-11-01 function audit)
+- **Description:** Tasks were accepted on API tests, so the product accumulated endpoints, tests and
+  documentation faster than usable screens. Tasks/Projects/Search/Settings are placeholders and the
+  task list can only capture and complete; the owner reports the app as not useful.
+- **Impact:** Green test suite and `DONE` roadmap status misrepresent what the owner can do; time
+  spent on features nobody can reach.
+- **Mitigation:** ADR-0043 — done means a browser journey passes against the real API; milestone MU
+  (usable core) precedes further backend/calendar work; the release table is scored on user-reachable
+  behaviour; journey tests run in CI (MU-07).
+- **Owner milestone:** MU. **Status:** Mitigating.
+
 ---
 
 ## Review log
@@ -200,3 +212,4 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 | 2026-10-26 | M4-02 | R-20 reviewed (project-tasks listing on the same path; `project_id` index still deferred, no measured need). |
 | 2026-10-27 | M9-04 | R-17 reviewed: `pip-audit` (91 pkgs) and `npm audit` (370 pkgs, prod+dev) both clean — 0 advisories at every severity. No finding accepted or suppressed; CI gate confirmed by inspection + local positive controls. |
 | 2026-10-27 | M9-05 | Security review (threat model vs implementation). R-21 added (push endpoint not scheme/host-constrained; accepted for the single-user model). F1 (SPA missing security headers/CSP) found and fixed in `apps/web/nginx.conf`; R-SEC-1/2/4 re-confirmed, R-SEC-3 resolved. Detail in `docs/SECURITY.md` §"Milestone 9 security review". |
+| 2026-11-01 | Audit | Function audit: R-22 added (backend-heavy, interface-light); ADR-0043 re-prioritises to a usable core. |

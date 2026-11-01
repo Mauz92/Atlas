@@ -1966,6 +1966,44 @@ artifact needs.
 
 ---
 
+## ADR-0043 — Re-prioritise to a usable "personal OS" core; user-reachable means delivered
+
+**Context.** A function audit on 2026-11-01 (walking the running app as a user) found that the
+backend implements far more than the interface exposes: tasks can be captured by title, completed
+and moved on the Board, but not edited, dated, prioritised, deleted or assigned to a project;
+Tasks/Projects/Search/Settings are placeholders; no project can be created in the UI; Calendar has no
+connect flow. Every task was marked `DONE` on API-level acceptance, so REQ-005/REQ-006 were scored
+`PASS` while the owner could not use them. The owner also stated the product direction: an
+Obsidian/Notion-class **personal operating system** with planning built in (`PRODUCT_SPEC.md` §1.1).
+
+**Decision.**
+1. **Definition of done changes.** A task that adds or changes owner-facing behaviour is `DONE` only
+   when its acceptance journey passes **in a browser against the real API** (not a mocked one) and the
+   evidence is recorded. API tests remain required but are no longer sufficient.
+2. **New milestone MU — Usable Core** is inserted **before** the remaining calendar work (M5-03…M5-09,
+   M6) and before M8 device work. Justification (AGENTS.md §5, "adjusted only when a documented
+   dependency or validated technical risk justifies it"): M5/M6/M8 are blocked on external accounts and
+   hardware (AR-001), the calendar views have nothing useful to sit in until tasks can be dated, and
+   continuing fake-backed backend work has diminishing value. MU contains no new data stores.
+3. **No new sources of truth.** Notes stay authoritative as Markdown files; tasks, projects and links
+   stay in PostgreSQL. "Create a task from a note" is an explicit action that creates a database task
+   holding a link back to the note; Markdown checkboxes are **not** parsed as the task database
+   (AGENTS.md §8).
+4. **Release scoring is corrected.** REQ-005 and REQ-006 are `PARTIAL` until MU-01…MU-03 pass.
+
+**Open scope decisions (not adopted; owner decision required before any work).**
+
+| ID | Question | Recommendation |
+|---|---|---|
+| D-1 | Notion-style user-defined databases / table and board views over notes | Defer. If wanted, model as **saved queries over note frontmatter** (read-only views, files stay authoritative) rather than a new store. |
+| D-2 | Editor model: keep CodeMirror 6 source mode + preview, add Obsidian-style *live preview*, or move to block/WYSIWYG | Keep CodeMirror 6 and add live-preview decorations later; a block editor would break Markdown portability and `[[link]]` parsing. |
+| D-3 | Graph view and canvas | Defer until linking (MU-04) is in daily use; a graph is cheap once backlinks cover tasks and projects. |
+| D-4 | Plugins / user scripting / automation | Remains excluded (`PRODUCT_SPEC.md` §4.2). "Built in" is the product's answer to plugins. |
+
+**Consequences.** The next work is UI-bound, which is slower to verify than API work and needs
+browser journeys in CI (MU-07). The excluded list in the spec is unchanged except that daily notes,
+templates, the command palette and unified search are now in scope. Revisit D-1…D-3 after MU-04.
+
 ## Open decisions deferred to later milestones
 
 | # | Question | Milestone |

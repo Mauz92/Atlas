@@ -107,8 +107,8 @@ material completeness/evidence gap; NOT RUN = not delivered):
 
 | Verdict | Requirements |
 |---|---|
-| `PASS` | REQ-001, REQ-002, REQ-003, REQ-004, REQ-005, REQ-006, REQ-013, REQ-014, REQ-015 |
-| `PARTIAL` | REQ-010 (cross-device — mechanism + mocked E2E, no two-device run), REQ-011 (notifications — pipeline delivered; real/mobile delivery `NOT RUN`), REQ-012 (OS-agnostic — web client verified on Linux; mobile clients and desktop matrix `NOT RUN`) |
+| `PASS` | REQ-001, REQ-002, REQ-003, REQ-004, REQ-013, REQ-014, REQ-015 |
+| `PARTIAL` | REQ-005 (tasks — capability delivered in the API; the UI can only capture and complete, ADR-0043), REQ-006 (projects — no Projects UI), REQ-010 (cross-device — mechanism + mocked E2E, no two-device run), REQ-011 (notifications — pipeline delivered; real/mobile delivery `NOT RUN`), REQ-012 (OS-agnostic — web client verified on Linux; mobile clients and desktop matrix `NOT RUN`) |
 | `NOT RUN` | REQ-007 (Google Calendar), REQ-008 (Microsoft Outlook), REQ-009 (calendar consolidation) — all blocked on real provider accounts (AR-001) |
 
 A **release is labelled by its weakest mandatory requirement**: with REQ-007/008/009 `NOT RUN` and
