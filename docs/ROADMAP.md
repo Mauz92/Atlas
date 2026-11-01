@@ -572,7 +572,7 @@ restore drill, full export, a clean vulnerability scan, a threat-model security 
 executed upgrade/rollback, the user/operator guides, and a release document labelled by actual
 completeness. **The gate itself is OPEN:** the production-readiness review's honest verdict is that
 Atlas is **`0.1.0-pre` — NOT production-ready** while M5 (calendar accounts, AR-001), M6 and M8's
-device/mobile tasks are open. Release-readiness: **9 `PASS`, 3 `PARTIAL`, 3 `NOT RUN`** (see
+device/mobile tasks are open. Release-readiness: **7 `PASS`, 5 `PARTIAL`, 3 `NOT RUN`** (re-scored 2026-11-01, ADR-0043) (see
 `ACCEPTANCE.md`). M9 closes when the blocked milestones do and a final readiness review is run.
 
 **Gate:** production readiness review. ⛔ **OPEN** — `0.1.0-pre` (not production-ready; M5/M6/M8 open),
