@@ -23,6 +23,7 @@ from types import SimpleNamespace
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
+from sqlalchemy.engine import make_url
 
 from atlas.backups import (
     BackupConfig,
@@ -68,9 +69,23 @@ def _dump_backend_kwargs() -> dict[str, str]:
         candidates += [line.strip() for line in listing.splitlines() if line.strip()]
     except (OSError, subprocess.SubprocessError):  # pragma: no cover - docker absent
         pass
+    # The backup runs `pg_dump -U <user> -d <db>` over the container's local socket, so a candidate
+    # is usable only if it can dump *this* database. The app/worker containers ship a pg_dump client
+    # but no server, and must not be mistaken for the PostgreSQL container.
+    url = make_url(os.environ["DATABASE_URL"])
     for name in candidates:
         probe = subprocess.run(
-            ["docker", "exec", name, "pg_dump", "--version"],
+            [
+                "docker",
+                "exec",
+                name,
+                "pg_dump",
+                "--schema-only",
+                "-U",
+                url.username or "postgres",
+                "-d",
+                url.database or "postgres",
+            ],
             capture_output=True,
             text=True,
             check=False,

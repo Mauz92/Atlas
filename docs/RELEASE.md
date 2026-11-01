@@ -161,16 +161,10 @@ Each limitation lists its **impact** and where it is tracked. This consolidates
 
 ### 5.3 Operator caveats
 
-7. **Compose env-forwarding gap.** *Limitation:* the shipped `deploy/docker-compose.yml` forwards only
-   a **specific subset** of variables into the `api`/`worker` containers (core secrets, `DATABASE_URL`,
-   `NOTES_ROOT`, `BACKUP_DIR`, `BACKUP_RETAIN`, `ATLAS_ENV`, `PUBLIC_BASE_URL`). It does **not**
-   forward **`VAPID_*`**, **`GOOGLE_*`**, **`MICROSOFT_*`**, **`ALLOWED_HOSTS`**, **`EXPORT_DIR`**,
-   **`CHANGE_RETENTION_DAYS`**, **`CHANGE_PURGE_INTERVAL_SECONDS`**, **`BACKUP_INTERVAL_SECONDS`**, etc.
-   *Impact:* setting those in `.env` has **no effect on the running containers** until they are added
-   to the relevant service's `environment:` block (or the service is pointed at `.env` via `env_file:`)
-   and the containers are recreated. *Tracked:* `OPERATOR_GUIDE.md` §4.6 (documented, **not fixed** —
-   changing the compose file was out of scope for M9-07). Verify with
-   `docker compose … exec api env | sort`.
+7. **Compose env-forwarding (fixed 2026-11-01, audit A-04).** The compose file now forwards every
+   setting the application reads. `GOOGLE_*`/`MICROSOFT_*`/`FCM_*`/`EXPO_*` are deliberately not
+   forwarded because no code reads them yet. *Not yet verified at runtime:* recreate the stack and check
+   `docker compose … exec api env | sort` (see audit A-04).
 8. **`TOKEN_ENCRYPTION_KEY` is load-bearing.** *Limitation:* stored OAuth credentials are encrypted
    with it; losing it makes them unreadable, and there is no automatic re-encryption job (a row is
    re-sealed only on its next write). *Impact:* it must be **backed up separately** from the database.

@@ -73,9 +73,7 @@ Set the three values (also in `.env.example`):
 | `VAPID_PRIVATE_KEY` | **Secret** — signs each push; never commit, bundle or log it. |
 | `VAPID_SUBJECT` | A `mailto:` or `https:` contact the push service may use for the sender (RFC 8292). |
 
-Provide them to the running containers: the shipped `deploy/docker-compose.yml` forwards a specific
-subset of variables, so add the `VAPID_*` entries to the `api`/`worker` services' `environment:` (or
-use an `env_file:`) and recreate the containers. When Web Push is disabled the worker logs
+Provide them to the running containers: the shipped `deploy/docker-compose.yml` forwards the `VAPID_*` entries to the `api` and `worker` services, so set them in `.env` and recreate the containers. When Web Push is disabled the worker logs
 `web push disabled` with the missing setting **names** (never values); a destination the push service
 reports as gone (`404`/`410`) is disabled and never retried. The real browser-delivery end has not
 been verified on a live install (`ROADMAP.md` M8-02), and mobile push is a later milestone.

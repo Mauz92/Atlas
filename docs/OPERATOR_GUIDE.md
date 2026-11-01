@@ -164,12 +164,12 @@ user-visible feature ([§10](#10-what-is-not-delivered-yet)).
 
 ### 4.6 Passing settings into the containers
 
-The shipped `deploy/docker-compose.yml` forwards a **specific subset** of variables into the `api`
-and `worker` containers (core secrets, `DATABASE_URL`, `NOTES_ROOT`, `BACKUP_DIR`, and a few others);
-it does **not** forward `VAPID_*`, `GOOGLE_*`, `MICROSOFT_*`, `ALLOWED_HOSTS`, `EXPORT_DIR`,
-`CHANGE_RETENTION_DAYS`, `BACKUP_INTERVAL_SECONDS`, etc. To use those, either add them to the relevant
-service's `environment:` in the compose file, or point the service at your `.env` with an `env_file:`
-entry, then `docker compose … up -d` to recreate the containers. Verify what a container actually
+The shipped `deploy/docker-compose.yml` forwards every setting the API and worker read, with the
+defaults from `.env.example`: core secrets, `DATABASE_URL`, `NOTES_ROOT`, `BACKUP_*`, `EXPORT_DIR`,
+`CHANGE_*`, `ALLOWED_HOSTS`, `VAPID_*`, `TOKEN_ENCRYPTION_KEY_ID` and the scheduler intervals. It does
+**not** forward `GOOGLE_*`/`MICROSOFT_*`/`FCM_*`/`EXPO_*`: the application does not read them yet
+(calendar adapters are blocked on M5-00). When you add a new setting, add it to the relevant service's
+`environment:` block, then `docker compose … up -d` to recreate the containers. Verify what a container actually
 received with `docker compose -f deploy/docker-compose.yml exec api env | sort`.
 
 ---

@@ -7,10 +7,12 @@ provide real values (validated in :meth:`Settings.validate_for_runtime`).
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _DEV_SECRET = "dev-insecure-change-me"
 
@@ -104,9 +106,20 @@ class Settings(BaseSettings):
     session_ttl_seconds: int = 60 * 60 * 24 * 14
     auth_rate_limit_per_minute: int = 10
 
-    cors_origins: list[str] = Field(default_factory=list)
+    cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
     # When non-empty, only these Host header values are accepted (production hardening).
-    allowed_hosts: list[str] = Field(default_factory=list)
+    allowed_hosts: Annotated[list[str], NoDecode] = Field(default_factory=list)
+
+    @field_validator("cors_origins", "allowed_hosts", mode="before")
+    @classmethod
+    def _split_list(cls, value: object) -> object:
+        """Accept the documented comma-separated form (``a.example,b.example``) and a JSON list."""
+        if isinstance(value, str):
+            text = value.strip()
+            if text.startswith("["):
+                return json.loads(text)
+            return [item.strip() for item in text.split(",") if item.strip()]
+        return value
 
     @field_validator("public_base_url")
     @classmethod

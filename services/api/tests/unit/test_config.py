@@ -53,3 +53,23 @@ def test_allowed_hosts_is_parsed() -> None:
         "atlas.example",
         "localhost",
     ]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("", []),
+        ("atlas.example.com", ["atlas.example.com"]),
+        ("a.example, b.example", ["a.example", "b.example"]),
+        ('["a.example"]', ["a.example"]),
+    ],
+)
+def test_list_settings_accept_the_documented_comma_separated_form(
+    monkeypatch: pytest.MonkeyPatch, raw: str, expected: list[str]
+) -> None:
+    """Regression: ``ALLOWED_HOSTS=`` / ``ALLOWED_HOSTS=host`` used to crash startup."""
+    monkeypatch.setenv("ALLOWED_HOSTS", raw)
+    monkeypatch.setenv("CORS_ORIGINS", raw)
+    settings = Settings()
+    assert settings.allowed_hosts == expected
+    assert settings.cors_origins == expected

@@ -26,6 +26,13 @@ The user-visible changes accumulated in this snapshot are listed under *Unreleas
 
 ## [Unreleased]
 
+### Fixed
+- **API failed to start** when `ALLOWED_HOSTS` (or `CORS_ORIGINS`) was set to a plain host name or left
+  blank, as `.env.example` documents. Both settings now accept a comma-separated list or a JSON list.
+- **Docker Compose now forwards** `ALLOWED_HOSTS`, `VAPID_*`, `EXPORT_DIR`, `CHANGE_*`,
+  `NOTES_RECONCILE_SECONDS`, `BACKUP_INTERVAL_SECONDS` and `TOKEN_ENCRYPTION_KEY_ID` to the API and
+  worker, and publishes the API port on `127.0.0.1` only (the web container still reaches it).
+
 ### Added
 - **Milestone 9 — the release is labelled, checklisted, and its known limitations are listed
   (documentation, no behaviour change).** A new [**Release document**](RELEASE.md) states the honest
