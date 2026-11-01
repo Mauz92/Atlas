@@ -47,8 +47,9 @@ and calendar events are one connected workspace, not four apps sharing a login. 
   API counts as *not delivered* for the owner-facing requirement (see §3 closing paragraph).
 
 Notion-style user-defined databases/views, graph view and a canvas are **not** adopted by this
-statement. They are recorded as open scope decisions (`DECISIONS.md` ADR-0043, D-1…D-4) and need an
-explicit owner decision because they risk a second source of truth (AGENTS.md §2, §15).
+statement. They were decided on 2026-11-01 (`DECISIONS.md` ADR-0043, D-1…D-4): databases/views and graph are
+deferred until after MU-06, the editor stays CodeMirror 6, and plugins/scripting stay excluded —
+all to avoid a second source of truth (AGENTS.md §2, §15).
 
 ## 2. Product Principles
 

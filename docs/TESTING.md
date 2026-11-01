@@ -61,6 +61,45 @@ holds the API mocks and the durable-queue seeding used to represent an offline e
 the app's own IndexedDB store. Vitest is configured to ignore `e2e/**` so `npm run test` and the E2E
 suite never collide.
 
+### 1b. Real-stack journey harness (Playwright — MU-00)
+
+The mocked suite above cannot prove the product works for its owner. The **real-stack harness** runs
+Playwright against the **real FastAPI app** (started from source with `services/api/.venv`) and a
+**real PostgreSQL database**, through the real Vite-served UI. Specs live in `apps/web/e2e-real/`; the
+config is `apps/web/playwright.real.config.ts` (the mocked specs and `playwright.config.ts` are
+unchanged).
+
+Prerequisites: PostgreSQL reachable at `127.0.0.1:5432` as `atlas`/`atlas` (e.g. the Compose `db`
+service), `services/api/.venv` with the API installed, and Chromium (`npx playwright install chromium`).
+
+```
+cd apps/web
+npm run test:e2e:real      # → playwright test -c playwright.real.config.ts
+```
+
+Per run, `e2e-real/global-setup.ts`:
+
+1. creates a uniquely named database `atlas_e2e_<random>` (`e2e-real/db_admin.py`, which refuses any
+   name not matching `atlas_e2e_*`, so `atlas` / `atlas_test` can never be touched) and migrates it
+   with `atlas-migrate`;
+2. creates a temporary notes/backup/export directory;
+3. starts the API (`uvicorn atlas.main:app`) on a free port and the Vite dev server on another free
+   port, with `ATLAS_API_PROXY_TARGET` pointing the proxy at that API (default `localhost:8000`
+   unchanged);
+4. on teardown (also on a failed start) stops both processes, drops the database and removes the
+   temporary directory.
+
+Configuration (optional): `ATLAS_E2E_ADMIN_DATABASE_URL` (default
+`postgresql://atlas:atlas@127.0.0.1:5432/postgres`) and `ATLAS_E2E_API_BIN_DIR` (default
+`services/api/.venv/bin`). `e2e-real/helpers.ts` creates the owner through the real setup form
+(`createOwner`, `signIn`, `signOut`); use `example.com` addresses — `.test` is rejected by the server
+(known defect, MU-08). Journeys run serially against one database and one owner; every run starts from
+an empty database, so repeated runs do not interfere. CI runs the same command in the `e2e-real` job
+of `.github/workflows/ci.yml` (PostgreSQL service). Like the mocked suite it is **not** part of the
+protected `scripts/verify.sh`.
+
+Current journeys: `capture-journey.spec.ts` (setup → login → capture "Buy milk" → Inbox → reload).
+
 ## 2. Unit Tests
 
 Cover, at minimum:

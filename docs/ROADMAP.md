@@ -23,7 +23,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M7 | Cross-device sync and offline | `DONE` | Sync recoverable under realistic failure ✔ (verified 2026-10-27) |
 | M8 | Notifications and mobile apps | `IN_PROGRESS` | Platform behaviour tested on real devices |
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
-| **MU** | **Usable core — personal-OS UX** (ADR-0043) | `READY` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
+| **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -617,7 +617,7 @@ checks pass. A task that is reachable only via the API is not `DONE`.
 
 | ID | Title | Depends on | Scope and acceptance | Tests | Status |
 |---|---|---|---|---|---|
-| MU-00 | **Real-stack journey harness** | M1-02 | Playwright runs against the real API + PostgreSQL (compose or CI service) with a fresh database per run and a helper that creates the owner account. The existing mocked-API specs stay as unit-level E2E. A trivial journey (setup → login → add task → see it in Inbox) passes in CI | Playwright (real API) | `READY` |
+| MU-00 | **Real-stack journey harness** | M1-02 | Playwright runs against the real API + PostgreSQL (compose or CI service) with a fresh database per run and a helper that creates the owner account. The existing mocked-API specs stay as unit-level E2E. A trivial journey (setup → login → add task → see it in Inbox) passes in CI | Playwright (real API) | `DONE` (local PASS 2026-11-01; GitHub Actions job `e2e-real` added, **NOT RUN on Actions**; evidence: `ACCEPTANCE.md` MU-00) |
 | MU-01 | **Task detail and editing; capture lands where expected** | MU-00, M3-02…M3-09 | One task detail panel (side sheet on desktop, full page on mobile) opened from any list: edit title, description, status, priority, due date/time/time zone, start, tags; delete with undo. Today capture sets due = today; Inbox rows get schedule/file/delete actions. Opens with Enter, closes with Esc. Server validation errors shown verbatim. **J1, J2 pass** | Component + Playwright J1, J2 | `BACKLOG` |
 | MU-02 | **Projects UI** | MU-01, M4-01…M4-07 | Replace the Projects placeholder: list, create, edit, archive/restore; project page with description, derived progress (ADR-0023), task list, board and linked notes; assign/move tasks to a project from the task detail. Sidebar shows active projects. **J3 passes** | Component + Playwright J3 | `BACKLOG` |
 | MU-03 | **Tasks page: all tasks, filters, sort** | MU-01, M3-08 | Replace the Tasks placeholder with the existing server filters (status, priority, due range, project, text) plus sort and a saved-filters shortcut list stored client-side; bulk complete/delete/move to project | Component + Playwright | `BACKLOG` |
@@ -633,13 +633,13 @@ the release table is re-scored from user-reachable behaviour.
 
 **After MU.** Resume calendar: M5-00 (needs owner accounts, AR-001) → M5-03/04 → M5-05/07 so events
 appear in Today/Day/Week. Mobile (M8-06/07) waits for decision A-09; the installable PWA is the
-default mobile path until then. Open scope decisions D-1…D-4 (ADR-0043) are revisited after MU-06.
+default mobile path until then. Scope decisions D-1…D-4 are settled in ADR-0043 (D-1 and D-3 deferred, revisited after MU-06; D-2 keeps CodeMirror 6; D-4 closed).
 
 ---
 
 ## Immediate Next Tasks
 
-**Next: milestone MU (usable core), starting with `MU-00` (real-stack journey harness), then `MU-01`
+**Next: milestone MU (usable core): `MU-00` (real-stack journey harness) is `DONE`; next is `MU-01`
 (task detail and editing).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 

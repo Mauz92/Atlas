@@ -2779,6 +2779,29 @@ executed. Entries remain `NOT RUN` until there is real evidence.
 
 ---
 
+## MU — Usable Core (ADR-0043)
+
+### MU-00 — Real-stack journey harness
+
+**Result: `DONE` (local); CI job added but `NOT RUN` on GitHub Actions.** Playwright now runs against the
+real FastAPI app (from `services/api/.venv`) and a fresh PostgreSQL database per run; see
+[`TESTING.md`](TESTING.md) §1b.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Trivial journey passes against the real stack: setup → login → capture "Buy milk" → Inbox → reload | `PASS` | `cd apps/web && npm run test:e2e:real` → `1 passed` (`e2e-real/capture-journey.spec.ts`), run 4 times consecutively on 2026-11-01 |
+| Fresh database per run; app's own database never used; no state leaks | `PASS` | `atlas_e2e_<random>` created, migrated with `atlas-migrate`, dropped in teardown; `db_admin.py` refuses non-`atlas_e2e_*` names. After the runs `select datname from pg_database` showed only `postgres, atlas, template0/1, atlas_test`; no leftover temp dirs or processes |
+| One documented local command | `PASS` | `npm run test:e2e:real` (`TESTING.md` §1b) |
+| Existing mocked specs keep passing | `PASS` | `cd apps/web && npm run e2e` → `7 passed` |
+| Repository checks unaffected | `PASS` | `./scripts/verify.sh` → `973 passed` backend, frontend lint/typecheck/tests, `verification: PASS`; `vite.config.ts` default proxy (`localhost:8000`) unchanged unless `ATLAS_API_PROXY_TARGET` is set |
+| Runs in CI | `NOT RUN` | Job `e2e-real` added to `.github/workflows/ci.yml` (PostgreSQL service, API from source in a venv, Chromium, `npm run test:e2e:real`); it could not be executed outside GitHub Actions |
+
+Limitations: the harness is serial (one DB, one owner); the dev server (not the production build) is
+served; Chromium only. Defect noticed (not fixed): `.test` email addresses are rejected at setup with a bare
+"Unprocessable Content" (MU-08).
+
+---
+
 ## Release Readiness (M9)
 
 Filled by **M9-08** (2026-10-27). Each `REQ-001…015` (defined in [`PRODUCT_SPEC.md`](PRODUCT_SPEC.md) §3)

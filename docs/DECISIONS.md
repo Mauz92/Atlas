@@ -1991,18 +1991,19 @@ Obsidian/Notion-class **personal operating system** with planning built in (`PRO
    (AGENTS.md §8).
 4. **Release scoring is corrected.** REQ-005 and REQ-006 are `PARTIAL` until MU-01…MU-03 pass.
 
-**Open scope decisions (not adopted; owner decision required before any work).**
+**Scope decisions D-1…D-4 — owner approved the recommendations on 2026-11-01.** Nothing in this table is
+built by MU; D-1/D-3 are deferred with a named trigger, D-2 is a standing constraint, D-4 is closed.
 
-| ID | Question | Recommendation |
+| ID | Question | Decision |
 |---|---|---|
-| D-1 | Notion-style user-defined databases / table and board views over notes | Defer. If wanted, model as **saved queries over note frontmatter** (read-only views, files stay authoritative) rather than a new store. |
-| D-2 | Editor model: keep CodeMirror 6 source mode + preview, add Obsidian-style *live preview*, or move to block/WYSIWYG | Keep CodeMirror 6 and add live-preview decorations later; a block editor would break Markdown portability and `[[link]]` parsing. |
-| D-3 | Graph view and canvas | Defer until linking (MU-04) is in daily use; a graph is cheap once backlinks cover tasks and projects. |
-| D-4 | Plugins / user scripting / automation | Remains excluded (`PRODUCT_SPEC.md` §4.2). "Built in" is the product's answer to plugins. |
+| D-1 | Notion-style user-defined databases / table and board views over notes | **Deferred** (revisit after MU-06). If wanted, model as **saved queries over note frontmatter** (read-only views, files stay authoritative) rather than a new store. |
+| D-2 | Editor model: keep CodeMirror 6 source mode + preview, add Obsidian-style *live preview*, or move to block/WYSIWYG | **Approved:** keep CodeMirror 6 source mode + preview; Obsidian-style live preview may be added later as CodeMirror decorations; a block editor would break Markdown portability and `[[link]]` parsing. |
+| D-3 | Graph view and canvas | **Deferred** until linking (MU-06) is in daily use; a graph is cheap once backlinks cover tasks and projects. |
+| D-4 | Plugins / user scripting / automation | **Closed — excluded** (`PRODUCT_SPEC.md` §4.2). "Built in" is the product's answer to plugins. |
 
 **Consequences.** The next work is UI-bound, which is slower to verify than API work and needs
 browser journeys in CI (MU-07). The excluded list in the spec is unchanged except that daily notes,
-templates, the command palette and unified search are now in scope. Revisit D-1…D-3 after MU-04.
+templates, the command palette and unified search are now in scope. Revisit D-1 and D-3 after MU-06.
 
 ## Open decisions deferred to later milestones
 

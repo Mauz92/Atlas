@@ -156,6 +156,56 @@ jobs:
       - name: Build
         run: npm run build
 
+  e2e-real:
+    name: Real-stack journeys (Playwright, real API + PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # The harness creates and drops its own atlas_e2e_<random> database on this server (MU-00).
+      ATLAS_E2E_ADMIN_DATABASE_URL: postgresql://atlas:atlas@localhost:5432/postgres
+      # `pip install` below puts python and atlas-migrate in this venv.
+      ATLAS_E2E_API_BIN_DIR: ${{ github.workspace }}/services/api/.venv/bin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install the API from source
+        working-directory: services/api
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -e ".[dev]"
+
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Real-stack journeys
+        working-directory: apps/web
+        run: npm run test:e2e:real
+
   containers:
     name: Container images build
     runs-on: ubuntu-latest

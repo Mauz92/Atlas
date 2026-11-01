@@ -1,13 +1,17 @@
 import react from "@vitejs/plugin-react";
 import { configDefaults, defineConfig } from "vitest/config";
 
+// The API the dev server proxies to. Defaults to the local API on :8000; the real-stack journey
+// harness (MU-00, `playwright.real.config.ts`) points it at a throwaway API on a free port.
+const apiTarget = process.env.ATLAS_API_PROXY_TARGET ?? "http://localhost:8000";
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://localhost:8000",
-      "/health": "http://localhost:8000",
+      "/api": apiTarget,
+      "/health": apiTarget,
     },
   },
   test: {
@@ -17,6 +21,6 @@ export default defineConfig({
     css: false,
     env: { NODE_ENV: "test" },
     // The Playwright E2E specs live in `e2e/` and must not be picked up by Vitest (M7-06).
-    exclude: [...configDefaults.exclude, "e2e/**"],
+    exclude: [...configDefaults.exclude, "e2e/**", "e2e-real/**"],
   },
 });
