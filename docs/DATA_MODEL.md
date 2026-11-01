@@ -1,7 +1,7 @@
 # Atlas — Data Model
 
 **Status:** Draft for approval (Milestone 0)
-**Last updated:** 2026-10-20
+**Last updated:** 2026-10-26
 
 Describes persistent entities, their ownership, and the fields that support
 synchronisation and conflict handling. This is a design specification; concrete
@@ -30,18 +30,24 @@ SQLAlchemy models and Alembic migrations are produced per milestone.
 
 **User** — owner: PostgreSQL
 `id`, `email`, `display_name`, `password_hash` (or external IdP subject), `created_at`,
-`updated_at`, `is_active`.
+`updated_at`, `is_active`, `change_seq` (the monotonic per-user change-feed cursor, M7-01),
+`change_purge_floor` (the highest change-feed cursor the retention purge has removed, M7-02).
 
 **Session** — owner: PostgreSQL
 `id`, `user_id`, `token_hash`, `created_at`, `expires_at`, `revoked_at`,
 `user_agent`, `ip_hash`.
 
-**OAuthCredential** — owner: PostgreSQL (encrypted)
-`id`, `user_id`, `provider` (`google`|`microsoft`), `encrypted_refresh_token`,
-`encrypted_access_token` (optional), `access_expires_at`, `scopes`, `created_at`,
-`updated_at`, `revoked_at`.
+**ProviderCredential** (table `provider_credentials`) — owner: PostgreSQL (encrypted)
+`id`, `user_id`, `provider` (`google`|`microsoft`), `key_id` (encryption key version),
+`ciphertext` (AEAD seal of the token bundle: access/refresh token + token type), `scopes`
+(`text[]`), `access_expires_at`, `refresh_expires_at`, `created_at`, `updated_at`.
+Unique per `(user_id, provider)`.
 
-> Refresh/access tokens are encrypted at rest with a key held outside the database.
+> Refresh/access tokens are encrypted at rest as a **single authenticated ciphertext**
+> (AES-256-GCM) with a key held outside the database (`TOKEN_ENCRYPTION_KEY`); the row records the
+> `key_id` used so keys can be rotated. `scopes` and expiry are not secret and are stored in clear.
+> A credential is hard-deleted when an account is disconnected (no tombstone). Implemented in M5-01
+> (`DECISIONS.md` ADR-0027).
 
 ### 2.2 Notes (metadata only — content lives on disk)
 
@@ -84,6 +90,15 @@ SQLAlchemy models and Alembic migrations are produced per milestone.
 | `external_provider`, `external_id` | nullable task-provider mapping (future) |
 | `revision`, `created_at`, `updated_at`, `deleted_at` | sync fields |
 
+> **Incremental pull (M3-09).** A client fetches everything that changed after a task `revision` it
+> holds via `GET /api/tasks/changes?since=N`: the user's tasks with `revision > N`, ordered by
+> `revision` ascending, **including soft-deleted tombstones** (`deleted_at` set) so deletions
+> propagate. Because `revision` is per-task, a page never splits a run of equal revisions and the
+> response carries the new high-water mark (`next_since`) and `has_more`. This feed is derived from
+> the task rows themselves, not from the `ChangeLog` table below; those rows are never purged, so a
+> client may always resync from `since=0`. (The cross-entity `change_log` feed below has its own
+> bounded retention — ADR-0033.)
+
 **RecurrenceSeries** — owner: PostgreSQL
 `id`, `rule` (RRULE), `dtstart`, `time_zone`, `end_date`, `count`,
 `recurrence_parent_id` (points at the task acting as the series head).
@@ -100,17 +115,45 @@ Survives note renames by referencing the stable note id, not the path.
 `id`, `user_id`, `name`, `description`, `status`, `start_date`, `target_date`,
 `revision`, `created_at`, `updated_at`, `deleted_at`.
 
+> `status` is one of `active` | `completed` | `archived` (default `active`). `tasks.project_id` is
+> a foreign key to `projects.id` with `ON DELETE SET NULL`: removing a project clears the
+> association but never deletes its tasks (ADR-0020). Project deletion is a soft delete
+> (`deleted_at`), so the row is retained for clients; progress remains derived, not stored.
+
+> **Project tombstone and its tasks (M4-02, ADR-0021).** Deleting a project is always a soft delete
+> and **never** deletes a task. Soft-deleting a project *un-files* its **live** tasks: their
+> `project_id` is set to NULL and their `revision` is incremented in the same transaction, so an
+> offline client sees an ordinary task update through `GET /api/tasks/changes` and renders the task
+> as unfiled. Tasks that are themselves tombstoned are left untouched (their `project_id` is cleared
+> only by the FK on a hard delete). A tombstoned project can no longer be assigned to — task
+> create/update reports `400 project does not exist` — and the old project id matches nothing in the
+> `project_id` list filter. Membership stays optional and single-valued: a task has at most one
+> project and may have none.
+
+**NoteProject** (note ↔ project) — `note_id`, `project_id`, `created_at`.
+
+> The note↔project association (M4-05). The composite primary key `(note_id, project_id)` makes it
+> **unique per pair**; both foreign keys are `ON DELETE CASCADE` — a link has no meaning without
+> both ends, and the existing `TaskLink` sets the precedent (ADR-0024). It references the note's
+> **stable `id`, never its `path`**, so it **survives a note rename** (`MARKDOWN_STORAGE.md`). The
+> API's `DELETE` is a soft delete, so each side clears its link rows in the same transaction as the
+> tombstone — deleting a note or a project removes the association, leaving no orphans — rather than
+> relying on the key; the listings also join the live entity (`deleted_at IS NULL`) as defence in
+> depth. A note may be linked to any number of projects and a project to any number of notes; the
+> association is optional and strictly user-scoped.
+
 **BoardColumn** — owner: PostgreSQL
 `id`, `project_id`, `name`, `position`, `maps_to_status`.
 
-> Progress is **derived**, not stored: `completed_tasks / total_tasks`, excluding archived,
-> with the formula documented in `PRODUCT_SPEC.md`/implementation and covered by tests.
+> Progress is **derived**, not stored: `completed_tasks / total_tasks`, excluding `archived` and
+> soft-deleted (tombstoned) tasks (a project with no countable tasks is `0/0`, reported as `0%`). The
+> formula is the documented, canonical rule (`PRODUCT_SPEC.md` §5.3, ADR-0023) and is covered by tests.
 
 ### 2.4 Calendar (projections and mappings)
 
 **CalendarAccount** — owner: PostgreSQL
 `id`, `user_id`, `provider`, `account_label`, `external_account_id`,
-`credential_id` (→ OAuthCredential), `created_at`, `disconnected_at`.
+`credential_id` (→ ProviderCredential), `created_at`, `disconnected_at`.
 
 **CalendarSource** — owner: PostgreSQL
 `id`, `account_id`, `external_calendar_id`, `name`, `is_selected`, `color`,
@@ -128,11 +171,32 @@ Survives note renames by referencing the stable note id, not the path.
 > The projection is never authoritative for externally owned events. Writes route through the
 > provider adapter.
 
+> **Implemented (M5-06, ADR-0029).** Table `external_events`, model `atlas.models.ExternalEvent`.
+> Until `CalendarSource` exists (M5-05), the projection keys on the provider's **calendar id**
+> directly rather than a `calendar_source_id` FK, and stores exactly the neutral-event fields:
+> `provider`, `external_event_id`, `calendar_id`, `summary`, `start_at`/`end_at`,
+> `time_zone` (IANA), `is_all_day`, `status`, `etag` (the documented version token),
+> `ical_uid`, `recurrence_id`, `recurrence_rule`, `source_updated_at` (the provider's
+> last-modified instant), `last_synced_at`, `deleted_at` and the timestamps. It is **unique per
+> `(user_id, provider, external_event_id)`**. A provider deletion is applied as a **tombstone**
+> (`deleted_at`) — never a hard delete — and re-seeing the event clears it. (`description`/
+> `location`/`is_owned_by_atlas` are not stored until a later milestone needs them.)
+
 **SyncCursor** — owner: PostgreSQL
 `id`, `calendar_source_id`, `cursor_type` (`sync_token`|`delta_link`|`history_id`),
 `cursor_value`, `last_success_at`.
 > Advanced only after the corresponding changes are committed. Never advanced in a way that
 > can skip unprocessed changes.
+
+> **Implemented (M5-06, ADR-0029).** Table `sync_cursors`, model `atlas.models.SyncCursor`, keyed
+> **unique per `(user_id, provider, calendar_id)`** (the provider calendar id, until
+> `CalendarSource` exists). It stores `cursor_type`, `cursor_value` (nullable — the row may exist
+> recording an error before the first successful baseline), `last_success_at`, and the diagnostic
+> `last_error`/`last_error_at`. `CalendarSyncService` applies a pass's changes **and** advances the
+> cursor in **one transaction**, committing once, so a failure between apply and commit leaves the
+> cursor unchanged and a re-sync skips nothing (`CALENDAR_SYNC.md` §4, AGENTS.md §10); the value is
+> persisted verbatim from the adapter's final page only. The error columns never carry event
+> contents.
 
 **ChangeNotificationSubscription** — owner: PostgreSQL
 `id`, `calendar_source_id`, `provider`, `subscription_id`, `resource`,
@@ -141,10 +205,18 @@ Survives note renames by referencing the stable note id, not the path.
 ### 2.5 Sync, jobs and notifications
 
 **ChangeLog** — owner: PostgreSQL
-`id`, `user_id`, `entity_type`, `entity_id`, `operation` (`create`|`update`|`delete`),
-`revision`, `changed_at`.
-> Backs incremental client pulls: "all changes after revision N". Deletes appear as tombstone
-> events.
+`user_id`, `entity_type`, `entity_id`, `operation` (`upsert`|`delete`), `seq`, `changed_at`.
+> The durable store behind the per-user change feed `GET /api/changes` (M7-01, ADR-0032). One row per
+> changed entity, keyed `(user_id, entity_type, entity_id)`: `operation` is `upsert` (created or
+> updated) or `delete` (a soft-delete tombstone), and `seq` is a monotonic per-user cursor allocated
+> from `users.change_seq` in the same transaction as the mutation. An entity changed twice between
+> two pulls appears once, at its latest cursor.
+> **Retention (M7-02, ADR-0033).** A durable `changes.purge` job removes rows older than
+> `change_retention_days` (default 30 days) and raises `users.change_purge_floor` to the highest
+> cursor it removed. It never deletes the user's entity rows — a soft-deleted task/project/note stays
+> a tombstone in its own table — so only the feed's history is bounded. A client whose `since` is
+> below the purge floor is answered `resync_required = true` (not a partial feed) and must
+> full-resync, so a purged deletion can never be resurrected. See §5.
 
 **Job** — owner: PostgreSQL (durable queue)
 `id`, `queue`, `task_name`, `payload` (jsonb), `status`
@@ -152,9 +224,25 @@ Survives note renames by referencing the stable note id, not the path.
 `max_attempts`, `locked_by`, `locked_at`, `last_error`, `idempotency_key`,
 `created_at`, `updated_at`.
 
-**Reminder** — owner: PostgreSQL
-`id`, `user_id`, `entity_type` (`task`|`event`), `entity_id`, `remind_at`,
-`status` (`scheduled`|`sent`|`cancelled`|`failed`), `attempts`, `last_attempt_at`.
+**ReminderPolicy** — owner: PostgreSQL (M8-01)
+`id`, `user_id`, `name`, `days_before` (whole days before the due calendar day), `at_time`
+(local wall-clock time of day), `created_at`, `updated_at`. Unique per `(user_id, name)`.
+`tasks.reminder_policy_id → reminder_policies.id ON DELETE SET NULL`: a task with no policy has no
+reminder, and deleting a preference never deletes a task.
+
+**Reminder** — owner: PostgreSQL (M8-01)
+`id`, `user_id`, `policy_id` (`reminder_policies.id ON DELETE SET NULL`), `entity_type`
+(`task`|`event`), `entity_id`, `remind_at` (UTC), `status`
+(`scheduled`|`sent`|`cancelled`|`failed`), `attempts`, `last_attempt_at`, `created_at`, `updated_at`.
+Unique per `(entity_type, entity_id)` — one reminder per entity, so a reschedule edits the row in
+place rather than piling up duplicates. `remind_at` is the fire instant: the policy's local
+wall-clock is interpreted in the entity's IANA zone and stored UTC (ADR-0014, ADR-0037).
+
+**ReminderDelivery** — owner: PostgreSQL (M8-01)
+`id`, `reminder_id` (`reminders.id ON DELETE CASCADE`, **unique**), `channel`, `delivered_at`,
+`detail`, `created_at`, `updated_at`. The unique `reminder_id` permits at most one delivery record per
+reminder: it is written in the same transaction that marks the reminder `sent`, so a retried or
+restarted delivery job finds it and does nothing — a fired reminder is never delivered twice.
 
 **NotificationDevice** — owner: PostgreSQL
 `id`, `user_id`, `platform` (`web`|`ios`|`android`|`desktop`), `push_token`
@@ -165,9 +253,11 @@ Survives note renames by referencing the stable note id, not the path.
 ```
 User 1─* Notes(metadata) 1─* NoteLink *─1 Note
 User 1─* Task *─1 Project ; Task 1─* Task (subtasks) ; Task *─* Note (TaskLink)
+User 1─* Note *─* Project (NoteProject, keyed on the note's stable id)
 User 1─* CalendarAccount 1─* CalendarSource 1─* ExternalEvent
 CalendarSource 1─1 SyncCursor ; CalendarSource 1─* ChangeNotificationSubscription
-User 1─* ChangeLog ; User 1─* Job (via payload) ; User 1─* Reminder 1─* delivery attempts
+User 1─* ChangeLog ; User 1─* Job (via payload)
+User 1─* ReminderPolicy ; User 1─* Reminder 1─1 ReminderDelivery ; Task *─1 ReminderPolicy
 User 1─* NotificationDevice
 ```
 
@@ -181,9 +271,24 @@ User 1─* NotificationDevice
 
 ## 5. Deletion Semantics
 
-- Structured entities: soft delete (`deleted_at`) + a `delete` ChangeLog entry.
+- Structured entities: soft delete (`deleted_at`) + a `delete` ChangeLog entry. Deletions propagate
+  to offline clients: the per-user change feed (`GET /api/changes`, M7-01) returns `delete`
+  tombstones, and the M3-09 task pull (`GET /api/tasks/changes`) returns tombstoned tasks. A
+  soft-deleted entity's row is **never** hard-deleted by retention — it stays a tombstone in its own
+  table (task/project/note). Only the `change_log` feed history is bounded: a durable purge removes
+  entries older than the retention window (default 30 days, ADR-0033), and a client whose cursor
+  predates the purge floor is told to full-resync, so a deletion can never be resurrected. A delete
+  is always observable while its tombstone is within the window.
+- Project tombstones never remove work: deleting a project un-files its live tasks (`project_id` →
+  NULL, `revision` bumped) so clients see an ordinary update, and already-tombstoned tasks are left
+  alone (ADR-0021, §2.3). The `tasks.project_id → projects.id ON DELETE SET NULL` key covers the
+  hard-delete paths.
 - Notes: deletion moves the file to a recoverable location (not `rm`) and records a tombstone;
   behavior detailed in `MARKDOWN_STORAGE.md`.
+- Note↔project links (`note_projects`) are a pure association: deleting a note or a project (a soft
+  delete) removes the link rows in the same transaction, so no dangling reference survives; the
+  `note_id`/`project_id` foreign keys' `ON DELETE CASCADE` covers the hard-delete paths (ADR-0024).
+  A note's *wiki* links (`NoteLink`) are unaffected and unrelated.
 - External events: a provider deletion removes/marks the projection; the projection is never
   re-created from stale local data.
 
@@ -199,4 +304,6 @@ User 1─* NotificationDevice
 
 - Board column model vs. task status mapping to be finalised in M4.
 - `external_id` task-provider mapping deferred until external task providers are in scope.
-- Retention window for tombstones to be set once the maximum offline window is known (M7).
+- Retention window for change-feed tombstones — **settled in M7-02**: a configurable window
+  (`change_retention_days`, default 30 days) with a per-user purge floor and a resync signal
+  (ADR-0033). Entity tombstones remain in their own tables and are never purged.

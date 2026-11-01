@@ -1,7 +1,7 @@
 # Atlas — Calendar Synchronisation
 
 **Status:** Draft for approval (Milestone 0)
-**Last updated:** 2026-10-20
+**Last updated:** 2026-10-27
 
 Calendar synchronisation is a distributed-systems problem, not a CRUD feature. This document
 defines provider behaviour, sync semantics, ownership and conflict policy.
@@ -38,6 +38,14 @@ ARCHITECTURE §4). Provider-specific code never leaks into application services.
 - Preserve provider IDs and source information; support pagination, time zones, recurring events.
 - Show sync status and failures. **No external writes.**
 
+> **Implemented (M5-08, ADR-0030).** Sync status is derived from the M5-06 cursor rows (never a
+> parallel store) and exposed at `GET /api/calendar/sync-status` — per provider/calendar: `connected`,
+> `last_success_at`, state (`never_synced` | `idle` | `error`), cursor health and a **safe** last-error
+> message (no token, ciphertext or raw cursor value). An optional, strictly user-scoped, idempotent
+> manual trigger (`POST /api/calendar/providers/{provider}/sync`) runs one read-only pass over the
+> adapter registry seam. A durable `in_progress` state is not reported yet — a synchronous sync persists
+> no running flag — and arrives with M5-10.
+
 ### Stage B — Reliable incremental sync (M5)
 - Store provider cursors (`syncToken` / `deltaLink`); **advance only after changes are committed**.
 - Use change notifications to trigger reconciliation; periodic reconciliation as fallback.
@@ -59,6 +67,17 @@ retries and conflicts are tested with real accounts.
 - A cursor is never advanced in a way that can permanently skip unprocessed changes.
 - If processing fails partway, the cursor stays put and the work is retried.
 - Provider notifications are treated as *hints*, never as a complete change log.
+
+**Implemented (M5-06, ADR-0029).** `atlas/calendar/sync.py::CalendarSyncService` reads the stored
+cursor for one `(user, provider, calendar)`, drains **every page** of a pass from the adapter (taking
+the durable `next_cursor` from the **final** page only), applies the events and `EventDeletion`
+tombstones to `external_events`, advances `sync_cursors` and commits **once**. If anything raises
+between applying and committing, the transaction is rolled back, so the cursor is unchanged and the
+next pass re-fetches the same changes — verified by a simulated crash-before-commit test. A change
+that lands *during* paging is deferred by the adapter's own cursor (the pass returns the revision it
+started at) and picked up next pass. A failure records `last_error` on the cursor row in its own
+transaction without touching the cursor value; the projection is Atlas-side and a deletion is always
+a tombstone.
 
 ## 5. Ownership
 

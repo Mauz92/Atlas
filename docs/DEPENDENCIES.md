@@ -1,7 +1,7 @@
 # Atlas — Dependency and Licence Inventory
 
-**Status:** Active (Milestone 1)
-**Last updated:** 2026-10-20
+**Status:** Active (Milestone 9)
+**Last updated:** 2026-10-27
 
 Every dependency must permit the intended personal and professional use (REQ-003). Additions are
 reviewed before introduction and recorded here with purpose and licence. Licence identifiers are
@@ -22,6 +22,9 @@ as reported by the package metadata; verify against the upstream project before 
 | argon2-cffi | Password hashing (Argon2id) | MIT | |
 | itsdangerous | Signed tokens (CSRF) | BSD-3-Clause | |
 | python-multipart | Form parsing | Apache-2.0 | |
+| python-dateutil | RFC 5545 RRULE recurrence engine (M3-05) | BSD-3-Clause OR Apache-2.0 | Dual-licensed; imported as `dateutil.rrule.rrulestr` (3.0.0 no longer exports top-level `FREQ`). ADR-0015 |
+| pywebpush | Web Push (VAPID) desktop delivery (M8-02) | MPL-2.0 | Maintained `web-push-libs` project; signs and sends the push request. Bound `>=2.5,<3.0`. Used behind the `Notifier` abstraction; no custom crypto. ADR-0039 |
+| cryptography | Authenticated encryption (AES-256-GCM) for OAuth tokens at rest (M5-01) | Apache-2.0 OR BSD-3-Clause | Maintained `pyca` project; used via the high-level `AESGCM`/`HKDF` APIs (no custom crypto). Bound `>=50,<51` — the floor clears the advisories `pip-audit` reports against earlier 4x wheels. ADR-0027 |
 
 ## Runtime — frontend (`apps/web`)
 
@@ -47,9 +50,10 @@ as reported by the package metadata; verify against the upstream project before 
 | npm audit | JS advisory scanning (CI, built in) | — |
 | openapi-typescript | Generate TS types from OpenAPI | MIT |
 | vitest, jsdom, @testing-library/react | Frontend unit tests | MIT |
+| fake-indexeddb | In-memory IndexedDB for frontend tests (exercises the real offline-queue storage path under jsdom, which has no IndexedDB) | MIT |
 | eslint, typescript-eslint | Frontend linting | MIT / BSD-2-Clause |
 | @vitejs/plugin-react | Vite React plugin | MIT |
-| playwright | End-to-end tests (M7+) | Apache-2.0 |
+| @playwright/test | End-to-end (browser) tests (M7-06): real-Chromium failure-mode E2E. Also downloads a pinned **Chromium / "Chrome for Testing"** browser build (open-source Chromium, BSD-3-Clause) via `npx playwright install chromium`. Test-only — never ships in the app; no telemetry or paid service. | Apache-2.0 |
 
 ## External services / platform costs (not software dependencies)
 
@@ -72,7 +76,59 @@ as reported by the package metadata; verify against the upstream project before 
 - Anything under a licence that would restrict self-hosted personal/commercial use, or that adds a
   mandatory paid service, is rejected.
 
+## Vulnerability scan (M9-04, 2026-10-27)
+
+Real advisory scans were run against the installed dependency trees on 2026-10-27. Both are **clean**:
+there is **no finding of any severity** to upgrade, pin or accept, and nothing was suppressed.
+
+**Backend — `pip-audit` 2.10.1 (`services/api/.venv`, Python 3.14.8):**
+
+```
+$ cd services/api && .venv/bin/pip-audit --progress-spinner off
+Name      Skip Reason
+--------- ------------------------------------------------------------------------
+atlas-api Dependency not found on PyPI and could not be audited: atlas-api (0.1.0)
+
+No known vulnerabilities found          # exit 0
+```
+
+- **91** distributions audited, **0** advisories — every runtime pin (`fastapi` 0.154.0,
+  `cryptography` 50.0.2, `sqlalchemy` 2.0.55, `psycopg` 3.3.6, `pywebpush` 2.5.0, `python-dateutil`
+  3.0.0, `argon2-cffi` 25.1.0, …) and the dev/CI toolchain (`pytest` 9.1.1, `ruff` 0.17.1, `mypy`
+  1.20.2, `pip-audit` 2.10.1, `httpx` 0.28.1).
+- `atlas-api` is the **local, unreleased workspace package**, not a published dependency, so
+  `pip-audit` reports it as *skipped* rather than as a finding — expected, **not** a suppression.
+
+**Frontend — `npm audit` (Node 26.11.1 / npm 12.2.1, `package-lock.json` v3):**
+
+```
+$ cd apps/web
+$ npm audit --include=dev              # found 0 vulnerabilities   (exit 0)
+$ npm audit --omit=dev                 # found 0 vulnerabilities   (exit 0; production only)
+$ npm audit --audit-level=moderate     # found 0 vulnerabilities   (exit 0; the CI gate)
+```
+
+- **370** locked packages (32 production, 338 development, plus optional/peer) — **0** advisories at
+  every severity (info / low / moderate / high / critical all `0`).
+
+**Nothing is hidden.** There is no `--ignore-vuln`, no laxer `--audit-level`, and no `.npmrc` /
+`--omit` exclusion in the repository that would mask a result; the only audited-skip is the local
+`atlas-api` package above.
+
+**CI gate (`.github/workflows/ci.yml`).** The `backend` job runs `pip-audit --progress-spinner off`
+(non-zero exit on **any** advisory) and the `frontend` job runs `npm audit --audit-level=moderate`
+(non-zero exit on **moderate/high/critical**). This already satisfies — and is stricter than — the
+M9-04 acceptance "no unresolved critical/high". Confirmed by inspection of the workflow; GitHub
+Actions itself could not be exercised in this environment (see `ACCEPTANCE.md` M9-04). The gate's
+**failure semantics** were proven locally with controlled positive controls (scratch only, no repo
+change): `pip-audit -r` on a file pinned to `urllib3==1.26.4` → exit 1 ("Found 20 known
+vulnerabilities"), and `npm audit --audit-level=high` on a scratch project pinned to `lodash@4.17.20`
+→ exit 1 ("1 high severity vulnerability").
+
 ## Verification
 
-- Licences checked at introduction. Advisory scanning runs in CI on every push/PR. Full licence
-  audit is part of Milestone 9 (task M9-04).
+- Licences checked at introduction. Advisory scanning runs in CI on every push/PR and fails the build
+  on an unresolved finding.
+- M9-04 scan (2026-10-27): `pip-audit` → 0 advisories over 91 packages; `npm audit` → 0 advisories
+  over 370 packages. Exact commands and evidence in `ACCEPTANCE.md` M9-04; the recurring risk is
+  tracked as `RISKS.md` R-17.

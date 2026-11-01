@@ -13,3 +13,6 @@
 - Prefers work to be done completely and rigorously ("no shortcuts") — closing out the full scope and remediating real defects rather than taking expedient paths, even when thoroughness surfaces additional work. Confidence: 0.8
 - Prefers preserving a reproducible, working state at each milestone. Confidence: 0.85
 - Insists that planned end-to-end verification actually be executed (e.g. "run the docker container then") rather than left as a documented "not run" when it can be pursued, and is willing to perform privileged setup steps themselves (such as adding their user to the docker group) to unblock the agent. Confidence: 0.7
+- Prefers autonomous, self-paced orchestration loops for multi-task work: delegate one background subagent per task and keep spawning the next as each finishes, polling progress on a fixed short cadence (e.g. every ~5 minutes) and continuing until every milestone/gate is complete. Confidence: 0.8
+- Expects completed work to be committed to version control rather than left as a large uncommitted working tree; will explicitly ask for a commit once a body of work is done. Confidence: 0.6
+- Prefers the agent to keep progressing on the buildable scope (e.g. via fakes/stubs backed by real tests) rather than halting at a blocker that needs unavailable external resources, recording the blocked items honestly for later. Confidence: 0.6

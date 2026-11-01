@@ -5,11 +5,19 @@
 Atlas unifies Markdown knowledge management, task planning, project/Kanban management and
 Google/Microsoft calendar synchronisation in one coherent, self-hosted application.
 
-> **Status: Milestone 1 — foundation and secure deployment (in progress).**
-> The backend (FastAPI + PostgreSQL), authentication, durable job queue, a React web shell and a
-> Docker Compose deployment exist and are covered by tests. Notes, tasks and calendar features are
-> not implemented yet. A containerised end-to-end startup has not been verified in every
-> environment — see `docs/ACCEPTANCE.md`.
+> **Status: `0.1.0-pre` — development snapshot, NOT production-ready.** The release label, the
+> pre-release checklist and the consolidated known-limitations list are in
+> [`docs/RELEASE.md`](docs/RELEASE.md). Milestones **M0–M4, M7 and all M9 tasks (M9-01…M9-08) are
+> `DONE`**; **M5/M6** (calendar accounts) and **M8** (notifications and mobile apps) are blocked on
+> external resources (real Google/Microsoft accounts — AR-001; real devices), so their gates remain
+> **open**. **Delivered and usable today:** Markdown notes, tasks (Inbox/Today/Upcoming, Day/Week
+> planning), a Kanban board, projects with derived progress, offline/cross-device sync, reminder
+> preferences, and a calendar **sync-status** surface. **Not yet available:** connecting
+> Google/Microsoft calendar accounts, calendar event views, bidirectional calendar editing, mobile
+> apps and real push delivery — see [`docs/RELEASE.md`](docs/RELEASE.md) and
+> [`docs/ROADMAP.md`](docs/ROADMAP.md) for the authoritative status. To use it, see
+> [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md); to run it, see
+> [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md).
 
 ---
 
@@ -29,6 +37,8 @@ Full requirements: [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md).
 
 | Document | Purpose |
 |---|---|
+| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Using Atlas: notes, tasks, planning, sync, notifications |
+| [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md) | Running Atlas: install, configure, secure, back up, upgrade, monitor |
 | [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md) | Approved requirements and boundaries |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System boundaries, components, data ownership |
 | [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) | Persistent entities and sync semantics |
@@ -42,6 +52,7 @@ Full requirements: [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md).
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Installation, upgrades, operations |
 | [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Backups, recovery, monitoring |
 | [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md) | Verification evidence per gate |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | Release label, pre-release checklist and known limitations |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | User-visible changes |
 | [`AGENTS.md`](AGENTS.md) | Operating instructions for the coding agent |
 

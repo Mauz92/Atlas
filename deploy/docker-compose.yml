@@ -35,6 +35,7 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://atlas:atlas@db:5432/atlas}
       NOTES_ROOT: ${NOTES_ROOT:-/data/atlas/notes}
+      BACKUP_DIR: ${BACKUP_DIR:-/data/atlas/backups}
       SECRET_KEY: ${SECRET_KEY:-dev-insecure-change-me}
       SESSION_SECRET: ${SESSION_SECRET:-dev-insecure-change-me}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-dev-insecure-change-me}
@@ -67,11 +68,14 @@ services:
       ATLAS_ENV: ${ATLAS_ENV:-development}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://atlas:atlas@db:5432/atlas}
       NOTES_ROOT: ${NOTES_ROOT:-/data/atlas/notes}
+      BACKUP_DIR: ${BACKUP_DIR:-/data/atlas/backups}
+      BACKUP_RETAIN: ${BACKUP_RETAIN:-7}
       SECRET_KEY: ${SECRET_KEY:-dev-insecure-change-me}
       SESSION_SECRET: ${SESSION_SECRET:-dev-insecure-change-me}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-dev-insecure-change-me}
     volumes:
       - atlas-notes:/data/atlas/notes
+      - atlas-backups:/data/atlas/backups
     command: ["atlas-worker"]
 
   web:

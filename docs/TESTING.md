@@ -1,7 +1,7 @@
 # Atlas — Testing Strategy
 
 **Status:** Draft for approval (Milestone 0)
-**Last updated:** 2026-10-20
+**Last updated:** 2026-10-27
 
 A passing build is not proof of a correct application. This document defines what must be
 tested, with what tooling, and how results are reported.
@@ -29,6 +29,37 @@ DATABASE_URL=postgresql+psycopg://user@127.0.0.1:5432/atlas python -m pytest -q
 ```
 
 CI uses a `postgres:17-alpine` service container. Any PostgreSQL 14+ instance works.
+
+### 1a. Running the frontend end-to-end suite locally (Playwright — M7-06)
+
+Browser end-to-end tests live in `apps/web/e2e/` and run under **Playwright** (Chromium only). They
+drive the **real** UI in a real browser with the HTTP API mocked through Playwright's network
+interception, so they need **no live backend** and **no real account** (§8: deterministic and
+isolated; §11 of `AGENTS.md`: no real personal/work data).
+
+One-time setup (downloads a pinned Chromium build):
+
+```
+cd apps/web
+npx playwright install chromium
+```
+
+Run the suite — this is a **separate command** and is **not** part of `scripts/verify.sh` (which is a
+protected file). `playwright.config.ts` starts a `webServer` that builds the app and serves the
+production bundle with `vite preview`, so the suite always exercises the bundled client:
+
+```
+cd apps/web
+npm run e2e            # → playwright test  (Chromium; e.g. "4 passed")
+```
+
+The M7-06 suite (`e2e/sync-failure-modes.spec.ts`) covers three failure modes and drives the real
+`/sync` route: **network loss** (a queued edit is kept offline and flushes on reconnect), **restart**
+(a queued edit survives a page reload and still syncs) and **stale client / conflict** (a stale-revision
+`409` is surfaced and both *Keep mine* / *Take server* actions behave as documented). `e2e/helpers.ts`
+holds the API mocks and the durable-queue seeding used to represent an offline edit; the queue itself is
+the app's own IndexedDB store. Vitest is configured to ignore `e2e/**` so `npm run test` and the E2E
+suite never collide.
 
 ## 2. Unit Tests
 

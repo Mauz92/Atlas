@@ -143,6 +143,13 @@ Detailed model: `DATA_MODEL.md`.
   documented progress calculation.
 - Tasks may exist without a project; membership is never forced.
 - Board columns derive from task status.
+- Progress is **derived, not stored** (see `DATA_MODEL.md` §2.3). The canonical formula is:
+  `total` = the project's live (`deleted_at IS NULL`), non-`archived` tasks; `completed` = those
+  whose status is `completed`; the reported percentage is `round(completed × 100 / total)` to the
+  nearest whole percent (halves rounded up), and **0** when `total` is 0 (a project with no countable
+  tasks is not complete). Soft-deleted (tombstoned) tasks, `archived` tasks, and tasks filed under
+  another project or under none never count. Decision: ADR-0023; implementation:
+  `services/api/atlas/projects/progress.py`.
 
 ### 5.4 Calendar (REQ-007, REQ-008, REQ-009)
 

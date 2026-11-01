@@ -1,7 +1,7 @@
 # Atlas — Risk Register
 
 **Status:** Draft for approval (Milestone 0)
-**Last updated:** 2026-10-20
+**Last updated:** 2026-10-27
 
 Severity ∈ {High, Medium, Low}. Status ∈ {Open, Mitigating, Accepted, Closed}.
 Every open risk has an owner-milestone and a mitigation. Risks are reviewed at each milestone gate.
@@ -138,6 +138,11 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 - **Impact:** Exploitable flaw in a pinned dependency.
 - **Mitigation:** Automated dependency scanning in CI; pinned, reviewed dependencies; respond
   to advisories; never suppress findings to green CI.
+- **Reviewed (M9-04, 2026-10-27):** both real scans were run and are **clean** — `pip-audit` → 0
+  advisories over 91 packages; `npm audit` → 0 advisories over 370 packages (all severities 0). No
+  finding of any severity exists, so none was accepted or suppressed. The gate is enforced in
+  `.github/workflows/ci.yml` and fails the build on an unresolved finding (see `ACCEPTANCE.md` M9-04).
+  Status stays **Open** because the risk is continuous (a new advisory can appear at any time).
 - **Owner milestone:** Continuous. **Status:** Open.
 
 ---
@@ -155,6 +160,35 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   Kubernetes dependency.
 - **Owner milestone:** M1. **Status:** Accepted.
 
+### R-20 — Task text search is an unindexed substring scan
+- **Severity/Likelihood:** Low / Low
+- **Description:** `GET /api/tasks?q=…` matches with an escaped `LIKE '%…%'` over `title`/
+  `description` and `project_id` has no index yet, so both scan the user's rows and the listing is
+  capped at `limit` (default 200).
+- **Mitigation:** Fine at the intended personal scale (ADR-0018); the response is bounded, the
+  term is length-bounded and parameterised, and the filters rely on the existing `user_id`/
+  `status`/`priority`/`due_at` indexes. Revisit with measured need (a `tsvector` column + GIN
+  index for search, an index for `project_id`) — the `project_id` index belongs to M4. M4-02 added
+  the project-tasks listing on the same access path (per user, per project, bound by `limit`) and
+  deliberately did **not** add the index: the statement is an index scan on `tasks.user_id` plus a
+  filter, no measured need exists, and every schema change costs a migration (ADR-0021).
+- **Owner milestone:** M3. **Status:** Accepted.
+
+### R-21 — Web Push destination endpoint is not scheme/host-constrained
+- **Severity/Likelihood:** Low / Low
+- **Description:** A registered push destination (`notification_devices.endpoint`) is validated for
+  length and shape (`atlas/notifications/registry.py`) but not restricted to an `https` push-service
+  host, and the delivery path targets that URL directly (pywebpush). Raised by the M9-05 security
+  review; no exploitable impact exists in the delivered single-user deployment.
+- **Impact:** In a **multi-user** deployment with an attacker able to register a destination, the
+  send would fetch an attacker-chosen URL (a blind-request/SSRF-shaped surface). Today the registrant
+  is the only account (single-user), so any effect is self-directed.
+- **Mitigation:** Destinations are strictly user-scoped (one account cannot register or target
+  another's), and only the user's own active devices are ever sent to. Revisit with a scheme/host
+  allow-list (e.g. `https` push-service hosts, or a per-provider allow-list) **if multi-user is ever
+  approved** (`DECISIONS.md`); recorded here so it is not silently forgotten.
+- **Owner milestone:** M8. **Status:** Accepted (M9-05).
+
 ---
 
 ## Review log
@@ -162,3 +196,7 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 | Date | Milestone | Change |
 |---|---|---|
 | 2026-10-20 | M0 | Initial register created; R-05 and R-13 added from M0 research. |
+| 2026-10-26 | M3-08 | R-20 added (task search/project filter scan; bounded by `limit`). |
+| 2026-10-26 | M4-02 | R-20 reviewed (project-tasks listing on the same path; `project_id` index still deferred, no measured need). |
+| 2026-10-27 | M9-04 | R-17 reviewed: `pip-audit` (91 pkgs) and `npm audit` (370 pkgs, prod+dev) both clean — 0 advisories at every severity. No finding accepted or suppressed; CI gate confirmed by inspection + local positive controls. |
+| 2026-10-27 | M9-05 | Security review (threat model vs implementation). R-21 added (push endpoint not scheme/host-constrained; accepted for the single-user model). F1 (SPA missing security headers/CSP) found and fixed in `apps/web/nginx.conf`; R-SEC-1/2/4 re-confirmed, R-SEC-3 resolved. Detail in `docs/SECURITY.md` §"Milestone 9 security review". |

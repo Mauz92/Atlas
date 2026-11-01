@@ -1,12 +1,18 @@
 # Atlas — Acceptance Record
 
-**Status:** Active (Milestone 0)
-**Last updated:** 2026-10-22
+**Status:** Active (Milestone 9)
+**Last updated:** 2026-10-27
 
 Records verification evidence for milestone gates. A milestone is not complete until its criteria
 are marked `PASS` here with evidence, or explicitly recorded as `BLOCKED`/`NOT RUN`.
 
 Evidence vocabulary: `PASS`, `FAIL`, `BLOCKED`, `NOT RUN`.
+
+**Environment note (2026-10-27).** The reproducible test environment in this repository is
+**PostgreSQL 17.11** (`deploy/docker-compose.yml` → `postgres:17-alpine`), Python 3.14, Node 26 and
+Chromium (Playwright). Some earlier entries record the environment as observed when they were written
+(an earlier host reported PostgreSQL 18.6); the suites run against the container above. The exact
+commands and results in each entry are the evidence, not the version string.
 
 ---
 
@@ -202,8 +208,8 @@ was reachable, so the DB-backed checks are `BLOCKED` (see below).
 | Request validation (empty title, unknown priority, negative revision) | `PASS` | `test_create_requires_a_non_empty_title`, `test_create_rejects_an_unknown_priority`, `test_update_rejects_a_negative_base_revision`, `test_create_defaults_status_and_priority` |
 | Idempotency fingerprint/decision logic | `PASS` | `tests/unit/test_idempotency.py` (7 tests, incl. payload mismatch → conflict) |
 | Migration adds `idempotency_keys` | `PASS` | `test_migration_adds_the_idempotency_table` (offline SQL, upgrade + downgrade) |
-| Duplicate key returns the original result (live) | `BLOCKED` | `tests/integration/test_tasks_api.py::test_create_is_idempotent_for_the_same_key` — no PostgreSQL |
-| CRUD, soft delete, stale-revision `409`, CSRF | `BLOCKED` | `tests/integration/test_tasks_api.py` (9 tests) — no PostgreSQL |
+| Duplicate key returns the original result (live) | `PASS` | `tests/integration/test_tasks_api.py::test_create_is_idempotent_for_the_same_key` — PostgreSQL 18, 2026-10-26 |
+| CRUD, soft delete, stale-revision `409`, CSRF | `PASS` | `tests/integration/test_tasks_api.py` — PostgreSQL 18, 2026-10-26 |
 | OpenAPI contract and TS types in sync | `PASS` | `openapi.json` regenerated; `npm run gen:api`; CI drift diff → in sync |
 | Lint, format, types, unit suite | `PASS` | `ruff check .`, `ruff format --check .`, `mypy` clean; `pytest tests/unit -q` → `84 passed` |
 
@@ -245,7 +251,7 @@ the DB-backed HTTP checks are `BLOCKED` (no PostgreSQL).
 | Unknown status has no transitions | `PASS` | `test_unknown_status_has_no_transitions` |
 | Error carries current/requested/allowed | `PASS` | `test_error_reports_the_allowed_targets`, `test_disallowed_transitions_are_rejected` |
 | `completed_at` set exactly when completed | `PASS` | `test_entering_completed_records_the_time`, `test_leaving_completed_clears_the_time`, `test_other_transitions_have_no_side_effects`, `test_creating_a_completed_task_records_the_time` |
-| Enforcement over HTTP (`409`, nothing changes) | `BLOCKED` | `tests/integration/test_tasks_api.py` (5 transition tests) — no PostgreSQL |
+| Enforcement over HTTP (`409`, nothing changes) | `PASS` | `tests/integration/test_tasks_api.py` (5 transition tests) — PostgreSQL 18, 2026-10-26 |
 | Lint, format, types, unit suite | `PASS` | `ruff check .`, `ruff format --check .`, `mypy` clean; `pytest tests/unit -q` → `106 passed` |
 
 **Commands run.**
@@ -282,7 +288,7 @@ and covered without a database; the DB-backed checks are `BLOCKED` (no PostgreSQ
 | Calendar-day ("today") is zone-correct | `PASS` | `test_local_date_uses_the_zone_calendar_day`, `test_due_state_today_depends_on_the_zone_calendar_day` |
 | `due_state` none/overdue/today/upcoming | `PASS` | `test_due_state_without_a_due_date`, `test_due_state_overdue_today_and_upcoming` |
 | Priority ordering | `PASS` | `tests/unit/test_task_priority.py` (4 tests) |
-| Naive due date stored in the task's zone over HTTP | `BLOCKED` | `tests/integration/test_tasks_api.py` (4 due-date tests) — no PostgreSQL |
+| Naive due date stored in the task's zone over HTTP | `PASS` | `tests/integration/test_tasks_api.py` (4 due-date tests) — PostgreSQL 18, 2026-10-26 |
 | Lint, format, types, unit suite | `PASS` | `ruff check .`, `ruff format --check .`, `mypy` clean; `pytest tests/unit -q` → `125 passed` |
 
 **Commands run.**
@@ -308,7 +314,2465 @@ handlers to pass real `datetime` objects to the service (they previously passed 
 
 ---
 
-## Milestones M4–M9
+## M3 — DB-backed verification (2026-10-26)
+
+Re-ran the previously-`BLOCKED` M3-02/03/04 integration checks against PostgreSQL 18 in Docker,
+on the dedicated `atlas_test` database (never the application's).
+
+**Commands run.**
+
+```
+docker compose -f deploy/docker-compose.yml up -d db
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q                          # 194 passed
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_tasks_api.py tests/integration/test_tasks_schema.py -q   # 26 passed
+```
+
+Result: the M3-02 (idempotent create, CRUD, soft delete, stale-revision `409`, CSRF), M3-03
+(HTTP status-transition enforcement) and M3-04 (naive due date stored as UTC via the task's zone
+over HTTP) criteria are now `PASS`; M3-02/03/04 are `DONE`.
+
+---
+
+## M3-05 — Recurring tasks (RRULE)
+
+Verified 2026-10-26 on Linux with Python 3.14 against PostgreSQL 18 in Docker (dedicated
+`atlas_test` database, never the application's). The recurrence engine is pure and covered without
+a database; the completion semantics and idempotency are also covered over HTTP.
+
+The series head is the task that first carries the RRULE and is itself the first occurrence; every
+occurrence points back at the head via `recurrence_parent_id`. Completing an occurrence advances
+the series by exactly one step and nothing else (ADR-0015).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Creating a recurring task creates the series row | `PASS` | `tests/integration/test_tasks_recurrence.py::test_creating_a_recurring_task_creates_the_series` |
+| Completing an occurrence completes only it, creates the next, keeps the series + head | `PASS` | `test_completing_an_occurrence_creates_the_next_and_keeps_the_series` |
+| Other occurrences (incl. the head) are never completed/deleted/rewound | `PASS` | `test_completing_an_occurrence_leaves_earlier_occurrences_untouched`, `test_reopening_an_occurrence_keeps_the_generated_next`, `test_the_series_is_not_mutated_by_reading_it` |
+| Completing the final occurrence stops the series (no successor) | `PASS` | `test_completing_the_final_occurrence_stops_the_series`, `test_completing_the_final_occurrence_stops_the_series` (unit) |
+| `COUNT` bound terminates the series | `PASS` | `test_count_is_mirrored_from_the_rule`, `test_count_and_end_date_whichever_comes_first_wins`, integration COUNT tests |
+| `UNTIL` / `end_date` bound terminates the series | `PASS` | `test_until_terminates_the_series`, `test_end_date_terminates_the_series`, `test_until_bounds_terminate_the_series` |
+| Occurrence times are DST-correct (spring-forward) | `PASS` | `test_dst_spring_forward_keeps_the_local_wall_clock`, `test_a_weekly_cadence_spans_dst_without_drifting`, `test_the_next_occurrence_is_timezone_and_dst_correct` |
+| Occurrence times are DST-correct (fall-back) | `PASS` | `test_dst_fall_back_keeps_the_local_wall_clock` |
+| Naive vs aware `dtstart`; naive interpreted in the series zone | `PASS` | `test_a_naive_dtstart_is_interpreted_in_the_series_zone`, `test_an_aware_dtstart_is_converted_into_the_series_zone`, `test_a_naive_dtstart_without_a_zone_is_utc` |
+| A naive `dtstart` in the DST gap is rejected | `PASS` | `test_a_naive_dtstart_in_the_dst_gap_is_rejected` |
+| RRULE expansion (daily; weekly `BYDAY`) | `PASS` | `test_daily_count_expands_to_the_expected_instants`, `test_weekly_byday_expands_on_the_selected_weekdays` |
+| Invalid/unknown RRULE rejected at the API boundary (`422`) | `PASS` | `test_invalid_rules_are_rejected` (parametrized, unit), `test_an_invalid_recurrence_rule_is_rejected` (HTTP) |
+| A recurring task requires an anchor (`400`) | `PASS` | `test_a_recurring_task_requires_an_anchor` |
+| Retried completion with the same idempotency key does not duplicate | `PASS` | `test_retrying_a_completion_with_the_same_key_does_not_duplicate` |
+| A recurrence can be added/removed via update | `PASS` | `test_a_recurrence_rule_can_be_added_on_update_and_then_advances`, `test_removing_the_rule_deletes_the_series` |
+| Lint, format, types, unit suite | `PASS` | `ruff check .`, `ruff format --check .`, `mypy` clean; `pytest tests/unit -q` → `158 passed` (33 new) |
+| Full suite (unit + integration) | `PASS` | `pytest -q` against PostgreSQL 18 → `240 passed` |
+| OpenAPI / TS types in sync | `PASS` | fresh `app.openapi()` diffed against `services/api/openapi.json` → no drift; `apps/web/src/api/schema.d.ts` unchanged |
+
+**Commands run.**
+
+```
+cd services/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy
+    # clean (44 source files)
+cd services/api && .venv/bin/python -m pytest tests/unit -q
+    # 158 passed
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_tasks_recurrence.py -q
+    # 13 passed
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q
+    # 240 passed
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh
+    # verification: PASS (exit 0)
+```
+
+**Scope note.** RRULE semantics come from `python-dateutil` (`dateutil.rrule`); no custom
+recurrence engine (AGENTS.md §7.5). New occurrences inherit the completed occurrence's
+title/description/priority/project/zone and start as `inbox`. Manual edits to an occurrence's due
+date are not re-synchronised with the sequence (recorded as a limitation in `CURRENT_TASK.md`).
+
+---
+
+## M3-06 — Subtasks
+
+Verified 2026-10-26 on Linux with Python 3.14 against PostgreSQL 18 in Docker (dedicated
+`atlas_test` database, never the application's). The parent/child rules are pure and covered
+without a database; their enforcement, the rollup and the recurrence interaction are also covered
+over HTTP. Rules: ADR-0016; `parent_task_id → tasks.id` `ON DELETE SET NULL` (M3-01).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| A subtask is created and listed on its parent | `PASS` | `tests/integration/test_tasks_subtasks.py::test_a_subtask_is_created_and_listed_on_its_parent` |
+| Listing subtasks of an unknown parent → `404` | `PASS` | `test_listing_subtasks_of_a_missing_parent_is_not_found` |
+| A task cannot be its own parent (nothing changes) | `PASS` | `test_a_task_cannot_be_its_own_parent` |
+| A direct cycle is rejected (nothing changes) | `PASS` | `test_a_direct_cycle_is_rejected_without_changing_state` |
+| A cycle at depth > 1 is rejected | `PASS` | `test_a_cycle_at_depth_greater_than_one_is_rejected` |
+| Cross-user parenting is rejected | `PASS` | `test_a_task_cannot_be_parented_under_another_users_task` |
+| A missing / soft-deleted parent is rejected | `PASS` | `test_a_soft_deleted_parent_is_rejected`, `test_parent_task_must_exist` (M3-02) |
+| A subtask inherits the parent's project | `PASS` | `test_a_subtask_inherits_the_parents_project` |
+| A conflicting project is rejected | `PASS` | `test_a_subtask_with_a_conflicting_project_is_rejected` |
+| Rollup formula: `subtasks_done`/`subtasks_total`, never completing the parent | `PASS` | `test_the_rollup_tracks_the_subtasks_without_completing_the_parent`; unit rollup tests |
+| Soft-deleting a parent promotes its subtasks (no orphans) | `PASS` | `test_soft_deleting_a_parent_promotes_its_subtasks` |
+| A recurring occurrence does not clone the parent's subtasks | `PASS` | `test_completing_a_recurring_task_does_not_clone_its_subtasks`; unit `test_a_generated_occurrence_is_top_level_and_copies_no_subtask` |
+| Pure rules: self, cycle (depth > 1), cross-user, missing, inheritance, rollup | `PASS` | `tests/unit/test_task_subtasks.py` (20 tests) |
+| API contract: `parent_task_id` query param + rollup fields | `PASS` | unit OpenAPI tests; `schema.d.ts` regenerated (CI drift check passes) |
+| No existing test removed, skipped or weakened | `PASS` | the prior 240 tests still pass; total **272 passed** |
+| Lint, format, types, unit suite | `PASS` | `ruff check .`, `ruff format --check .`, `mypy` clean; `pytest tests/unit -q` → **178 passed** (20 new) |
+| Full suite (unit + integration) | `PASS` | `pytest -q` against PostgreSQL 18 → **272 passed** (12 new subtask integration tests) |
+| `./scripts/verify.sh` | `PASS` | `verification: PASS` (exit 0) |
+
+**Commands run.**
+
+```
+cd services/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy
+    # clean (45 source files)
+cd services/api && .venv/bin/python -m pytest tests/unit -q
+    # 178 passed
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_tasks_subtasks.py -q
+    # 12 passed
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q
+    # 272 passed
+cd services/api && .venv/bin/python -c "import json; from atlas.main import app; \
+  open('openapi.json','w').write(json.dumps(app.openapi()))"   # then:
+cd apps/web && npm run gen:api     # schema.d.ts regenerated; CI drift simulation → in sync
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh
+    # verification: PASS (exit 0)
+```
+
+**Scope note.** Only subtask listing is added — the generic task filters/search (M3-08), views
+(M3-07) and the change log (M3-09) are untouched. Cross-user parenting and a missing parent return
+the same `400` message so task ids cannot be probed across users. The database cannot express
+acyclicity for a self-referential FK; the service is the only writer.
+
+---
+
+## M3-07 — Inbox / Today / Upcoming views
+
+Verified 2026-10-26 on Linux with Python 3.14, Node 26 and PostgreSQL 18 in Docker (dedicated
+`atlas_test` database, never the application's). Views are server-authoritative: the client asks
+for a view and renders the API response (ADR-0012, ADR-0017).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| **Today** is the landing page; **Inbox** and **Upcoming** are reachable from primary navigation | `PASS` | `apps/web/src/App.tsx` routes `/`, `/inbox`, `/upcoming` to `Today`/`Inbox`/`Upcoming`; `Layout.tsx` `NAV_ITEMS` links them (`/` uses `end` matching) |
+| Each view renders from the API (server-authoritative) | `PASS` | `hooks/useTaskView.ts` calls `tasksApi.list({view, tz})`; grouping uses the server's `due_state` — `pages/Today.test.tsx`, `pages/Inbox.test.tsx`, `pages/Upcoming.test.tsx` |
+| Quick capture works with a title only | `PASS` | `components/QuickCapture.tsx` (single title field); `components/QuickCapture.test.tsx` (empty submit ignored, trimmed title sent); Today/Inbox view tests assert `tasksApi.create(title)` |
+| Today shows Overdue and Due-today grouped sensibly | `PASS` | `lib/tasks.ts::groupToday` + `pages/Today.tsx`; `lib/tasks.test.ts`; server classification unit/integration tests |
+| Upcoming groups by the day a task is due | `PASS` | `lib/tasks.ts::groupUpcomingByDay`; `lib/tasks.test.ts`; `pages/Upcoming.test.tsx` |
+| Useful empty states and clear errors | `PASS` | Empty-state text asserted per view; `LoadError` (role=`alert`) with a retry that reloads — asserted in the three view tests |
+| Time-zone correct "today", reusing `due_state`/`timezones` (no new date logic) | `PASS` | `atlas/tasks/views.py` delegates to `atlas/tasks/timezones.py`; boundary case (23:30 UTC = "today" in UTC, "upcoming" in Europe/Amsterdam) in `tests/unit/test_task_views.py` and `tests/integration/test_tasks_views.py` |
+| Server-side view filter over HTTP (`view`/`tz`) | `PASS` | `tests/integration/test_tasks_views.py` (11 tests: inbox/today/upcoming, completed/archived/undated exclusion, caller-zone and task-zone precedence, `due_state` present) |
+| Boundary validation (`422` unknown view/zone, `400` `view`+`parent_task_id`) | `PASS` | `tests/integration/test_tasks_views.py`; `tests/unit/test_task_views.py` (OpenAPI query parameters) |
+| Existing behaviour preserved (default listing unchanged) | `PASS` | `test_the_default_listing_and_order_are_unchanged`; prior 272 tests still pass |
+| API contract regenerated and in sync | `PASS` | `openapi.json` regenerated from `app.openapi()`; `npm run gen:api`; committed `schema.d.ts` regenerated (drift diff empty) |
+| No existing test removed, skipped or weakened | `PASS` | total rises 272 → 299 (backend) and 8 → 25 (frontend); no `skip`/`xfail` added |
+| Lint, format, types, unit suite | `PASS` | `ruff check .`, `ruff format --check .`, `mypy` clean; `pytest tests/unit -q` → **194 passed** (16 new); `npm run lint`/`typecheck` clean |
+| Frontend component suite and production build | `PASS` | `npm run test` → 25 passed (17 new); `npm run build` → success |
+| Full backend suite (unit + integration) | `PASS` | `pytest -q` against PostgreSQL 18 → **299 passed** (11 new view integration tests) |
+| `./scripts/verify.sh` | `PASS` | `verification: PASS` (exit 0) |
+| **Browser E2E journey (Playwright)** | `NOT RUN` | Playwright is not set up in this repository; no browser-driven journey is executed. Recorded honestly, not waived (consistent with M2/M3 notes) |
+
+**Commands run.**
+
+```
+cd services/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy
+    # clean (46 source files)
+cd services/api && .venv/bin/python -m pytest tests/unit -q
+    # 194 passed
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_tasks_views.py -q
+    # 11 passed
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q
+    # 299 passed
+cd services/api && .venv/bin/python -c "import json; from atlas.main import app; \
+  open('openapi.json','w').write(json.dumps(app.openapi()))"   # then:
+cd apps/web && npm run gen:api     # schema.d.ts regenerated; drift diff → in sync
+cd apps/web && npm run lint && npm run typecheck && npm run test && npm run build
+    # clean; vitest 25 passed; build produced dist/
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh
+    # verification: PASS (exit 0)
+```
+
+**Scope note.** Only the primary views and the query surface they need are added — the generic task
+filters/search (M3-08), the task change log (M3-09) and projects (M4) are untouched. Quick capture
+sends a title only; other task fields keep their existing defaults. Business logic stays out of the
+components: fetching lives in `useTaskView`, grouping/formatting in `lib/tasks.ts`, and the view
+rules on the server.
+
+**Decision.** How the view query and "today" resolve is recorded in `docs/DECISIONS.md` ADR-0017.
+
+---
+
+## M3-08 — Task search and filters
+
+Verified 2026-10-26 on Linux with Python 3.14, Node 26 and PostgreSQL 18 in Docker (dedicated
+`atlas_test` database, never the application's). `GET /api/tasks` gains validated, composable
+filters and a bounded text search; the contract is recorded in ADR-0018.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Filter by `status` (repeated and/or comma-separated) | `PASS` | `tests/integration/test_tasks_filters.py::test_status_filter_accepts_repeated_and_comma_separated_values`; unit `test_status_is_accepted_repeated_or_comma_separated` |
+| Filter by `priority` | `PASS` | `test_priority_filter_matches_one_priority` |
+| Date range on `due_at` (`due_from`/`due_to`, inclusive) | `PASS` | `test_due_range_filter_is_inclusive_and_excludes_undated_tasks`; a date-only `_to` bound covers the whole day (`tests/unit/test_task_filters.py::test_a_date_only_upper_bound_covers_the_whole_day`) |
+| Date range on `start_at` (`start_from`/`start_to`, inclusive) | `PASS` | `test_start_range_filter_selects_scheduled_work` |
+| Filter by `project_id` | `PASS` | `test_project_filter_selects_one_project` (a well-formed id with no tasks returns an empty list — see limitation below) |
+| Filters compose (status + priority + date + project) | `PASS` | `test_status_priority_date_and_project_filters_compose` |
+| Filters compose with `view`/`tz` (M3-07) | `PASS` | `test_filters_compose_with_a_view`; the 11 M3-07 view tests still pass unchanged |
+| Filters compose with `parent_task_id` (M3-06) | `PASS` | `test_filters_compose_with_parent_task_id`; the 12 M3-06 subtask tests still pass |
+| Text search `q` over title **and** description, case-insensitive | `PASS` | `test_search_matches_title_and_description_case_insensitively`, `test_search_terms_are_trimmed` |
+| Search matches correctly (match / no match / quotes / non-ASCII) | `PASS` | `test_search_handles_quotes_and_non_ascii_text`; `test_search_matches_...` asserts the no-match case |
+| Search is parameterised and cannot alter the statement (no SQL injection) | `PASS` | `test_search_is_parameterised_and_cannot_alter_the_statement` (payload `Robert'); DROP TABLE tasks;--` matches its own task and leaves the table and its rows intact); the term is passed through `ilike(pattern, escape="\\")` as a bound parameter |
+| `%`/`_` are literal, not wildcards | `PASS` | `test_search_escapes_like_metacharacters`; unit `test_the_like_pattern_escapes_wildcards_and_the_escape_character` |
+| Search input is bounded (max length) | `PASS` | over-long term → `422` (`test_an_over_long_search_term_is_rejected`, `test_an_empty_search_term_is_rejected`); OpenAPI `maxLength == 200`, `minLength == 1` (`tests/unit/test_task_filters.py`) |
+| Result size is bounded by a sane limit | `PASS` | `test_limit_bounds_the_result_size`; OpenAPI `limit` `ge=1`, `le=500`, default 200 |
+| Deterministic ordering reusing `priority_rank` + due date | `PASS` | `test_a_filtered_listing_is_ordered_by_priority_then_due_date`; the SQL rank is a `CASE` built from `PRIORITY_ORDER` (`atlas/tasks/service.py`) |
+| Soft-deleted tasks are excluded from filtered listings | `PASS` | `test_a_filtered_listing_excludes_soft_deleted_tasks` |
+| The default listing and order are unchanged | `PASS` | `test_the_default_listing_and_order_are_unchanged` (this file) and the identically named M3-07 test; capture order is kept when no filter is set |
+| Unknown status / priority rejected without side effects | `PASS` | `test_an_unknown_status_is_rejected`, `test_an_unknown_priority_is_rejected`, `test_a_rejected_filter_creates_and_changes_nothing` (`422`) |
+| Malformed / inverted date bounds rejected | `PASS` | `test_a_malformed_date_bound_is_rejected`, `test_an_inverted_range_is_rejected` (`422`) |
+| Malformed `project_id` / out-of-range `limit` rejected | `PASS` | `test_a_malformed_project_id_is_rejected`, `test_an_out_of_range_limit_is_rejected` (`422`) |
+| Incompatible combinations still rejected | `PASS` | `test_view_and_parent_task_id_are_still_incompatible` (`400`), `test_an_unknown_view_is_still_rejected_with_filters` (`422`) |
+| Validation errors leave the data untouched | `PASS` | `test_a_rejected_filter_creates_and_changes_nothing` compares the full listing before/after every rejected request; `_assert_rejected` does the same per case |
+| No migration required | `PASS` | no schema change: the existing `user_id`, `status`, `priority` and `due_at` indexes cover the filters at the intended personal scale (ADR-0018). `test_migrations_match_models` still reports no drift |
+| API contract regenerated and in sync | `PASS` | `openapi.json` regenerated from `app.openapi()`; `npm run gen:api`; re-running produces a byte-identical `schema.d.ts` (drift diff empty) |
+| Unit tests for the pure helpers | `PASS` | `tests/unit/test_task_filters.py` (28 tests: status/priority/date/search parsing, `LIKE` escaping, filter composition, OpenAPI parameter bounds) |
+| Integration tests over HTTP against PostgreSQL | `PASS` | `tests/integration/test_tasks_filters.py` (28 tests) |
+| No existing test removed, skipped or weakened | `PASS` | the prior 299 tests still pass untouched; total **355 passed**; no `skip`/`xfail` added |
+| Lint, format, types, unit suite | `PASS` | `ruff check .`, `ruff format --check .`, `mypy` clean; `pytest tests/unit -q` → **222 passed** (28 new) |
+| Full backend suite (unit + integration) | `PASS` | `pytest -q` against PostgreSQL 18 → **355 passed** (28 new filter/search integration tests) |
+| Frontend lint, types and component suite | `PASS` | `npm run lint`, `npm run typecheck`, `npm run test` → 27 passed (unchanged) |
+| `./scripts/verify.sh` | `PASS` | `verification: PASS` (exit 0) |
+| **Browser E2E journey (Playwright)** | `NOT RUN` | Playwright is not set up in this repository; no browser-driven journey is executed. Recorded honestly, not waived (consistent with M2/M3 notes) |
+
+**Commands run.**
+
+```
+cd services/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy
+    # clean (47 source files)
+cd services/api && .venv/bin/python -m pytest tests/unit -q
+    # 222 passed
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_tasks_filters.py -q
+    # 28 passed
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q
+    # 355 passed
+cd services/api && .venv/bin/python -c "import json; from atlas.main import app; \
+  open('openapi.json','w').write(json.dumps(app.openapi()))"   # then:
+cd apps/web && npm run gen:api     # schema.d.ts regenerated; re-running → byte-identical (in sync)
+cd apps/web && npm run lint && npm run typecheck && npm run test
+    # clean; vitest 27 passed
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh
+    # verification: PASS (exit 0)
+```
+
+**Scope note.** Only the listing filters and the text search are added — the task change log
+(M3-09), projects (M4), Kanban and calendar features are untouched, and no migration was needed.
+Business logic stays in the pure `atlas/tasks/filters.py`; the HTTP layer only validates and
+translates errors, and the SQL stays in `atlas/tasks/service.py`.
+
+**Limitation.** Projects are a M4 entity, so `project_id` cannot yet be checked for existence: a
+malformed id is rejected (`422`), while a well-formed id that matches no task returns an empty
+list. Existence validation and a `project_id` index arrive with M4.
+
+**Decision.** The filter/search contract is recorded in `docs/DECISIONS.md` ADR-0018.
+
+---
+
+## M3-09 — Change log for tasks (client pull)
+
+Verified 2026-10-26 on Linux with Python 3.14, Node 26 and PostgreSQL 18 in Docker (dedicated
+`atlas_test` database, never the application's). `GET /api/tasks/changes?since=<revision>&limit=<n>`
+returns the calling user's tasks changed after the cursor — including soft-deleted tombstones — with
+a new high-water mark (`next_since`) and `has_more` for gap-free paging. The contract is recorded in
+ADR-0019.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Empty change set for a new user | `PASS` | `tests/integration/test_tasks_changes.py::test_the_change_set_is_empty_for_a_new_user` (`tasks == []`, `next_since == 0`, `has_more == false`) |
+| Create then pull returns the tasks, ordered by revision | `PASS` | `test_creating_tasks_then_pulling_returns_them` |
+| Only tasks with `revision > since` are returned | `PASS` | `test_a_cursor_at_the_high_water_mark_returns_nothing` (a pull at/above the high-water mark is empty) |
+| An update bumps revision and the task re-appears once at the higher revision | `PASS` | `test_an_update_bumps_the_revision_and_reappears_once` (two bumps between pulls → one item at `revision 3`) |
+| Soft-deleted tasks appear as tombstones | `PASS` | `test_a_soft_delete_appears_as_a_tombstone` (`deleted_at` non-null, `revision == 2`) |
+| Results are ordered by `revision` ascending | `PASS` | the integration paging helper asserts each page is sorted; the query orders by `(revision, id)` (`atlas/tasks/service.py::TasksService.changes`) |
+| Paging across a limit boundary is complete and duplicate-free | `PASS` | `test_paging_is_complete_and_duplicate_free_across_revision_ties` (drains the change set at limits 1/2/3/4/200, mixing revision-1 and revision-2 ties; every id seen exactly once); unit simulation `tests/unit/test_task_changes.py::test_paging_covers_every_revision_once_with_no_gaps_or_duplicates` |
+| A page never splits a run of equal revisions (no cursor gap) | `PASS` | unit `test_a_page_never_splits_a_run_of_equal_revisions`; `plan_change_page` delivers whole revision groups |
+| A single revision group larger than `limit` still makes progress | `PASS` | `test_a_single_revision_group_larger_than_the_limit_is_returned_whole`; unit `test_a_single_continuing_run_larger_than_the_limit_is_delivered_whole` |
+| `since`/`limit` validated at the boundary with no side effects | `PASS` | `test_an_invalid_cursor_or_limit_is_rejected_without_side_effects` (`since` `-1`/`> 2 147 483 647`/non-integer, `limit` `0`/`501`/non-integer → `422`; the full feed is byte-identical before/after) |
+| Endpoint is read-only | `PASS` | it is `GET` only; a rejected request leaves the feed unchanged and no mutation is reachable |
+| Strictly user-scoped (no leak of another user's tasks) | `PASS` | `test_changes_are_strictly_user_scoped` (another user's revision-9 tombstone is absent; `next_since == 1`) |
+| Authentication required | `PASS` | `test_changes_require_authentication` (`401`) |
+| Unit tests for the pure cursor/limit parsing and page planner | `PASS` | `tests/unit/test_task_changes.py` (22 tests: `parse_since`, `parse_change_limit`, `plan_change_page`, a paging simulation, and the OpenAPI surface) |
+| Integration tests over HTTP against PostgreSQL | `PASS` | `tests/integration/test_tasks_changes.py` (10 tests) |
+| No migration required | `PASS` | no schema change: `user_id` is already indexed and the query runs per user at personal scale (ADR-0019); `test_migrations_match_models` still reports no drift |
+| API contract regenerated and in sync | `PASS` | `openapi.json` regenerated from `app.openapi()`; `npm run gen:api`; `apps/web/src/api/schema.d.ts` updated with `/api/tasks/changes` + `TaskChangesOut`/`TaskChangeOut` |
+| No existing test removed, skipped or weakened | `PASS` | the prior 355 tests still pass untouched; total **387 passed**; no `skip`/`xfail` added |
+| Lint, format, types, unit suite | `PASS` | `ruff check .`, `ruff format --check .`, `mypy` clean; `pytest tests/unit -q` → **244 passed** (22 new) |
+| Full backend suite (unit + integration) | `PASS` | `pytest -q` against PostgreSQL 18 → **387 passed** (32 new) |
+| Frontend lint, types and component suite | `PASS` | `npm run lint`, `npm run typecheck`, `npm run test` → 27 passed (unchanged) |
+| `./scripts/verify.sh` | `PASS` | `verification: PASS` (exit 0) |
+| **Browser E2E journey (Playwright)** | `NOT RUN` | Playwright is not set up in this repository; no browser-driven journey is executed. Recorded honestly, not waived (consistent with M2/M3 notes) |
+
+**Commands run.**
+
+```
+cd services/api && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy
+    # clean (48 source files)
+cd services/api && .venv/bin/python -m pytest tests/unit -q
+    # 244 passed
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_tasks_changes.py -q
+    # 10 passed
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q
+    # 387 passed
+cd services/api && .venv/bin/python -c "import json; from atlas.main import app; \
+  open('openapi.json','w').write(json.dumps(app.openapi()))"   # then:
+cd apps/web && npm run gen:api     # schema.d.ts regenerated with the new route/schemas
+cd apps/web && npm run lint && npm run typecheck && npm run test
+    # clean; vitest 27 passed
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh
+    # verification: PASS (exit 0)
+```
+
+**Scope note.** Only the incremental task change feed is added — full client sync / offline queue
+(M7), the notes change feed, projects (M4) and Kanban are untouched, and no migration was needed.
+Business logic stays in the pure `atlas/tasks/changes.py`; the SQL lives in
+`atlas/tasks/service.py`; the HTTP layer only validates and translates errors.
+
+**Limitation.** Tombstones are retained indefinitely, so a client may resync from `since=0` at any
+time; a bounded retention window for devices offline longer than the window is M7-02 (ADR-0019).
+Because a page never splits a run of equal revisions, a client must page on `next_since`/`has_more`
+and must not assume `len(tasks) == limit`.
+
+**Decision.** The change-feed/pull contract is recorded in `docs/DECISIONS.md` ADR-0019.
+
+---
+
+## M3 — Gate (exit criteria)
+
+Verified 2026-10-26 on Linux with Python 3.14, Node 26 and PostgreSQL 18 in Docker. All M3 tasks
+(M3-01…M3-09) are `DONE`; this is the explicit milestone-gate journey.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Tasks persist across restarts | `PASS` | A task written to a migrated database survived a real `docker restart atlas-db-1` with identical id/title/status/revision (disposable `atlas_gate` database, dropped afterwards) |
+| Recurring completion behaves correctly | `PASS` | M3-05 — series preserved, next occurrence generated, future occurrences untouched |
+| Due dates + time zones correct | `PASS` | M3-04 DST unit tests + the HTTP round-trip tests in the journey below |
+| Mutations transactional; retries do not duplicate | `PASS` | Idempotency replay tests (M3-02 create, M3-05 completion) inside the journey |
+| Essential workflows work with calendar disconnected | `PASS` | 93 integration tests over HTTP against PostgreSQL; the codebase contains no calendar integration |
+| Cross-device convergence | `NOT RUN` | M7-01/M7-02 — recorded, not waived |
+
+**Commands run.**
+
+```
+./scripts/verify.sh
+    # verification: PASS — backend 387 passed; frontend 27 passed
+
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_tasks_api.py \
+    tests/integration/test_tasks_views.py tests/integration/test_tasks_filters.py \
+    tests/integration/test_tasks_recurrence.py tests/integration/test_tasks_subtasks.py \
+    tests/integration/test_tasks_changes.py -q
+    # 93 passed
+
+# restart persistence (disposable DB; the application database is never touched)
+docker exec atlas-db-1 psql -U atlas -c "CREATE DATABASE atlas_gate;"
+cd services/api && DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_gate \
+  .venv/bin/alembic upgrade head            # migrations apply cleanly to a fresh DB
+# insert a user + task, then:
+docker restart atlas-db-1                    # → row still present, fields identical
+docker exec atlas-db-1 psql -U atlas -c "DROP DATABASE atlas_gate;"
+```
+
+**Gate:** tasks usable as a standalone daily tool — **APPROVED 2026-10-26**. Browser E2E
+(Playwright not set up) and cross-device convergence (M7) are recorded as `NOT RUN`, not waived.
+
+---
+
+## M4 — Projects and Planning
+
+### M4-01 — Project schema + CRUD
+
+Verified 2026-10-26 on Linux with Python 3.14 and PostgreSQL 18 in Docker (test database
+`atlas_test`; the application `atlas` database was never touched).
+
+| Acceptance criterion | Result | Evidence |
+|---|---|---|
+| `projects` has exactly the DATA_MODEL §2.3 fields | `PASS` | `tests/unit/test_project_schema.py::test_projects_table_has_the_documented_columns` (exact column set); DB column/nullability/default dump below |
+| Required columns `NOT NULL`, defaults and indexes correct | `PASS` | `test_required_project_columns_are_not_nullable`, `test_project_status_default_and_revision`; DB dump shows `status 'active'`, `revision '1'`, `created_at/updated_at now()` |
+| `user_id` FK `CASCADE` | `PASS` | `test_project_foreign_keys_and_indexes`; `tests/integration/test_projects_schema.py::test_deleting_a_user_cascades_to_projects` |
+| Migration renders the schema and is reversible | `PASS` | `test_migration_renders_the_project_schema`, `test_migration_is_reversible` (offline DDL); live `alembic downgrade base → upgrade head → downgrade -1 → upgrade head` |
+| Migration matches the models on a real DB | `PASS` | `tests/integration/test_tasks_schema.py::test_migrations_match_models` (empty `compare_metadata` diff) |
+| `tasks.project_id` FK exists with the documented ON DELETE behaviour | `PASS` | `pg_constraint` (`fk_tasks_project_id_projects`, `confdeltype='n'` = SET NULL); `test_tasks_project_id_references_projects`; `test_deleting_a_project_sets_its_tasks_project_to_null` |
+| CRUD endpoints exist | `PASS` | `POST`/`GET`/`GET {id}`/`PATCH`/`DELETE` at `/api/projects`; 15 HTTP integration tests in `tests/integration/test_projects_api.py` |
+| Soft delete (tombstone) | `PASS` | `test_delete_is_soft_and_hides_the_project`, `test_delete_with_an_idempotency_key_replays` |
+| Stale `base_revision` → `409` | `PASS` | `test_stale_base_revision_is_rejected_without_changing_state` |
+| `Idempotency-Key` replay returns the original result | `PASS` | `test_create_is_idempotent_for_the_same_key`, `test_reusing_a_key_with_a_different_payload_is_rejected` |
+| Validation errors rejected with no side effects | `PASS` | `test_validation_errors_are_rejected_without_side_effects`, `test_an_update_cannot_store_an_inverted_date_range` |
+| Strict user scoping | `PASS` | `test_projects_are_strictly_user_scoped` (another user's project → `404` on GET/PATCH/DELETE, absent from the list) |
+| Integration + unit tests added; no existing test weakened or removed | `PASS` | 32 new tests; the four M3 task tests that set an arbitrary `project_id` now create a real project first (they assert the same behaviour against the new foreign key) |
+| `ruff` / `ruff format --check` / `mypy` / full suite / `verify.sh` | `PASS` | commands below |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check .                      # All checks passed!
+.venv/bin/ruff format --check .             # 101 files already formatted
+.venv/bin/mypy                              # Success: no issues found in 52 source files
+.venv/bin/python -m pytest tests/unit -q    # 258 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q             # 419 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/unit/test_project_schema.py tests/unit/test_projects_api.py \
+    tests/integration/test_projects_api.py tests/integration/test_projects_schema.py -q   # 32 passed
+
+# migration on a real (test) database
+DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/alembic downgrade base && .venv/bin/alembic upgrade head \
+  && .venv/bin/alembic downgrade -1 && .venv/bin/alembic upgrade head   # each step clean; `current` = 8f1c2a7d5e04 (head)
+
+# contract regeneration
+.venv/bin/python -c "import json; from atlas.main import app; open('openapi.json','w').write(json.dumps(app.openapi()))"
+cd apps/web && npm run gen:api && npm run typecheck && npm run lint && npm run test   # 27 passed; re-running gen:api is byte-identical
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+```
+
+**Schema dump (atlas_test).**
+
+```
+id          NO   (uuid)          user_id   NO   (uuid)   name   NO   (varchar 512)
+description YES  (text)          status    NO   'active'  revision NO  1
+start_date  YES  (date)          target_date YES (date)   created_at/updated_at NO now()
+deleted_at  YES  (timestamptz)
+pg_constraint: fk_tasks_project_id_projects on tasks (project_id) → projects(id), confdeltype='n'
+  (n = ON DELETE SET NULL)
+```
+
+**Limitations recorded, not waived.** Task↔project association semantics (assigning tasks to a
+project, and what a project tombstone means for its tasks) and all other M4 scope are deferred to
+M4-02…M4-07. No browser E2E exists (Playwright not set up) — the project surface is API-only in this
+task.
+
+---
+
+### M4-02 — Task↔project association
+
+Verified 2026-10-26 on Linux with Python 3.14 and PostgreSQL 18 in Docker (test database
+`atlas_test`; the application `atlas` database was never touched). No migration was required — the
+schema from M4-01 already supports membership (`project_id` nullable, FK `ON DELETE SET NULL`).
+
+| Acceptance criterion | Result | Evidence |
+|---|---|---|
+| A task can be assigned to a project on create | `PASS` | `tests/integration/test_project_tasks.py::test_a_task_can_be_created_in_a_project` (`201`, `project_id` set, listed under the project) |
+| A task can move between projects via `PATCH` | `PASS` | `test_a_task_can_move_between_projects` (new `project_id`, `revision` +1, gone from the old project, present in the new) |
+| Membership can be cleared (`project_id: null`) | `PASS` | `test_membership_can_be_cleared_and_is_optional`; `tests/unit/test_tasks_api.py::test_update_distinguishes_an_omitted_project_from_an_explicit_null` (pure schema check) |
+| Membership is optional — a task with no project is unaffected | `PASS` | `test_membership_can_be_cleared_and_is_optional`, `tests/unit/test_tasks_api.py::test_a_task_can_be_created_without_a_project`; `project_id` is unchanged/`null` and the task keeps its title, status and listing |
+| A project's tasks can be listed | `PASS` | `GET /api/projects/{id}/tasks` — `test_a_projects_tasks_are_listed_and_match_the_project_filter`; `tests/unit/test_projects_api.py::test_a_projects_tasks_are_exposed_as_a_read_only_sub_resource`, `..._takes_a_project_id_and_a_bounded_limit`, `..._returns_the_task_list_shape` |
+| Filtering by project still works, with unchanged M3-08 semantics | `PASS` | `test_a_projects_tasks_are_listed_and_match_the_project_filter` (identical ids/ordering to the endpoint); existing `tests/integration/test_tasks_filters.py::test_project_filter_selects_one_project` (unknown-but-well-formed id matches nothing) unchanged and passing |
+| The listing is strictly user-scoped | `PASS` | `test_a_foreign_projects_tasks_are_invisible`, `test_a_project_listing_reports_unknown_and_foreign_projects_as_missing` (foreign project → `404`; its project id matches no tasks) |
+| Assigning an unknown/foreign project is rejected with no side effects | `PASS` | `test_creating_with_an_unknown_project_is_rejected_without_side_effects` (task list byte-identical), `test_moving_to_an_unknown_or_foreign_project_is_rejected_without_side_effects` (`400`; `project_id` and `revision` unchanged) |
+| Project soft-delete behaviour for its tasks is documented | `PASS` | `DECISIONS.md` ADR-0021; `DATA_MODEL.md` §2.3 and §5 |
+| …and implemented exactly as documented (tasks preserved; live tasks un-filed) | `PASS` | `test_deleting_a_project_unfiles_its_live_tasks` (task row kept, `project_id` NULL, `revision` +1), `test_deleting_a_project_leaves_already_deleted_tasks_untouched` (tombstone row byte-identical) |
+| The un-filing propagates to offline clients | `PASS` | `test_the_unfiling_appears_in_the_change_feed` (one non-tombstone change with `project_id: null` at the bumped revision) |
+| A deleted project can no longer be assigned | `PASS` | `test_a_task_cannot_be_moved_into_a_deleted_project` (`400`, membership stays cleared) |
+| No regression of subtasks / recurrence | `PASS` | `test_a_subtask_cannot_be_moved_to_another_project` (ADR-0016 rule intact); `test_a_recurring_task_keeps_its_project_across_occurrences` (M3-05: the next occurrence inherits the project and is un-filed too); the M3-06/M3-05 suites are unmodified and green |
+| Integration tests added; no existing test weakened or removed | `PASS` | 15 integration + 5 unit tests added (`tests/integration/test_project_tasks.py`, `tests/unit/test_tasks_api.py`, `tests/unit/test_projects_api.py`); no existing test edited |
+| `ruff` / `ruff format --check` / `mypy` / full suite / frontend / `verify.sh` | `PASS` | commands below |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check .                      # All checks passed!
+.venv/bin/ruff format --check .             # 102 files already formatted
+.venv/bin/mypy                              # Success: no issues found in 52 source files
+.venv/bin/python -m pytest tests/unit -q    # 263 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q             # 439 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_project_tasks.py -q   # 15 passed
+
+# contract regeneration (openapi.json is git-ignored; schema.d.ts is committed)
+SECRET_KEY=… SESSION_SECRET=… TOKEN_ENCRYPTION_KEY=… ATLAS_ENV=test .venv/bin/python -c \
+  "import json; from atlas.main import app; open('openapi.json','w').write(json.dumps(app.openapi()))"
+cd apps/web && npm run gen:api              # delta vs. the pre-M4-02 schema: the one new path + operation
+npm run lint && npm run typecheck && npm run test   # 27 passed
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+```
+
+**Note.** No migration was added (none is required). The change feed, views, filters, subtask and
+recurrence suites were not modified, and M4-03…M4-07 (board columns, derived progress, note links,
+planning, export) were not started.
+
+---
+
+### M4-03 — Kanban board (columns from task status)
+
+Verified 2026-10-26 on Linux with Python 3.14 / Node and PostgreSQL 18 in Docker (test database
+`atlas_test`; the application `atlas` database was never touched). Frontend-only change — **no API,
+schema or migration change**, so no backend test was added and OpenAPI / `schema.d.ts` were not
+regenerated.
+
+| Acceptance criterion | Result | Evidence |
+|---|---|---|
+| A board renders one column per status with the corresponding tasks | `PASS` | `apps/web/src/components/Board.test.tsx` ("renders one column per status with the tasks that belong to it"), `apps/web/src/pages/Board.test.tsx` ("renders one column per status with the tasks returned by the API") — all five headings present, tasks in the right column |
+| The columns are exactly the server's canonical statuses (none invented) | `PASS` | `apps/web/src/lib/taskStatus.test.ts` ("has exactly the server's five statuses, in column order"); the table mirrors `services/api/atlas/tasks/state.py::TRANSITIONS` (asserted per status) |
+| Moving a task between columns persists through `PATCH` with `base_revision` | `PASS` | `apps/web/src/api/client.test.ts::tasksApi.setStatus` ("PATCHes the task status together with its `base_revision`" — body `{status, base_revision}` for `/api/tasks/t1`); `apps/web/src/pages/Board.test.tsx` ("persists a valid move and re-renders the card in its new column") |
+| The change is reflected in the UI (success path) | `PASS` | `apps/web/src/pages/Board.test.tsx` — after the move the card is in the new column and gone from the old one |
+| A rejected transition (`409`) is surfaced, not silently ignored, and the card does not move | `PASS` | `apps/web/src/pages/Board.test.tsx` ("surfaces a stale (409) rejection and leaves the card where it was" — `role="alert"` shown, card still in Inbox), ("reports an invalid transition the server rejects" — server reason surfaced) |
+| Disallowed moves are prevented/flagged consistently with `state.py` | `PASS` | `apps/web/src/components/Board.test.tsx` ("refuses a drop into a column the state machine forbids"), ("offers a keyboard alternative that only enables allowed targets" — forbidden `<option>`s disabled) |
+| Keyboard-accessible alternative to drag | `PASS` | per-card status `<select>`; `apps/web/src/components/Board.test.tsx` and `apps/web/src/pages/Board.test.tsx` exercise it via `getByLabelText("Move …")` |
+| Empty states / empty columns | `PASS` | `apps/web/src/components/Board.test.tsx` and `pages/Board.test.tsx` ("shows a useful empty state with every column present" — a hint plus five "No tasks" placeholders) |
+| Light/dark themes | `PASS` | new styles use the existing `--surface`/`--border`/`--text`/`--accent` variables, so both themes are covered (CSS only) |
+| Business logic out of components | `PASS` | status model/rules in `apps/web/src/lib/taskStatus.ts`, data + persistence in `apps/web/src/hooks/useBoard.ts`; `components/Board.tsx` renders props only |
+| No new heavy dependency (native drag-and-drop) | `PASS` | native HTML5 `draggable`/`dataTransfer`; `apps/web/package.json` unchanged, `docs/DEPENDENCIES.md` unchanged (recorded in ADR-0022) |
+| Component tests added; no existing test weakened or removed | `PASS` | 20 new tests across 4 files; baseline 27 → 47 frontend tests, all passing; existing suites untouched |
+| `ruff` / `ruff format --check` / `mypy` / full suite / frontend / `verify.sh` | `PASS` | commands below |
+| Browser E2E (drag end-to-end) | `NOT RUN` | Playwright is not set up in this repository; no E2E harness exists |
+
+**Commands run.**
+
+```
+cd apps/web
+npm run lint                                # clean
+npm run typecheck                           # clean
+npm run test                                # 47 passed (was 27; +20 new)
+npm run build                               # built in ~1.5s, no errors
+
+cd services/api                             # unchanged; run to prove no regression
+.venv/bin/ruff check .                      # All checks passed!
+.venv/bin/ruff format --check .             # 102 files already formatted
+.venv/bin/mypy                              # Success: no issues found in 52 source files
+.venv/bin/python -m pytest tests/unit -q    # 263 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q             # 439 passed
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+```
+
+**Files added.** `apps/web/src/lib/taskStatus.ts` (+ `.test.ts`), `apps/web/src/hooks/useBoard.ts`,
+`apps/web/src/components/Board.tsx` (+ `.test.tsx`), `apps/web/src/pages/Board.tsx` (+ `.test.tsx`),
+`apps/web/src/api/client.test.ts`. **Modified.** `apps/web/src/api/client.ts` (task `list` filters +
+`setStatus`), `apps/web/src/App.tsx` (`/board` route), `apps/web/src/components/Layout.tsx` ("Board"
+nav item), `apps/web/src/styles.css` (board styles).
+
+**Limitations recorded, not waived.** The board is global (no project-scoped board route yet — the
+project detail view does not exist); a project-scoped board can reuse the same component via
+`useBoard(projectId)`. The listing is a single `GET /api/tasks` (default `limit` 200), so a board of
+more than 200 tasks is truncated until pagination/`limit` handling is added. No browser E2E exists.
+M4-04…M4-07 were not touched.
+
+---
+
+### M4-04 — Derived progress calculation
+
+Verified 2026-10-26 on Linux with Python 3.14 and PostgreSQL 18 in Docker (test database `atlas_test`;
+the application `atlas` database was never touched). **No migration** — progress is derived, not
+stored. **API change:** every project response gains a `progress` object, so OpenAPI and
+`apps/web/src/api/schema.d.ts` were regenerated.
+
+| Acceptance criterion | Result | Evidence |
+|---|---|---|
+| The formula is documented exactly as implemented | `PASS` | `DECISIONS.md` ADR-0023; `PRODUCT_SPEC.md` §5.3; `DATA_MODEL.md` §2.3; module docstring of `atlas/projects/progress.py` |
+| `total` = non-archived, non-deleted tasks; `completed` = status `completed` | `PASS` | `atlas/projects/progress.py` (`progress_from_status_counts`, `project_progress`); `tests/unit/test_project_progress.py` |
+| Zero-task case defined (0/0, 0%) | `PASS` | `test_no_tasks_is_zero_and_never_complete`, `test_a_project_with_no_tasks_is_zero`; integration `test_a_new_project_reports_zero_progress` |
+| Some completed / all completed correct | `PASS` | `test_some_completed` (3→1, 33%), `test_all_completed` (4→4, 100%); integration `test_progress_counts_completed_tasks_of_the_project`, `test_all_completed_is_one_hundred_percent` |
+| Archived tasks excluded | `PASS` | `test_archived_tasks_are_excluded`, `test_a_project_of_only_archived_tasks_has_no_progress`; integration `test_archived_deleted_and_unfiled_tasks_are_excluded`, `test_archiving_a_completed_task_stops_it_counting` |
+| Tombstoned (deleted) tasks excluded | `PASS` | `test_deleted_and_non_project_tasks_never_count`; integration `test_archived_deleted_and_unfiled_tasks_are_excluded`, `test_deleting_a_task_lowers_the_progress` |
+| A non-project task is not counted | `PASS` | `test_deleted_and_non_project_tasks_never_count` (a task with `project_id=None`, and one in another project); integration `test_archived_deleted_and_unfiled_tasks_are_excluded` |
+| Progress exposed on the project API (create / get / update / list) | `PASS` | `tests/integration/test_project_progress.py` (`_progress`, the list and create tests); response schema `ProjectProgressOut` |
+| No N+1 in the list endpoint (one grouped query for N projects) | `PASS` | `test_progress_runs_one_grouped_query_for_many_projects` (a single `execute` for three projects); `ProjectsService.progress` runs `GROUP BY project_id, status` |
+| Progress is strictly the caller's tasks (user-scoped) | `PASS` | `test_progress_ignores_another_users_tasks_even_if_they_reference_the_project` |
+| Unit + integration tests added; no existing test weakened or removed | `PASS` | 12 new unit tests, 9 new integration tests; existing suites untouched (439 → 460) |
+| OpenAPI / `schema.d.ts` regenerated and in sync | `PASS` | `npm run gen:api`; delta = `progress` on `ProjectOut` + the new `ProjectProgressOut` schema |
+| `ruff` / `ruff format --check` / `mypy` / full suite / frontend / `verify.sh` | `PASS` | commands below |
+| Browser E2E | `NOT RUN` | Playwright is not set up in this repository |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check .                      # All checks passed!
+.venv/bin/ruff format --check .             # 105 files already formatted
+.venv/bin/mypy                              # Success: no issues found in 53 source files
+.venv/bin/python -m pytest tests/unit -q    # 275 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q             # 460 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_project_progress.py -q   # 9 passed
+
+# contract regeneration (openapi.json is git-ignored; schema.d.ts is committed)
+SECRET_KEY=… SESSION_SECRET=… TOKEN_ENCRYPTION_KEY=… ATLAS_ENV=test .venv/bin/python -c \
+  "import json; from atlas.main import app; open('openapi.json','w').write(json.dumps(app.openapi()))"
+cd apps/web && npm run gen:api              # delta vs. the pre-M4-04 schema: progress + ProjectProgressOut
+npm run lint && npm run typecheck && npm run test   # 47 passed
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+```
+
+**Files added.** `services/api/atlas/projects/progress.py`,
+`services/api/tests/unit/test_project_progress.py`,
+`services/api/tests/integration/test_project_progress.py`. **Modified.**
+`services/api/atlas/projects/__init__.py`, `services/api/atlas/projects/service.py`,
+`services/api/atlas/api/projects.py`, `services/api/atlas/api/schemas.py`,
+`services/api/atlas/models/project.py` (docstring only), `apps/web/src/api/schema.d.ts`.
+
+**Limitations recorded, not waived.** `percent` is a convenience rounding of `completed / total`; the
+canonical data remain `total`/`completed`, so a client can render its own fraction. No project detail
+UI consumes `progress` yet (that is M4-06). Browser E2E is `NOT RUN`. No migration was added and
+M4-05…M4-07 were not touched.
+
+---
+
+### M4-05 — Note↔project links
+
+Verified 2026-10-26 on Linux with Python 3.14 and PostgreSQL 18 in Docker (test database `atlas_test`;
+the application `atlas` database was never touched). **One reversible migration** adds the
+`note_projects` association. **API change:** three new paths/operations plus the `ProjectNotesOut`
+schema, so OpenAPI and `apps/web/src/api/schema.d.ts` were regenerated.
+
+| Acceptance criterion | Result | Evidence |
+|---|---|---|
+| A note can be linked to a project | `PASS` | `tests/integration/test_note_projects.py::test_a_note_can_be_linked_to_a_project_and_listed_both_ways` (`PUT …/notes/{id}` → `204`, row stored) |
+| A note can be unlinked from a project | `PASS` | `test_unlinking_removes_the_association_and_is_idempotent` |
+| A project's notes are listable | `PASS` | `GET /api/projects/{id}/notes` → `ProjectNotesOut` (`NoteSummaryOut[]`, path order): `test_a_note_can_be_linked_to_a_project_and_listed_both_ways`, `test_a_project_can_list_several_notes_in_path_order`; contract in `tests/unit/test_note_projects_api.py::test_the_project_notes_listing_returns_the_note_summary_shape` |
+| A note's projects are listable | `PASS` | `GET /api/notes/{id}/projects` → `ProjectListOut` (with derived `progress`): `test_a_note_can_be_linked_to_a_project_and_listed_both_ways`, `test_a_note_can_be_linked_to_several_projects`; contract in `…::test_the_note_projects_listing_reuses_the_project_list_shape` |
+| Links are optional (a note/project with no links is unaffected) | `PASS` | Nothing requires a link; listings are empty by default and existing notes/projects are untouched — `test_unknown_and_foreign_targets_are_rejected_without_side_effects` shows an empty listing when no link exists |
+| Linking is idempotent | `PASS` | `test_linking_the_same_note_twice_is_idempotent` (two `204`s, exactly one row, one listing entry); `ON CONFLICT DO NOTHING` on the composite key |
+| Unlinking is idempotent | `PASS` | `test_unlinking_removes_the_association_and_is_idempotent` (deleting a missing link → `204`) |
+| **The association survives a note rename** | `PASS` | `test_the_link_survives_a_note_rename` — link, rename via `POST /api/notes/{id}/move`, then the project's notes list the note with its **new path** and same id, and the note's projects still resolve; schema-level `tests/integration/test_note_projects_schema.py::test_a_link_survives_the_note_id_with_a_rename_path_change`; structural `tests/unit/test_note_project_schema.py::test_the_association_references_the_note_id_not_its_path` (no `path` column) |
+| Note delete has a documented, tested effect on the link (no orphan) | `PASS` | `test_deleting_a_note_removes_its_links` (link rows = 0, project's notes empty, note no longer addressable); `NotesService.delete`; `DATA_MODEL.md` §5; `DECISIONS.md` ADR-0024 |
+| Project delete has a documented, tested effect on the link (no orphan; note kept) | `PASS` | `test_deleting_a_project_removes_its_links_but_keeps_the_notes` (link rows = 0, note still `200`, old project `404`, note's projects empty); `ProjectsService.delete`; ADR-0024 |
+| No orphans on the hard-delete paths (FK `ON DELETE CASCADE`) | `PASS` | `test_deleting_a_note_row_cascades_to_its_links`, `test_deleting_a_project_row_cascades_to_its_links`, `test_deleting_a_user_cascades_to_its_links` |
+| Unique per `(note_id, project_id)` | `PASS` | `tests/unit/test_note_project_schema.py::test_the_pair_is_unique_via_the_composite_primary_key`; `tests/integration/test_note_projects_schema.py::test_the_composite_key_rejects_a_duplicate_link` |
+| Unknown / foreign / tombstoned targets rejected with **no side effects** | `PASS` | `test_unknown_and_foreign_targets_are_rejected_without_side_effects` (all `404`, zero rows, listings unchanged), `test_unlinking_with_unknown_or_foreign_targets_is_rejected`, `test_a_tombstoned_project_cannot_be_linked_or_listed`, `test_a_tombstoned_note_cannot_be_linked_or_listed` |
+| Strictly user-scoped | `PASS` | `test_the_endpoints_are_strictly_user_scoped` (another user's note/project → `404`; only the caller's association is listed), `test_the_endpoints_require_authentication` (`401`) |
+| Migration renders the schema, is reversible and matches the models | `PASS` | `tests/unit/test_note_project_schema.py` (`CREATE TABLE note_projects`, both CASCADE FKs, PK, index; `DROP TABLE` on downgrade); `tests/integration/test_tasks_schema.py::test_migrations_match_models` (empty `compare_metadata` diff, now including `note_projects`); real-DB `upgrade`/`downgrade` check below |
+| Unit + integration tests added; no existing test weakened or removed | `PASS` | 12 new unit tests (`test_note_project_schema.py`, `test_note_projects_api.py`) and 20 new integration tests (`test_note_projects.py`, `test_note_projects_schema.py`); existing suites untouched (460 → 492); `conftest.py`'s truncate list gains `note_projects` (additive only) |
+| OpenAPI / `schema.d.ts` regenerated and in sync | `PASS` | `npm run gen:api`; delta = `/api/projects/{id}/notes`, `/api/projects/{id}/notes/{note_id}` (put/delete), `/api/notes/{id}/projects` + `ProjectNotesOut`; a second `gen:api` is byte-identical |
+| `ruff` / `ruff format --check` / `mypy` / full suite / frontend / `verify.sh` | `PASS` | commands below |
+| Browser E2E | `NOT RUN` | Playwright is not set up in this repository; M4-05 is API-only (no link UI was in scope) |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check .                      # All checks passed!
+.venv/bin/ruff format --check .             # 111 files already formatted
+.venv/bin/mypy                              # Success: no issues found in 54 source files
+.venv/bin/python -m pytest tests/unit -q    # 287 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q             # 492 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_note_projects.py \
+    tests/integration/test_note_projects_schema.py -q   # 20 passed
+
+# migration on a real (test) database
+DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/alembic downgrade base && .venv/bin/alembic upgrade head \
+  && .venv/bin/alembic downgrade -1 && .venv/bin/alembic upgrade head   # each step clean; `current` = f2a9c7d14b60 (head)
+
+# contract regeneration (openapi.json is git-ignored; schema.d.ts is committed)
+ATLAS_ENV=test SECRET_KEY=… SESSION_SECRET=… TOKEN_ENCRYPTION_KEY=… .venv/bin/python -c \
+  "import json; from atlas.main import app; open('openapi.json','w').write(json.dumps(app.openapi()))"
+cd apps/web && npm run gen:api              # delta = the 3 new paths/operations + ProjectNotesOut
+npm run lint && npm run typecheck && npm run test   # 47 passed; a second gen:api is byte-identical (md5 unchanged)
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+```
+
+**Schema dump (atlas_test).**
+
+```
+note_projects: note_id NO (uuid), project_id NO (uuid), created_at NO now()
+  pk_note_projects            PRIMARY KEY (note_id, project_id)
+  fk_note_projects_note_id_notes           note_id → notes(id)        ON DELETE CASCADE
+  fk_note_projects_project_id_projects     project_id → projects(id)  ON DELETE CASCADE
+  ix_note_projects_project_id (project_id)
+```
+
+**Files added.** `services/api/alembic/versions/f2a9c7d14b60_note_projects.py`,
+`services/api/atlas/projects/links.py`, `services/api/tests/unit/test_note_project_schema.py`,
+`services/api/tests/unit/test_note_projects_api.py`,
+`services/api/tests/integration/test_note_projects.py`,
+`services/api/tests/integration/test_note_projects_schema.py`. **Modified.**
+`services/api/atlas/models/project.py` (+`NoteProject`), `services/api/atlas/models/__init__.py`,
+`services/api/atlas/projects/__init__.py`, `services/api/atlas/projects/service.py` (delete clears
+links), `services/api/atlas/notes/service.py` (delete clears links),
+`services/api/atlas/api/projects.py`, `services/api/atlas/api/notes.py`,
+`services/api/atlas/api/schemas.py` (`ProjectNotesOut`), `services/api/tests/conftest.py` (truncate
+list), `apps/web/src/api/schema.d.ts`.
+
+**Limitations recorded, not waived.** The link surface is API-only: no project/notes UI to link or
+unlink a note yet, and the links are not embedded in `NoteDetailOut`/`ProjectOut` (dedicated
+endpoints are used). Reviving a deleted note (re-creating its path) does **not** restore its links.
+Browser E2E is `NOT RUN`. M4-06 (planning views) and M4-07 (export) had not been started when this
+record was written; M4-06 is recorded in the next section.
+
+### M4-06 — Daily/weekly planning views
+
+Verified 2026-10-26 on Linux with Node/vitest for the views and Python 3.14 / PostgreSQL 18 in Docker
+for the untouched backend (test database `atlas_test`; the application `atlas` database was never
+touched). **Frontend-only change — no API, schema or migration change**, so no backend test was added,
+OpenAPI / `apps/web/src/api/schema.d.ts` were not regenerated, and the backend suites are expected to
+be unchanged (they are: 287 unit / 492 total).
+
+| Acceptance criterion | Result | Evidence |
+|---|---|---|
+| A **Day** view exists and is navigable | `PASS` | route `/day` (`apps/web/src/App.tsx`), navigation item "Day" (`apps/web/src/components/Layout.tsx`); `apps/web/src/pages/Day.test.tsx` ("opens on today using the server's today view…", "loads another local day from the due window and can return to today" — *Next day* → *Today*) |
+| A **Week** view exists and is navigable | `PASS` | route `/week`, navigation item "Week"; `apps/web/src/pages/Week.test.tsx` ("navigates to another week and back" — *Next week* → *This week*) |
+| The Day view renders from the API, with the current day taken from the server's `today` view | `PASS` | `listMock` called with `{view: "today"}`; overdue and due-today groups split with the existing `groupToday` helper (`pages/Day.test.tsx`); any other day is requested as a `due_from`/`due_to` window |
+| The Week view renders from the API as one due window | `PASS` | `pages/Week.test.tsx` asserts `{dueFrom, dueTo, status: ["inbox","next","in_progress"]}` from `weekWindow`, and that the application's own `due_from`/`due_to` parameters are correct (`api/client.test.ts` — "forwards a planning window and several statuses as query parameters") |
+| Tasks are grouped by **local** day (day grouping renders the correct tasks) | `PASS` | `apps/web/src/lib/planning.test.ts` ("keeps the tasks due on the given local day, soonest first, and drops undated ones", "always renders the seven local days, in order, including empty ones", "places each task on its own day, and never places an undated task"); end-to-end placement in `pages/Day.test.tsx` ("shows only the tasks that fall on the selected local day" — the task due at the closing midnight belongs to the next day) |
+| Week grouping across days | `PASS` | `lib/planning.test.ts` ("places each task on its own day…"); `pages/Week.test.tsx` ("renders the week as seven local days and places tasks on theirs" — each task appears exactly once, inside its own day's section, and empty days still render with a hint) |
+| **Time-zone-correct placement** (a UTC instant that falls on a different local day) | `PASS` | `lib/planning.test.ts` ("places a UTC instant on the viewer's local day, not the UTC one" — 2026-10-26T23:30Z is *not* on Oct 26 for `Europe/Berlin` and *is* on Oct 27); the window itself is asserted to be a local day's boundaries converted to UTC instants ("spans exactly one local day: its midnight to the next", "expresses the window as UTC instants") |
+| Grouping reuses the existing helpers; no new date logic beyond the boundary conversion | `PASS` | `lib/planning.ts` delegates to `groupUpcomingByDay`/`byDue` (`lib/tasks.ts`) and to `Intl.DateTimeFormat`; the only arithmetic is a local day/week boundary → ISO instant for the existing `due_from`/`due_to` filter (no re-derivation of `due_state`, which still comes from the server). Recorded in ADR-0025 |
+| Project context is shown where it helps (name, and the M4-04 derived `progress`) | `PASS` | `components/TaskList.tsx` project tag + `components/ProjectSummary.tsx`; `pages/Day.test.tsx` ("shows the project context (name and derived progress) of the planned tasks" — tag **and** `3/5 · 60%`), `pages/Week.test.tsx` ("shows the project context and derived progress for the week" — `1/4 · 25%`), `components/ProjectSummary.test.tsx` (a project with no countable tasks shows `0/0 · 0%`, never complete) |
+| Project context is non-fatal; failures are surfaced, never silent | `PASS` | `pages/Day.test.tsx` ("keeps the plan visible when project context fails to load" — task still rendered, `role="status"` message), `pages/Week.test.tsx` (same) |
+| A plan shows open work only (the server's own active-status rule) | `PASS` | the window request carries `status=["inbox","next","in_progress"]` (`pages/Day.test.tsx`, `pages/Week.test.tsx`, `api/client.test.ts`), matching the server's Today/Upcoming rule (`atlas/tasks/views.py::INACTIVE_STATUSES`) |
+| Useful empty states | `PASS` | `pages/Day.test.tsx` ("shows a useful empty state for a day with nothing planned"), `pages/Week.test.tsx` ("…for a week with nothing planned"); empty days inside a week show a hint (`pages/Week.test.tsx`) |
+| Clear errors (+ retry) | `PASS` | `pages/Day.test.tsx` and `pages/Week.test.tsx` ("shows a clear error and can retry" — `role="alert"` with the server message, then recovery via *Try again*); `usePlanning` also reports a failed completion as `actionError` (`pages/Day.test.tsx`, "surfaces a completion failure without losing the plan") |
+| Keyboard-accessible | `PASS` | navigation is plain `<button>`s inside a labelled `<nav>`; the day legend is an `aria-live="polite"` region; task rows keep the labelled *Complete* button; links are the existing `NavLink`s. No interaction requires a pointer |
+| Responsive | `PASS` | `styles.css`: `.week-days` is a 7-column grid that scrolls horizontally below 1100 px and collapses to one column at ≤720 px; `.planning-header` stacks at ≤720 px (CSS only) |
+| Light/dark themes | `PASS` | the new rules use only existing variables (`--surface`, `--border`, `--text`, `--muted`, `--accent`, `--space`, `--radius`) (CSS only) |
+| Business logic out of components | `PASS` | day/week windows, keys, labels and grouping in `apps/web/src/lib/planning.ts`; data loading in `apps/web/src/hooks/usePlanning.ts`; `pages/Day.tsx`, `pages/Week.tsx`, `components/ProjectSummary.tsx` and `components/TaskList.tsx` render props only |
+| Today stays simple; shared components/hooks reused, not duplicated | `PASS` | `pages/Today.tsx` is unchanged (it keeps `useTaskView("today")` + `groupToday` + `TaskList` + `LoadError`); the Day view reuses `groupToday`, `TaskList`, `LoadError`, `quickCapture`-free simple layout, and the Week view reuses the Upcoming view's grouping helper rather than a new one |
+| No new dependency | `PASS` | `apps/web/package.json` unchanged; `docs/DEPENDENCIES.md` unchanged; `Intl`/native buttons/Hooks only |
+| Component tests added; no existing test weakened or removed | `PASS` | 30 new tests (`lib/planning.test.ts` 11, `pages/Day.test.tsx` 9, `pages/Week.test.tsx` 6, `components/ProjectSummary.test.tsx` 2, `api/client.test.ts` +2); baseline 47 → **77 passed**; no existing test file was modified except the additive `api/client.test.ts` cases and the additive `makeProject` fixture in `src/test/tasks.ts` |
+| Backend unchanged (no API change ⇒ no backend test required) | `PASS` | this task modified **no** file under `services/api/` and did not regenerate `apps/web/src/api/schema.d.ts` (the backend files shown as modified in the working tree are the pre-existing, uncommitted M3/M4 changes); `ruff`/`mypy` clean; `pytest tests/unit` → 287 passed and the full suite → 492 passed (both identical to the M4-05 baseline) |
+| `ruff` / `ruff format --check` / `mypy` / full suite / frontend / `verify.sh` | `PASS` | commands below |
+| Browser E2E (navigate day/week in a real browser) | `NOT RUN` | Playwright is not set up in this repository (no E2E harness exists); the criterion is recorded as not run, not as passing |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check .                      # All checks passed!
+.venv/bin/ruff format --check .             # 111 files already formatted
+.venv/bin/mypy                              # Success: no issues found in 54 source files
+.venv/bin/python -m pytest tests/unit -q    # 287 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q             # 492 passed
+
+cd apps/web
+npm run lint                                # clean (eslint)
+npm run typecheck                           # clean (tsc --noEmit)
+npm run test                                # 77 passed (17 files)
+npm run build                               # clean (tsc --noEmit && vite build)
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+```
+
+**Files added.** `apps/web/src/lib/planning.ts`, `apps/web/src/lib/planning.test.ts`,
+`apps/web/src/hooks/usePlanning.ts`, `apps/web/src/components/ProjectSummary.tsx`,
+`apps/web/src/components/ProjectSummary.test.tsx`, `apps/web/src/pages/Day.tsx`,
+`apps/web/src/pages/Day.test.tsx`, `apps/web/src/pages/Week.tsx`, `apps/web/src/pages/Week.test.tsx`.
+**Modified.** `apps/web/src/App.tsx` (routes), `apps/web/src/components/Layout.tsx` (navigation),
+`apps/web/src/components/TaskList.tsx` (optional project tag),
+`apps/web/src/api/client.ts` (`dueFrom`/`dueTo`, multi-status forwarding, `projectsApi.list`),
+`apps/web/src/api/client.test.ts` (additive cases), `apps/web/src/test/tasks.ts` (additive
+`makeProject` fixture), `apps/web/src/styles.css` (planning styles). **This task changed no file under
+`services/api/` and did not regenerate `apps/web/src/api/schema.d.ts`.**
+
+**Limitations recorded, not waived.** Overdue carry-over is shown on the current day (the server's
+`today` view) but not on an arbitrary future day, which lists only what is due on it. A plan is
+bounded by the task listing's `limit` (200), so a very busy week is truncated until pagination
+exists. Placement uses the viewer's zone (as the Upcoming view already did), so a task that declares
+its own zone is displayed on the *viewer's* day even though the server classified its `due_state` in
+the task's zone. `weekDayGroups`/`tasksForDay` assume the zone they are given is the zone the date
+values were constructed in — always true in the app, where both come from the browser. Browser E2E is
+`NOT RUN`.
+
+---
+
+### M4-07 — Project export
+
+Verified 2026-10-26 on Linux with Python 3.14 and PostgreSQL 18 in Docker (test database `atlas_test`;
+the application `atlas` database was never touched). **No migration** — the export is read-only.
+**API change:** two new paths/operations plus the `ProjectExportOut`/`ProjectExportTaskOut`/
+`ProjectsExportOut` schemas, so OpenAPI and `apps/web/src/api/schema.d.ts` were regenerated.
+
+| Acceptance criterion | Result | Evidence |
+|---|---|---|
+| A user can export **one** project in a documented open format | `PASS` | `GET /api/projects/{id}/export` returns the versioned document with exactly one entry in `projects` (`tests/integration/test_project_export.py::test_a_project_with_its_tasks_exports_in_the_open_format`) |
+| A user can export **all** their projects | `PASS` | `GET /api/projects/export` (`…::test_all_projects_export_groups_tasks_by_project_and_skips_unfiled_work`) |
+| The document is versioned and identifies itself | `PASS` | `format: "atlas.project-export"`, `version: 1`, `generated_at`, `truncated` (`tests/unit/test_project_export.py::test_the_document_is_versioned_and_open`); response schema `ProjectsExportOut` |
+| Documented project fields present (name, description, status, dates, revision, timestamps) | `PASS` | `…::test_a_project_document_carries_the_documented_fields_and_progress`; integration fidelity vs. `GET /api/projects/{id}` |
+| Documented **task** fields present (``DATA_MODEL`` §2.3), stored values only | `PASS` | `…::test_a_task_document_carries_the_documented_fields`; integration `test_the_export_matches_the_project_and_task_endpoints` (asserts no `due_state`/`subtasks_*`/`deleted_at`) |
+| Stable ids (UUID strings) | `PASS` | `test_a_task_document_carries_the_documented_fields` (`id`/`project_id` are the row UUIDs as strings) |
+| Timestamps are ISO-8601 **UTC** instants; calendar days are `YYYY-MM-DD` | `PASS` | `…::test_absent_optional_values_stay_null`, `…::test_the_document_is_versioned_and_open`; integration `test_the_exported_instants_are_iso_8601_utc` |
+| The derived `progress` is included | `PASS` | `…::test_a_project_with_no_tasks_reports_zero_progress`; integration `test_a_project_with_its_tasks_exports_in_the_open_format` (`{"total":2,"completed":1,"percent":50}`) |
+| Note↔project links included; survive a rename | `PASS` | integration `test_linked_notes_are_included_and_follow_a_rename` |
+| Faithful (export equals the live endpoints) | `PASS` | integration `test_the_export_matches_the_project_and_task_endpoints` |
+| **Self-consistent / no torn read** (single consistent snapshot) | `PASS` | the whole document is read in one `REPEATABLE READ` transaction (`ProjectsService.begin_consistent_read`); integration `test_the_export_reads_one_repeatable_read_snapshot` asserts PostgreSQL reports `repeatable read` for the export's transaction. No concurrent-write race test (would be non-deterministic) — the guarantee is structural |
+| Strictly user-scoped (another user's data absent; 404 on a foreign single-project export) | `PASS` | integration `test_the_export_is_strictly_user_scoped`, `test_a_single_project_export_reports_unknown_and_foreign_as_missing`, `test_the_exports_require_authentication` (`401`) |
+| Empty state handled | `PASS` | integration `test_an_empty_export_is_well_formed` (`projects: []`, well-formed document); unit `test_the_document_is_empty_but_well_formed_with_no_projects` |
+| Scale: bounded, with truncation reported honestly | `PASS` | `limit` (1…500, default 200) bounds projects; `truncated` = `true` when more exist (integration `test_the_project_export_is_bounded_and_reports_truncation`); tasks/notes fetched one query each for all selected projects (no N+1) |
+| An out-of-range `limit` is rejected without side effects | `PASS` | integration `test_the_export_limit_is_validated_without_side_effects` (`422`) |
+| Only live rows exported (tombstoned project/task/note excluded) | `PASS` | integration `test_soft_deleted_rows_are_excluded`, `test_a_tombstoned_project_cannot_be_exported` |
+| `archived` tasks are exported as data but excluded from `progress` | `PASS` | integration `test_archived_tasks_are_exported_but_not_counted_in_progress` (canonical formula, ADR-0023) |
+| The format + version are documented as a stable contract | `PASS` | `DECISIONS.md` ADR-0026; module docstring of `services/api/atlas/projects/export.py`; `PRODUCT_SPEC.md` §5.8 (REQ-015) |
+| No migration (read-only) | `PASS` | no file added under `services/api/alembic/versions/`; the schema-drift test is unchanged |
+| Unit + integration tests added; no existing test weakened or removed | `PASS` | 12 new unit (`tests/unit/test_project_export.py`) + 15 new integration (`tests/integration/test_project_export.py`); existing suites untouched (287 → 299 unit; 492 → 519 total) |
+| OpenAPI / `schema.d.ts` regenerated and in sync | `PASS` | `npm run gen:api`; delta = `/api/projects/export`, `/api/projects/{id}/export` + the three export schemas; a second `gen:api` is byte-identical |
+| `ruff` / `ruff format --check` / `mypy` / full suite / frontend / `verify.sh` | `PASS` | commands below |
+| Browser E2E (download an export in a real browser) | `NOT RUN` | Playwright is not set up in this repository; M4-07 is API-only (no export UI was in scope) |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check .                      # All checks passed!
+.venv/bin/ruff format --check .             # 114 files already formatted
+.venv/bin/mypy                              # Success: no issues found in 55 source files
+.venv/bin/python -m pytest tests/unit -q    # 299 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q             # 519 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_project_export.py -q   # 15 passed
+# M4 gate journey (projects + tasks + boards + progress + note links + export):
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_projects_api.py \
+    tests/integration/test_project_tasks.py tests/integration/test_project_progress.py \
+    tests/integration/test_note_projects.py tests/integration/test_project_export.py -q   # 65 passed
+
+# contract regeneration (openapi.json is git-ignored; schema.d.ts is committed)
+ATLAS_ENV=test SECRET_KEY=… SESSION_SECRET=… TOKEN_ENCRYPTION_KEY=… .venv/bin/python -c \
+  "import json; from atlas.main import app; open('openapi.json','w').write(json.dumps(app.openapi()))"
+cd apps/web && npm run gen:api              # delta = the 2 new paths + ProjectExportOut/ProjectExportTaskOut/ProjectsExportOut
+npm run lint && npm run typecheck && npm run test && npm run build   # 77 passed; build clean
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+```
+
+**Files added.** `services/api/atlas/projects/export.py`,
+`services/api/tests/unit/test_project_export.py`,
+`services/api/tests/integration/test_project_export.py`. **Modified.**
+`services/api/atlas/projects/service.py` (`begin_consistent_read`, `export`, `_export_tasks`,
+`_export_notes`), `services/api/atlas/projects/__init__.py`, `services/api/atlas/api/schemas.py`
+(`ProjectExportTaskOut`, `ProjectExportOut`, `ProjectsExportOut`),
+`services/api/atlas/api/projects.py` (the two export endpoints), `apps/web/src/api/schema.d.ts`.
+
+**Limitations recorded, not waived.** The export is a JSON document bounded by the project `limit`
+(default 200); a larger account is exported in pages (the document is not streamed). Note **content**
+is not included — note content lives on disk (Markdown is already portable) and belongs to the M9-03
+full export, as does the notes-tab export. Tombstones (soft-deleted rows) are not exported (they
+remain available through the M3-09 change feed). No export UI is added (the endpoint is the contract).
+The "no torn read" property is guaranteed by a single REPEATABLE READ transaction and verified by
+inspecting the transaction isolation, not by a concurrent-write race test (which would be
+non-deterministic). Browser E2E is `NOT RUN`.
+
+---
+
+## M4 — Gate (exit criteria)
+
+Verified 2026-10-26 on Linux with Python 3.14, Node 26 and PostgreSQL 18 in Docker. All M4 tasks
+(M4-01…M4-07) are `DONE`; this is the explicit milestone-gate journey.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Tasks can be organised without forcing project membership | `PASS` | M4-02 — membership is optional and single-valued (ADR-0021) |
+| Board changes persist and sync | `PASS` | M4-03 — move persists via `PATCH /api/tasks/{id}` + `base_revision` and reaches offline clients via the M3-09 change feed. Cross-*device* convergence is M7 (recorded, not waived) |
+| Progress is derived consistently (documented formula + tests) | `PASS` | M4-04 / ADR-0023 — `completed / total` excluding archived & deleted; single grouped query |
+| Today stays simple and responsive | `PASS` | M4-06 — `Today.tsx` unchanged; new Day/Week views reuse its components. Not benchmarked (no regression introduced; frontend tests/build pass) |
+| Project data exports | `PASS` | M4-07 / ADR-0026 — versioned open JSON export (`GET /api/projects/export`, `…/{id}/export`), single REPEATABLE READ snapshot |
+| Browser E2E (Playwright) | `NOT RUN` | Playwright not set up in the repository — recorded honestly, not waived |
+
+**Commands run.**
+
+```
+./scripts/verify.sh
+    # verification: PASS — backend 519 passed; frontend 77 passed
+
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_projects_api.py \
+    tests/integration/test_project_tasks.py tests/integration/test_project_progress.py \
+    tests/integration/test_note_projects.py tests/integration/test_project_export.py -q
+    # 65 passed
+```
+
+**Gate:** notes, tasks and projects form one coherent workflow — **APPROVED 2026-10-26**. Cross-device
+convergence (M7) and browser E2E are recorded as `NOT RUN`, not waived.
+
+---
+
+## M5 — Unified Read-Only Calendar
+
+### M5-01 — OAuth credential store (encrypted)
+
+Verified 2026-10-26 on Linux with Python 3.14 and PostgreSQL in Docker (test database `atlas_test`;
+the application `atlas` database was never touched). **No provider is contacted** — M5-00 (real-account
+validation) is `BLOCKED` (AR-001), so this task is built and tested with fakes. **API change:** a new
+`/api/calendar` router (three paths/operations) plus the `ProviderCredential*` schemas, so OpenAPI and
+`apps/web/src/api/schema.d.ts` were regenerated.
+
+| Acceptance criterion | Result | Evidence |
+|---|---|---|
+| Credentials are stored **encrypted at rest** (ciphertext in the DB; plaintext token not recoverable without the key) | `PASS` | integration `test_database_stores_ciphertext_not_the_plaintext_token` (raw `SELECT ciphertext` contains neither the access nor the refresh token nor the key material) |
+| Encryption uses a **maintained AEAD library**, not custom crypto | `PASS` | `cryptography`'s `AESGCM` (AES-256-GCM) — `services/api/atlas/calendar/crypto.py`; ADR-0027; `DEPENDENCIES.md` |
+| The key comes from settings/env, is **never stored in the DB, returned by an API, or logged** | `PASS` | key derived from `Settings.token_encryption_key`; not a column; `ProviderCredentialOut` is metadata only; the key string is absent from the stored row (`…test_database_stores_ciphertext_not_the_plaintext_token`) and from responses (`test_store_read_and_metadata_never_expose_tokens`) |
+| A `key_id`/version is recorded so **rotation is feasible** | `PASS` | `key_id` column; migration `c7d18e93a4f2`; rotation demonstrated by `tests/unit/test_token_crypto.py::test_previous_keys_still_decrypt_their_rows_during_rotation` and integration `test_a_row_sealed_with_a_previous_key_is_still_readable` (refresh re-seals with the active key) |
+| **Encryption round-trip** | `PASS` | `tests/unit/test_token_crypto.py::test_round_trip_returns_the_original_plaintext`; integration read-back via the service |
+| **Tamper/wrong-key detection — decryption fails safely** | `PASS` | unit `test_tampering_is_detected_and_fails_closed`, `test_a_different_key_cannot_decrypt`, `test_an_unknown_key_id_fails_closed`, `test_mismatched_associated_data_fails_closed`, `test_a_truncated_blob_fails_closed`; integration `test_tampered_ciphertext_fails_safely_without_leaking` (`500`, generic message, no token echoed) |
+| The key never appears in the ciphertext | `PASS` | `tests/unit/test_token_crypto.py::test_ciphertext_does_not_contain_the_plaintext_or_the_key` |
+| **Scopes/expiry persistence** | `PASS` | integration `test_store_read_and_metadata_never_expose_tokens`, `test_expiry_and_scopes_round_trip_through_the_database` (`text[]` scopes and both `timestamptz` expiry instants) |
+| **Redaction** of token material in repr/logs/errors | `PASS` | `tests/unit/test_credential_tokens.py::test_bundle_repr_and_str_redact_tokens`, `test_metadata_holds_no_token_material`; errors carry no token (`atlas/calendar/errors.py`); the `422` handler strips `input` on credential paths — integration `test_validation_errors_do_not_echo_token_material`; logger already redacts `access_token`/`refresh_token` (`tests/unit/test_logging.py`) |
+| The service **rejects cross-user access** | `PASS` | integration `test_service_rejects_cross_user_access` (`CredentialNotFoundError` on read/delete, empty listing) and `test_credentials_are_strictly_user_scoped` (two rows in the DB, the caller sees one) |
+| **Upsert / read / refresh / delete** work; **one credential per user+provider** | `PASS` | integration `test_store_read_and_metadata_never_expose_tokens` (store+read), `test_refresh_updates_tokens_and_expiry`, `test_delete_removes_the_credential`, `test_upsert_replaces_and_keeps_exactly_one_row_per_provider`; unique constraint (`tests/integration/test_provider_credentials_schema.py::test_a_user_and_provider_pair_is_unique`) |
+| Typed, user-scoped table with the documented shape; strict user scoping | `PASS` | `provider_credentials` (`id`,`user_id`,`provider`,`key_id`,`ciphertext`,`scopes`,`access_expires_at`,`refresh_expires_at`,`created_at`,`updated_at`); FK `user_id → users.id ON DELETE CASCADE` — `tests/unit/test_provider_credential_schema.py`, `tests/integration/test_provider_credentials_schema.py` |
+| Migration renders the schema, is **reversible** and **matches the models** on a real DB | `PASS` | `tests/unit/test_provider_credential_schema.py::test_migration_renders_the_credential_schema` / `test_migration_is_reversible`; `tests/integration/test_provider_credentials_schema.py::test_migrations_match_models` (`compare_metadata` diff empty); upgrade/downgrade commands below |
+| Unit tests (round-trips, tamper, key handling, redaction) + integration over HTTP; **no existing test weakened or removed** | `PASS` | 31 new unit (`tests/unit/test_token_crypto.py`, `test_credential_tokens.py`, `test_provider_credential_schema.py`) + 20 new integration (`tests/integration/test_provider_credentials_api.py`, `test_provider_credentials_schema.py`); existing suites unchanged (299 → 330 unit; 519 → 570 total) |
+| New dependency reviewed, licensed and audited | `PASS` | `cryptography` (Apache-2.0/BSD) in `DEPENDENCIES.md`; `pyproject.toml` bounded `>=50,<51`; `.venv/bin/pip-audit` → **No known vulnerabilities found** |
+| OpenAPI / `schema.d.ts` regenerated and in sync | `PASS` | `npm run gen:api`; delta = `/api/calendar/credentials`, `/api/calendar/credentials/{provider}`, `/api/calendar/credentials/{provider}/refresh` + the four `ProviderCredential*` schemas; a second `gen:api` is byte-identical |
+| `ruff` / `ruff format --check` / `mypy` / full suite / `verify.sh` | `PASS` | commands below |
+| Real Google/Microsoft OAuth exchange (adapter + real account) | `NOT RUN` — `BLOCKED` | M5-00 is blocked (AR-001); out of scope for M5-01 (no adapter is built) |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check .                      # All checks passed!
+.venv/bin/ruff format --check .             # 127 files already formatted
+.venv/bin/mypy                              # Success: no issues found in 62 source files
+.venv/bin/python -m pytest tests/unit -q    # 330 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q             # 570 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_provider_credentials_api.py \
+    tests/integration/test_provider_credentials_schema.py -q   # 20 passed
+.venv/bin/pip-audit --progress-spinner off  # No known vulnerabilities found
+
+# migration upgrade/downgrade on a real DB (test database only)
+DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test .venv/bin/alembic downgrade base
+DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test .venv/bin/alembic upgrade head
+DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test .venv/bin/alembic current   # c7d18e93a4f2 (head)
+DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test .venv/bin/alembic downgrade -1
+DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test .venv/bin/alembic upgrade head
+
+# contract regeneration (openapi.json is git-ignored; schema.d.ts is committed)
+ATLAS_ENV=test SECRET_KEY=… SESSION_SECRET=… TOKEN_ENCRYPTION_KEY=… .venv/bin/python -c \
+  "import json; from atlas.main import app; open('openapi.json','w').write(json.dumps(app.openapi()))"
+cd apps/web && npm run gen:api              # delta = the 3 new paths + ProviderCredential* schemas
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 570; frontend 77)
+```
+
+**Files added.** `services/api/atlas/calendar/{__init__,crypto,tokens,errors,credentials}.py`,
+`services/api/atlas/models/credential.py`, `services/api/atlas/api/calendar.py`,
+`services/api/alembic/versions/c7d18e93a4f2_provider_credentials.py`,
+`services/api/tests/unit/{test_token_crypto,test_credential_tokens,test_provider_credential_schema}.py`,
+`services/api/tests/integration/{test_provider_credentials_api,test_provider_credentials_schema}.py`.
+**Modified.** `services/api/atlas/models/__init__.py`, `services/api/atlas/api/{__init__,schemas}.py`,
+`services/api/atlas/main.py` (router + credential `422` redaction), `services/api/atlas/config.py`
+(`token_encryption_key_id`, `token_encryption_previous_keys`), `services/api/pyproject.toml`
+(`cryptography`), `services/api/tests/conftest.py` (truncate list), `.env.example`,
+`apps/web/src/api/schema.d.ts`.
+
+**Limitations recorded, not waived.** No real Google/Microsoft OAuth exchange is exercised — the
+adapters that would perform it are M5-03/M5-04 and M5-00 is `BLOCKED` (AR-001). The credential store
+is verified with fakes; its **compatibility with real-provider tokens** (JWT/opaque shapes, real
+scope strings) is unverified until then. `TOKEN_ENCRYPTION_KEY` becomes load-bearing (losing it makes
+credentials unreadable) and must be backed up separately. Key rotation is *supported* (a key id per
+row + a rotating key set) but no automatic re-encryption job exists yet. No connect/disconnect UI
+(M5-05) or adapter (M5-02) is built. Browser E2E is `NOT RUN` (Playwright is not set up).
+
+---
+
+### M5-02 — Provider adapter interface
+
+Verified 2026-10-27 on Linux with Python 3.14 and PostgreSQL in Docker (test database `atlas_test`;
+the application `atlas` database was never touched). **No provider is contacted** — M5-00
+(real-account validation) is `BLOCKED` (AR-001), so this task is built and tested with an in-memory
+fake. **No API change** (no endpoint, no schema, so OpenAPI/`schema.d.ts` are untouched) and **no new
+dependency** (no provider SDK).
+
+| Acceptance criterion | Result | Evidence |
+|---|---|---|
+| A single provider-neutral adapter interface exists covering calendars, event listing with pagination and incremental cursors, and deletions/tombstones | `PASS` | `atlas/calendar/adapter.py::CalendarAdapter` (`list_calendars()`; `list_events(calendar_id, *, cursor, page_token, page_size)`; `provider`; `cursor_type`); `atlas/calendar/types.py` (`Calendar`, `Event`, `EventDeletion`, `EventPage`, `EventStatus`, `CursorType`) |
+| A **provider-neutral event/page model** (id, calendar id, summary, start/end instants + IANA zone + all-day flag, recurrence id, status, etag/version, updated) | `PASS` | `tests/unit/test_calendar_adapter.py::test_neutral_event_carries_all_day_zone_recurrence_and_etag` (all-day, `time_zone`, `recurrence_id`, `recurrence_rule`, `etag`, `status`, `updated`); event validation (`test_neutral_event_rejects_naive_instants`, `test_neutral_event_rejects_an_end_before_the_start`) |
+| No **provider SDK type** appears in the interface or the neutral model | `PASS` | `tests/unit/test_calendar_adapter.py::test_the_contract_modules_import_no_provider_sdk` — AST-scans `atlas/calendar/{adapter,types,fake}.py` for `google`/`msgraph`/`microsoft` imports (none) |
+| A **fake adapter** implements the interface and is exercised by unit tests | `PASS` | `atlas/calendar/fake.py::FakeCalendarAdapter`; `test_fake_satisfies_the_adapter_contract` (`isinstance(fake, CalendarAdapter)`); `test_list_calendars_returns_seeded_calendars` |
+| **Pagination** walks all events without gaps or duplicates | `PASS` | `test_paging_walks_every_event_without_gaps_or_duplicates` (5 events, `page_size=2`, one event each); `test_only_the_final_page_carries_the_durable_cursor` |
+| **Incremental cursor** yields only changes since the cursor | `PASS` | `test_incremental_cursor_returns_only_changes_since_the_cursor` (create+update+delete → only those); `test_incremental_cursor_does_not_repeat_an_unchanged_event` |
+| A change made **during a paging pass is never skipped** (cursor safety) | `PASS` | `test_a_change_made_during_paging_is_deferred_not_skipped` (the pass returns the revision it started at; the new event is picked up by the next pass) |
+| **Deletions are surfaced** as tombstones | `PASS` | `test_deletions_are_surfaced_as_tombstones` (`EventDeletion` with id/calendar/provider/recurrence id) |
+| A **registry/factory** selects an adapter by provider name; unknown provider → clear error | `PASS` | `atlas/calendar/adapter.py::AdapterRegistry`/`build_adapter`; `test_registry_returns_the_adapter_registered_for_a_provider`, `test_registry_rejects_an_unknown_provider` (`UnknownProviderError` naming the known providers), `test_an_empty_registry_rejects_every_provider`, `test_registry_canonicalises_provider_names`, `test_registry_refuses_to_silently_replace_a_registration`, `test_build_adapter_uses_an_explicit_registry` |
+| The **error taxonomy** maps to the documented retry classes (auth-expired/reauth, rate-limited + retry-after, transient, permanent) | `PASS` | `atlas/calendar/errors.py` (`AuthExpiredError`=`reauth`, `RateLimitedError`=`retry_after`, `TransientProviderError`=`retry_backoff`, `PermanentProviderError`=`permanent`); `tests/unit/test_calendar_provider_errors.py` (`test_every_error_class_maps_to_one_of_the_documented_retry_classes`, `test_transient_errors_back_off_and_grow_with_attempts`, `test_rate_limited_honours_the_provider_retry_after`, `test_auth_expired_and_permanent_errors_are_never_retried`) |
+| Unit tests added; **no existing test weakened or removed** | `PASS` | 38 new unit tests (`tests/unit/test_calendar_adapter.py`, `test_calendar_provider_errors.py`); existing suites unchanged (330 → 368 unit; 570 → 608 total) |
+| `ruff` / `ruff format --check` / `mypy` / full suite / `verify.sh` | `PASS` | commands below |
+| Real Google/Microsoft adapter (M5-03/M5-04) and sync/projection store (M5-06) | `NOT RUN` — out of scope | M5-00 is `BLOCKED` (AR-001); this task builds only the contract, neutral types, registry and fake |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check .                      # All checks passed!
+.venv/bin/ruff format --check .             # 132 files already formatted
+.venv/bin/mypy                              # Success: no issues found in 65 source files
+.venv/bin/python -m pytest tests/unit -q    # 368 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q             # 608 passed
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 608; frontend 77)
+```
+
+**Files added.** `services/api/atlas/calendar/{types,adapter,fake}.py`,
+`services/api/tests/unit/{test_calendar_adapter,test_calendar_provider_errors}.py`.
+**Modified.** `services/api/atlas/calendar/{__init__,errors}.py`.
+
+**Limitations recorded, not waived.** No real Google/Microsoft adapter exists yet (M5-03/M5-04) and no
+provider is contacted, so the *contract* is verified with the fake only; its **compatibility with the
+real provider APIs** (Google `syncToken`/`etag`, Graph `deltaLink`/`changeKey` shapes and the exact
+HTTP status → error-class mapping) is unverified until M5-00 unblocks. The fake's cursor never expires;
+real providers return a `410 Gone`/`400` for an invalid/expired sync token, which M5-03/M5-04 must map
+to a full-resync path (the neutral `PermanentProviderError` is the current hook). The projection store
+and cursor persistence are M5-06; no UI (M5-05/M5-07) is built.
+
+---
+
+### M5-06 — Event projection store + sync cursors
+
+**Verified** 2026-10-27 against the M5-02 `FakeCalendarAdapter` and a real PostgreSQL (no provider
+contacted; M5-00 is `BLOCKED` — AR-001). `DEPENDS ON` M5-02 (`DONE`), M1-08 (`DONE`).
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | A projection table persists provider events and a per-`(user, provider, calendar)` cursor table exists | `PASS` | `atlas/models/calendar.py` (`ExternalEvent`, `SyncCursor`); migration `9d2f4b6a1c37`; `tests/unit/test_calendar_projection_schema.py` |
+| 2 | The projection is **unique per (user, provider, external event id)**; no duplicate projections | `PASS` | unique constraint `uq_external_events_user_provider_external_event_id`; `tests/integration/test_calendar_sync.py::test_re_sync_is_idempotent_with_no_duplicate_projections`; `tests/integration/test_calendar_projection_schema.py::test_a_projection_is_unique_per_user_provider_and_event` |
+| 3 | The cursor **advances only after** the covered changes commit; a failure between apply and commit leaves it unchanged and a re-sync skips nothing | `PASS` | `atlas/calendar/sync.py::CalendarSyncService.sync_calendar` (apply + `_advance_cursor` + one `commit`, rollback on error); `test_a_failure_between_apply_and_commit_leaves_the_cursor_unchanged`; `test_a_fetch_failure_records_the_error_and_leaves_the_cursor_unchanged` |
+| 4 | Incremental sync fetches **only changes since the cursor** | `PASS` | `test_incremental_sync_returns_only_changes_since_the_cursor` (`events_seen == 2`, `deletions_seen == 1`) |
+| 5 | First sync (no cursor) establishes a **baseline** | `PASS` | `test_first_sync_establishes_a_baseline_and_records_the_cursor` (`cursor_before is None`, cursor persisted == adapter cursor) |
+| 6 | A deletion is applied as a **tombstone**, never a hard delete of the user's data | `PASS` | `_apply` marks `deleted_at`; `test_a_deletion_becomes_a_tombstone_and_never_loses_the_row`, `test_a_tombstoned_event_is_revived_when_it_reappears` |
+| 7 | A change during paging is **deferred, not skipped**; the cursor is persisted only from a final page | `PASS` | `test_cursor_advances_only_on_the_final_page_and_defers_a_mid_page_change` (cursor == start-of-pass revision; next pass applies the change) |
+| 8 | Strict **user scoping** (projections and cursors) | `PASS` | every query filters `user_id`; `test_projections_and_cursors_are_strictly_user_scoped` |
+| 9 | Migration **renders the schema, is reversible and matches the models** | `PASS` | offline render + reversibility in `tests/unit/test_calendar_projection_schema.py`; `tests/integration/test_calendar_projection_schema.py::test_migrations_match_models`; CLI upgrade/downgrade below |
+| 10 | Pure apply/merge logic unit-tested | `PASS` | `tests/unit/test_calendar_projection.py` (10 tests over `projected_values`/`merge_event_row`/`event_is_unchanged`) |
+| 11 | No existing test weakened or removed | `PASS` | unit 368 → **386**; full suite 608 → **642** (34 new: 18 unit + 16 integration) |
+| 12 | `ruff` / `ruff format --check` / `mypy` / full suite / `verify.sh` | `PASS` | commands below |
+| 13 | Real Google/Microsoft adapters (M5-03/M5-04), notifications (M5-09), reconciliation (M5-10), UI (M5-05/M5-07) | `NOT RUN` — out of scope | M5-00 is `BLOCKED` (AR-001) |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check .                       # All checks passed!
+.venv/bin/ruff format --check .              # formatted
+.venv/bin/mypy                               # Success: no issues found in 68 source files
+.venv/bin/python -m pytest tests/unit -q     # 386 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q              # 642 passed
+# migration on the test DB: downgrade base → upgrade head → downgrade -1 → upgrade head
+DATABASE_URL=…atlas_test .venv/bin/python -c "…downgrade('base'); upgrade('head'); downgrade('-1'); upgrade('head')…"
+#   base: None → head: 9d2f4b6a1c37 → -1: c7d18e93a4f2 → head: 9d2f4b6a1c37
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 642; frontend 77)
+```
+
+**Files added.** `services/api/atlas/models/calendar.py`, `services/api/atlas/calendar/projection.py`,
+`services/api/atlas/calendar/sync.py`,
+`services/api/alembic/versions/9d2f4b6a1c37_calendar_projections.py`,
+`services/api/tests/unit/{test_calendar_projection,test_calendar_projection_schema}.py`,
+`services/api/tests/integration/{test_calendar_sync,test_calendar_projection_schema}.py`.
+**Modified.** `services/api/atlas/calendar/__init__.py`, `services/api/atlas/models/__init__.py`,
+`services/api/tests/conftest.py` (truncate list).
+
+**Limitations recorded, not waived.** The sync is verified against the deterministic fake and a real
+database only; no provider is contacted, so real `syncToken`/`deltaLink` expiry semantics (a `410`/
+`400` → full resync) and the exact provider field mapping remain unverified until M5-00 unblocks and
+M5-03/M5-04 land. The cursor is persisted as an opaque string from the adapter's final page; the fake
+never expires a cursor. No notifications/reconciliation (M5-09/M5-10) or UI (M5-05/M5-07) exist, and
+there is no API surface for sync yet (M5-08 will surface the cursor's last success/error state).
+
+---
+
+### M5-08 — Sync status + error surface
+
+**Verified** 2026-10-27 against the M5-02 `FakeCalendarAdapter` and a real PostgreSQL (no provider
+contacted; M5-00 is `BLOCKED` — AR-001). `DEPENDS ON` M5-06 (`DONE`).
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | A typed, **user-scoped** sync-status read reports last success, state and last error per provider/calendar | `PASS` | `atlas/calendar/status.py::SyncStatusService` + `GET /api/calendar/sync-status`; `tests/integration/test_calendar_sync_status_api.py::test_status_reflects_a_successful_sync`, `test_a_connected_provider_without_a_sync_is_never_synced` |
+| 2 | The status is **derived from the M5-06 cursor rows** — no parallel source of truth | `PASS` | `classify_cursor`/`rollup_provider` are pure functions of `sync_cursors`; no new table/column; `tests/unit/test_calendar_status.py` (9 tests) |
+| 3 | Errors surfaced with a **safe message**; never token material, ciphertext or a raw cursor value | `PASS` | `test_error_state_records_a_safe_message_and_leaks_no_secret` (asserts `ACCESS`/`REFRESH`/`ciphertext`/`rev:` absent); responses carry counts + the bounded M5-06 message (ADR-0030) |
+| 4 | Empty state before anything is connected | `PASS` | `test_status_is_empty_before_anything_is_connected` (`{"providers": []}`) |
+| 5 | A successful sync sets `last_success_at` and `state == idle`, `cursor_health == ok` | `PASS` | `test_status_reflects_a_successful_sync` |
+| 6 | A **user-scoped, idempotent** manual trigger over the registry/fake seam | `PASS` | `ProviderSyncService` + `POST /api/calendar/providers/{provider}/sync`; `test_manual_sync_is_idempotent` (re-baseline → `created == 0`, one projection) |
+| 7 | Strict user scoping of the read | `PASS` | `test_status_is_strictly_user_scoped` (another user's cursor invisible; both rows exist) |
+| 8 | Boundary validation with no side effects | `PASS` | unknown provider `422`; unconnected provider `409`; no adapter built `503`; `test_manual_sync_rejects_an_unknown_provider`, `test_manual_sync_without_a_connection_is_a_conflict`, `test_manual_sync_without_an_adapter_is_unavailable` |
+| 9 | Auth + CSRF enforced | `PASS` | `test_status_and_trigger_require_authentication` (401), `test_trigger_requires_csrf` (403) |
+| 10 | Frontend surface renders status/last-sync with loading/empty/error + a retry affordance | `PASS` | `components/SyncStatus.tsx` + `components/SyncStatus.test.tsx` (7), `pages/Calendar.test.tsx` (5), `lib/syncStatus.test.ts` (10) |
+| 11 | OpenAPI + `schema.d.ts` regenerated and in sync | `PASS` | `services/api/openapi.json` re-exported; `cd apps/web && npm run gen:api` (idempotent) |
+| 12 | No existing test weakened or removed | `PASS` | unit 386 → **395**; full suite 642 → **662** (20 new: 9 unit + 11 integration); frontend 77 → **101** |
+| 13 | `ruff` / `ruff format --check` / `mypy` / full suite / `verify.sh` | `PASS` | commands below |
+| 14 | Browser E2E (Playwright) for the surface | `NOT RUN` | Playwright is not set up in this repository (as recorded for M3-07/M4-03/M4-06) |
+| 15 | Real Google/Microsoft adapters (M5-03/M5-04), event views (M5-05/M5-07), notifications/reconciliation (M5-09/M5-10) | `NOT RUN` — out of scope | M5-00 is `BLOCKED` (AR-001) |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check .                       # All checks passed!
+.venv/bin/ruff format --check .              # 69 files already formatted
+.venv/bin/mypy                               # Success: no issues found in 69 source files
+.venv/bin/python -m pytest tests/unit -q     # 395 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q              # 662 passed
+
+# OpenAPI snapshot + generated TS types
+.venv/bin/python -c "import json; from atlas.main import app; open('openapi.json','w').write(json.dumps(app.openapi()))"
+cd ../apps/web && npm run gen:api            # schema.d.ts regenerated (idempotent)
+
+cd /home/kim/Documents/Atlas/apps/web
+npm run lint && npm run typecheck && npm run test && npm run build   # 101 vitest passed; build clean
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 662; frontend 101)
+```
+
+**Files added.** `services/api/atlas/calendar/status.py`,
+`services/api/tests/unit/test_calendar_status.py`,
+`services/api/tests/integration/test_calendar_sync_status_api.py`,
+`apps/web/src/pages/Calendar.tsx`, `apps/web/src/pages/Calendar.test.tsx`,
+`apps/web/src/components/SyncStatus.tsx`, `apps/web/src/components/SyncStatus.test.tsx`,
+`apps/web/src/hooks/useSyncStatus.ts`, `apps/web/src/lib/syncStatus.ts`,
+`apps/web/src/lib/syncStatus.test.ts`, `apps/web/src/test/calendar.ts`.
+**Modified.** `services/api/atlas/calendar/__init__.py`, `services/api/atlas/api/calendar.py`,
+`services/api/atlas/api/schemas.py`, `services/api/openapi.json`,
+`apps/web/src/{App.tsx,api/client.ts,api/client.test.ts,styles.css}`, `apps/web/src/api/schema.d.ts`.
+
+**Limitations recorded, not waived.** The status is derived from real M5-06 outcomes but exercised
+only against the fake and a real database; no provider is contacted, so real error classification
+(HTTP status → `ProviderError`) is still unverified until M5-00 unblocks and M5-03/M5-04 land. A
+durable `in_progress` state is deliberately not reported (a synchronous sync persists no running
+flag); it arrives with the scheduled/reconciled sync (M5-10). The `/calendar` route is a status
+surface only — the day/week/month event views are M5-05/M5-07 and remain `BACKLOG`. Browser E2E is
+`NOT RUN`.
+
+---
+
+### M5-10 — Periodic reconciliation fallback
+
+**Verified** 2026-10-27 against the M5-02 `FakeCalendarAdapter`, the M5-06 sync service and a real
+PostgreSQL (no provider contacted; M5-00 is `BLOCKED` — AR-001). `DEPENDS ON` M5-06 (`DONE`). The
+implementing run stopped at its turn limit after the code and verification were complete; the
+supervising pass re-ran the checks below and recorded this section.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | A durable, scheduled scan re-syncs each due calendar from its stored cursor and recovers a change no notification delivered | `PASS` | `atlas/calendar/reconcile.py` (`CalendarReconciliationService.scan`); `tests/integration/test_calendar_reconcile.py::test_a_scan_recovers_a_change_no_notification_delivered` |
+| 2 | A missed **deletion** is recovered too (tombstone) | `PASS` | `test_a_scan_recovers_a_deletion_no_notification_delivered` |
+| 3 | The scan is idempotent (no duplicate projections) | `PASS` | `test_a_scan_is_idempotent_and_never_duplicates` |
+| 4 | Restart-safe: a run is a durable job that survives a worker restart; an interrupted run is recovered, not lost or duplicated | `PASS` | `atlas/jobs/handlers.py` (`calendar_scan`) + `atlas/jobs/worker.py` (`ensure_recurring_jobs`); `test_the_worker_processes_the_calendar_scan_and_reschedules_it`, `test_a_stale_marker_makes_the_calendar_due_so_an_interrupted_run_recovers`, `test_ensure_reaps_a_stale_running_scan_and_schedules_a_fresh_one` |
+| 5 | A durable `in_progress` marker exists and the M5-08 status reports it truthfully (derived, not invented) | `PASS` | `sync_cursors.sync_started_at` (migration `b7c2e1a9f4d0`); `begin_sync_run`/`end_sync_run`; `test_the_running_marker_is_set_then_cleared_and_the_status_reports_in_progress`; `test_classify_cursor_reports_in_progress_when_a_run_is_underway` |
+| 6 | A **stale** marker is not reported as in_progress (a crashed run cannot lie) and makes the calendar due | `PASS` | `marker_is_active` + `test_a_stale_marker_is_not_active_so_a_crashed_run_cannot_lie`, `test_a_stale_marker_is_not_reported_as_in_progress`, `test_a_stale_marker_makes_the_calendar_due_so_the_run_is_recovered` |
+| 7 | The M5-06 cursor rule is preserved (cursor advances only after commit; a failing scan leaves it unchanged) | `PASS` | `test_a_failing_scan_leaves_the_cursor_unchanged_and_clears_the_marker` (plus the M5-06 suite) |
+| 8 | Notifications are never trusted as a full log; the scan is safe to run at any time | `PASS` | the scan only triggers a pass from the stored cursor (`reconcile.py` docstring; ADR-0031) |
+| 9 | Isolation: one calendar's failure / an unavailable provider never aborts the scan; strict user scoping | `PASS` | `test_a_scan_without_an_adapter_is_a_harmless_no_op`, `test_a_scan_with_nothing_connected_does_nothing`, `test_a_scan_is_strictly_user_scoped` |
+| 10 | Migration renders the schema, is reversible and matches the models | `PASS` | `b7c2e1a9f4d0` (adds `sync_cursors.sync_started_at`); downgrade drops it; `test_migrations_match_models` green |
+| 11 | Unit + integration tests added; no existing test weakened or removed | `PASS` | 32 new tests (`test_calendar_reconcile.py` unit + integration); full suite 662 → **695** |
+| 12 | `ruff` / `ruff format --check` / `mypy` / full suite / `verify.sh`; OpenAPI + `schema.d.ts` in sync | `PASS` | commands below; `npm run gen:api` re-run is byte-identical |
+| 13 | Real Google/Microsoft adapters (M5-03/M5-04), notifications (M5-09), views (M5-05/M5-07) | `NOT RUN` — out of scope | M5-00 is `BLOCKED` (AR-001) |
+| 14 | Browser E2E (Playwright) | `NOT RUN` | not set up in this repository |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy   # clean
+.venv/bin/python -m pytest tests/unit -q                                     # 408 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/unit/test_calendar_reconcile.py \
+    tests/integration/test_calendar_reconcile.py -q                           # 32 passed
+TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest -q                  # 695 passed
+
+# contract: regenerate OpenAPI + TS types; gen:api re-run is byte-identical (in sync)
+cd apps/web && npm run gen:api
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 695; frontend 101)
+```
+
+**Files added.** `services/api/atlas/calendar/reconcile.py`,
+`services/api/alembic/versions/b7c2e1a9f4d0_calendar_sync_running_marker.py`,
+`tests/unit/test_calendar_reconcile.py`, `tests/integration/test_calendar_reconcile.py`.
+**Modified.** `atlas/jobs/{handlers,worker}.py`, `atlas/config.py` (`calendar_reconcile_seconds`,
+`calendar_sync_stale_seconds`), `atlas/calendar/{__init__,status}.py`, `apps/web/src/api/schema.d.ts`.
+
+**Limitations recorded, not waived.** Exercised against the fake + a real database only; real
+provider reconciliation (M5-03/M5-04) and notification-driven scans (M5-09) remain unverified until
+M5-00 (AR-001) unblocks. The scan is best-effort per calendar; a persistent provider outage is retried
+on each interval rather than backed off per-account. Browser E2E is `NOT RUN`.
+
+---
+
+## M7 — Cross-Device Synchronisation and Offline Support
+
+### M7-01 — Per-user change feed endpoint
+
+**Verified** 2026-10-27 against PostgreSQL 18 (`atlas_test`). `DEPENDS ON` M3-09 (`DONE`). The
+implementing run stopped at its turn limit after the code and its tests were complete; the supervising
+pass re-ran the checks below, regenerated the API contract, and recorded this section.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | A single per-user change feed returns changes after a cursor across entity types (tasks, projects, notes metadata, note↔project links) | `PASS` | `GET /api/changes` (`atlas/api/changes.py`, `atlas/changes/service.py`); `ChangeEntityType`; `tests/integration/test_changes_api.py` |
+| 2 | Ordered by a documented **monotonic** per-user cursor | `PASS` | `change_log.seq` allocated from `users.change_seq` in the mutation's transaction (ADR-0032); `tests/unit/test_change_feed.py` |
+| 3 | Deletions appear as tombstones (`delete` operation) | `PASS` | `ChangeRecorder` records `delete`; `test_changes_api.py` |
+| 4 | Paging is gap- and duplicate-free; a twice-changed entity appears once at its latest cursor | `PASS` | `plan_change_page`, `merge_latest`; `test_change_feed.py`, `test_changes_api.py` |
+| 5 | Strict user scoping; invalid `since`/`limit` → `422` with no side effects; read-only | `PASS` | `parse_since` (0…2^63−1), `parse_limit` (1…500); `test_changes_api.py` |
+| 6 | Cursor model documented; migration reversible and matching the models | `PASS` | ADR-0032; `d4e8b2c6f913`; `tests/unit/test_change_log_schema.py`, `test_change_schema.py` |
+| 7 | Integration + unit tests added; no existing test weakened or removed | `PASS` | 34 change unit tests + 21 integration; full suite 695 → **750** |
+| 8 | `ruff`/`ruff format --check`/`mypy`/full suite/`verify.sh`; OpenAPI + `schema.d.ts` in sync | `PASS` | commands below; `npm run gen:api` re-run byte-identical |
+| 9 | Client offline queue/UI (M7-03/04/05), retention window (M7-02) | `NOT RUN` — out of scope | follow-on tasks |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy   # clean
+.venv/bin/python -m pytest tests/unit -q                                     # 447 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q                                              # 750 passed
+TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest \
+  tests/unit/test_change_feed.py tests/unit/test_change_schema.py -q         # 34 passed
+TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest \
+  tests/integration/test_changes_api.py tests/integration/test_change_log_schema.py -q   # 21 passed
+
+# contract: regenerate OpenAPI + TS types; gen:api re-run is byte-identical (in sync)
+cd apps/web && npm run gen:api
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 750; frontend 101)
+```
+
+**Files added.** `atlas/changes/{__init__,feed,record,service}.py`, `atlas/models/change.py`,
+`atlas/api/changes.py`, `alembic/versions/d4e8b2c6f913_change_log.py`,
+`tests/unit/test_change_feed.py`, `tests/unit/test_change_schema.py`,
+`tests/integration/test_changes_api.py`, `tests/integration/test_change_log_schema.py`.
+**Modified.** `atlas/models/{user,task,__init__}.py`, `atlas/{tasks,projects,notes}/service.py`
+(record changes), `atlas/api/{__init__,tasks,notes,schemas}.py`, `atlas/main.py`, `atlas/config.py`,
+`tests/conftest.py`, `apps/web/src/api/schema.d.ts`.
+
+**Limitations recorded, not waived.** The feed carries entity **metadata**, not note content (notes
+are files; content sync is the client's job via the notes API). `task_note_link` is a reserved entity
+type with no mutation endpoint yet. Tombstones are currently retained indefinitely (the M7-02 retention
+window is the follow-up). No client consumes the feed until M7-03/M7-04.
+
+---
+
+### M7-02 — Tombstones + retention window
+
+**Verified** 2026-10-27 against PostgreSQL 18 (`atlas_test`). `DEPENDS ON` M7-01 (`DONE`).
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | A configurable retention window bounds the change-feed history | `PASS` | `change_retention_days` (default 30 days) + purge settings in `atlas/config.py`; `retention_cutoff` in `atlas/changes/retention.py`; `tests/unit/test_change_retention.py` |
+| 2 | A durable, restart-safe, re-scheduled purge job on the existing queue | `PASS` | `changes.purge` handler + `ensure_change_purge_job`/`schedule_next_change_purge` (`atlas/jobs/handlers.py`); `test_change_purge.py::test_the_purge_job_runs_on_the_queue_and_reschedules`, `::test_a_stale_running_purge_is_reaped_and_restarted` |
+| 3 | The purge is idempotent and removes **only** old change-log rows — never user entity rows | `PASS` | `ChangePurgeService` deletes only `change_log`; `test_change_purge.py::test_the_purge_removes_only_old_change_rows_never_entity_rows` (tasks intact; second pass removes nothing) |
+| 4 | A delete is visible while within retention; a deleted entity is never reported as live | `PASS` | `test_change_purge.py::test_a_delete_is_visible_within_retention_and_the_purge_keeps_it`, `::test_a_purged_deletion_is_never_reported_as_live` (entity stays a tombstone; absent from `GET /api/tasks`) |
+| 5 | A cursor that predates the purge floor gets a clear resync signal, not a partial feed | `PASS` | `resync_required` in `ChangeSet`/`ChangesOut`; `since < floor` branch in `ChangesService`; `test_change_purge.py::test_a_cursor_that_predates_the_floor_gets_resync_required` |
+| 6 | Strict user scoping; boundary validation with no side effects | `PASS` | `test_change_purge.py::test_the_purge_floor_is_strictly_user_scoped`; M7-01 boundary tests unchanged |
+| 7 | Unit + integration tests added; no existing test weakened or removed | `PASS` | 9 new unit + 7 new integration; full suite 750 → **766** |
+| 8 | Migration reversible and matching the models | `PASS` | `c1a2b3d4e5f6` (`users.change_purge_floor` + `ix_change_log_changed_at`); `test_change_log_schema.py::test_migrations_match_models`; explicit upgrade/downgrade/upgrade on `atlas_test` |
+| 9 | Response stays backward compatible | `PASS` | `resync_required` defaults to `false`; existing `test_changes_api.py` assertions unchanged |
+| 10 | `ruff`/`ruff format --check`/`mypy`/full suite/`verify.sh`; OpenAPI + `schema.d.ts` in sync | `PASS` | commands below; `npm run gen:api` re-run |
+| 11 | Client offline queue/UI (M7-03/04/05), failure-mode suite (M7-06) | `NOT RUN` — out of scope | follow-on tasks |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy   # clean
+.venv/bin/python -m pytest tests/unit -q                                     # 456 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q                                              # 766 passed
+TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest \
+  tests/unit/test_change_retention.py -q                                     # 9 passed
+TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest \
+  tests/integration/test_change_purge.py -q                                  # 7 passed
+
+# migration on a real DB (atlas_test), reversible
+DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/alembic current        # c1a2b3d4e5f6 (head)
+DATABASE_URL=…/atlas_test .venv/bin/alembic upgrade head
+DATABASE_URL=…/atlas_test .venv/bin/alembic downgrade -1    # c1a2b3d4e5f6 -> d4e8b2c6f913
+DATABASE_URL=…/atlas_test .venv/bin/alembic upgrade head    # d4e8b2c6f913 -> c1a2b3d4e5f6
+
+# contract: regenerate OpenAPI + TS types
+cd apps/web && npm run gen:api
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 766; frontend 101)
+```
+
+**Files added.** `atlas/changes/{retention,purge}.py`,
+`alembic/versions/c1a2b3d4e5f6_change_retention.py`, `tests/unit/test_change_retention.py`,
+`tests/integration/test_change_purge.py`.
+**Modified.** `atlas/changes/{__init__,feed,service}.py` (`ChangeSet.resync_required`, resync branch),
+`atlas/api/{changes,schemas}.py`, `atlas/models/{user,change}.py`, `atlas/config.py`,
+`atlas/jobs/{handlers,__init__}.py`, `apps/web/src/api/schema.d.ts`.
+
+**Limitations recorded, not waived.** The purge deletes the aged `change_log` rows in one statement per
+run (no batching); for very large installations a chunked delete would bound the transaction — deferred,
+not needed at current scale. The M3-09 task pull (`GET /api/tasks/changes`) is derived from task rows
+and is **not** bounded by this retention (its tombstones live in the task rows, which are never purged).
+No client yet consumes `resync_required` — the M7-03/M7-04 client work is the follow-on.
+
+---
+
+### M7-03 — Client offline queue (durable)
+
+**Verified** 2026-10-27 (frontend; no backend change). `DEPENDS ON` M7-01 (`DONE`). All checks below
+were run on the working tree; browser E2E is not set up in this repository, so that criterion is
+`NOT RUN`.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | A durable client queue persists pending mutations (entity type/id, mutation, idempotency key, `base_revision`) in browser storage | `PASS` | `apps/web/src/lib/offlineQueue.ts` (`OfflineQueue`, `QueuedOperation`, versioned blob); `lib/offlineQueue.test.ts::OfflineQueue.enqueue` |
+| 2 | Storage is IndexedDB-preferred with a documented fallback and a versioned format | `PASS` | `apps/web/src/lib/queueStorage.ts` (`IndexedDbStore` → `LocalStorageStore` → `MemoryStore`); ADR-0034; `lib/queueStorage.test.ts`; `offlineQueue.test.ts` (unknown version discarded) |
+| 3 | The queue survives a reload (re-instantiated from the same backing storage, not just in-memory) | `PASS` | `offlineQueue.test.ts::survives re-instantiation from the same backing storage`, `::survives a reload (a fresh queue over the same localStorage)`; `queueStorage.test.ts::persists across re-instantiation over the same database` |
+| 4 | Queued ops replay in FIFO order through the existing API | `PASS` | `lib/syncEngine.ts::flushQueue`; `syncEngine.test.ts::replays queued operations in FIFO order` |
+| 5 | Each replay sends `Idempotency-Key` **and** `base_revision`; retrying never duplicates | `PASS` | `syncEngine.ts::sendOperation`; `api/client.ts` idempotency header; `syncEngine.test.ts::sends an update as PATCH with the idempotency key and base_revision`, `::does not duplicate an operation on retry (the idempotency key is stable)`; `api/client.test.ts::apiFetch idempotency` |
+| 6 | A stale `409` is surfaced and the operation **kept** — never silently clobbered | `PASS` | `syncEngine.ts::flushQueue` (409 branch → `markConflict`, stop); `syncEngine.test.ts::surfaces a stale 409 and keeps the operation (never clobbers)`; `offlineQueue.test.ts::keeps a conflicted operation and records the server revision` |
+| 7 | The engine pulls via `GET /api/changes` from a stored cursor, advancing it only after a page is applied | `PASS` | `syncEngine.ts::pullChanges`; `api/client.ts::changesApi`; `syncEngine.test.ts::pages from the stored cursor and advances it only after each page is applied`, `::does not advance the cursor when applying a page fails` |
+| 8 | `resync_required` triggers a full resync (cursor predates the retention floor) | `PASS` | `syncEngine.ts::pullChanges` (resync branch → `fullResync`, cursor ← `next_since`); `syncEngine.test.ts::triggers a full resync when the cursor predates the retention floor` |
+| 9 | A minimal queue-status surface (pending/conflict/failed counts + state) exists; business logic in `lib`/`hooks`, not components; light/dark + keyboard | `PASS` | `components/OfflineQueueStatus.tsx`, `hooks/useOfflineQueue.ts`, `lib/queueStatus.ts`, `pages/Sync.tsx`, route `/sync`; `OfflineQueueStatus.test.tsx` (9), `Sync.test.tsx` (2), `useOfflineQueue.test.tsx` (2); theme variables in `styles.css` |
+| 10 | Unit + component tests added; no existing test weakened, skipped or removed | `PASS` | 54 new frontend tests; baseline 101 → **155**; the pre-existing 101 unchanged and green |
+| 11 | `lint`/`typecheck`/`test`/`build`; backend gates; `./scripts/verify.sh` | `PASS` | commands below |
+| 12 | Browser E2E (Playwright) | `NOT RUN` — Playwright is not set up in this repository | — |
+| 13 | Backend / OpenAPI changes | `NONE` — no backend file touched, `schema.d.ts` unchanged (the change feed already existed) | `git status`; `npm run gen:api` not required |
+
+**Commands run.**
+
+```
+# frontend gates
+cd apps/web
+npm run lint          # clean
+npm run typecheck     # tsc --noEmit, clean
+npm run test          # vitest run — 27 files, 155 passed (101 → 155)
+npm run build         # tsc --noEmit && vite build, clean
+
+# backend gates (unchanged, re-run for the record)
+cd services/api
+.venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy   # clean (163 files formatted; mypy 78 files)
+.venv/bin/python -m pytest tests/unit -q                                     # 456 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q                                              # 766 passed
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 766; frontend 155)
+```
+
+**Files added.** `apps/web/src/lib/{queueStorage,offlineQueue,syncEngine,queueStatus}.ts`,
+`apps/web/src/hooks/useOfflineQueue.ts`, `apps/web/src/components/OfflineQueueStatus.tsx`,
+`apps/web/src/pages/Sync.tsx`, `apps/web/src/test/offline.ts`, and the tests
+`apps/web/src/lib/{queueStorage,offlineQueue,syncEngine,queueStatus}.test.ts`,
+`apps/web/src/hooks/useOfflineQueue.test.tsx`, `apps/web/src/components/OfflineQueueStatus.test.tsx`,
+`apps/web/src/pages/Sync.test.tsx`.
+**Modified.** `apps/web/src/api/client.ts` (`changesApi`, `Idempotency-Key`, exported `apiFetch`),
+`apps/web/src/api/client.test.ts`, `apps/web/src/App.tsx` (route), `apps/web/src/components/Layout.tsx`
+(nav), `apps/web/src/styles.css`, `apps/web/package.json` (+`package-lock.json`, test-only
+`fake-indexeddb`).
+
+**Limitations recorded, not waived.** M7-03 delivers the durable queue, the replay/pull engine and a
+minimal status surface only: the **full reconnect reconciliation matrix** (M7-04) — applying pulled
+changes to a local cache, resolving a surfaced conflict, draining on an `online`/focus event — and the
+**full sync-status UI** (M7-05) are follow-on tasks. `flushQueue` stops at the first conflict to
+preserve FIFO order; a conflict is currently surfaced but has no resolution action yet. The queue is a
+client cache, never authoritative (`ARCHITECTURE.md` §5). Browser E2E is `NOT RUN`.
+
+---
+
+### M7-04 — Reconnect reconciliation
+
+**Verified** 2026-10-27 (frontend; no backend change). `DEPENDS ON` M7-03 (`DONE`). All checks below were
+run on the working tree; browser E2E is not set up in this repository, so that criterion is `NOT RUN`.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | A reconciliation pass is triggered on `online`/focus and by a manual action; business logic lives in `lib`/`hooks`, not components | `PASS` | `apps/web/src/lib/reconciliation.ts` (`reconcile`, `Reconciler`); `hooks/useReconciliation.ts` (listeners + manual `reconcile`); `hooks/useReconciliation.test.tsx` (mount, `online`, `focus`, manual) |
+| 2 | A pass **flushes** the durable queue (M7-03 replay) **then** **pulls** missed changes (`GET /api/changes`) from the stored cursor | `PASS` | `reconciliation.ts::reconcile` (steps 2/4); `lib/reconciliation.test.ts::replays the durable queue (flush) before pulling the change feed` |
+| 3 | Pulled changes are applied to a **local cache**; the client is eventually consistent | `PASS` | `lib/localCache.ts` (`LocalCache.applyChanges`, tombstones, cursor never regresses); `reconciliation.test.ts`; `localCache.test.ts` |
+| 4 | A stale `base_revision` (`409`) is a **conflict**: the local change is kept, the server never clobbered, the edit never silently dropped | `PASS` | `reconciliation.ts` (flush outcome → `markLocalState`, conflict kept); `reconciliation.test.ts::surfaces a stale 409, keeps the local change and never clobbers the server`; `applies a server change to the cache while keeping a queued local edit` |
+| 5 | The conflicting entity is **surfaced** to the UI | `PASS` | `components/ConflictNotice.tsx` + `lib/reconciliation.ts` label helpers; `components/ConflictNotice.test.tsx` (5), `pages/Sync.test.tsx::surfaces a reconciliation conflict` |
+| 6 | The conflict policy is defined and documented (keep-local + surface; manual resolution is M7-05) | `PASS` | ADR-0035; `PRODUCT_SPEC.md` §5.5; this section |
+| 7 | `resync_required` triggers a full resync and resumes from the returned head | `PASS` | `reconciliation.ts::reconcile` (`fullResync` clears + re-applies local state, cursor ← `next_since`); `reconciliation.test.ts::drops the cache and resumes from the head, keeping the queued local edit` |
+| 8 | Reconciling is **idempotent** — re-running does not duplicate effects | `PASS` | `reconciliation.test.ts::is idempotent: a second pass sends and applies nothing new`; `retries a network failure on the next pass without duplicating the change` (same `Idempotency-Key`); `localCache.test.ts::is idempotent: re-applying a page (or an older one) changes nothing` |
+| 9 | Durability across reload holds | `PASS` | `localCache.test.ts::survives re-instantiation from the same backing storage`; `reconciliation.test.ts::keeps the queue, cursor and cache across a reload and still converges` |
+| 10 | Light/dark + keyboard where UI is added | `PASS` | `components/ConflictNotice.tsx` (focusable `Retry sync`, `aria-busy`, explicit states); theme variables in `styles.css` (`.conflict-notice`); `ConflictNotice.test.tsx` |
+| 11 | No heavy sync framework; no new dependency added | `PASS` | built on the M7-03 `lib`/`hooks`; no `package.json` change; ADR-0035 §"No new dependency" |
+| 12 | Unit + component tests added; no existing test weakened, skipped or removed | `PASS` | 28 new frontend tests; baseline 155 → **183**; the pre-existing 155 unchanged and green (the two `Sync.test.tsx` cases kept) |
+| 13 | `lint`/`typecheck`/`test`/`build`; backend gates; `./scripts/verify.sh` | `PASS` | commands below |
+| 14 | Browser E2E (Playwright) | `NOT RUN` — Playwright is not set up in this repository | — |
+| 15 | Backend / OpenAPI changes | `NONE` — no backend file touched, `schema.d.ts` unchanged (the change feed already existed) | `git status` |
+
+**Commands run.**
+
+```
+# frontend gates
+cd apps/web
+npm run lint          # clean
+npm run typecheck     # tsc --noEmit, clean
+npm run test          # vitest run — 31 files, 183 passed (155 → 183)
+npm run build         # tsc --noEmit && vite build, clean
+
+# backend gates (unchanged, re-run for the record)
+cd services/api
+.venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy   # clean (163 files formatted; mypy 78 files)
+.venv/bin/python -m pytest tests/unit -q                                     # 456 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q                                              # 766 passed
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 766; frontend 183)
+```
+
+**Files added.** `apps/web/src/lib/localCache.ts`, `apps/web/src/lib/reconciliation.ts`,
+`apps/web/src/hooks/useReconciliation.ts`, `apps/web/src/components/ConflictNotice.tsx`, and the tests
+`apps/web/src/lib/{localCache,reconciliation}.test.ts`,
+`apps/web/src/hooks/useReconciliation.test.tsx`, `apps/web/src/components/ConflictNotice.test.tsx`.
+**Modified.** `apps/web/src/pages/Sync.tsx` (renders the conflict surface and runs a full pass on the
+manual action), `apps/web/src/pages/Sync.test.tsx` (+1 case, mocks the new hook), `apps/web/src/test/offline.ts`
+(`makeCacheEntry`), `apps/web/src/styles.css` (conflict-surface styles).
+
+**Limitations recorded, not waived.** This is the reconciliation pass and a **minimal** conflict
+surface only: the **full sync-status UI** (M7-05) — the pending/failed/conflicts panel and manual
+conflict **resolution** — and the **failure-mode E2E suite** (M7-06) are follow-on tasks. A conflict has
+no resolution action yet; it is kept and surfaced. The local cache stores *change metadata* (which
+entity changed, its cursor, tombstone status and the client's own pending/conflict flags), **not entity
+payloads** — the M7-01 feed carries none, so a consumer that wants a body fetches it from the ordinary
+endpoint. A full resync drops the metadata cache and resumes from the server's head; it does not re-fetch
+every entity body. Reconciliation is client-driven (no push); it runs on `online`/`focus`/manual. The
+cache is a client cache, never authoritative (`ARCHITECTURE.md` §5). Browser E2E is `NOT RUN`.
+
+---
+
+### M7-05 — Sync status UI (+ manual conflict resolution)
+
+**Verified** 2026-10-27 (frontend; no backend change). `DEPENDS ON` M7-01 (`DONE`) and builds on M7-03/M7-04
+(`DONE`). All checks below were run on the working tree; browser E2E is not set up in this repository,
+so that criterion is `NOT RUN`.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | A **sync-status panel** shows **pending / failed / conflict** counts and a clear **overall state** (up to date / syncing / offline / error / conflicts) | `PASS` | `components/SyncStatusPanel.tsx`; overall rule `lib/queueStatus.ts::overallSyncState`; `components/SyncStatusPanel.test.tsx` (8: empty/pending/failed/conflicts/offline/load-error/resolve-error/busy); `lib/queueStatus.test.ts::overallSyncState` (6) |
+| 2 | Conflicts are surfaced with a **per-entity resolution action**; **"keep mine"** re-queues the local op with the **server's current revision** as the new `base_revision` so the next flush succeeds | `PASS` | `lib/conflictResolution.ts::resolveConflict`; `OfflineQueue.rebase` (`lib/offlineQueue.ts`); `lib/conflictResolution.test.ts::re-queues the local edit against the server's revision and clears the conflict` / `unblocks the next flush: the rebased operation is accepted`; `lib/offlineQueue.test.ts` (rebase cases) |
+| 3 | **"keep mine"** never loses the edit: the queued payload is untouched, and an unknown server revision re-queues unchanged (no unchecked write) | `PASS` | `conflictResolution.test.ts::keeps the original base revision when the server revision is unknown`; `offlineQueue.test.ts` (payload preserved) |
+| 4 | **"take server"** discards the local op and adopts the server's state (local-pending/conflict flags cleared) | `PASS` | `conflictResolution.test.ts::discards the local edit and adopts the server state`; `hooks/useConflictResolution.test.tsx` |
+| 5 | Resolving is **idempotent** | `PASS` | `conflictResolution.test.ts::is idempotent: resolving an already-resolved conflict twice is a no-op` and `…for take-server as well`; `localCache.test.ts` (`markLocalState` is stable to re-run); `offlineQueue.test.ts` (rebase is a no-op on `pending`) |
+| 6 | Resolution **re-uses the existing queue/cache/reconciliation primitives** (no duplicated logic) | `PASS` | `resolveConflict` calls `OfflineQueue.{list,remove,rebase}` and `LocalCache.markLocalState`; the panel composes `OfflineQueueStatus`/`ConflictNotice` and reads `useOfflineQueue`/`useReconciliation` |
+| 7 | Business logic stays out of components (in `lib`/hooks) | `PASS` | `lib/conflictResolution.ts`, `lib/queueStatus.ts::overallSyncState`, `hooks/useConflictResolution.ts`; `components/SyncStatusPanel.tsx` renders props only |
+| 8 | Component tests: the panel renders each state and both actions behave | `PASS` | `components/SyncStatusPanel.test.tsx`; `components/ConflictNotice.test.tsx` (+4 resolution cases); `pages/Sync.test.tsx` (+1 wiring case); `hooks/useConflictResolution.test.tsx` (3) |
+| 9 | Unit tests for the resolution helpers | `PASS` | `lib/conflictResolution.test.ts` (9: keep-mine/take-server/idempotence/scoping/labels) |
+| 10 | Light/dark + keyboard-accessible; useful empty state; clear errors | `PASS` | focusable buttons with `title`+`aria-busy`+disabled-while-busy; overall badge is `aria-live`; queue surface keeps `role="status"`; `styles.css` theme variables (`.sync-panel*`, `.conflict-actions`); error states covered in `SyncStatusPanel.test.tsx` |
+| 11 | No existing test weakened, skipped or removed | `PASS` | the pre-existing 183 frontend tests unchanged and green (two `Sync.test.tsx` cases kept; only a mock for the new hook added); 183 → **216** (+33) |
+| 12 | `lint`/`typecheck`/`test`/`build`; backend gates; `./scripts/verify.sh` | `PASS` | commands below |
+| 13 | No new dependency added | `PASS` | built on the M7-03/M7-04 stack; `package.json` unchanged; ADR-0036 §"No new dependency" |
+| 14 | Browser E2E (Playwright) | `NOT RUN` — Playwright is not set up in this repository | — |
+| 15 | Backend / OpenAPI changes | `NONE` — no backend file touched, `schema.d.ts` unchanged | `git status` |
+
+**Commands run.**
+
+```
+# frontend gates
+cd apps/web
+npm run lint          # clean
+npm run typecheck     # tsc --noEmit, clean
+npm run test          # vitest run — 34 files, 216 passed (183 → 216)
+npm run build         # tsc --noEmit && vite build, clean
+
+# backend gates (unchanged, re-run for the record)
+cd services/api
+.venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy   # clean (163 files formatted; mypy 78 files)
+.venv/bin/python -m pytest tests/unit -q                                     # 456 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q                                              # 766 passed
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 766; frontend 216)
+```
+
+**Files added.** `apps/web/src/lib/conflictResolution.ts`,
+`apps/web/src/hooks/useConflictResolution.ts`, `apps/web/src/components/SyncStatusPanel.tsx`, and the
+tests `apps/web/src/lib/conflictResolution.test.ts`,
+`apps/web/src/hooks/useConflictResolution.test.tsx`,
+`apps/web/src/components/SyncStatusPanel.test.tsx`.
+**Modified.** `apps/web/src/lib/offlineQueue.ts` (+`rebase`), `apps/web/src/lib/queueStatus.ts`
+(+`overallSyncState`/labels), `apps/web/src/components/ConflictNotice.tsx` (optional resolution
+actions), `apps/web/src/pages/Sync.tsx` (renders the panel and wires the resolution hook),
+`apps/web/src/styles.css` (panel + conflict-action styles), and the tests
+`apps/web/src/components/ConflictNotice.test.tsx` (+4), `apps/web/src/pages/Sync.test.tsx` (+1, mock),
+`apps/web/src/lib/queueStatus.test.ts` (+6), `apps/web/src/lib/offlineQueue.test.ts` (+2).
+
+**Limitations recorded, not waived.** This is the status panel and the two manual resolutions; the
+**failure-mode E2E suite** (network loss, restart, stale client) is M7-06. Resolution is **per-entity**
+and **client-driven** (no push); "take server" adopts the server's *metadata* state (the feed carries
+no payloads, ADR-0035) and does not re-fetch an entity body — the `/sync` route does not render bodies.
+"Keep mine" re-bases onto the revision recorded at the `409`; if the server changed again in the
+meantime the next flush simply re-surfaces a fresh conflict rather than losing the edit. Browser E2E is
+`NOT RUN`.
+
+---
+
+### M7-06 — Failure-mode tests (real browser E2E)
+
+**Verified** 2026-10-27 (frontend + Playwright; no backend change). `DEPENDS ON` M7-03 (`DONE`), M7-04
+(`DONE`). All checks below were actually run on this machine; the E2E suite **executed and passed** in
+real Chromium.
+
+| # | Criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | Playwright is set up in `apps/web` (`@playwright/test`, `playwright.config.ts`, `e2e/`, `npm run e2e`) | `PASS` | `apps/web/package.json` (`"e2e": "playwright test"`), `apps/web/playwright.config.ts`; Chromium installed via `npx playwright install chromium` |
+| 2 | The dependency + browser licence/purpose are recorded | `PASS` | `docs/DEPENDENCIES.md` (`@playwright/test`, Apache-2.0; the Chromium/"Chrome for Testing" build it downloads, BSD-3-Clause) |
+| 3 | Serves the real app deterministically (no live backend) | `PASS` | `playwright.config.ts` `webServer` runs `npm run build && vite preview` (`http://localhost:4173`); the API is mocked via `page.route` |
+| 4 | **Network loss:** a queued edit is kept while offline and the queue **flushes** on reconnect | `PASS` | `e2e/sync-failure-modes.spec.ts` "network loss…"; asserts `Pending sync` + `Offline` while down, then a successful `PATCH` and `All synced` after `online` |
+| 5 | **Restart:** an offline edit survives a full page reload and still syncs | `PASS` | `e2e/sync-failure-modes.spec.ts` "restart…"; after `page.reload()` the queue is still `Pending sync` and then drains |
+| 6 | **Stale client / conflict:** a stale-revision `409` is surfaced, and both actions behave as documented | `PASS` | `e2e/sync-failure-modes.spec.ts` "…'Keep mine'…" and "…'Take server'…"; `Sync conflicts` + `revision 5` shown, `Keep mine` lands a `PATCH` at `base_revision: 5`, `Take server` writes nothing |
+| 7 | Deterministic and repeatable | `PASS` | 4 tests passed on **two** consecutive `npm run e2e` runs, 4 parallel workers, no retries |
+| 8 | Existing suites and `verify.sh` still pass; no existing test weakened | `PASS` | frontend `216 passed`; full backend `766 passed`; `./scripts/verify.sh` → `verification: PASS` |
+| 9 | `scripts/verify.sh` untouched; E2E is a separate, documented command | `PASS` | `git diff --exit-code scripts/verify.sh` clean; documented in `docs/TESTING.md` §1a |
+
+**Exact commands and real results.**
+
+```
+cd apps/web && npm run lint                 # eslint .  → clean
+cd apps/web && npm run typecheck            # tsc --noEmit → clean
+cd apps/web && npm run test                 # 34 files, 216 passed
+cd apps/web && npm run build                # tsc --noEmit && vite build → clean (dist/)
+cd apps/web && npm run e2e                  # Playwright: 4 passed (Chromium), run green twice
+
+cd services/api
+.venv/bin/ruff check .                      # All checks passed!
+.venv/bin/ruff format --check .             # 163 files already formatted
+.venv/bin/mypy                              # Success: no issues found in 78 source files
+.venv/bin/python -m pytest tests/unit -q    # 456 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q             # 766 passed
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 766; frontend 216)
+```
+
+**Files added.** `apps/web/playwright.config.ts`, `apps/web/e2e/sync-failure-modes.spec.ts`,
+`apps/web/e2e/helpers.ts`.
+**Modified.** `apps/web/package.json` (`@playwright/test` dev dependency + `e2e` script),
+`apps/web/package-lock.json` (lockfile), `apps/web/vite.config.ts` (Vitest `exclude` of `e2e/**`),
+`.gitignore` (Playwright `test-results/`/`playwright-report/`).
+
+**Limitations recorded, not waived.**
+- The queue's durable store is the source of truth here: because M7-03..M7-05 build the offline queue
+  and its status/reconciliation **surfaces** but no *editing* UI enqueues an offline mutation yet, each
+  test **seeds** a queued operation into the app's **own** durable IndexedDB store (`atlas-offline` →
+  `kv` → `queue`, exactly the shape `offlineQueue.ts` reads) to represent the offline-edit state, then
+  drives the **real** `/sync` UI (Refresh / Sync now / Keep mine / Take server, the hooks and the
+  flush/reconcile code) to observe and act on it. The UI, reconciliation and HTTP paths exercised are
+  production code; only the enqueue step is seeded.
+- The API is **mocked** via Playwright network interception (AGENTS.md §11/§13 — no live backend, no
+  real account); the suite therefore verifies the failure-mode **contract and UI behaviour**, not
+  provider/back-end integration.
+- "Offline" is simulated with a failing/aborted mutation route plus the real `window` `offline`/`online`
+  events the app listens for, rather than `context.setOffline`, so the served app can load; the
+  flush-on-reconnect path is still the real one.
+- Chromium only (one browser in the matrix). `npm run e2e` is **not** wired into `scripts/verify.sh`
+  (protected); it is a separate command documented in `TESTING.md`.
+- The Chromium build had to be downloaded (`npx playwright install chromium`); the environment warned
+  "your OS is not officially supported by Playwright", but the fallback `ubuntu24.04-x64` build
+  installed and the suite ran.
+
+---
+
+## M7 — Gate (exit criteria)
+
+Verified 2026-10-27 on Linux with Node 26, Playwright/Chromium and PostgreSQL 18 in Docker. All M7
+tasks (M7-01…M7-06) are `DONE`; this is the explicit milestone-gate journey.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Multiple devices converge | `PASS` | Clients converge by paging `GET /api/changes` to the head; the per-user cursor is a total order (ADR-0032); `tests/integration/test_changes_api.py`. *(No literal two-physical-device run — recorded, not waived.)* |
+| Offline edits retained | `PASS` | Durable client queue (M7-03) + E2E reload test |
+| Stale writes detected | `PASS` | `base_revision` → `409`; E2E conflict tests (M7-05/M7-06) |
+| Conflicting note edits recoverable | `PASS` | Notes conflict copies (M2-08) + M7 conflict surface/resolution (ADR-0036) |
+| Deleted entities do not reappear | `PASS` | Tombstones + bounded retention + no-resurrection guarantee (M7-02, ADR-0033) |
+| Restart preserves queued work | `PASS` | E2E: an offline edit survives a full page reload and still syncs (M7-06) |
+
+**Commands run.**
+
+```
+./scripts/verify.sh
+    # verification: PASS — backend 766 passed; frontend 216 passed
+
+cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_changes_api.py \
+    tests/integration/test_change_log_schema.py tests/integration/test_change_purge.py -q
+    # 28 passed (change feed, paging, tombstones, retention purge, no resurrection)
+
+cd apps/web && npm run e2e
+    # 4 passed (Chromium): network loss, restart (offline edit survives reload), stale-client conflict
+    #   with both resolutions — the first executed real-browser E2E in this repository
+```
+
+**Not run:** a literal two-physical-device convergence run; the E2E uses a mocked API (no live
+provider — AR-001). Recorded honestly, not waived.
+
+**Gate:** synchronisation recoverable under realistic failure conditions — **APPROVED 2026-10-27**.
+
+---
+
+## M8 — Notifications and Mobile Applications
+
+### M8-01 — Reminder scheduler (durable)
+
+**Verified** 2026-10-27. `DEPENDS ON` M1-08 (`DONE`), M3-05 (`DONE`). All checks below were actually
+run on this machine (PostgreSQL 18 in Docker, `atlas_test` database). Backend-only; no API/OpenAPI
+change, so `schema.d.ts` was **not** regenerated (verified: `openapi()` contains no reminder schema).
+
+| # | Criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | Durable reminder state: a policy entity + a scheduled reminder + a delivery record, in a versioned migration | `PASS` | `atlas/models/reminder.py`, migration `e5a91c3f7b64`; `tests/unit/test_reminder_schema.py`, `tests/integration/test_reminders.py::test_migrations_match_models` |
+| 2 | A reminder fires **exactly once** at the time-zone-correct instant | `PASS` | `test_a_reminder_fires_once_and_records_the_delivery`; tz/fire-instant rules in `tests/unit/test_reminder_schedule.py` (CEST/CET + DST gap) |
+| 3 | A retry/restart does **not** deliver twice | `PASS` | `test_a_retry_or_restart_does_not_deliver_twice`, `test_delivering_a_sent_reminder_again_is_skipped` (single `reminder_deliveries` row; unique `reminder_id`) |
+| 4 | A cancelled/completed/archived/soft-deleted entity is **skipped** | `PASS` | `test_a_completed_or_archived_task_is_skipped` (parametrized), `test_a_soft_deleted_task_is_skipped`, `test_cancelling_a_reminder_skips_delivery`, `test_sync_cancels_a_reminder_when_the_task_becomes_terminal` |
+| 5 | Editing a due date **reschedules**; cancelling skips | `PASS` | `test_editing_a_due_date_reschedules_the_reminder`, `test_the_api_reschedules_the_reminder_on_a_due_date_edit` |
+| 6 | The scheduler is durable (job-queue backed) and **idempotent** | `PASS` | `test_scheduling_materialises_the_reminder_and_its_durable_job` (job `run_at == remind_at`), `test_the_scan_sweep_is_durable_and_idempotent`; `ensure_reminder_scan_job` wired into `ensure_recurring_jobs` |
+| 7 | Time-zone correct via `atlas/tasks/timezones.py`; store UTC | `PASS` | `atlas/reminders/schedule.py::remind_at_for` uses `to_local`/`get_zone`/`to_utc`; unit tests assert the local-calendar-day and DST behaviour |
+| 8 | Notifier abstraction with a fake/logging notifier | `PASS` | `atlas/reminders/notifier.py` (`LoggingNotifier`, `RecordingNotifier`); `tests/unit/test_reminder_schedule.py` |
+| 9 | Strict user scoping at the boundary | `PASS` | `test_syncing_another_users_task_is_a_no_op`; `ReminderService.sync_for_task` loads through the owning user |
+| 10 | Migration applies, reverses and matches the models | `PASS` | `test_migration_upgrade_and_downgrade_round_trip`; `compare_metadata == []`; ADR-0037 |
+| 11 | No existing test weakened or removed; lint/type/format/full suite/`verify.sh` pass | `PASS` | counts below; full suite grew `766 → 809` |
+
+**Exact commands and real results.**
+
+```
+cd services/api
+.venv/bin/ruff check .                      # All checks passed!
+.venv/bin/ruff format --check .             # 174 files already formatted
+.venv/bin/mypy                              # Success: no issues found in 85 source files
+.venv/bin/python -m pytest tests/unit -q    # 480 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q             # 809 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest tests/integration/test_reminders.py -q   # 19 passed
+
+# Migration round-trip on the real test database (DATABASE_URL = atlas_test):
+DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test .venv/bin/alembic downgrade c1a2b3d4e5f6
+    # → no reminder_* tables present
+DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test .venv/bin/alembic upgrade head
+    # → reminder_deliveries, reminder_policies, reminders present
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 809; frontend 216)
+```
+
+**New tests.** `services/api/tests/unit/test_reminder_schedule.py` (15),
+`services/api/tests/unit/test_reminder_schema.py` (9), `services/api/tests/integration/test_reminders.py`
+(19).
+
+**Not run / out of scope (recorded, not waived).** Real push transport (Web Push/VAPID) is M8-02 and
+device push is M8-04; delivery here is verified against the fake/logging notifier only. A reminder
+policy can only be assigned directly in the database in this milestone — the preferences UI is M8-05.
+
+---
+
+### M8-03 — Device token registry + invalidation
+
+**Verified** 2026-10-27 against PostgreSQL 18 (`atlas_test`). `DEPENDS ON` M8-01 (`DONE`). The
+implementing run stopped at its turn limit before writing the docs; the supervising pass re-ran the
+checks below and recorded this section.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | A durable registry of push destinations per user, keyed `(user_id, channel, endpoint)`, in a versioned migration | `PASS` | `atlas/models/notification.py`, migration `a3f7c2d8b105`; `tests/unit/test_notification_registry.py`, `tests/integration/test_notification_registry.py::test_migrations_match_models` |
+| 2 | Register/unregister are idempotent; a re-register upserts (no duplicate) | `PASS` | `NotificationRegistryService.register` (upsert on the unique key); `test_registering_the_same_destination_is_idempotent`, `test_unregister_is_idempotent` |
+| 3 | A web and a native destination round-trip | `PASS` | `test_register_returns_metadata_and_never_the_endpoint_or_keys`, `test_a_native_registration_round_trips` |
+| 4 | Secrets (endpoint/`p256dh`/`auth`) are never returned or logged | `PASS` | `DeviceOut` omits them; `test_register_returns_metadata_and_never_the_endpoint_or_keys` |
+| 5 | Strict user scoping; media auth (401) and CSRF (403) enforced at the boundary | `PASS` | `test_devices_are_strictly_user_scoped`, `test_devices_require_authentication`, `test_writes_require_csrf` |
+| 6 | An invalid/expired destination reported by a delivery is pruned/disabled and not retried | `PASS` | `NotificationRegistryService.disable_many`; `tests/integration/test_notification_registry.py::test_an_invalid_destination_reported_by_a_delivery_is_pruned`, `test_a_dead_destination_is_disabled_even_when_its_send_fails` |
+| 7 | A re-register revives an invalidated destination | `PASS` | `test_re_registering_revives_an_invalidated_destination` |
+| 8 | Delivery targets active destinations and degrades safely with none | `PASS` | `atlas/reminders/delivery.py`; `test_a_user_without_devices_falls_back_to_an_untargeted_send` |
+| 9 | Migration applies, reverses and matches the models | `PASS` | `test_migration_upgrade_and_downgrade_round_trip`; `compare_metadata == []`; ADR-0038 |
+| 10 | No existing test weakened or removed; lint/type/format/full suite/`verify.sh` pass | `PASS` | full suite `809 → 856`; commands below |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy   # clean
+.venv/bin/python -m pytest tests/unit -q                                     # 480 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q                                              # 856 passed
+TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest \
+  tests/integration/test_notification_registry.py -q                         # 19 passed (incl. migration round-trip)
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 856; frontend 216)
+```
+
+**Files added.** `atlas/models/notification.py`, `atlas/notifications/{registry,service}.py`,
+`atlas/api/notifications.py`, `alembic/versions/a3f7c2d8b105_notification_devices.py`,
+`tests/unit/test_notification_registry.py`, `tests/integration/test_notification_registry.py`.
+**Modified.** `atlas/reminders/{notifier,delivery}.py` (invalid-destination reporting + targeting the
+active registry), `atlas/api/{__init__,schemas}.py`, `atlas/main.py`, `apps/web/src/api/schema.d.ts`.
+
+**Limitations recorded, not waived.** Exercised with the fake/recording notifier and a real database;
+real Web Push delivery is M8-02 and real mobile push is M8-04 (both need devices/services). The
+registry stores a destination; it does not itself send.
+
+---
+
+### M8-02 — Web Push (VAPID) desktop
+
+**Verified** 2026-10-27 with Chromium (Playwright), Python 3.14 and PostgreSQL 18 (`atlas_test`).
+`DEPENDS ON` M8-01 (`DONE`), M8-03 (`DONE`). The implementing run stopped at its turn limit before the
+docs and the push E2E; the supervising pass added the missing E2E spec
+(`apps/web/e2e/web-push-consent.spec.ts`), ran it, and recorded this section.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | VAPID keys are configuration (external, never committed); a missing key disables the feature cleanly | `PASS` | `atlas/notifications/vapid.py`; `tests/unit/test_vapid_config.py` |
+| 2 | Delivery uses a maintained library (no custom crypto) behind the M8-01 `Notifier` | `PASS` | `atlas/reminders/push.py::PushSender` (`pywebpush`, MPL-2.0); `tests/unit/test_push_sender.py` |
+| 3 | The sender targets the user's active web subscriptions | `PASS` | `tests/integration/test_web_push_delivery.py` |
+| 4 | A push service's `404`/`410` is reported so the registry disables the destination | `PASS` | `INVALID_DESTINATION_STATUSES` → `invalid_destinations`; `tests/unit/test_push_sender.py`, `tests/integration/test_web_push_delivery.py` |
+| 5 | `GET /api/notifications/config` serves only the **public** key | `PASS` | `atlas/api/notifications.py`; the private key is never serialised |
+| 6 | The consent UI handles permission, subscribes with the VAPID key (from the server config) and registers the destination | `PASS` | `apps/web/e2e/web-push-consent.spec.ts` (granted → "Notifications are on" + `POST /api/notifications/devices` with the `{channel,endpoint,p256dh,auth}` payload) |
+| 7 | Unsupported / server-disabled / denied states are clear | `PASS` | E2E: denied → "Notifications are blocked" (no enable action); no-VAPID → "Notifications aren't available on this server"; component tests for all states |
+| 8 | A service worker renders a pushed message | `PASS` | `apps/web/public/sw.js` (renders `{title,body,data}`, dedupe `tag`); component/unit coverage of the client rules |
+| 9 | No existing test weakened; lint/type/format/full suite/`verify.sh` pass | `PASS` | full suite `856 → 875`; frontend `216 → 244`; commands below |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy   # clean
+.venv/bin/python -m pytest tests/unit -q                                     # 490 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q                                              # 875 passed
+
+cd apps/web && npm run lint && npm run typecheck && npm run test && npm run build   # clean; 244 vitest
+cd apps/web && npm run e2e
+    # 7 passed (Chromium): 4 M7 failure modes + 3 M8-02 push consent
+    #   (granted → registered; denied → blocked; server without VAPID → unavailable)
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 875; frontend 244)
+```
+
+**Files added.** `services/api/atlas/notifications/vapid.py`, `services/api/atlas/reminders/push.py`,
+`services/api/tests/unit/{test_vapid_config,test_push_sender}.py`,
+`services/api/tests/integration/test_web_push_delivery.py`; `apps/web/public/sw.js`,
+`apps/web/src/lib/webpush.ts` (+`.test.ts`), `apps/web/src/hooks/useWebPush.ts` (+`.test.tsx`),
+`apps/web/src/components/NotificationConsent.tsx` (+`.test.tsx`), `apps/web/src/pages/Notifications.tsx`,
+`apps/web/e2e/web-push-consent.spec.ts`.
+**Modified.** `atlas/api/notifications.py`, `atlas/api/schemas.py`, `atlas/config.py`,
+`services/api/pyproject.toml` (`pywebpush`), `apps/web/src/{App.tsx,components/Layout.tsx,api/client.ts,styles.css}`.
+
+**Limitations recorded, not waived.** A real push **delivery** to a browser is `NOT RUN` — it needs a
+live push service (and real VAPID keys) and cannot be exercised in this environment; the E2E mocks the
+Push API and asserts the contract/UI. Real mobile push is M8-04.
+
+---
+
+### M8-05 — Notification preferences UI
+
+**Verified** 2026-10-27 against PostgreSQL 18 (`atlas_test`) and the frontend test suite.
+`DEPENDS ON` M8-01 (`DONE`). The implementing run stopped at its turn limit before the docs; the
+supervising pass re-ran the checks and recorded this section.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | A user can view and change the reminder timing (a per-user default) | `PASS` | `GET`/`PUT /api/notifications/reminders`; `tests/integration/test_reminder_preferences.py::test_the_default_is_null_until_set_then_reads_back` |
+| 2 | A per-entity override exists and beats the default | `PASS` | `PUT /api/tasks/{id}/reminder`; `test_a_per_entity_override_beats_the_default_and_reschedules`, `test_repeated_overrides_reuse_one_policy_row` |
+| 3 | A timing change reschedules the durable reminder | `PASS` | `test_setting_the_default_reschedules_inherited_tasks`; `test_the_scan_materialises_reminders_for_default_only_tasks` |
+| 4 | Clearing clears/cancels | `PASS` | `test_clearing_the_default_cancels_inherited_reminders` |
+| 5 | Idempotent, strictly user-scoped | `PASS` | `test_setting_the_default_is_idempotent`, `test_preferences_are_strictly_user_scoped` |
+| 6 | Invalid values rejected at the boundary with no side effects | `PASS` | `tests/unit/test_reminder_preferences.py` (`days_before`/strict `HH:MM`), `test_an_invalid_timing_is_rejected_with_no_side_effects`, `test_an_invalid_override_is_rejected_with_no_side_effects`, `test_the_override_endpoint_rejects_an_unknown_task` |
+| 7 | One default per user; existing policies unaffected | `PASS` | partial unique index `uq_reminder_policies_default`; migration `f1b2c3d4e5a6` (server default `false`) |
+| 8 | UI renders loading/error/saved states; logic out of components; light/dark; keyboard | `PASS` | `components/ReminderPreferences.tsx` (+`.test.tsx`), `hooks/useReminderPreferences.ts`, `lib/reminders.ts` (+`.test.ts`); wired on `/notifications` |
+| 9 | Auth (401) / CSRF (403) on writes; migration reversible + model-matching | `PASS` | `test_reminder_preferences_require_authentication`, `test_writes_require_csrf`; migration round-trip + `compare_metadata == []` |
+| 10 | No existing test weakened; lint/type/format/full suite/`verify.sh` pass; OpenAPI + TS in sync | `PASS` | full suite `875 → 914`; frontend `244 → 268`; `gen:api` idempotent |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy   # clean
+.venv/bin/python -m pytest tests/unit -q                                     # 515 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q                                              # 914 passed
+TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest \
+  tests/integration/test_reminder_preferences.py -q                          # passed
+
+cd apps/web && npm run lint && npm run typecheck && npm run test && npm run build   # clean; 268 vitest
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 914; frontend 268)
+```
+
+**Files added.** `services/api/alembic/versions/f1b2c3d4e5a6_reminder_default_policy.py`,
+`services/api/tests/unit/test_reminder_preferences.py`,
+`services/api/tests/integration/test_reminder_preferences.py`; `apps/web/src/lib/reminders.ts` (+`.test.ts`),
+`apps/web/src/hooks/useReminderPreferences.ts`, `apps/web/src/components/ReminderPreferences.tsx` (+`.test.tsx`).
+**Modified.** `atlas/models/reminder.py`, `atlas/reminders/*`, `atlas/api/{notifications,tasks,schemas}.py`,
+`services/api/openapi.json`; `apps/web/src/pages/Notifications.tsx`, `apps/web/src/api/{client.ts,schema.d.ts}`.
+
+**Limitations recorded, not waived.** A Playwright E2E for the preferences flow was not added (the
+component/unit tests cover the UI states and the backend integration tests cover the reschedule effect);
+recorded `NOT RUN` for the browser-E2E end, not waived. Real mobile-push timing is M8-04.
+
+---
+
+## M9-01 — Automated DB + Markdown backups
+
+`DEPENDS ON` M1-02 (`DONE`). Backend only (`services/api` + `scripts`); the restore drill (M9-02) and
+the full open-format export (M9-03) are **out of scope** for this task.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | One backup set captures **both** stores (PostgreSQL dump + Markdown notes archive) | `PASS` | `atlas/backups/service.py` (`BackupService.run`); `tests/integration/test_backups.py::test_a_backup_captures_both_stores_with_a_verifiable_manifest` (the dump contains a committed task row; `notes.tar.gz` contains the on-disk note) |
+| 2 | The set carries a manifest with a file list, sizes and checksums, plus provenance + timestamp | `PASS` | `atlas/backups/manifest.py`; `test_the_manifest_records_provenance_and_a_timestamp` (parts record `store` = `postgresql`/`markdown`, `created_at`, `sha256`) |
+| 3 | An integrity check passes on a good set | `PASS` | `atlas/backups/verify.py` (`verify_backup_set`); `tests/unit/test_backups.py::test_a_good_set_verifies`; integration set verifies after each run |
+| 4 | The integrity check fails clearly on a tampered set | `PASS` | `test_a_tampered_set_fails_the_integrity_check`, `test_a_missing_part_fails_the_integrity_check`, unit `test_a_tampered_part_fails_verification`, `test_a_missing_manifest_marks_a_set_incomplete`, `test_an_unsafe_part_filename_in_a_manifest_fails` |
+| 5 | A partial/failed run is detectable and never reported as a good backup | `PASS` | staging → verify → atomic publish; `test_a_failed_run_is_detectable_and_never_published` (no published set; the leftover staging dir verifies `not ok`) |
+| 6 | Runs are idempotent / safe to repeat; a surviving set is never mutated | `PASS` | `test_runs_are_repeatable_and_retention_keeps_the_newest` (a later run leaves an existing set's digests unchanged) |
+| 7 | Configurable destination + retention with sane defaults; nothing written outside the destination | `PASS` | `BACKUP_DIR`/`BACKUP_RETAIN` (default 7); `BackupService._ensure_within`; `test_runs_are_repeatable_and_retention_keeps_the_newest` (only `notes/` + `backups/` exist) |
+| 8 | No secret is written to the manifest or logs | `PASS` | manifest carries no URL/credential; password travels via `PGPASSWORD` (unit `test_binary_backend_keeps_the_password_out_of_argv`); `test_no_database_secret_reaches_the_manifest` |
+| 9 | A durable job runs the backup and is restart-safe | `PASS` | `atlas/jobs/handlers.py` (`BACKUP_TASK`, `ensure_backup_job`, `schedule_next_backup`); `test_the_backup_job_runs_on_the_durable_queue_and_reschedules`, `test_a_stale_running_backup_is_reaped_and_restarted` |
+| 10 | An operator CLI exists and works | `PASS` | `atlas/backups/cli.py` (`atlas-backup run|verify|list`); `test_the_cli_runs_lists_and_verifies`; manual run below |
+| 11 | No existing test weakened or removed; lint/type/format/full suite/`verify.sh` pass | `PASS` | full suite `914 → 936`; frontend `268`; `verify.sh` → `verification: PASS` |
+
+**Commands run.**
+
+```
+cd services/api
+.venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy   # clean
+.venv/bin/python -m pytest tests/unit -q                                     # 561 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q                                              # 936 passed
+TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest \
+  tests/integration/test_backups.py tests/unit/test_backups.py -q            # 22 passed
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # backend 936; frontend 268; verification: PASS
+```
+
+**Operator CLI (manual, `atlas_test` + a temp notes dir — never the application DB):**
+
+```
+$ DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  NOTES_ROOT=$TMP/notes BACKUP_DIR=$TMP/backups BACKUP_PG_DUMP_CONTAINER=atlas-db-1 \
+  .venv/bin/atlas-backup run
+backup ok: 20261027T110759Z-e8104d55
+  directory: …/backups/atlas-backup-20261027T110759Z-e8104d55
+  database: 35868 bytes sha256=7e859e02…
+  notes: 144 bytes (2 files) sha256=1a5dd185…
+$ .venv/bin/atlas-backup verify           # ok …/atlas-backup-20261027T110759Z-e8104d55 (database: ok; notes: ok)
+$ printf 'x' >> …/database.sql && .venv/bin/atlas-backup verify   # FAILED …: database: checksum/size mismatch  (exit 1)
+```
+
+**Files added.** `services/api/atlas/backups/{__init__,manifest,pgdump,verify,service,cli,__main__}.py`,
+`services/api/tests/unit/test_backups.py`, `services/api/tests/integration/test_backups.py`.
+**Modified.** `services/api/atlas/jobs/{handlers,__init__}.py`, `services/api/atlas/config.py`,
+`services/api/pyproject.toml` (`atlas-backup` entry point), `services/api/Dockerfile`
+(`postgresql-client`), `deploy/docker-compose.yml` (worker backups volume + env), `.env.example`.
+
+**Limitations recorded, not waived.** The dump uses `pg_dump` **plain** format (portable, restorable
+with `psql`); a `pg_dump` custom format + `pg_restore` was considered and deferred to keep the first
+backup path dependency-free and easy to inspect (ADR-0041). Backup integrity proves the set is
+*internally consistent*, not that it restores — end-to-end restore is the M9-02 drill and is recorded
+`NOT RUN` here. Backups are taken by the worker with the container's local `pg_dump`; on this dev host
+the client is absent and the test/CLI use `docker exec` into `atlas-db-1` (`BACKUP_PG_DUMP_CONTAINER`).
+
+---
+
+## M9-02 — Documented + executed restore drill
+
+`DEPENDS ON` M9-01 (`DONE`). Proves an M9-01 backup set actually **restores**: a real drill against
+scratch targets (a scratch database and a scratch notes directory) with a source-identical
+verification, plus the failure path. The full open-format export (M9-03) and the vulnerability scan
+(M9-04) are **out of scope**.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | A backup set is restored into scratch targets (scratch DB + scratch notes dir) | `PASS` | `atlas-backup run` → `psql … < database.sql` into `atlas_restore_dst` (exit 0, no `ERROR`/`FATAL`) + `tar -xzf notes.tar.gz` into a scratch dir (exit 0) |
+| 2 | The restored notes are byte-identical to the source | `PASS` | `diff -r notes_src notes_dst` exit 0; per-file SHA-256 equal (`32949e66…`, `7b96b088…`) |
+| 3 | The known rows are present in the restored database | `PASS` | `SELECT` on `atlas_restore_dst` returns the seeded user (`drill@example.com`), task (`RESTORE-DRILL-TASK-42`) and project (`Restore Drill Project`) with identical values |
+| 4 | The schema is applied cleanly (migration state matches the source) | `PASS` | restored `alembic_version` = source head `f1b2c3d4e5a6`; **23 tables / 203 columns** on both; normalized `pg_dump --data-only` diff identical (`a39f3088…`) and per-table `row_to_json` MD5 identical (users/tasks/projects) |
+| 5 | A tampered set fails the integrity check | `PASS` | bytes appended to `database.sql` → `atlas-backup verify` `FAILED … database: checksum/size mismatch` (exit 1) |
+| 6 | A partial set fails the integrity check | `PASS` | removed `notes.tar.gz` → `FAILED … notes: file missing` (exit 1); an interrupted-run staging dir reported `INCOMPLETE` (exit 1) |
+| 7 | No application DB or real notes are touched; scratch targets are cleaned up | `PASS` | only `atlas_restore_src`/`atlas_restore_dst` were created and both were dropped; the scratch dirs removed; `atlas`/`atlas_test` untouched |
+| 8 | The procedure is documented as an operator runbook matching what was run | `PASS` | `docs/OPERATIONS.md` §2 |
+| 9 | No existing test weakened/removed; lint/format/type/full suite/`verify.sh` pass | `PASS` | unit `561 passed`; full `936 passed`; ruff/format/mypy clean; `./scripts/verify.sh` → `verification: PASS` |
+
+**Executed drill (2026-10-27).** `$SCR` is a session scratch dir; `atlas_restore_src` (source) and
+`atlas_restore_dst` (restore target) are scratch databases on the same PostgreSQL server as
+`atlas_test`; the application `atlas` database and real notes were never used.
+
+```
+# --- seed a scratch source DB + notes root (known data) ---
+docker exec atlas-db-1 psql -U atlas -d postgres -c "CREATE DATABASE atlas_restore_src OWNER atlas;"
+docker exec atlas-db-1 psql -U atlas -d postgres -c "CREATE DATABASE atlas_restore_dst OWNER atlas;"
+DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_restore_src .venv/bin/alembic upgrade head
+#   … -> f1b2c3d4e5a6 (head)
+#   seeded rows: user 11111111-… ("drill@example.com"), task 22222222-… "RESTORE-DRILL-TASK-42",
+#                project 33333333-… "Restore Drill Project"; notes $SCR/notes_src/{index.md,sub/todo.md}
+
+# --- 1) produce + verify the set ---
+$ DATABASE_URL=…atlas_restore_src NOTES_ROOT=$SCR/notes_src BACKUP_DIR=$SCR/backups \
+    BACKUP_PG_DUMP_CONTAINER=atlas-db-1 .venv/bin/atlas-backup run
+backup ok: 20261027T111643Z-ecdf00ad
+  directory: …/backups/atlas-backup-20261027T111643Z-ecdf00ad
+  database: 36452 bytes sha256=8e17eb16f85be8dc10e3f65d52c21ee187035883aadd3ef59a2191f1c6e2fd69
+  notes: 281 bytes (2 files) sha256=aaa4c37e409fe123f12d0d734b39bc047cb29e72853d8615e95602c0f370ef7c
+$ .venv/bin/atlas-backup verify $SET
+ok …/atlas-backup-20261027T111643Z-ecdf00ad
+    database: ok
+    notes: ok                       # exit 0
+
+# --- 2) restore into scratch targets ---
+$ docker exec -i atlas-db-1 psql -U atlas -d atlas_restore_dst -v ON_ERROR_STOP=1 < $SET/database.sql
+SET …  (exit 0; grep -iE 'error|fatal' -> none)
+$ tar -xzf $SET/notes.tar.gz -C $SCR/notes_dst      # exit 0 -> index.md, sub/todo.md
+
+# --- 3) assert restored == source ---
+$ diff -r $SCR/notes_src $SCR/notes_dst             # IDENTICAL (exit 0)
+source   index.md 32949e66b77f…  sub/todo.md 7b96b088e69d…
+restored index.md 32949e66b77f…  sub/todo.md 7b96b088e69d…
+$ docker exec atlas-db-1 psql -U atlas -d atlas_restore_dst -c "SELECT id,email,display_name FROM users;"
+  11111111-1111-1111-1111-111111111111 | drill@example.com | Restore Drill
+$ … -c "SELECT id,title,status,priority FROM tasks;"
+  22222222-2222-2222-2222-222222222222 | RESTORE-DRILL-TASK-42 | next | high
+$ … -c "SELECT id,name FROM projects;"
+  33333333-3333-3333-3333-333333333333 | Restore Drill Project
+$ … atlas_restore_dst -tAc "SELECT version_num FROM alembic_version;"   # f1b2c3d4e5a6
+#   tables/columns: src 23/203 == dst 23/203
+#   normalized data-only dump: src == dst (sha256 a39f3088…); per-table row_to_json md5 identical
+#     users=df44be87… tasks=582932f3… projects=7c3c24cb… (both DBs)
+
+# --- 4) the failure path (reuses the M9-01 integrity check) ---
+$ cp -r $SET $SCR/tampered && printf '\n-- TAMPERED\n' >> $SCR/tampered/database.sql
+$ .venv/bin/atlas-backup verify $SCR/tampered
+FAILED …/tampered
+    database: checksum/size mismatch
+    notes: ok                       # exit 1
+$ cp -r $SET $SCR/partial && rm $SCR/partial/notes.tar.gz
+$ .venv/bin/atlas-backup verify $SCR/partial
+FAILED …/partial
+    database: ok
+    notes: file missing             # exit 1
+$ mkdir -p $SCR/backups/.staging/interrupted-run && … && .venv/bin/atlas-backup verify $SCR/backups
+ok …/atlas-backup-20261027T111643Z-ecdf00ad
+INCOMPLETE …/.staging/interrupted-run (interrupted run; no manifest)   # exit 1
+
+# --- 5) clean up ---
+$ docker exec atlas-db-1 psql -U atlas -d postgres \
+    -c "DROP DATABASE IF EXISTS atlas_restore_src;" -c "DROP DATABASE IF EXISTS atlas_restore_dst;"
+DROP DATABASE … both dropped; remaining: atlas, atlas_test
+$ rm -rf $SCR
+
+# --- verification gate ---
+cd services/api
+.venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy   # clean
+.venv/bin/python -m pytest tests/unit -q                                     # 561 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q                                              # 936 passed
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh                          # verification: PASS
+```
+
+**Files changed.** `docs/OPERATIONS.md` (§2 restore runbook, replacing the placeholder), `docs/ROADMAP.md`
+(M9-02 row → `DONE` + verification paragraph), `docs/ACCEPTANCE.md` (this section), `docs/CHANGELOG.md`,
+`project/CURRENT_TASK.md`. No code was changed and no test was added, altered or removed — the drill
+exercises the existing M9-01 `atlas-backup` CLI and `verify_backup_set`.
+
+**Limitations recorded, not waived.** The drill restored into scratch targets and queried them
+directly; it did **not** stop/start the compose stack nor serve the app against the restored data
+(that is an operational act on a real host, `OPERATIONS.md` §2.4). Calendar-sync resumption after a
+restore is **`NOT RUN`** — it needs the M5-00 real accounts (AR-001); the per-provider cursor restores
+with the database and resumption is idempotent by design (`ADR-0029`/`ADR-0031`).
+
+---
+
+## M9-03 — Full data export
+
+`DEPENDS ON` M2, M3, M4 (`DONE`). Implements REQ-015 data portability: a **complete export** of a
+user's notes (content), tasks and projects (and their associations) in **open formats**, with a
+manifest, reachable over HTTP and via the operator CLI. Reuses the M4-07 document (ADR-0026) rather
+than forking it; the full-export set format is **ADR-0042**. **No migration** — the export is
+read-only. **API change:** one new path/operation (`GET /api/export`), so OpenAPI and
+`apps/web/src/api/schema.d.ts` were regenerated.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | One export captures **notes + tasks + projects** | `PASS` | `tests/integration/test_export.py::test_a_full_export_captures_notes_tasks_and_projects` (the zip holds `data.json`, `notes.json` and the `.md` files) |
+| 2 | Notes are exported as **real Markdown** (portable as-is) | `PASS` | `…::test_the_exported_notes_are_the_real_markdown_bytes` (exported bytes == the file on disk, byte-identical, unicode intact); manual CLI `diff`/`sha256sum` below |
+| 3 | The notes index carries the metadata to rebuild **links/tags** (no proprietary wrapper for content) | `PASS` | `notes.json` (`atlas.notes-index` v1): per-note `tags`, wiki `links`, `projects`; `…::test_a_full_export_captures_notes_tasks_and_projects` asserts tags/links/project associations and that no `content` key exists; unit `test_a_note_index_entry_carries_metadata_but_no_content` |
+| 4 | Tasks + projects **reuse the versioned M4-07 document** (not a forked format) | `PASS` | `data.json` is `atlas.project-export` v1 built by `atlas.projects.export.build_document`; `…::test_the_export_matches_the_m4_07_project_document` (fidelity vs `GET /api/projects/{id}/export`); unit `test_the_full_document_adds_unfiled_tasks_additively` |
+| 5 | The export is **complete** — nothing silently omitted (incl. unfiled tasks; no `truncated`) | `PASS` | `data.json` carries the additive `unfiled_tasks`; `…::test_a_full_export_captures_notes_tasks_and_projects` asserts a filed task under its project **and** an unfiled task; unit `test_the_project_export_document_is_unchanged_without_unfiled_tasks` (M4-07 shape untouched) |
+| 6 | A **manifest** (format + version, file list, sizes/checksums, timestamp) makes the set verifiable | `PASS` | `manifest.json` (`atlas.full-export` v1): `export_id`, `created_at`, `snapshot`, per-store `contents` and every file's `path`/`bytes`/`sha256`; unit `test_the_manifest_is_versioned_and_self_describing`; `…::test_the_manifest_verifies_the_downloaded_set` (re-assembles the download and `verify_export_set` → ok) |
+| 7 | Verification fails on a tampered / missing file and flags an incomplete set | `PASS` | unit `test_a_tampered_file_fails_verification`, `test_a_missing_listed_file_fails_verification`, `test_a_missing_manifest_is_an_incomplete_set`, `test_an_unsafe_path_in_a_manifest_fails`; CLI `…::test_the_cli_verifies_lists_and_flags_incomplete_sets`; manual CLI below |
+| 8 | **Self-consistent snapshot** (no torn read) | `PASS` | every DB read runs in one `REPEATABLE READ` transaction (reuses `ProjectsService.begin_consistent_read`, ADR-0026); `…::test_the_export_reads_one_repeatable_read_snapshot` asserts PostgreSQL reports `repeatable read`. Note files are written atomically and hashed while streaming, so the index/manifest describe the exact bytes |
+| 9 | **Strictly user-scoped** | `PASS` | every query filters on the caller; `…::test_the_export_is_strictly_user_scoped` (a foreign user's project/task/note **and** a foreign note file in the same root never appear), `…::test_the_export_requires_authentication` (`401`) |
+| 10 | The **empty** case is handled | `PASS` | `…::test_an_empty_export_is_well_formed` (`projects: []`, `unfiled_tasks: []`, `notes: []`, no `notes/` entries, zeroed `contents`, well-formed manifest) |
+| 11 | Reachable like the other operational tooling: an **API endpoint** and/or a **CLI** | `PASS` | `GET /api/export` (`atlas/api/export.py`) returns the set as `application/zip`; `atlas-export` CLI (`run`/`verify`/`list`, `atlas/export/cli.py`); integration `…::test_the_cli_exports_and_verifies_a_set`; manual CLI below |
+| 12 | The format + version are documented as a **stable contract** | `PASS` | `DECISIONS.md` **ADR-0042**; module docs of `atlas/export/document.py`; `PRODUCT_SPEC.md` §5.8 (REQ-015); `OPERATIONS.md` §1.3 |
+| 13 | **No migration** (read-only) | `PASS` | no file added under `services/api/alembic/versions/`; the schema-drift test is unchanged |
+| 14 | Unit + integration tests added; **no existing test weakened or removed** | `PASS` | 21 new unit (`tests/unit/test_export_document.py`) + 11 new integration (`tests/integration/test_export.py`); existing suites untouched (561 → 582 unit; 936 → 968 total) |
+| 15 | OpenAPI / `schema.d.ts` regenerated and in sync | `PASS` | `npm run gen:api` (delta = the new `/api/export` operation; all pre-existing paths preserved, `gen:api` idempotent) |
+| 16 | `ruff` / `ruff format --check` / `mypy` / full suite / frontend / `verify.sh` | `PASS` | commands below |
+| 17 | Browser E2E (download an export in a real browser) | `NOT RUN` | Playwright is set up but only covers the M7/M8 surfaces; M9-03 is API/CLI-only (no export UI was in scope) — recorded, not waived |
+
+**Commands run (2026-10-27) — real output.**
+
+```
+cd services/api
+.venv/bin/ruff check .                      # All checks passed!
+.venv/bin/ruff format --check .             # 210 files already formatted
+.venv/bin/mypy                              # Success: no issues found in 107 source files
+.venv/bin/python -m pytest tests/unit -q    # 582 passed
+TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
+  .venv/bin/python -m pytest -q             # 968 passed
+TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest \
+  tests/integration/test_export.py tests/unit/test_export_document.py -q   # 32 passed
+
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # backend 968; frontend 268; verification: PASS
+```
+
+**Operator CLI (manual, `atlas_test` + a temp notes root — never the application DB):**
+
+```
+$ DATABASE_URL=…/atlas_test NOTES_ROOT=$TMP/notes EXPORT_DIR=$TMP/exports \
+  .venv/bin/python -m atlas.export run --user owner@example.com
+export ok: 20261027T115649Z-e11a4ce5
+  directory: $TMP/exports/atlas-export-20261027T115649Z-e11a4ce5
+  projects: 1  tasks: 2  notes: 2  note-project links: 1
+  files: 4
+$ .venv/bin/python -m atlas.export list      # ok atlas-export-20261027T115649Z-e11a4ce5
+$ .venv/bin/python -m atlas.export verify    # ok $TMP/exports/atlas-export-20261027T115649Z-e11a4ce5  (exit 0)
+$ printf 'tampered' >> …/notes/Other.md && .venv/bin/python -m atlas.export verify
+FAILED …/atlas-export-…: notes/Other.md: checksum/size mismatch   (exit 1)
+```
+
+The set it produced (real bytes):
+
+```
+atlas-export-20261027T115649Z-e11a4ce5/
+  manifest.json   # format atlas.full-export, format_version 1, snapshot repeatable-read,
+                  # contents {projects:1, tasks:2, notes:2, note_project_links:1};
+                  # files: data.json (2247 B), notes.json (795 B), notes/Other.md (8 B),
+                  #        notes/Plans/Launch.md (60 B) — each with its sha256
+  data.json       # atlas.project-export v1: projects [Launch], filed tasks [Filed], unfiled_tasks [Unfiled]
+  notes.json      # atlas.notes-index v1: notes/Plans/Launch.md projects=[<project id>]; Other.md
+  notes/Plans/Launch.md   # engine bytes, byte-identical to the source (diff -q → identical; equal sha256)
+  notes/Other.md
+```
+
+(`data.json`/`notes.json` shape is exercised with tags + a wiki link by the integration test, which
+creates notes through the notes API so the parser populates them; the manual CLI seed inserted the
+index rows directly and so shows empty tag/link lists.)
+
+**Files added.** `services/api/atlas/export/{__init__,document,service,verify,cli,__main__}.py`,
+`services/api/atlas/api/export.py`, `services/api/tests/unit/test_export_document.py`,
+`services/api/tests/integration/test_export.py`. **Modified.**
+`services/api/atlas/projects/export.py` (additive `unfiled_tasks` on `build_document`),
+`services/api/atlas/api/{__init__,}.py` + `services/api/atlas/main.py` (router),
+`services/api/atlas/config.py` (`export_dir`), `services/api/pyproject.toml`
+(`atlas-export` entry point), `.env.example` (`EXPORT_DIR`), `apps/web/src/api/schema.d.ts`.
+
+**Limitations recorded, not waived.** The `task_links` (task↔note) and `task_tags` tables exist but
+have **no writer** in the codebase, so they are always empty and are not exported — recorded, not
+silently dropped. Only **live** rows are exported (tombstones are sync plumbing; ADR-0026). The
+export is **unbounded** (a full export must not truncate) and the HTTP response is assembled in
+memory before it is sent, which is appropriate for the stated single-household scale
+(`PRODUCT_SPEC.md` §7 A1); note content, however, is streamed to disk one file at a time. The
+snapshot guarantee is structural (one REPEATABLE READ transaction + atomic note files), verified by
+inspecting the transaction isolation rather than a non-deterministic concurrent-write race test.
+Browser E2E for a download is `NOT RUN`.
+
+---
+
+## M9-04 — Dependency + vulnerability scan
+
+`DEPENDS ON` M1-10 (`DONE`). Runs the **real** advisory scans over the backend and frontend dependency
+trees, records every finding (here: **none**) honestly, and confirms the CI gate fails on an unresolved
+critical/high. The security review (M9-05) and the full data export (M9-03) are **out of scope**.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | Backend dependency scan actually run | `PASS` | `services/api/.venv/bin/pip-audit --progress-spinner off` → `No known vulnerabilities found` (exit 0); **91** distributions audited |
+| 2 | Frontend dependency scan actually run | `PASS` | `apps/web$ npm audit --include=dev` / `--omit=dev` / `--audit-level=moderate` → `found 0 vulnerabilities` (exit 0); **370** locked packages |
+| 3 | Every finding recorded with severity + decision; nothing suppressed | `PASS` | **No findings** at any severity (npm `info/low/moderate/high/critical = 0`; pip-audit 0 advisories). No `--ignore-vuln`, laxer threshold, or `.npmrc`/`--omit` suppression exists; the only skip is the local `atlas-api` workspace package (not a published dep) |
+| 4 | A critical/high finding is remediated or recorded as an accepted risk | `PASS` (n/a) | No critical/high (or any) finding exists, so nothing to remediate or accept; recorded explicitly rather than hidden |
+| 5 | CI runs the scans and fails on an unresolved critical/high | `PASS` | `.github/workflows/ci.yml`: `backend` → `pip-audit --progress-spinner off`; `frontend` → `npm audit --audit-level=moderate` — both exit non-zero on a finding. Failure semantics proven with positive controls (below) |
+| 6 | The dependency inventory reflects reality | `PASS` | `docs/DEPENDENCIES.md` §"Vulnerability scan (M9-04)" (+ inventoried versions/licences) |
+| 7 | No existing test weakened/removed; lint/format/type/full suite/`verify.sh` pass | `PASS` | unit `561 passed`; full `936 passed`; frontend `268 passed`; `./scripts/verify.sh` → `verification: PASS` |
+
+**Commands run (2026-10-27) — real output.**
+
+```
+# backend (services/api)
+$ .venv/bin/pip-audit --progress-spinner off
+Name      Skip Reason
+--------- ------------------------------------------------------------------------
+atlas-api Dependency not found on PyPI and could not be audited: atlas-api (0.1.0)
+No known vulnerabilities found                                   # exit 0
+
+$ .venv/bin/pip-audit --progress-spinner off --format json   # parsed
+dependencies audited: 91 ; packages WITH vulns: 0 ; skipped: atlas-api (local package)
+
+# frontend (apps/web)
+$ npm audit --include=dev ; echo $?           # found 0 vulnerabilities   -> 0
+$ npm audit --omit=dev    ; echo $?           # found 0 vulnerabilities   -> 0
+$ npm audit --audit-level=moderate ; echo $?  # found 0 vulnerabilities   -> 0
+
+$ npm audit --include=dev --json   # parsed
+vulnerabilities: {info:0, low:0, moderate:0, high:0, critical:0, total:0}
+dependencies:    {prod:32, dev:338, optional:54, peer:8, total:370}
+```
+
+**CI gate — positive control (proves the exact commands fail a build on a finding; scratch only, the
+repository was not modified).**
+
+```
+# pip-audit fails on a known-vulnerable pin:
+$ printf 'urllib3==1.26.4\n' > $SCRATCH/req-vuln.txt
+$ .venv/bin/pip-audit -r $SCRATCH/req-vuln.txt --progress-spinner off
+urllib3 1.26.4  PYSEC-2021-108  1.26.5
+… (20 advisory rows)
+Found 20 known vulnerabilities in 1 package                  # exit 1
+
+# npm audit fails on a known-high advisory:
+$ mkdir $SCRATCH/npmdemo && cd $SCRATCH/npmdemo && npm init -y
+$ npm install lodash@4.17.20 --package-lock-only --no-audit
+$ npm audit --audit-level=high
+lodash  <=4.17.23   Severity: high   (GHSA-35jh-r3h4-6jhm, +4 more)
+1 high severity vulnerability                               # exit 1
+```
+
+**CI exercisability — `BLOCKED` (recorded, not claimed).** The workflow itself could **not** be run in
+this environment: the `nektos/act` binary is not installed (the only `act` on `PATH` is an unrelated
+local tool) and there is no remote to push a `pull_request`/`push` run to. The CI gate is therefore
+confirmed by **inspection** of `.github/workflows/ci.yml` plus the positive controls above, which prove
+the exact gated commands exit non-zero on a finding.
+
+**Files changed.** `docs/DEPENDENCIES.md` (inventory + scan section), `docs/ACCEPTANCE.md` (this
+section), `docs/ROADMAP.md` (M9-04 row → `DONE` + verification paragraph), `docs/RISKS.md` (R-17 review
+entry), `docs/CHANGELOG.md`, `project/CURRENT_TASK.md`. **No code, dependency version, lockfile or test
+was changed** — every scan was clean, so there was nothing to upgrade or pin, and **no CI change was
+required** (the gate already existed and is stricter than the acceptance).
+
+---
+
+## M9-05 — Security review (threat model vs implementation)
+
+`DEPENDS ON` M9-04 (`DONE`). Walks the `SECURITY.md` §2 threat model against the **delivered**
+implementation and its tests, records each finding honestly, fixes real defects and records residual
+risks. This is a **review** task: it changes no behaviour except the one defect it fixes (F1). The
+upgrade/rollback docs (M9-06), user/operator docs (M9-07) and release checklist (M9-08) are **out of
+scope**; M5/M6 (real calendar accounts) and M8's remaining device tasks are not delivered and are
+reviewed as such, not as live.
+
+### Per-control result
+
+| # | Threat-model control | Result | Evidence (code + test) |
+|---|---|---|---|
+| T1 | Compromised browser session | `PASS` | HttpOnly/SameSite session + CSRF double-submit + revocation + auth rate limiting. `atlas/api/auth.py`, `atlas/middleware.py`, `atlas/auth/csrf.py`, `atlas/auth/ratelimit.py`; `test_security.py::test_session_cookie_is_httponly_and_samesite`, `test_auth_flow.py::test_logout_revokes_session`/`test_csrf_required_for_authenticated_writes`, `test_csrf.py`, `test_ratelimit.py`, `test_config.py::test_secure_cookies_only_in_production` |
+| T2 | Stolen OAuth token | `PASS` (store) | AES-256-GCM at rest, key off-DB, tokens never logged/returned. `atlas/calendar/crypto.py`, `atlas/calendar/tokens.py`, `atlas/api/calendar.py`, `atlas/main.py`; `test_token_crypto.py`, `test_provider_credentials_api.py` (row is ciphertext; tamper → `500`; no token in responses/`422`; rotation). Real exchange `NOT RUN` (M5-00/AR-001) |
+| T3 | Malicious Markdown / links | `PASS` | `marked` → `DOMPurify.sanitize`; the only `dangerouslySetInnerHTML` in the app. `apps/web/src/components/MarkdownPreview.tsx`; `MarkdownPreview.test.tsx` |
+| T4 | Path traversal | `PASS` | `atlas/notes/storage.py` (reject `..`/absolute, reserved dir, `resolve()` parents check, trash on delete); `test_note_paths.py`, `test_note_storage.py`, `test_notes_api.py::test_path_traversal_is_rejected` |
+| T5 | SQL injection | `PASS` | Parameterised ORM/bound SQL only; static raw statements. `test_tasks_filters.py::test_search_escapes_like_metacharacters`, `test_task_filters.py::test_the_like_pattern_escapes_wildcards_and_the_escape_character` |
+| T6 | Cross-site scripting (incl. CSP) | `FAIL` → **fixed (F1)** | API headers tested (`test_health.py::test_security_headers_present`) but the **SPA document had none** — F1, fixed in `apps/web/nginx.conf`. Live nginx effect `NOT RUN` |
+| T7 | Unauthorised API access | `PASS` | `CurrentUser` on every data router; anonymous set is exactly `/health`, `/health/ready`, `/api/setup/status`, `/api/auth/setup`, `/api/auth/login`. `test_*_require_authentication` (tasks, projects, project export, notes, note-links, changes, task-changes, calendar, notifications, reminders, export) |
+| T8 | Compromised dependency | `PASS` | M9-04: `pip-audit` 0/91; `npm audit` 0/370; CI fails on a finding |
+| T9 | Accidental public exposure | `PASS` (config) | `deploy/docker-compose.yml` (`db` loopback-only, `worker` no ports); HSTS + docs-disabled in prod + host allow-list. TLS termination `NOT RUN` (operator proxy) |
+| T10 | Corrupted / incomplete backups | `PASS` | M9-01/ADR-0041 + M9-02 executed restore drill |
+| T11 | Malicious / compromised client | `PASS` | Pydantic boundaries, `base_revision` `409`, idempotency keys, user-scoped services; `test_idempotency.py` + revision/cross-user tests |
+| T12 | Work data on an unauthorised server | `NOT RUN` | Enforcing selection UI is M5-05 (not delivered); documented in `PRODUCT_SPEC.md`/`CALENDAR_SYNC.md` |
+
+**New evidence added by this review:** `test_security.py::test_production_sets_hsts_and_disables_interactive_docs`
+(proves the production-only HSTS + docs-disabled branches of the T9 posture, previously inspected only).
+
+### Findings
+
+| ID | Severity | Finding | Remediation | Status |
+|---|---|---|---|---|
+| F1 | Low | The SPA document/assets (served by nginx) carried **no** security headers or CSP; the API's headers cover `/api` responses only, so the T6 "strict CSP on the app" was only partly implemented. Practical XSS limited (React escaping + DOMPurify) — defence-in-depth gap | Added `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`/`Permissions-Policy` + a CSP sized for the built app to `apps/web/nginx.conf` (scoped to the SPA location). Effect verified by inspection; live browser check `NOT RUN` | **Fixed** |
+| R-21 | Low | Push destination `endpoint` not constrained to an `https` push-service host (delivery targets it directly) | Accepted for the single-user model; recorded in `RISKS.md` R-21; revisit if multi-user is approved | Accepted (residual) |
+
+**Nothing was suppressed**; no scanner/gate finding was ignored. No other defect was found.
+
+### Commands run (2026-10-27) — real output
+
+```
+# services/api
+$ .venv/bin/ruff check .                     -> All checks passed!
+$ .venv/bin/ruff format --check .            -> 210 files already formatted
+$ .venv/bin/mypy                             -> Success: no issues found in 107 source files
+$ .venv/bin/python -m pytest tests/unit -q   -> 582 passed
+$ TEST_DATABASE_URL=…atlas_test .venv/bin/python -m pytest -q -> 969 passed
+$ pytest tests/integration/test_security.py -q -> 5 passed   # incl. the new production-posture test
+
+# apps/web
+$ npm run lint && npm run typecheck && npm run test -> 268 passed (40 files)
+
+# repo root
+$ ./scripts/verify.sh                        -> verification: PASS
+```
+
+**Baseline:** full suite began at **968 passed** (unit **582**); this review adds **1** integration
+test → **969**. Frontend unchanged at **268**. No existing test was weakened or removed.
+
+### Controls not verifiable here (`NOT RUN`/`NOT DELIVERED`)
+
+| Item | Status | Reason |
+|---|---|---|
+| TLS/HTTPS termination + reverse-proxy config (T9) | `NOT RUN` | Operator's proxy, outside this environment (`DEPLOYMENT.md` §8) |
+| Real OAuth token exchange / provider sync (T2) | `NOT RUN` | M5-00 `BLOCKED` (AR-001) |
+| Live browser effect of the SPA CSP/headers (F1) | `NOT RUN` | nginx is not run by `scripts/verify.sh` or the Playwright suite (`vite preview`) |
+| Work-account data-flow acknowledgement UI (T12) | `NOT DELIVERED` | M5-05 |
+
+**Files changed.** `apps/web/nginx.conf` (F1 fix), `services/api/tests/integration/test_security.py` (new
+production-posture test), `docs/SECURITY.md` (review record), `docs/RISKS.md` (R-21 + review log),
+`docs/ROADMAP.md` (M9-05 row → `DONE` + verification paragraph), `docs/ACCEPTANCE.md` (this section),
+`docs/CHANGELOG.md`, `project/CURRENT_TASK.md`. No other source or test was modified.
+
+---
+
+## M9-06 — Upgrade + rollback documentation, tested
+
+`DEPENDS ON` M1-04 (`DONE`). Documents the upgrade and rollback procedures **and executes them for
+real** against scratch databases, so the runbook matches what was actually run. No migration, code or
+test changed — the drills exercise the existing Alembic migrations and the M9-01 `atlas-backup` CLI.
+The M9-05 F1 security-header fix is confirmed **live** here. M9-07 (user/operator docs) and M9-08
+(release checklist) are **out of scope**.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | An upgrade drill is executed from a previous revision/state via the documented command(s) | `PASS` | scratch `atlas_upgrade_drill` at `51b31762f974` (+ seeded user/task) → `alembic upgrade head` applied all 11 later revisions → `f1b2c3d4e5a6 (head)` |
+| 2 | The upgraded schema matches the models (`compare_metadata == []`) | `PASS` | `schema_check.py` → `diffs: []` / `RESULT: MATCH`, exit 0 |
+| 3 | Representative prior data survives the upgrade | `PASS` | `SELECT` returns the seeded `drill@example.com` and `UPGRADE-DRILL-TASK-7` with identical values |
+| 4 | The app is healthy against the upgraded database | `PASS` | `GET /health` → `200 {"status":"ok","version":"0.1.0"}`; `GET /health/ready` → `200 {"status":"ready","database":"ok"}` |
+| 5 | A rollback drill is executed (downgrade) and recovery verified | `PASS` | `alembic downgrade -1` removed `reminder_policies.is_default` + its unique index (version → `a3f7c2d8b105`); `alembic upgrade head` restored both and `compare_metadata` was `[]` again |
+| 6 | A rollback by restoring an M9-01 backup is executed and verified | `PASS` | `atlas-backup run` → set `20261027T122100Z-be1ab1e7` verified `ok`; restored into `atlas_rollback_dst` (`psql -v ON_ERROR_STOP=1`, exit 0) → version `f1b2c3d4e5a6`, the known task present, `compare_metadata == []` |
+| 7 | The F1 SPA security-header/CSP fix is confirmed **live** against a running web container | `PASS` | web image rebuilt and container recreated; `curl -I http://localhost:8081/` returns `X-Content-Type-Options`/`X-Frame-Options`/`Referrer-Policy`/`Permissions-Policy`/`Content-Security-Policy` on the SPA document; proxied `/health` keeps the API's headers |
+| 8 | The runbook is ordered, copy-pasteable and matches what was run | `PASS` | `docs/DEPLOYMENT.md` §6–§7 (preconditions → **back up first** → apply → verify → rollback); cross-linked from `OPERATIONS.md` §2.6/§5 |
+| 9 | No application DB/real data harmed; scratch targets cleaned up | `PASS` | only `atlas_upgrade_drill`/`atlas_rollback_dst` created and both dropped; remaining DBs = `atlas`, `atlas_test`, `postgres`; `atlas` never touched |
+| 10 | No test weakened/removed; lint/format/type/full suite/`verify.sh` pass | `PASS` | unit `582 passed`; full `969 passed`; frontend `268 passed`; ruff/format/mypy clean; `./scripts/verify.sh` → `verification: PASS` |
+
+**Executed drills (2026-10-27).** `$SCR` is the session scratch dir. `atlas_upgrade_drill` and
+`atlas_rollback_dst` are scratch databases on the same PostgreSQL server as `atlas_test`; the
+application `atlas` database and real notes were never used.
+
+```
+# --- UPGRADE DRILL ---
+$ docker exec atlas-db-1 psql -U atlas -d postgres \
+    -c "DROP DATABASE IF EXISTS atlas_upgrade_drill;" -c "CREATE DATABASE atlas_upgrade_drill OWNER atlas;"
+DROP DATABASE / CREATE DATABASE
+$ DATABASE_URL=…/atlas_upgrade_drill .venv/bin/alembic upgrade 51b31762f974
+INFO  Running upgrade  -> eefce463b569, initial schema
+INFO  Running upgrade eefce463b569 -> 50c01dbff23c, notes index
+INFO  Running upgrade 50c01dbff23c -> 51b31762f974, tasks schema
+$ docker exec -i atlas-db-1 psql -U atlas -d atlas_upgrade_drill -v ON_ERROR_STOP=1 < $SCR/seed.sql
+INSERT 0 1 / INSERT 0 1 / users=1 tasks=1
+$ DATABASE_URL=…/atlas_upgrade_drill .venv/bin/alembic upgrade head
+INFO  Running upgrade 51b31762f974 -> f403c1b05be3, idempotency keys
+INFO  Running upgrade f403c1b05be3 -> 8f1c2a7d5e04, projects schema
+INFO  Running upgrade 8f1c2a7d5e04 -> f2a9c7d14b60, note↔project association
+INFO  Running upgrade f2a9c7d14b60 -> c7d18e93a4f2, provider credentials
+INFO  Running upgrade c7d18e93a4f2 -> 9d2f4b6a1c37, calendar event projections and sync cursors
+INFO  Running upgrade 9d2f4b6a1c37 -> b7c2e1a9f4d0, calendar sync running marker (sync_cursors.sync_started_at)
+INFO  Running upgrade b7c2e1a9f4d0 -> d4e8b2c6f913, per-user change feed store (change_log + users.change_seq)
+INFO  Running upgrade d4e8b2c6f913 -> c1a2b3d4e5f6, change-feed retention: purge floor + changed_at index (M7-02)
+INFO  Running upgrade c1a2b3d4e5f6 -> e5a91c3f7b64, durable reminders: policies, scheduled reminders, delivery records (M8-01)
+INFO  Running upgrade e5a91c3f7b64 -> a3f7c2d8b105, notification destination registry (M8-03)
+INFO  Running upgrade a3f7c2d8b105 -> f1b2c3d4e5a6, reminder policies: per-user default timing (M8-05)
+$ DATABASE_URL=…/atlas_upgrade_drill .venv/bin/alembic current     # f1b2c3d4e5a6 (head)
+$ docker exec atlas-db-1 psql -U atlas -d atlas_upgrade_drill -c "SELECT id,email FROM users;"
+  11111111-1111-1111-1111-111111111111 | drill@example.com
+$ … -c "SELECT id,title,status,priority FROM tasks;"
+  22222222-2222-2222-2222-222222222222 | UPGRADE-DRILL-TASK-7 | next | high
+#   post-upgrade extras: projects|change_log|reminders present; users.change_seq present
+#   tables/columns after upgrade: 23 / 203
+$ DATABASE_URL=…/atlas_upgrade_drill .venv/bin/python $SCR/schema_check.py
+diffs: []
+RESULT: MATCH                       # exit 0
+$ DATABASE_URL=…/atlas_upgrade_drill .venv/bin/python $SCR/app_health.py
+GET /health       -> 200 {'status': 'ok', 'version': '0.1.0'}
+GET /health/ready -> 200 {'status': 'ready', 'database': 'ok'}
+APP HEALTH: OK                      # exit 0
+
+# --- ROLLBACK DRILL A: downgrade one revision, then recover ---
+$ … psql -tAc "SELECT column_name FROM information_schema.columns \
+    WHERE table_name='reminder_policies' AND column_name='is_default';"   # is_default
+$ … psql -tAc "SELECT indexname FROM pg_indexes WHERE indexname='uq_reminder_policies_default';"
+  uq_reminder_policies_default
+$ DATABASE_URL=…/atlas_upgrade_drill .venv/bin/alembic downgrade -1
+INFO  Running downgrade f1b2c3d4e5a6 -> a3f7c2d8b105, reminder policies: per-user default timing (M8-05)
+$ … psql -tAc "SELECT count(*) … is_default;"   # 0   (column gone)
+$ … psql -tAc "SELECT count(*) … uq_reminder_policies_default;"  # 0 (index gone)
+$ … psql -tAc "SELECT version_num FROM alembic_version;"         # a3f7c2d8b105
+$ … psql -tAc "SELECT title FROM tasks;"                          # UPGRADE-DRILL-TASK-7 (data intact)
+$ DATABASE_URL=…/atlas_upgrade_drill .venv/bin/alembic upgrade head
+INFO  Running upgrade a3f7c2d8b105 -> f1b2c3d4e5a6, reminder policies: per-user default timing (M8-05)
+$ … psql -tAc "SELECT column_name … is_default;"   # is_default (restored)
+$ … psql -tAc "SELECT count(*) … uq_reminder_policies_default;"   # 1 (restored)
+$ DATABASE_URL=…/atlas_upgrade_drill .venv/bin/python $SCR/schema_check.py
+diffs: [] / RESULT: MATCH            # exit 0
+
+# --- ROLLBACK DRILL B: restore the pre-upgrade backup ---
+$ DATABASE_URL=…/atlas_upgrade_drill NOTES_ROOT=$SCR/notes BACKUP_DIR=$SCR/backups \
+    BACKUP_PG_DUMP_CONTAINER=atlas-db-1 .venv/bin/atlas-backup run
+backup ok: 20261027T122100Z-be1ab1e7
+  database: 36214 bytes sha256=ed5996d03ff509c7272375700c47bd06b0830c2eeee86c4430d59a46fa4300a6
+  notes: 138 bytes (1 files) sha256=6501a3135db2b8e4711317ff0fe1702098b9122d1672b8a0121d9bacbd14d764
+$ .venv/bin/atlas-backup verify $SET
+ok $SET / database: ok / notes: ok    # exit 0
+$ docker exec -i atlas-db-1 psql -U atlas -d atlas_rollback_dst -v ON_ERROR_STOP=1 < $SET/database.sql
+  (exit 0; no ERROR/FATAL)
+$ … psql -tAc "SELECT version_num FROM alembic_version;"   # f1b2c3d4e5a6
+$ … psql -c "SELECT id,title,status FROM tasks;"
+  22222222-2222-2222-2222-222222222222 | UPGRADE-DRILL-TASK-7 | next
+$ DATABASE_URL=…/atlas_rollback_dst .venv/bin/python $SCR/schema_check.py
+diffs: [] / RESULT: MATCH            # exit 0
+
+# --- F1 LIVE CHECK (M9-05 fix) ---
+$ docker compose -p atlas -f deploy/docker-compose.yml build web     # -> Successfully tagged atlas-web:latest
+$ WEB_PORT=8081 docker compose -p atlas -f deploy/docker-compose.yml up -d --no-deps web
+ Container atlas-web-1 Recreated / Started
+$ curl -sSI http://localhost:8081/
+HTTP/1.1 200 OK
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: no-referrer
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'
+$ curl -sSI http://localhost:8081/health | head
+  … content-security-policy: default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'   # the API's own CSP
+
+# --- CLEAN UP ---
+$ docker exec atlas-db-1 psql -U atlas -d postgres \
+    -c "DROP DATABASE IF EXISTS atlas_upgrade_drill;" -c "DROP DATABASE IF EXISTS atlas_rollback_dst;"
+DROP DATABASE / DROP DATABASE
+$ docker exec atlas-db-1 psql -U atlas -d postgres -tAc "SELECT datname FROM pg_database WHERE datistemplate=false;"
+atlas / atlas_test / postgres
+
+# --- VERIFICATION GATE ---
+cd services/api
+.venv/bin/ruff check .                       -> All checks passed!
+.venv/bin/ruff format --check .              -> 210 files already formatted
+.venv/bin/mypy                               -> Success: no issues found in 107 source files
+.venv/bin/python -m pytest tests/unit -q     -> 582 passed
+TEST_DATABASE_URL=…atlas_test .venv/bin/python -m pytest -q -> 969 passed
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh -> verification: PASS   (frontend 268 passed)
+```
+
+**Files changed.** `docs/DEPLOYMENT.md` (§6 upgrade + §7 rollback runbook, replacing the outline),
+`docs/OPERATIONS.md` (rollback cross-link in §2.6 and the §5 failed-migration row),
+`docs/SECURITY.md` (F1 live-verification note), `docs/ROADMAP.md` (M9-06 row → `DONE` + verification
+paragraph), `docs/ACCEPTANCE.md` (this section), `docs/CHANGELOG.md`, `project/CURRENT_TASK.md`. No
+source, migration or test was modified — the drills exercise the existing migrations and the M9-01
+`atlas-backup` CLI.
+
+**Limitations recorded, not waived.** The upgrade/rollback drills ran against **scratch databases**
+with the host venv (`alembic`) rather than a full in-place upgrade of the running compose stack on an
+operator host, and the backup-restore rollback was verified by querying the restored database rather
+than by serving the app against it (that is the operational act in `OPERATIONS.md` §2.4). No
+migration in the chain is irreversible, so the "restore the backup for an irreversible migration"
+path was exercised with a general-looking set rather than a genuinely irreversible one. A real-provider
+calendar-sync resumption after a restore remains `NOT RUN` (needs M5-00/AR-001).
+
+---
+
+## M9-07 — User + operator documentation
+
+`DEPENDS ON` — (the README and existing docs). Delivers a person-readable **user guide**
+(`docs/USER_GUIDE.md`) and **operator guide** (`docs/OPERATOR_GUIDE.md`) covering the features that
+are actually shipped, honest about what is not, and linking the canonical documents instead of
+forking them. No code, migration or test changed; M9-08 (release checklist + known limitations) is
+**out of scope**.
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | A user can use the delivered features from the docs (notes; tasks Inbox/Today/Upcoming; Day/Week planning; Board; projects/progress; note search; sync/offline + `/sync`; notifications/reminder timing; calendar status; themes) | `PASS` | `docs/USER_GUIDE.md` §2–§10 — concrete steps (capture, complete, drag/status menu, conflict resolution *Keep mine*/*Take server*, reminder timing presets incl. Custom 0–30 days) matching `apps/web/src/pages/*` and `components/*` |
+| 2 | An operator can install, configure, secure, back up, restore, upgrade/rollback, monitor and troubleshoot from the docs | `PASS` | `docs/OPERATOR_GUIDE.md` §3–§11 links `DEPLOYMENT.md` §4/§6/§7, `OPERATIONS.md` §1/§2/§3–§5, `SECURITY.md`; adds a troubleshooting table, a config reference and §11 "run the tests" |
+| 3 | The docs are honest — undelivered/blocked features are clearly marked | `PASS` | `USER_GUIDE.md` §1 (What's in this release / what isn't) + §12; `OPERATOR_GUIDE.md` §10 + §12 "What is not delivered yet"; both name calendar accounts (M5/M6, AR-001), mobile/real push (M8), and the placeholder Tasks/Projects/Search/Settings pages |
+| 4 | The docs do not duplicate canonical sources of truth — they link to them | `PASS` | Both guides are navigators: they reference `DEPLOYMENT.md`, `OPERATIONS.md`, `SECURITY.md`, `MARKDOWN_STORAGE.md`, `CALENDAR_SYNC.md`, `TESTING.md`, `PRODUCT_SPEC.md` and `.env.example`; the config reference points to `.env.example` as the canonical list |
+| 5 | `README.md` links the new/updated guides; the doc set is navigable with no competing source of truth | `PASS` | `README.md` documentation table now lists `USER_GUIDE.md` and `OPERATOR_GUIDE.md`; the stale "Milestone 1 / features not implemented" banner is replaced with an accurate status pointing to `ROADMAP.md` |
+| 6 | Quoted commands, paths and settings are accurate against the repository (spot-verified) | `PASS` | env names vs `.env.example` + `services/api/atlas/config.py`; entry points vs `services/api/pyproject.toml`; npm scripts vs `apps/web/package.json`; verify command vs `scripts/verify.sh`; services/volumes/ports vs `deploy/docker-compose.yml`; VAPID snippet executed successfully (`py_vapid` in the API venv) |
+| 7 | A dangling cross-reference is resolved (`.env.example` → `DEPLOYMENT.md` "Web Push (VAPID keys)") | `PASS` | `docs/DEPLOYMENT.md` §3.1 "Web Push (VAPID keys)" added (generation command + the three settings + the compose-forwarding caveat) |
+| 8 | No code/test changes; the suite still passes | `PASS` | only docs/README files changed; `./scripts/verify.sh` → `verification: PASS`; no `atlas` database or real data touched |
+
+**Spot-verification performed (2026-10-27).**
+
+- Env variable names (`ATLAS_ENV`, `PUBLIC_BASE_URL`, `ALLOWED_HOSTS`, `SECRET_KEY`, `SESSION_SECRET`,
+  `TOKEN_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_KEY_ID`, `TOKEN_ENCRYPTION_PREVIOUS_KEYS`, `DATABASE_URL`,
+  `NOTES_ROOT`, `NOTES_RECONCILE_SECONDS`, `BACKUP_DIR`/`BACKUP_RETAIN`/`BACKUP_INTERVAL_SECONDS`/
+  `BACKUP_PG_DUMP_*`, `EXPORT_DIR`, `CHANGE_RETENTION_DAYS`, `CHANGE_PURGE_INTERVAL_SECONDS`,
+  `VAPID_*`, `GOOGLE_*`, `MICROSOFT_*`) checked against `.env.example` and
+  `services/api/atlas/config.py`.
+- Entry points `atlas-worker` / `atlas-migrate` / `atlas-backup` / `atlas-export` and their module
+  targets checked in `services/api/pyproject.toml`; `atlas-backup run|verify|list` and
+  `python -m atlas.export run|verify|list` confirmed on the CLI.
+- npm scripts `dev`/`build`/`typecheck`/`lint`/`test`/`e2e`/`gen:api` confirmed in
+  `apps/web/package.json`; `verify.sh` contents read to quote the verification command accurately.
+- Compose services (`db`/`api`/`worker`/`web`), volumes (`atlas-db`/`atlas-notes`/`atlas-backups`) and
+  published ports confirmed in `deploy/docker-compose.yml`; the "compose forwards a subset of
+  variables" caveat was verified by inspecting the `environment:` blocks.
+- The VAPID generation snippet was **executed** (generated a pair; `Vapid.from_string` accepts the
+  printed private key), so the documented command is known-good.
+
+**Files changed.** Added `docs/USER_GUIDE.md`, `docs/OPERATOR_GUIDE.md`; changed `README.md`,
+`docs/DEPLOYMENT.md` (§3.1), `deploy/README.md`, `apps/web/README.md`, `docs/ROADMAP.md` (M9-07 row →
+`DONE` + verification paragraph), `docs/ACCEPTANCE.md` (this section), `docs/CHANGELOG.md`,
+`project/CURRENT_TASK.md`. No source, migration or test file was modified.
+
+**Limitations recorded, not waived.** The guides were reconciled against the code and the executed
+milestone evidence, but the end-user flows were **not** clicked through in a browser here (the
+Playwright suite covers sync/push consent only; M9-07 is docs). The compose-forwarding gap
+(`VAPID_*`/`GOOGLE_*`/`MICROSOFT_*`/`ALLOWED_HOSTS`/`EXPORT_DIR`/`CHANGE_RETENTION_DAYS` not forwarded
+to the containers) is **documented** as an operator caveat, not fixed — changing `deploy/docker-compose.yml`
+was out of scope. The release label and the consolidated known-limitations list remain M9-08.
+
+---
+
+## M9-08 — Release checklist + known limitations
+
+`DEPENDS ON` M9-01…M9-07 (`DONE`). Produces the **release document** and fills the **Release
+Readiness** table above with honest verdicts. This is a **documentation/assessment** task: it changes
+**no code, migration or test**, and it does **not** start or claim the work blocked on external
+resources (M5-00/03/04/05/07/09, M6, M8-04/06/07/08).
+
+| # | Acceptance criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | A release checklist + known-limitations document exists | `PASS` | [`docs/RELEASE.md`](RELEASE.md) — §3 pre-release checklist (build/tests/security/backup/restore/upgrade/docs), §5 consolidated known limitations, §1 label |
+| 2 | The document is **labelled by actual completeness** and explicitly **not production-ready** while M5/M6/M8 gates are open | `PASS` | `RELEASE.md` §1: label **`0.1.0-pre` — development snapshot · NOT production-ready**, with the three open gates (M5/M6/M8) and the reason each is open |
+| 3 | The `ACCEPTANCE.md` "Release Readiness (M9)" table is filled per REQ-001…015 with honest `PASS`/`PARTIAL`/`NOT RUN` + evidence, citing the delivering milestone; no requirement overstated | `PASS` | the table above — 9 `PASS`, 3 `PARTIAL` (REQ-010/011/012), 3 `NOT RUN` (REQ-007/008/009); blocked/incomplete delivery is **not** marked `PASS` |
+| 4 | The open/blocked milestones and tasks are listed with their impact | `PASS` | `RELEASE.md` §2 and §6; the REQ-007/008/009 `NOT RUN` rows above cite M5-00/03/04/05/07/09 and AR-001, and the M8 device tasks |
+| 5 | The operator caveat about the Compose env-forwarding gap is included | `PASS` | `RELEASE.md` §5.3 item 7 — `VAPID_*`, `GOOGLE_*`, `MICROSOFT_*`, `ALLOWED_HOSTS`, `EXPORT_DIR`, `CHANGE_RETENTION_DAYS`, … not forwarded by `deploy/docker-compose.yml` (documented in `OPERATOR_GUIDE.md` §4.6, **not** fixed here) |
+| 6 | Residual risks (R-SEC-*, R-17, R-20, R-21) are recorded | `PASS` | `RELEASE.md` §5.5/§5.4 — R-SEC-1/2/4, R-21, R-17, R-20, session TTL, T12, licence caveat |
+| 7 | `README.md` points at the release document; `CHANGELOG.md` carries a release entry labelled by completeness | `PASS` | `README.md` status block → `docs/RELEASE.md`; `CHANGELOG.md` `## [0.1.0-pre]` heading with the label |
+| 8 | The docs are consistent with `ROADMAP.md`/`ACCEPTANCE.md` (no competing truth) | `PASS` | the M9-08 row is `DONE` (below); the release label matches the open M5/M6/M8 gates in `ROADMAP.md`; the REQ verdicts cite the milestone records |
+| 9 | No code/test changes; `./scripts/verify.sh` still passes | `PASS` | docs + README only (see "Files changed"); `./scripts/verify.sh` → `verification: PASS` (backend **969 passed**, frontend **268 passed**) |
+
+**Verdict labels used.** `PASS`/`PARTIAL`/`NOT RUN` follow the `ACCEPTANCE.md` vocabulary; `PARTIAL`
+was chosen only where a requirement is delivered but has a real completeness/evidence gap (no literal
+two-device run for REQ-010; real/mobile delivery unverified for REQ-011; mobile clients + desktop
+matrix unverified for REQ-012). Every verdict and its justification is in the table above and in
+[`RELEASE.md`](RELEASE.md).
+
+**Commands run (2026-10-27).**
+
+```
+cd /home/kim/Documents/Atlas && ./scripts/verify.sh
+  # backend ruff/format/mypy clean; pytest -> 969 passed; frontend lint/typecheck/vitest -> 268 passed
+  # verification: PASS
+```
+
+**Files changed.** Added `docs/RELEASE.md`. Changed `docs/ACCEPTANCE.md` (this section + the Release
+Readiness table), `docs/ROADMAP.md` (M9-08 row → `DONE` + verification paragraph; "Immediate Next
+Tasks" refreshed), `docs/CHANGELOG.md` (`0.1.0-pre` release heading + label), `README.md` (status →
+`docs/RELEASE.md`), `docs/OPERATOR_GUIDE.md` (§12 now links this release document), `project/CURRENT_TASK.md`.
+**No** source, migration, dependency or test file was modified.
+
+**Limitations recorded, not waived.** This task **assesses** completeness; it does not change it. The
+release remains **not production-ready** because the M5/M6/M8 gates are open on external resources
+(AR-001 real calendar accounts; real devices + a push service). `REQ-007/008/009` are `NOT RUN` and
+`REQ-010/011/012` are `PARTIAL`; those are recorded, not waived. The Compose env-forwarding gap is
+documented as an operator caveat but **not fixed** (changing `deploy/docker-compose.yml` was out of
+scope). The end-user flows were not clicked through in a browser for this task (it is docs-only), and
+the `scripts/verify.sh` gate does **not** run the browser E2E suite (a separate command).
+
+---
+
+## Milestones M5–M9
 
 Acceptance criteria are listed in `ROADMAP.md`. Results are recorded here as each milestone is
 executed. Entries remain `NOT RUN` until there is real evidence.
@@ -317,20 +2781,35 @@ executed. Entries remain `NOT RUN` until there is real evidence.
 
 ## Release Readiness (M9)
 
-| Requirement | Result | Evidence |
-|---|---|---|
-| REQ-001 Self-hosted | `NOT RUN` | — |
-| REQ-002 Free to use (qualified by §3.1) | `NOT RUN` | — |
-| REQ-003 Commercial-use rights | `NOT RUN` | — |
-| REQ-004 Markdown notes | `NOT RUN` | — |
-| REQ-005 Task management | `NOT RUN` | — |
-| REQ-006 Project management | `NOT RUN` | — |
-| REQ-007 Google Calendar | `NOT RUN` | — |
-| REQ-008 Microsoft Outlook | `NOT RUN` | — |
-| REQ-009 Calendar consolidation | `NOT RUN` | — |
-| REQ-010 Cross-device sync | `NOT RUN` | — |
-| REQ-011 Notifications | `NOT RUN` | — |
-| REQ-012 OS agnostic | `NOT RUN` | — |
-| REQ-013 Security | `NOT RUN` | — |
-| REQ-014 Low maintenance | `NOT RUN` | — |
-| REQ-015 Data portability | `NOT RUN` | — |
+Filled by **M9-08** (2026-10-27). Each `REQ-001…015` (defined in [`PRODUCT_SPEC.md`](PRODUCT_SPEC.md) §3)
+is scored against the **delivered and verified** state, citing the milestone that delivered it. The
+roll-up, the release label and the consolidated known-limitations list are in
+[`RELEASE.md`](RELEASE.md).
+
+Verdicts: **`PASS`** = the requirement is delivered and demonstrably works under realistic conditions;
+**`PARTIAL`** = delivered but with a material completeness/evidence gap; **`NOT RUN`** = not delivered
+(blocked). A requirement is **not** marked `PASS` where its delivery is blocked or incomplete.
+
+| Requirement | Result | Delivering milestone | Evidence / notes |
+|---|---|---|---|
+| REQ-001 Self-hosted | `PASS` | M1 (+ M9 ops) | Core app, database and worker run on user-controlled infrastructure via one Docker Compose stack (`web/api/worker/db`); M1 gate (`PASS`): clean install, data survives restart, auth enforced, migrations reproducible. Operator tooling (`atlas-backup`, `atlas-export`) is local. No mandatory external service for the delivered surface. |
+| REQ-002 Free to use (qualified by §3.1) | `PASS` | M0/M1 (design) + M9-04 | No paid *application* feature; every runtime dependency is open-source (`DEPENDENCIES.md`). The §3.1 platform costs (iOS Apple Developer Program fee; free FCM/optional relay) are **platform** costs, disclosed, not application licence costs. |
+| REQ-003 Commercial-use rights | `PASS` | M1-10 + M9-04 | Complete dependency/licence inventory (`DEPENDENCIES.md`); all licences permit intended personal + workplace use (MIT/BSD/Apache/LGPL/MPL/CC0; `psycopg` LGPL used unmodified as a library). Standing pre-release action: re-verify identifiers upstream (`DEPENDENCIES.md`). |
+| REQ-004 Markdown notes | `PASS` | **M2** (gate `PASS`) | Notes are real `.md` files, byte-identical on disk, path-traversal-safe, revision-aware with conflict copies; M9-03 exports the genuine note bytes. Tests: `test_notes_api.py`, `test_note_paths.py` (M2 gate). |
+| REQ-005 Task management | `PASS` | **M3** (gate `PASS`) + M4-02 | All required capabilities delivered and integration-tested over HTTP: Inbox/Today/Upcoming (+ Day/Week planning, Board), due dates & priorities (DST-correct), recurrence (RRULE), subtasks, project assignment. **UI caveat:** capture is title-only and editing due date/priority/recurrence/subtasks/project is API-only — a documented limitation (`RELEASE.md` §5.2), not a gap in the requirement's capabilities. |
+| REQ-006 Project management | `PASS` | **M4** (gate `PASS`) | Projects, task lists, Kanban board, derived progress (documented formula, ADR-0023) and note↔project links are all implemented and tested. **UI caveat:** there is no Projects page yet (management is API-only); the Board and progress are user-visible (`RELEASE.md` §5.2). |
+| REQ-007 Google Calendar | `NOT RUN` | — (**M5-03** `BACKLOG`; **M5-00 `BLOCKED`** — AR-001) | Only the foundations exist: encrypted credential store (M5-01), provider-neutral adapter contract (M5-02), event projection + cursors (M5-06), sync-status (M5-08), reconciliation (M5-10). The Google adapter and account-connection UI are **not built**; no provider is contacted. |
+| REQ-008 Microsoft Outlook | `NOT RUN` | — (**M5-04** `BACKLOG`; **M5-00 `BLOCKED`** — AR-001) | As REQ-007: the foundations exist but the Microsoft Graph adapter and connection UI are **not built**. |
+| REQ-009 Calendar consolidation | `NOT RUN` | — (**M5-05/M5-07** `BACKLOG`) | There is **no unified calendar view** and **no account/calendar selection UI**. The `/calendar` route is a per-provider **sync-status** surface only (M5-08), not a consolidated event view. |
+| REQ-010 Cross-device sync | `PARTIAL` | **M7** (gate `PASS`) | Per-user change feed, durable offline queue, reconnect reconciliation and conflict resolution are implemented and verified by integration tests + a Chromium E2E suite. **Gap:** no **literal two-physical-device** convergence run was performed and the E2E's API is mocked (`RELEASE.md` §5.1). |
+| REQ-011 Notifications | `PARTIAL` | **M8-01/02/03/05** (`DONE`) | Durable reminder scheduler (at-most-once, tz-correct), Web Push pipeline + service worker, device registry + invalidation, and reminder preferences are delivered and tested. **Gap:** real (non-mocked) browser push delivery, mobile/native push and the desktop matrix are `NOT RUN` — **M8-04/06/07/08** `BACKLOG` (need real devices/services). |
+| REQ-012 OS agnostic | `PARTIAL` | M1 (web client) | The browser/PWA client is OS-agnostic by construction and is verified on **Linux** (M1/M9 gates, CI, containerised web). **Gap:** the Windows/macOS desktop matrix (**M8-08**) and the **Android/iOS** clients (**M8-06/07**) are `NOT RUN`. |
+| REQ-013 Security | `PASS` | M1 + M5-01 + M9-04/05 | Strong auth (Argon2id, server sessions, CSRF, rate limiting), protected credentials (AES-256-GCM at rest, key off-DB — M5-01), server-side access control on every protected endpoint, clean advisory scans (M9-04) and a threat-model review with the one gap fixed (F1, M9-05/06). Tested backup + restore (M9-01/02). Residual accepted risks R-SEC-1/2/4, R-21; TLS termination is operator-provided (`RELEASE.md` §5.5). |
+| REQ-014 Low maintenance | `PASS` | M1 + M9-06/07 | One documented Compose install; `api` runs migrations on start; upgrade/rollback runbook **executed** (M9-06); operator guide (M9-07). Operator caveat: the Compose file forwards only a subset of env vars — documented, not fixed (`RELEASE.md` §5.3). |
+| REQ-015 Data portability | `PASS` | M4-07 + M9-03 | Full, complete export of notes (real `.md`), tasks (incl. unfiled), projects and metadata in open formats, with a versioned manifest, via `GET /api/export` and the `atlas-export` CLI; project export is versioned (ADR-0026/ADR-0042). |
+
+**Roll-up.** 9 requirements `PASS` (REQ-001/002/003/004/005/006/013/014/015), 3 `PARTIAL`
+(REQ-010/011/012), 3 `NOT RUN` (REQ-007/008/009). Because mandatory requirements REQ-007/008/009 are
+`NOT RUN` and REQ-010/011/012 are `PARTIAL`, the release is **explicitly not production-ready** —
+label and rationale in [`RELEASE.md`](RELEASE.md) §1. No requirement is overstated: the blocked
+calendar work (AR-001) and the device-bound notification/mobile work are recorded, not waived.
