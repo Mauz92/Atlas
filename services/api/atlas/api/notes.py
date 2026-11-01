@@ -20,7 +20,14 @@ from ..notes import (
     NoteTooLargeError,
     UnsafePathError,
 )
+from ..projects import (
+    ZERO_PROGRESS,
+    NoteProjectLinks,
+    ProjectNotFoundError,
+    ProjectsService,
+)
 from .deps import CurrentUser, DbSession
+from .projects import project_out
 from .schemas import (
     FolderCreateRequest,
     FolderRenameRequest,
@@ -32,6 +39,7 @@ from .schemas import (
     NoteMoveRequest,
     NoteSummaryOut,
     NoteUpdateRequest,
+    ProjectListOut,
     ReconcileOut,
 )
 
@@ -56,7 +64,7 @@ def _translate(exc: Exception) -> NoReturn:
                 "current_revision": exc.current_revision,
             },
         ) from exc
-    if isinstance(exc, (NoteNotFoundError, FileNotFoundError)):
+    if isinstance(exc, (NoteNotFoundError, FileNotFoundError, ProjectNotFoundError)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     if isinstance(exc, (NotePathConflictError, FileExistsError)):
         raise HTTPException(
@@ -167,6 +175,32 @@ async def get_note(
         return await _detail(service, await service.get(note_id))
     except Exception as exc:
         _translate(exc)
+
+
+@router.get("/{note_id}/projects", response_model=ProjectListOut)
+async def list_note_projects(
+    note_id: uuid.UUID, user: CurrentUser, session: DbSession
+) -> ProjectListOut:
+    """List the caller's projects linked to one note (M4-05).
+
+    The association references the note's stable id, so it is unaffected by a rename. Each project
+    carries its derived ``progress`` (M4-04). The note must exist and be the caller's: an unknown,
+    another user's or deleted note is reported as ``404 Not found``. A note may be linked to any
+    number of projects.
+    """
+    links = NoteProjectLinks(session, user.id)
+    try:
+        projects = await links.projects(note_id)
+    except Exception as exc:
+        _translate(exc)
+    progress = await ProjectsService(session, user.id).progress(
+        [project.id for project in projects]
+    )
+    return ProjectListOut(
+        projects=[
+            project_out(project, progress.get(project.id, ZERO_PROGRESS)) for project in projects
+        ]
+    )
 
 
 @router.put("/{note_id}", response_model=NoteDetailOut)

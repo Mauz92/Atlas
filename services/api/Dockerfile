@@ -13,6 +13,11 @@ RUN useradd --create-home --uid 10001 atlas \
     && chown -R atlas:atlas /data/atlas
 WORKDIR /app
 
+# The PostgreSQL client tools (pg_dump) run the backup job (M9-01) from this image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml ./
 COPY atlas ./atlas
 COPY alembic.ini ./

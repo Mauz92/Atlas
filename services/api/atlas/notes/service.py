@@ -16,7 +16,14 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import NoteIndex, NoteLink, NoteTag, Tag
+from ..changes import (
+    ChangeEntityType,
+    ChangeOperation,
+    ChangeRecorder,
+    entity_id_for,
+    note_project_link_id,
+)
+from ..models import NoteIndex, NoteLink, NoteProject, NoteTag, Tag
 from .markdown import parse
 from .storage import NoteFile, NotesStorage, normalize_note_path, normalize_rel_path
 
@@ -179,6 +186,7 @@ class NotesService:
         await self._apply(note, file)
         await self._relink_unresolved()
         await self.session.flush()
+        await self._record_change(note.id, ChangeOperation.UPSERT)
         return note
 
     async def update(self, note_id: uuid.UUID, content: str, base_revision: int) -> NoteIndex:
@@ -195,6 +203,7 @@ class NotesService:
         note.revision += 1
         await self._apply(note, file)
         await self.session.flush()
+        await self._record_change(note.id, ChangeOperation.UPSERT)
         return note
 
     async def conflict_copy(self, note_id: uuid.UUID, content: str) -> NoteIndex:
@@ -219,7 +228,26 @@ class NotesService:
         await self.session.execute(
             update(NoteLink).where(NoteLink.target_note_id == note.id).values(target_note_id=None)
         )
+        # A note↔project link is a pure association: drop it with the note so no dangling project
+        # membership survives (M4-05, ADR-0024). The note row itself is kept as a tombstone. The
+        # linked project ids are read first so each removal can be announced (M7-01).
+        project_ids = list(
+            await self.session.scalars(
+                select(NoteProject.project_id).where(NoteProject.note_id == note.id)
+            )
+        )
+        await self.session.execute(delete(NoteProject).where(NoteProject.note_id == note.id))
         await self.session.flush()
+        recorder = ChangeRecorder(self.session, self.user_id)
+        await recorder.record(ChangeEntityType.NOTE, entity_id_for(note.id), ChangeOperation.DELETE)
+        await recorder.record_many(
+            (
+                ChangeEntityType.NOTE_PROJECT_LINK,
+                note_project_link_id(note.id, project_id),
+                ChangeOperation.DELETE,
+            )
+            for project_id in project_ids
+        )
 
     async def rename(self, note_id: uuid.UUID, new_path: str) -> NoteIndex:
         note = await self.get(note_id)
@@ -239,6 +267,7 @@ class NotesService:
         await self._apply(note, file)
         await self._relink_unresolved()
         await self.session.flush()
+        await self._record_change(note.id, ChangeOperation.UPSERT)
         return note
 
     async def create_folder(self, folder: str) -> None:
@@ -246,7 +275,13 @@ class NotesService:
 
     async def rename_folder(self, folder: str, new_folder: str) -> int:
         moves = self.storage.move_folder(normalize_rel_path(folder), normalize_rel_path(new_folder))
+        moved_ids: list[uuid.UUID] = []
         for old_path, new_path in moves:
+            note_id = await self.session.scalar(
+                select(NoteIndex.id).where(
+                    NoteIndex.user_id == self.user_id, NoteIndex.path == old_path
+                )
+            )
             await self.session.execute(
                 update(NoteIndex)
                 .where(NoteIndex.user_id == self.user_id, NoteIndex.path == old_path)
@@ -257,11 +292,24 @@ class NotesService:
                 .where(NoteLink.target_path == old_path)
                 .values(target_path=new_path)
             )
+            if note_id is not None:
+                moved_ids.append(note_id)
         await self.session.flush()
+        # Every note whose path changed is an ordinary metadata update on the change feed (M7-01).
+        await ChangeRecorder(self.session, self.user_id).record_many(
+            (ChangeEntityType.NOTE, entity_id_for(note_id), ChangeOperation.UPSERT)
+            for note_id in moved_ids
+        )
         return len(moves)
 
     async def delete_folder(self, folder: str) -> None:
         self.storage.delete_folder(normalize_rel_path(folder))
+
+    async def _record_change(self, note_id: uuid.UUID, operation: ChangeOperation) -> None:
+        """Announce a note-metadata change on the caller's personal change feed (M7-01)."""
+        await ChangeRecorder(self.session, self.user_id).record(
+            ChangeEntityType.NOTE, entity_id_for(note_id), operation
+        )
 
     # --- indexing -------------------------------------------------------
 

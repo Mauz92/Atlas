@@ -1,0 +1,8 @@
+"""Allow ``python -m atlas.backups`` as an alternative to the ``atlas-backup`` entry point."""
+
+from __future__ import annotations
+
+from .cli import main
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

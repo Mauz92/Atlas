@@ -2,9 +2,10 @@
 
 Tasks are owned by PostgreSQL. This module defines the ``tasks`` table and the
 task-side structures from ``DATA_MODEL.md`` §2.3 — note links, tag assignments and
-recurrence series. Project tables arrive with the projects milestone, so ``project_id``
-and ``reminder_policy_id`` are carried as bare UUIDs (their foreign keys are added when
-the referenced tables exist).
+recurrence series. ``project_id`` references ``projects.id`` with ``ON DELETE SET NULL``
+(ADR-0020), so a task survives its project; ``reminder_policy_id`` references
+``reminder_policies.id`` with ``ON DELETE SET NULL`` (M8-01), so a task survives the
+deletion of its reminder preference.
 """
 
 from __future__ import annotations
@@ -68,7 +69,9 @@ class Task(Base, TimestampMixin):
         server_default=TaskPriority.NONE.value,
         index=True,
     )
-    project_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
     parent_task_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -83,7 +86,9 @@ class Task(Base, TimestampMixin):
     recurrence_parent_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True
     )
-    reminder_policy_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    reminder_policy_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("reminder_policies.id", ondelete="SET NULL"), nullable=True
+    )
     external_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")

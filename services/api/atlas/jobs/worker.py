@@ -92,6 +92,11 @@ async def run_forever(
 
 def main() -> None:
     configure_logging()
+    # Install the Web Push sender (M8-02) from settings. When VAPID is unconfigured the sender
+    # degrades to the internal log channel, so this is safe with or without keys.
+    from ..reminders.push import configure_notifier
+
+    configure_notifier()
     stop = asyncio.Event()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

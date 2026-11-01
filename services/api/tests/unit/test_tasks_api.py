@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from pydantic import ValidationError
 
@@ -58,3 +60,24 @@ def test_an_unknown_time_zone_is_rejected() -> None:
         TaskCreateRequest(title="x", time_zone="Mars/Phobos")
     with pytest.raises(ValidationError):
         TaskUpdateRequest(time_zone="Mars/Phobos")
+
+
+def test_a_task_can_be_created_without_a_project() -> None:
+    """Membership is optional: a project is never required to create a task (M4-02)."""
+    assert TaskCreateRequest(title="x").project_id is None
+
+
+def test_update_distinguishes_an_omitted_project_from_an_explicit_null() -> None:
+    """``PATCH`` clears membership with an explicit ``null`` and leaves it alone when omitted.
+
+    The API sends only the fields the client actually set to the service
+    (``model_dump(exclude_unset=True)``), so "move the task out of its project" and "do not touch
+    the project" are distinct requests (M4-02).
+    """
+    assert "project_id" not in TaskUpdateRequest(title="x").model_dump(exclude_unset=True)
+    assert TaskUpdateRequest(project_id=None).model_dump(exclude_unset=True) == {"project_id": None}
+
+    project_id = uuid.uuid4()
+    assert TaskUpdateRequest(project_id=project_id).model_dump(exclude_unset=True) == {
+        "project_id": project_id
+    }

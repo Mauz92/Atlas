@@ -34,8 +34,10 @@ if TYPE_CHECKING:
     from atlas.notes import NotesStorage
 
 _TRUNCATE = (
-    "TRUNCATE TABLE jobs, sessions, users, notes, tags, note_links, note_tags, "
-    "tasks, recurrence_series, task_tags, task_links, idempotency_keys CASCADE"
+    "TRUNCATE TABLE jobs, sessions, users, change_log, notes, tags, note_links, note_tags, "
+    "note_projects, projects, tasks, recurrence_series, task_tags, task_links, idempotency_keys, "
+    "provider_credentials, external_events, sync_cursors, reminder_deliveries, reminders, "
+    "reminder_policies, notification_devices CASCADE"
 )
 
 

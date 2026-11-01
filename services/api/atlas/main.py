@@ -4,17 +4,36 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import __version__
-from .api import auth_router, folders_router, health_router, notes_router, tasks_router
+from .api import (
+    auth_router,
+    calendar_router,
+    changes_router,
+    export_router,
+    folders_router,
+    health_router,
+    notes_router,
+    notifications_router,
+    projects_router,
+    tasks_router,
+)
 from .config import get_settings
 from .db import dispose_engine
 from .logging import configure_logging
 from .middleware import CsrfMiddleware, RequestContextMiddleware, SecurityHeadersMiddleware
+
+#: Requests under this prefix carry OAuth token material, so their validation errors must not echo
+#: the submitted value (SECURITY.md T2).
+_CREDENTIAL_PATH_PREFIX = "/api/calendar/credentials"
 
 
 @asynccontextmanager
@@ -61,6 +80,32 @@ def create_app() -> FastAPI:
     app.include_router(notes_router)
     app.include_router(folders_router)
     app.include_router(tasks_router)
+    app.include_router(projects_router)
+    app.include_router(calendar_router)
+    app.include_router(changes_router)
+    app.include_router(notifications_router)
+    app.include_router(export_router)
+
+    @app.exception_handler(RequestValidationError)
+    async def _redact_credential_validation_errors(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        """Return a 422 without echoing the offending input for credential endpoints.
+
+        FastAPI's default body includes each error's ``input`` value. On the credential endpoints
+        that value can be a token, so ``input`` is stripped there; every other endpoint keeps the
+        framework default behaviour and response shape.
+        """
+        errors: list[dict[str, Any]] = [dict(error) for error in exc.errors()]
+        if request.url.path.startswith(_CREDENTIAL_PATH_PREFIX):
+            errors = [
+                {key: value for key, value in error.items() if key != "input"} for error in errors
+            ]
+        return JSONResponse(
+            status_code=422,
+            content={"detail": jsonable_encoder(errors)},
+        )
+
     return app
 
 

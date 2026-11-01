@@ -29,11 +29,75 @@ class Settings(BaseSettings):
     secret_key: str = _DEV_SECRET
     session_secret: str = _DEV_SECRET
     token_encryption_key: str = _DEV_SECRET
+    #: Identifier recorded with each encrypted credential so keys can be rotated (M5-01).
+    token_encryption_key_id: str = "v1"
+    #: Retired keys, keyed by their id, used only to decrypt rows a rotation has not re-sealed yet.
+    token_encryption_previous_keys: dict[str, str] = Field(default_factory=dict)
 
     database_url: str = "postgresql+psycopg://atlas:atlas@localhost:5432/atlas"
     notes_root: str = "./data/notes"
     # How often the worker reconciles the note index with the filesystem.
     notes_reconcile_seconds: int = 300
+    # How often (seconds) the worker scans every connected calendar and re-syncs it from its stored
+    # cursor, recovering any change a lost/never-received provider notification did not deliver
+    # (M5-10). Notifications are hints, never a complete change log (AGENTS.md §10).
+    calendar_reconcile_seconds: int = 300
+    # How long (seconds) a sync run's durable ``in_progress`` marker may stay set before it is
+    # treated as stale — a run that crashed without clearing it. Within this window the marker is
+    # reported as ``in_progress``; past it, the marker is ignored (so a crashed run cannot lie) and
+    # the next scan re-runs the calendar.
+    calendar_sync_stale_seconds: int = 900
+
+    # How far back (days) the per-user change feed keeps its history (M7-02). Change-log rows older
+    # than this are purged by a durable job; a client whose cursor is older than the retained
+    # history is told to full-resync rather than handed a partial feed. It does not bound the user's
+    # own entity rows — a soft-deleted entity stays a tombstone.
+    change_retention_days: int = 30
+    # How often (seconds) the worker runs the change-feed purge.
+    change_purge_interval_seconds: int = 3600
+    # How long (seconds) a purge job's lock may stay set before it is treated as stale — a worker
+    # that crashed mid-purge — so the recurring purge chain restarts.
+    change_purge_stale_seconds: int = 900
+
+    # How often (seconds) the worker sweeps reminders: materialises reminders from task due dates
+    # and re-queues any delivery missed while the worker was down (M8-01). A reminder's own delivery
+    # job fires at its exact instant, so this only bounds self-healing latency.
+    reminder_scan_seconds: int = 60
+    # How long (seconds) a reminder sweep's lock may stay set before it is treated as stale — a
+    # worker that crashed mid-sweep — so the recurring sweep chain restarts.
+    reminder_scan_stale_seconds: int = 900
+
+    # Backups (M9-01). A durable job writes one backup set per run to ``backup_dir`` capturing both
+    # durable stores (a PostgreSQL dump + an archive of the notes root) with a checksummed manifest.
+    # ``backup_retain`` keeps the newest N published sets; older ones are pruned.
+    backup_dir: str = "./data/backups"
+    backup_retain: int = 7
+    # How often (seconds) the worker produces a backup, and how long a run's durable lock may stay
+    # set before it is treated as stale (a worker that crashed mid-backup) so the chain restarts.
+    backup_interval_seconds: int = 86400
+    backup_stale_seconds: int = 3600
+    # Where ``pg_dump`` is executed: a local client (the container image installs one), or — when
+    # ``backup_pg_dump_container`` names a running PostgreSQL container — inside that container via
+    # ``docker exec`` (useful on a host with no local client). The password is never passed on the
+    # command line (see atlas/backups/pgdump.py).
+    backup_pg_dump_binary: str = "pg_dump"
+    backup_pg_dump_container: str = ""
+
+    # Full data export (M9-03). The default destination for the operator ``atlas-export`` CLI; the
+    # API's ``GET /api/export`` streams a zip and does not use it. A portability artifact, distinct
+    # from the backups above (ADR-0042).
+    export_dir: str = "./data/exports"
+
+    # Web Push (M8-02). VAPID application-server keys (RFC 8292): the **private** key signs each
+    # push and is a secret that must never be committed, bundled or logged (AGENTS.md §11); the
+    # **public** key is handed to the browser so it can form a subscription. ``vapid_subject`` is
+    # the contact (``mailto:`` or ``https:``) a push service may use for the sender. When any of the
+    # three is unset, Web Push is disabled cleanly and reminders degrade to the internal log channel
+    # (no crash). Generate a pair once and provide it via the environment — see
+    # ``docs/DEPLOYMENT.md`` §"Web Push (VAPID keys)".
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_subject: str = ""
 
     session_cookie_name: str = "atlas_session"
     csrf_cookie_name: str = "atlas_csrf"
@@ -48,6 +112,21 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_trailing_slash(cls, value: str) -> str:
         return value.rstrip("/")
+
+    @field_validator(
+        "change_retention_days",
+        "change_purge_interval_seconds",
+        "reminder_scan_seconds",
+        "backup_retain",
+        "backup_interval_seconds",
+        "backup_stale_seconds",
+    )
+    @classmethod
+    def _must_be_positive(cls, value: int) -> int:
+        if value < 1:
+            msg = "retention/interval and backup settings must be positive"
+            raise ValueError(msg)
+        return value
 
     @property
     def is_production(self) -> bool:
