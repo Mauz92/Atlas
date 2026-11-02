@@ -24,6 +24,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M8 | Notifications and mobile apps | `IN_PROGRESS` | Platform behaviour tested on real devices |
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
+| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `READY` | Worked after MU-08; J1–J7 and the axe sweep keep passing while the UI is rebuilt |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -649,9 +650,58 @@ default mobile path until then. Scope decisions D-1…D-4 are settled in ADR-004
 
 ---
 
+## UX — Design system and app shell
+
+Source of evidence and detail: [`UX_AUDIT.md`](UX_AUDIT.md) (do not duplicate it here). Decisions: ADR-0051.
+Rules for every UX task: no backend or data-model change unless stated; no new npm dependency; `npm run
+test:e2e:real` (J1–J7) and the axe sweep keep passing (selectors may change only where the visible label
+legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to the evidence.
+
+| ID | Title | Depends on | Status |
+|---|---|---|---|
+| UX-01 | Design tokens (neutral), base controls, pre-paint theme, quick wins 1, 3, 5, 6, 8 | MU-08 | `READY` |
+| UX-02 | App shell: rail, sectioned sidebar, status bar, mobile bottom nav, vendored icons; Day removed from nav | UX-01 | `BACKLOG` |
+| UX-03 | Task row, menus, quick actions (fixes: subtasks shown without parent; Complete shown on completed tasks) | UX-02 | `BACKLOG` |
+| UX-04 | Task detail as property panel with per-field autosave | UX-03 | `BACKLOG` |
+| UX-05 | Notes workspace + note autosave (own tests before Save is removed) | UX-02 | `BACKLOG` |
+| UX-06 | Live preview mode; Live becomes default once round-trip tests pass | UX-05 | `BACKLOG` |
+| UX-07 | Tasks, Projects and Board polish | UX-03 | `BACKLOG` |
+| UX-08 | Settings consolidation, skeletons, empty states | UX-02 | `BACKLOG` |
+
+### UX-01 plan — Design tokens and base controls
+- **Scope.** Replace `:root` in `apps/web/src/styles.css` with the audit §3 tokens, using a neutral accent
+  (ADR-0051 §1). Light and dark via `prefers-color-scheme` plus `data-theme` (System/Light/Dark in Settings); a
+  pre-paint theme script in `index.html` (no light flash on login/setup). Base rules for button variants
+  (secondary default, `.primary`, `.ghost`, `.danger`), input/textarea/select/checkbox/radio, `.pill`, `kbd`,
+  section header; type/space/radius scales. Delete duplicate badge/heading rules. Tokenise the CodeMirror theme
+  (dark gutter, `aria-label` on `.cm-content`). Quick wins 1, 3, 5, 6, 7, 8 and 10 from audit §6 (rest of 2/4/9
+  belong to UX-05/UX-03). Control borders reach 3:1 (WCAG 1.4.11).
+- **Out of scope.** Layout/navigation changes (UX-02), new components, any behaviour change.
+- **Acceptance.** Only scale values in `font-size`/`gap`/`padding` (grep check script run by `verify.sh`); a unit
+  test reads the tokens and asserts the audit's contrast ratios; login/setup follow the OS theme with no flash;
+  axe clean on all swept routes; J1–J7 pass; before/after screenshots.
+- **Tests.** Token contrast unit test; theme store test (System/Light/Dark); existing suites. **Size** M. **Risk**
+  low (visual only, touches every page).
+
+### UX-02 plan — App shell
+- **Scope.** `Layout.tsx`: icon rail (Today, Inbox, Tasks, Projects, Notes + Settings), collapsible sectioned
+  sidebar generated from one `NAV_SECTIONS` config (shared with the command palette), Ctrl+B collapse remembered
+  per browser, status bar fed by `useSyncStatus`/offline queue (offline, queued, conflict, last sync), mobile
+  bottom nav plus drawer, topbar removed (search lives in the palette and a sidebar button). `/day`, `/calendar`,
+  `/sync`, `/notifications` stay routable (redirects or sections) so no bookmark breaks; Day redirects to Today.
+  Vendored `Icon.tsx` (about 25 Lucide SVGs, ISC notice in `DEPENDENCIES.md`).
+- **Out of scope.** Page contents (UX-03…08); a Today date picker is added only if needed to replace Day.
+- **Acceptance.** At most 6 top-level destinations; exactly one active item at any time (project pages included);
+  status bar states covered by a component test with a mocked queue; all old URLs resolve; mobile has the bottom
+  nav and no horizontal nav strip; J1–J7 and axe sweep pass with updated nav selectors only; screenshots.
+- **Tests.** Component tests (nav config, active state, collapse persistence, status bar), redirect test,
+  existing real-stack suite. **Size** L. **Risk** medium (IA change; selectors).
+
+---
+
 ## Immediate Next Tasks
 
-**Next: milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
+**Next: UX-01 then UX-02 (design system and app shell, ADR-0051), then close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
 editing) and `MU-02` (Projects UI), `MU-03` (Tasks page) and `MU-04` (recurrence, subtasks and reminders in the UI) and `MU-05` (command palette, quick switcher and unified search) and `MU-06` (note ↔ task ↔ project linking) and `MU-07` (daily note, templates and Today as home) and `MU-08` (settings and shell polish) are `DONE`; MU itself is not closed (CI run and release re-score outstanding, see the MU exit-criteria evaluation).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 

@@ -1,14 +1,14 @@
 # Current Task
 
-- Task ID: none selected
-- Last completed: MU-08 (`DONE`, 2026-11-02, local verification; CI `e2e-real` NOT RUN on GitHub Actions)
-- Milestone: MU — Usable Core (docs/ROADMAP.md, ADR-0043). **MU is not closed**: see "MU exit criteria — evaluation".
+- Task ID: UX-01 (`READY`), then UX-02
+- Last completed: MU-08 (`DONE`, 2026-11-02; committed b921945). Local verification only; CI `e2e-real` NOT RUN.
+- Milestone: UX — Design system and app shell (docs/ROADMAP.md "UX" section, ADR-0051, evidence in docs/UX_AUDIT.md)
 
-## What MU-08 delivered (ADR-0050)
-Settings page (account name and password change, theme, reminder timing + notification status, export download,
-backup status, instance info), `PATCH /api/auth/me`, `POST /api/auth/password`, `GET /api/instance`, shortcut
-help overlay (`?` and palette), mobile nav, loading/error consistency, `.local` emails accepted, axe gate
-(`@axe-core/playwright`, dev only) and layout sweep. Evidence: `docs/ACCEPTANCE.md` MU-08.
+## Goal
+Make the UI calm and consistent (neutral Notion-like look, Obsidian/VS Code shell). The full plans for UX-01 (tokens,
+base controls, pre-paint theme) and UX-02 (rail, sectioned sidebar, status bar, mobile nav, vendored icons) are in the
+roadmap. Owner decisions are in ADR-0051: neutral accent, Day removed from nav, vendored icons, autosave everywhere
+(no Save/Ctrl+S; lands with UX-04/UX-05 and its own tests), Source editor default until live preview is verified.
 
 ## Open before MU can be declared complete
 1. Run the `e2e-real` job on GitHub Actions (never executed there): J1-J7 in CI is an MU exit criterion.

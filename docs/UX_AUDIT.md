@@ -402,6 +402,11 @@ legitimately changed), an axe run with zero violations on touched routes, and a 
 
 ## 7. Open questions for the owner
 
+**Answered 2026-11-02 (ADR-0051):** 1 neutral Notion-like accent (not indigo); 2 remove Day from the nav; 3 vendor
+icons; 4 autosave always, no Save/Ctrl+S; 5 Source until live preview is verified, then Live default. The list
+below is kept as the original question text.
+
+
 1. **Accent colour.** Indigo `#4f46e5` / `#818cf8` (proposed), keep blue, or a neutral-only look like
    Notion? *Default: indigo.*
 2. **Day view.** Remove `/day` as a nav item (it duplicates Today; Week's columns cover other days), or

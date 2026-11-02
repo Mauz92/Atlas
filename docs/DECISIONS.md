@@ -2295,3 +2295,31 @@ manageable one by one (no "sessions" list or "sign out other devices" button). T
 in-process (single-process deployment; see SECURITY §3 note). Backup status reflects the folder as the API
 sees it; a worker writing elsewhere would show nothing. Not done: email change, user time zone, account
 deletion, OIDC/2FA.
+
+
+---
+
+## ADR-0051 — UX direction: neutral Notion-like design system, new app shell, always-autosave (owner decisions)
+
+**Status:** Accepted (owner, 2026-11-02). **Source:** [`UX_AUDIT.md`](UX_AUDIT.md) (evidence and proposal).
+
+**Decisions (answers to the audit's open questions).**
+1. **Accent:** neutral, Notion-like. Surfaces and text carry the interface; one accent token exists but is
+   neutral (ink in light, near-white in dark) and is swappable later in one place. Colour is used only for
+   meaning (priority, overdue, danger, success). Replaces the audit's indigo default.
+2. **Day view:** removed from navigation; `/day` redirects to Today (a date picker on Today replaces it).
+3. **Icons:** vendored inline SVGs (about 25, Lucide, ISC licence, notice kept in `docs/DEPENDENCIES.md`); no
+   npm icon package.
+4. **Saving is always automatic, everywhere, with no Save button and no Ctrl+S requirement** (Obsidian-like):
+   task properties save per field; note text saves on a debounce, on blur, on navigation and on close. A visible
+   state indicator ("Saving… / Saved / Offline / Conflict") replaces "revision N". Safety is unchanged and
+   mandatory (AGENTS.md §8, §9): every save carries `base_revision`; a `409` never overwrites; the local buffer
+   is kept and the existing conflict UI is shown; unsaved text survives reload via a local draft; saves are
+   serialised per document (no overlapping requests) and idempotent. Ctrl+S, if pressed, just flushes now.
+5. **Editor default mode:** Source until live preview passes its round-trip tests, then Live becomes the default,
+   remembered per browser.
+
+**Consequences.** Autosave for notes is a data-integrity feature, not polish: it ships with its own tests
+(rapid typing, offline, 409 mid-typing, tab close, reload) before the explicit Save button is removed
+(UX-05). Task detail loses its Save button in UX-04. Until then the current Save buttons stay. Nothing here
+adds a data store or changes the Markdown format. Scope: UX tasks UX-01…UX-08 in `ROADMAP.md`.
