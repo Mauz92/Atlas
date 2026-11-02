@@ -102,7 +102,8 @@ Current journeys: `capture-journey.spec.ts` (setup → login → capture "Buy mi
 `j1-capture-and-plan.spec.ts` (J1: capture on Today, plan via the task detail, Upcoming, reload, stale
 second-tab conflict, all fields, verbatim validation errors, delete + undo, narrow-screen full page);
 `j2-triage-inbox.spec.ts` (J2: five inbox items scheduled / filed / deleted with undo, keyboard driven);
-`j3-run-a-project.spec.ts` (J3: create a project in the UI, add/file/complete/move tasks, link a note, edit, archive, restore).
+`j3-run-a-project.spec.ts` (J3: create a project in the UI, add/file/complete/move tasks, link a note, edit, archive, restore);
+`mu04-recurrence-subtasks-reminders.spec.ts` (MU-04: repeat picker with server preview/validation, completing a repeating task and its next occurrence, series end, subtasks with progress, per-task reminder override).
 Journeys share one owner: start each with `ensureOwner(page)` (creates the owner or signs in) and use
 unique titles, since earlier journeys' tasks stay in the database. `apiCall` (helpers) performs set-up
 that has no UI yet (for example creating a project).

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { ApiError, tasksApi } from "../api/client";
+import { ApiError, notificationsApi, tasksApi } from "../api/client";
 import { makeProject, makeTask } from "../test/tasks";
 import { TaskDetail } from "./TaskDetail";
 
@@ -9,7 +9,17 @@ vi.mock("../api/client", async () => {
     await vi.importActual<typeof import("../api/client")>("../api/client");
   return {
     ApiError: actual.ApiError,
-    tasksApi: { update: vi.fn(), get: vi.fn(), remove: vi.fn() },
+    tasksApi: {
+      update: vi.fn(),
+      get: vi.fn(),
+      remove: vi.fn(),
+      list: vi.fn(),
+      subtasks: vi.fn(),
+      addSubtask: vi.fn(),
+      complete: vi.fn(),
+      previewRecurrence: vi.fn(),
+    },
+    notificationsApi: { taskReminder: vi.fn(), setTaskReminder: vi.fn() },
   };
 });
 
@@ -44,6 +54,13 @@ function setup(
 
 beforeEach(() => {
   vi.resetAllMocks();
+  getMock.mockResolvedValue(task);
+  vi.mocked(tasksApi.subtasks).mockResolvedValue({ tasks: [] });
+  vi.mocked(notificationsApi.taskReminder).mockResolvedValue({
+    override: null,
+    effective: null,
+    remind_at: null,
+  });
 });
 
 describe("TaskDetail", () => {
@@ -226,5 +243,120 @@ describe("TaskDetail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Not found");
     expect(props.onDeleted).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["Weekly", "FREQ=WEEKLY"],
+    ["Daily", "FREQ=DAILY"],
+    ["Monthly", "FREQ=MONTHLY"],
+  ])(
+    "repeats %s: shows the server's preview and saves only the rule",
+    async (label, rule) => {
+      vi.mocked(tasksApi.previewRecurrence).mockResolvedValue({
+        occurrences: ["2026-11-03T09:30:00Z", "2026-11-10T09:30:00Z"],
+      });
+      updateMock.mockResolvedValue({
+        ...task,
+        recurrence_rule: rule,
+        revision: 2,
+      });
+      setup();
+      fireEvent.change(screen.getByLabelText("Repeat"), {
+        target: { value: label.toLowerCase() },
+      });
+      const items = await screen.findAllByRole("listitem");
+      expect(items.length).toBeGreaterThanOrEqual(2);
+      expect(tasksApi.previewRecurrence).toHaveBeenCalledWith(
+        rule,
+        "2026-11-03T09:30:00",
+        "UTC",
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() =>
+        expect(updateMock).toHaveBeenCalledWith(task, {
+          recurrence_rule: rule,
+        }),
+      );
+    },
+  );
+
+  it("shows the server's message for a bad custom rule and cannot repeat without an anchor", async () => {
+    vi.mocked(tasksApi.previewRecurrence).mockRejectedValue(
+      new Error("invalid recurrence rule: 'FREQ=SOMETIMES'"),
+    );
+    setup();
+    fireEvent.change(screen.getByLabelText("Repeat"), {
+      target: { value: "custom" },
+    });
+    fireEvent.change(screen.getByLabelText("Custom rule"), {
+      target: { value: "FREQ=SOMETIMES" },
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "invalid recurrence rule: 'FREQ=SOMETIMES'",
+    );
+  });
+
+  it("is read-only for an occurrence of a series and says so when no anchor is set", () => {
+    setup({
+      task: makeTask({
+        id: "occ",
+        recurrence_rule: "FREQ=DAILY",
+        recurrence_parent_id: "head",
+      }),
+    });
+    expect(screen.getByLabelText("Repeat")).toBeDisabled();
+    expect(screen.getByText(/Set a due date or start/)).toBeInTheDocument();
+  });
+
+  it("completing a repeating task shows the next occurrence and can open it", async () => {
+    const repeating = { ...task, recurrence_rule: "FREQ=DAILY" };
+    const next = makeTask({
+      id: "t2",
+      title: task.title,
+      recurrence_rule: "FREQ=DAILY",
+      recurrence_parent_id: "t1",
+      due_at: "2026-11-04T09:30:00Z",
+      time_zone: "UTC",
+    });
+    vi.mocked(tasksApi.previewRecurrence).mockResolvedValue({
+      occurrences: [],
+    });
+    updateMock.mockResolvedValue({
+      ...repeating,
+      status: "completed",
+      revision: 2,
+    });
+    vi.mocked(tasksApi.list).mockResolvedValue({
+      tasks: [{ ...repeating, status: "inbox" }, next],
+    });
+    const onOpenTask = vi.fn();
+    setup({ task: repeating, onOpenTask });
+    fireEvent.change(screen.getByLabelText("Status"), {
+      target: { value: "completed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/Next occurrence:/)).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open next occurrence" }),
+    );
+    expect(onOpenTask).toHaveBeenCalledWith(next);
+  });
+
+  it("says the series ended when no further occurrence exists", async () => {
+    const repeating = { ...task, recurrence_rule: "FREQ=DAILY;COUNT=1" };
+    vi.mocked(tasksApi.previewRecurrence).mockResolvedValue({
+      occurrences: [],
+    });
+    updateMock.mockResolvedValue({
+      ...repeating,
+      status: "completed",
+      revision: 2,
+    });
+    vi.mocked(tasksApi.list).mockResolvedValue({ tasks: [] });
+    setup({ task: repeating });
+    fireEvent.change(screen.getByLabelText("Status"), {
+      target: { value: "completed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/last occurrence/)).toBeInTheDocument();
   });
 });

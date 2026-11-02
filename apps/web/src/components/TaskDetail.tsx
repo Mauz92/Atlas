@@ -1,6 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+import { TaskReminder } from "./TaskReminder";
+import { TaskRepeat } from "./TaskRepeat";
+import { TaskSubtasks } from "./TaskSubtasks";
+import { formatDue, viewerTimeZone } from "../lib/tasks";
 import {
   tasksApi,
   type Project,
@@ -12,6 +16,7 @@ import { STATUS_LABELS, STATUS_ORDER, canMove } from "../lib/taskStatus";
 import {
   PRIORITIES,
   changesFromDraft,
+  recurrenceAnchor,
   draftFromTask,
   draftsEqual,
   type TaskDraft,
@@ -29,6 +34,10 @@ interface TaskDetailProps {
   onSaved: (task: Task) => void;
   /** The task was deleted; the owner of the panel offers the undo. */
   onDeleted: (task: Task) => void;
+  /** Open another task (a subtask, the parent, the next occurrence) in this panel. */
+  onOpenTask?: (task: Task) => void;
+  /** Subtasks changed; the lists should refresh (the panel keeps its unsaved edits). */
+  onRefresh?: () => void;
 }
 
 /** A 409 carrying the server's current revision means the task changed since it was read. */
@@ -44,6 +53,38 @@ function isRevisionConflict(err: unknown): boolean {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong";
+}
+
+/**
+ * After completing a repeating task the server has created the next occurrence of the series (and
+ * only that one). Find it by title and series; `null` with `checked` means the series has ended.
+ */
+async function findNextOccurrence(
+  completed: Task,
+): Promise<{ next: Task | null; checked: boolean }> {
+  try {
+    const head = completed.recurrence_parent_id ?? completed.id;
+    const list = await tasksApi.list({
+      q: completed.title.slice(0, 200),
+      status: ["inbox", "next", "in_progress"],
+      limit: 500,
+    });
+    const next =
+      list.tasks
+        .filter(
+          (task) =>
+            task.id !== completed.id &&
+            (task.recurrence_parent_id ?? task.id) === head,
+        )
+        .sort(
+          (a, b) =>
+            Date.parse(a.due_at ?? a.start_at ?? "") -
+            Date.parse(b.due_at ?? b.start_at ?? ""),
+        )[0] ?? null;
+    return { next, checked: true };
+  } catch {
+    return { next: null, checked: false };
+  }
 }
 
 function supportedZones(): string[] {
@@ -73,6 +114,8 @@ export function TaskDetail({
   onClose,
   onSaved,
   onDeleted,
+  onOpenTask,
+  onRefresh,
 }: TaskDetailProps) {
   const ids = useId();
   const titleRef = useRef<HTMLInputElement>(null);
@@ -86,6 +129,10 @@ export function TaskDetail({
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [completion, setCompletion] = useState<{
+    next: Task | null;
+    checked: boolean;
+  } | null>(null);
   const zones = useMemo(supportedZones, []);
 
   const dirty = !draftsEqual(initial, draft);
@@ -97,6 +144,7 @@ export function TaskDetail({
     setError(null);
     setConflict(false);
     setConfirmDiscard(false);
+    setCompletion(null);
   }, [task, timeZone]);
 
   useEffect(() => {
@@ -144,8 +192,17 @@ export function TaskDetail({
     setConflict(false);
     try {
       const saved = await tasksApi.update(current, changes);
+      const completedRepeat =
+        saved.status === "completed" &&
+        current.status !== "completed" &&
+        saved.recurrence_rule !== null;
       setCurrent(saved);
       setDraft(draftFromTask(saved, timeZone));
+      setCompletion(null);
+      if (completedRepeat) {
+        // The server generated exactly the next occurrence; look it up so it can be shown.
+        void findNextOccurrence(saved).then(setCompletion);
+      }
       onSaved(saved);
     } catch (err) {
       if (isRevisionConflict(err)) {
@@ -313,6 +370,14 @@ export function TaskDetail({
           onChange={(event) => set("start", event.target.value)}
         />
 
+        <TaskRepeat
+          value={draft.recurrenceRule}
+          onChange={(rule) => set("recurrenceRule", rule)}
+          anchor={recurrenceAnchor(draft)}
+          timeZone={draft.timeZone.trim() || timeZone || viewerTimeZone()}
+          readOnly={current.recurrence_parent_id !== null}
+        />
+
         <label htmlFor={`${ids}-project`}>Project</label>
         <select
           id={`${ids}-project`}
@@ -342,6 +407,35 @@ export function TaskDetail({
           value={draft.tags}
           onChange={(event) => set("tags", event.target.value)}
         />
+
+        {completion ? (
+          <div className="task-detail-completion" role="status">
+            {completion.next ? (
+              <>
+                <p>
+                  Completed. Next occurrence:{" "}
+                  {formatDue(
+                    (completion.next.due_at ?? completion.next.start_at)!,
+                    completion.next.time_zone ?? timeZone,
+                  )}
+                </p>
+                {onOpenTask ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenTask(completion.next!)}
+                    disabled={dirty}
+                  >
+                    Open next occurrence
+                  </button>
+                ) : null}
+              </>
+            ) : completion.checked ? (
+              <p>Completed. This was the last occurrence of the series.</p>
+            ) : (
+              <p>Completed. The next occurrence has been created.</p>
+            )}
+          </div>
+        ) : null}
 
         {conflict ? (
           <div className="error task-detail-conflict" role="alert">
@@ -393,6 +487,31 @@ export function TaskDetail({
           </button>
         </div>
       </form>
+
+      <div className="task-detail-sections">
+        {current.parent_task_id && onOpenTask ? (
+          <button
+            type="button"
+            className="ghost"
+            disabled={dirty}
+            onClick={() => {
+              void tasksApi
+                .get(current.parent_task_id!)
+                .then(onOpenTask)
+                .catch((err: unknown) => setError(errorMessage(err)));
+            }}
+          >
+            Open parent task
+          </button>
+        ) : null}
+        <TaskSubtasks
+          parent={current}
+          openDisabled={dirty || !onOpenTask}
+          onOpen={(sub) => onOpenTask?.(sub)}
+          onChanged={() => onRefresh?.()}
+        />
+        <TaskReminder taskId={current.id} />
+      </div>
     </aside>
   );
 }

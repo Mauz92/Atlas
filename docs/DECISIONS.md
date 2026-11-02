@@ -2055,6 +2055,30 @@ saved filters.
    failed tasks stay selected. Delete undo calls the restore endpoint for each deleted task (ADR-0044).
    There is no atomic multi-task operation; it is online-only (R-22).
 
+## ADR-0046 — Recurrence preview endpoint, subtasks and reminder override in the task detail (MU-04)
+
+**Context.** The task detail needs a repeat picker with a preview. AGENTS.md §7.4 forbids reimplementing
+recurrence in the client, and no endpoint exposed the engine without creating a task.
+
+**Decision.**
+1. **`POST /api/tasks/recurrence/preview`** (`rule`, naive-or-aware `anchor`, optional `time_zone`, `limit` ≤ 20)
+   returns the next occurrences as UTC instants using exactly `build_spec`/`occurrences` (the code path that
+   creating and completing a recurring task uses). It is read-only, authenticated, stores nothing, and
+   answers `422` with the server's message for an unusable rule, unknown zone or skipped wall-clock time.
+2. **Presets are strings, not logic.** Daily/Weekly/Monthly send `FREQ=DAILY|WEEKLY|MONTHLY`; anything else is
+   a custom RRULE the server validates. Giving a task without a zone a rule also pins the viewer's zone
+   (the series needs one to keep wall-clock time across DST). The anchor is the due date, else the start,
+   mirroring the server.
+3. **Completing a repeating task** is the normal status change; the server already creates exactly the next
+   occurrence. The panel then finds it (same title and series, open statuses) and offers to open it, or says
+   the series ended. Occurrences of a series show the rule read-only: the server keeps the series on its head
+   task, so editing or stopping a series from an occurrence is not offered (recorded in R-22).
+4. **Subtasks** use the existing endpoints (`parent_task_id`, ordinary create/complete/delete); progress is
+   the server's rollup (completed/total). **Reminder** uses the M8-05 `GET/PUT /api/tasks/{id}/reminder`;
+   "Use my default" clears the override. Delivery and scheduling are unchanged.
+
+**Consequences.** One small backend endpoint with tests; no schema change, no new dependency.
+
 ---
 
 ## Open decisions deferred to later milestones

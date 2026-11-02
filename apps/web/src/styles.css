@@ -1446,3 +1446,77 @@ button.danger {
 .task-item > input[type="checkbox"] {
   width: auto;
 }
+
+/* Repeat, subtasks and reminder in the task detail (MU-04) */
+.task-repeat {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.task-repeat-preview ul,
+.task-subtask-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.task-repeat-preview li {
+  font-size: 0.85rem;
+}
+
+.task-detail-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 var(--space) var(--space);
+  border-top: 1px solid var(--border);
+}
+
+.task-detail-sections h3 {
+  margin: 12px 0 4px;
+  font-size: 1rem;
+}
+
+.task-detail-sections label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.task-detail-sections input[type="text"],
+.task-detail-sections input[type="number"],
+.task-detail-sections input[type="time"],
+.task-detail-sections select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.task-subtasks progress {
+  width: 100%;
+}
+
+.task-subtask-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.task-subtask-list .task-title {
+  flex: 1;
+}
+
+.task-subtask-add {
+  margin-top: 6px;
+}
+
+.task-detail-completion {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}

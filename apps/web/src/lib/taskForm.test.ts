@@ -6,6 +6,8 @@ import {
   dueOn,
   localDate,
   parseTags,
+  recurrenceAnchor,
+  repeatChoice,
 } from "./taskForm";
 import { formatDue, wallClock } from "./tasks";
 
@@ -144,5 +146,60 @@ describe("formatDue", () => {
     const timed = formatDue("2026-11-03T09:30:00Z", "Europe/Stockholm");
     expect(dateOnly).not.toMatch(/\d:\d\d/);
     expect(timed).toMatch(/\d:\d\d/);
+  });
+});
+
+describe("recurrence in the form", () => {
+  const base = draftFromTask(
+    makeTask({ due_at: "2026-11-03T09:30:00Z", time_zone: "UTC" }),
+    "UTC",
+  );
+
+  it.each([
+    ["FREQ=DAILY", "daily"],
+    ["FREQ=MONTHLY", "monthly"],
+    ["FREQ=WEEKLY;BYDAY=MO,WE", "custom"],
+    ["", ""],
+  ])("classifies %j as %j", (rule, choice) => {
+    expect(repeatChoice(rule)).toBe(choice);
+  });
+
+  it("sends only the rule (null clears it) and prefers the due date as the anchor", () => {
+    const set = { ...base, recurrenceRule: " FREQ=DAILY " };
+    expect(changesFromDraft(base, set, "UTC")).toEqual({
+      recurrence_rule: "FREQ=DAILY",
+    });
+    const repeating = { ...base, recurrenceRule: "FREQ=DAILY" };
+    expect(
+      changesFromDraft(repeating, { ...repeating, recurrenceRule: "" }, "UTC"),
+    ).toEqual({
+      recurrence_rule: null,
+    });
+    expect(recurrenceAnchor({ ...base, start: "2026-11-01T08:00" })).toBe(
+      "2026-11-03T09:30:00",
+    );
+    expect(
+      recurrenceAnchor({
+        ...base,
+        dueDate: "",
+        dueTime: "",
+        start: "2026-11-01T08:00",
+      }),
+    ).toBe("2026-11-01T08:00:00");
+    expect(recurrenceAnchor({ ...base, dueDate: "", dueTime: "" })).toBeNull();
+  });
+
+  it("pins the viewer's zone when a task without one starts repeating", () => {
+    const noZone = draftFromTask(
+      makeTask({ due_at: "2026-11-03T09:30:00Z" }),
+      "Europe/Stockholm",
+    );
+    expect(
+      changesFromDraft(
+        noZone,
+        { ...noZone, recurrenceRule: "FREQ=DAILY" },
+        "Europe/Stockholm",
+      ),
+    ).toEqual({ recurrence_rule: "FREQ=DAILY", time_zone: "Europe/Stockholm" });
   });
 });

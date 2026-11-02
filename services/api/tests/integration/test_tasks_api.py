@@ -8,7 +8,9 @@ PostgreSQL is reachable.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
+import pytest
 from httpx import AsyncClient
 
 from tests.conftest import create_user_via_setup, csrf_headers
@@ -360,3 +362,64 @@ async def test_restore_appears_in_the_change_feed(client: AsyncClient) -> None:
     feed = (await client.get("/api/tasks/changes")).json()
     (item,) = [t for t in feed["tasks"] if t["id"] == created["id"]]
     assert item["deleted_at"] is None
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (
+            {"rule": "FREQ=WEEKLY;COUNT=3", "anchor": "2026-03-02T09:00:00", "time_zone": "UTC"},
+            ["2026-03-02T09:00:00Z", "2026-03-09T09:00:00Z", "2026-03-16T09:00:00Z"],
+        ),
+        (  # wall clock is kept across the 2026-03-29 DST change in Stockholm
+            {
+                "rule": "FREQ=DAILY;COUNT=2",
+                "anchor": "2026-03-28T09:00:00",
+                "time_zone": "Europe/Stockholm",
+            },
+            ["2026-03-28T08:00:00Z", "2026-03-29T07:00:00Z"],
+        ),
+    ],
+)
+async def test_recurrence_preview_returns_the_servers_occurrences(
+    client: AsyncClient, payload: dict[str, str], expected: list[str]
+) -> None:
+    headers = await _auth(client)
+    response = await client.post("/api/tasks/recurrence/preview", json=payload, headers=headers)
+    assert response.status_code == 200, response.text
+    returned = [
+        datetime.fromisoformat(v.replace("Z", "+00:00")) for v in response.json()["occurrences"]
+    ]
+    assert returned == [datetime.fromisoformat(v.replace("Z", "+00:00")) for v in expected]
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"rule": "FREQ=SOMETIMES", "anchor": "2026-03-02T09:00:00"}, "invalid recurrence rule"),
+        ({"rule": "FREQ=DAILY", "anchor": "2026-03-02T09:00:00", "time_zone": "Mars/Base"}, "Mars"),
+        (
+            {
+                "rule": "FREQ=DAILY",
+                "anchor": "2026-03-29T02:30:00",
+                "time_zone": "Europe/Stockholm",
+            },
+            "02:30",
+        ),
+    ],
+)
+async def test_recurrence_preview_rejects_bad_input_verbatim(
+    client: AsyncClient, payload: dict[str, str], message: str
+) -> None:
+    headers = await _auth(client)
+    response = await client.post("/api/tasks/recurrence/preview", json=payload, headers=headers)
+    assert response.status_code == 422
+    assert message in response.json()["detail"]
+
+
+async def test_recurrence_preview_requires_authentication(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/tasks/recurrence/preview",
+        json={"rule": "FREQ=DAILY", "anchor": "2026-03-02T09:00:00"},
+    )
+    assert response.status_code == 401

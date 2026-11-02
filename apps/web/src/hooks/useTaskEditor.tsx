@@ -102,6 +102,8 @@ export function useTaskEditor({
           timeZone={timeZone}
           projects={projects}
           onClose={close}
+          onOpenTask={setSelected}
+          onRefresh={() => void refreshAll()}
           onSaved={(saved) => {
             setSelected(saved);
             void refreshAll();

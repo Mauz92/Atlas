@@ -25,11 +25,13 @@ from .filters import (
 )
 from .priority import PRIORITY_ORDER, UnknownPriorityError, priority_rank
 from .recurrence import (
+    MAX_PREVIEW,
     InvalidRecurrenceRuleError,
     RecurrenceSpec,
     build_spec,
     next_occurrence,
     occurrences,
+    preview_occurrences,
     series_bounds,
     validate_rule,
 )
@@ -81,6 +83,7 @@ __all__ = [
     "MAX_CHANGE_LIMIT",
     "MAX_INSTANT_LENGTH",
     "MAX_LIMIT",
+    "MAX_PREVIEW",
     "MAX_SEARCH_LENGTH",
     "MAX_SINCE",
     "PRIORITY_ORDER",
@@ -124,6 +127,7 @@ __all__ = [
     "parse_since",
     "parse_statuses",
     "plan_change_page",
+    "preview_occurrences",
     "priority_rank",
     "rollup_from_statuses",
     "search_pattern",

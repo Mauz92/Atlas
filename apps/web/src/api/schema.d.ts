@@ -288,6 +288,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks/recurrence/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Recurrence
+         * @description What an RRULE means for a task anchored at ``anchor`` (MU-04); read-only.
+         *
+         *     Uses the same validation and RFC 5545 engine as creating or completing a recurring task, so the
+         *     client shows the server's answer instead of reimplementing recurrence. An unusable rule, an
+         *     unknown zone or a wall-clock time the zone skipped is a ``422`` with the server's message.
+         */
+        post: operations["preview_recurrence_api_tasks_recurrence_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks": {
         parameters: {
             query?: never;
@@ -1587,6 +1611,35 @@ export interface components {
             unchanged: number;
         };
         /**
+         * RecurrencePreviewOut
+         * @description The series' next occurrences as UTC instants, ascending (fewer when the series ends).
+         */
+        RecurrencePreviewOut: {
+            /** Occurrences */
+            occurrences: string[];
+        };
+        /**
+         * RecurrencePreviewRequest
+         * @description Ask what an RRULE means for a task anchored at ``anchor`` (read-only, nothing is stored).
+         */
+        RecurrencePreviewRequest: {
+            /** Rule */
+            rule: string;
+            /**
+             * Anchor
+             * Format: date-time
+             * @description First occurrence; naive wall-clock time is read in `time_zone`.
+             */
+            anchor: string;
+            /** Time Zone */
+            time_zone?: string | null;
+            /**
+             * Limit
+             * @default 5
+             */
+            limit: number;
+        };
+        /**
          * ReminderPreferencesOut
          * @description The caller's reminder preferences: the default timing, or ``null`` when none is set.
          */
@@ -2527,6 +2580,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: number | string;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_recurrence_api_tasks_recurrence_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecurrencePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecurrencePreviewOut"];
                 };
             };
             /** @description Validation Error */

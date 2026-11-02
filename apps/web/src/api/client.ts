@@ -31,6 +31,7 @@ export type WebPushConfig = components["schemas"]["WebPushConfigOut"];
 export type ReminderTiming = components["schemas"]["ReminderTiming"];
 export type ReminderPreferences = components["schemas"]["ReminderPreferencesOut"];
 export type TaskReminder = components["schemas"]["TaskReminderOut"];
+export type RecurrencePreview = components["schemas"]["RecurrencePreviewOut"];
 
 export class ApiError extends Error {
   readonly status: number;
@@ -280,6 +281,25 @@ export const tasksApi = {
       body: JSON.stringify({ status, base_revision: task.revision }),
       idempotencyKey: newIdempotencyKey(),
     }),
+  /** A task's direct subtasks (any status), in capture order. */
+  subtasks: (parentId: string) =>
+    apiFetch<TaskList>(`/api/tasks?parent_task_id=${encodeURIComponent(parentId)}&limit=500`),
+  /** Add a subtask; it inherits the parent's project on the server. */
+  addSubtask: (parentId: string, title: string) =>
+    apiFetch<Task>("/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({ title, parent_task_id: parentId }),
+      idempotencyKey: newIdempotencyKey(),
+    }),
+  /**
+   * What an RRULE means for a task anchored at `anchor` (naive wall-clock time in `timeZone`): the
+   * server's own validation and occurrence engine (MU-04). Read-only; nothing is stored.
+   */
+  previewRecurrence: (rule: string, anchor: string, timeZone?: string, limit = 5) =>
+    apiFetch<RecurrencePreview>("/api/tasks/recurrence/preview", {
+      method: "POST",
+      body: JSON.stringify({ rule, anchor, time_zone: timeZone || null, limit }),
+    }),
   /** Delete a task (a soft delete on the server, so {@link tasksApi.restore} can undo it). */
   remove: (task: Task) =>
     apiFetch<void>(`/api/tasks/${task.id}`, {
@@ -415,6 +435,8 @@ export const notificationsApi = {
       method: "PUT",
       body: JSON.stringify({ default: timing }),
     }),
+  /** One task's reminder: its override, the timing in force and when it fires (M8-05). */
+  taskReminder: (taskId: string) => apiFetch<TaskReminder>(`/api/tasks/${taskId}/reminder`),
   /**
    * Set (or clear, with `null`) one task's reminder override (M8-05). Takes precedence over the
    * caller's default and reschedules just that task's durable reminder.

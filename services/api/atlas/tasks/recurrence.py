@@ -203,3 +203,19 @@ def next_occurrence(spec: RecurrenceSpec, after: datetime | None = None) -> date
         if after is None or instant > after:
             return instant
     return None
+
+
+MAX_PREVIEW = 20
+
+
+def preview_occurrences(
+    rule: str, anchor: datetime, *, time_zone: str | None = None, limit: int = 5
+) -> list[datetime]:
+    """The first ``limit`` occurrence instants (UTC) a task anchored at ``anchor`` would get.
+
+    Read-only: nothing is stored. It uses exactly the validation and iteration that creating or
+    completing a recurring task uses, so a client can show what a rule means without
+    reimplementing it (AGENTS.md §7.4). ``anchor`` may be naive wall-clock time in ``time_zone``.
+    """
+    spec = build_spec(rule, anchor, time_zone=time_zone)
+    return occurrences(spec, limit=max(1, min(limit, MAX_PREVIEW)))

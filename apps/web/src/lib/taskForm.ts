@@ -40,6 +40,35 @@ export interface TaskDraft {
   tags: string;
   /** The project's id, or empty for no project. */
   projectId: string;
+  /** An RFC 5545 RRULE (no `RRULE:` prefix), or empty for a task that does not repeat. */
+  recurrenceRule: string;
+}
+
+/** The ready-made repeat choices; anything else is a custom RRULE the server validates. */
+export const REPEAT_PRESETS = [
+  { id: "daily", label: "Daily", rule: "FREQ=DAILY" },
+  { id: "weekly", label: "Weekly", rule: "FREQ=WEEKLY" },
+  { id: "monthly", label: "Monthly", rule: "FREQ=MONTHLY" },
+] as const;
+
+/** Which repeat choice a rule corresponds to: "" (none), a preset id, or "custom". */
+export function repeatChoice(rule: string): string {
+  const trimmed = rule.trim();
+  if (trimmed === "") return "";
+  return (
+    REPEAT_PRESETS.find((preset) => preset.rule === trimmed)?.id ?? "custom"
+  );
+}
+
+/**
+ * The naive wall-clock instant a series is anchored on, for the server's preview. Mirrors the
+ * server's anchor precedence (due date before start) without doing any date maths.
+ */
+export function recurrenceAnchor(draft: TaskDraft): string | null {
+  if (draft.dueDate)
+    return `${draft.dueDate}T${draft.dueTime || END_OF_DAY}:00`;
+  if (draft.start) return `${draft.start}:00`;
+  return null;
 }
 
 /** Today's calendar date (`YYYY-MM-DD`) in `timeZone`, offset by `days`. */
@@ -85,6 +114,7 @@ export function draftFromTask(
     start: start ? `${start.date}T${start.time}` : "",
     tags: (task.tags ?? []).join(", "),
     projectId: task.project_id ?? "",
+    recurrenceRule: task.recurrence_rule ?? "",
   };
 }
 
@@ -159,6 +189,19 @@ export function changesFromDraft(
   if (draft.tags !== initial.tags) changes.tags = parseTags(draft.tags);
   if (draft.projectId !== initial.projectId) {
     changes.project_id = draft.projectId === "" ? null : draft.projectId;
+  }
+  if (draft.recurrenceRule.trim() !== initial.recurrenceRule.trim()) {
+    changes.recurrence_rule =
+      draft.recurrenceRule.trim() === "" ? null : draft.recurrenceRule.trim();
+    if (
+      changes.recurrence_rule &&
+      !("time_zone" in changes) &&
+      !draft.timeZone.trim() &&
+      zone
+    ) {
+      // Occurrences keep their wall-clock time in the series' zone, so the series needs one.
+      changes.time_zone = zone;
+    }
   }
   return changes;
 }

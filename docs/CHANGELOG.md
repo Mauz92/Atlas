@@ -6,6 +6,13 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (MU-04): **repeat, subtasks and reminders in the task detail.** *Repeat* offers daily, weekly,
+  monthly or a custom RRULE and previews the next occurrences as the server computes them; a bad rule shows
+  the server's message. Completing a repeating task completes only that occurrence and shows (and opens)
+  the next one, or says the series has ended. *Subtasks* can be added, completed, opened and removed, with
+  progress. *Reminder* sets a timing for this task only (or returns to your default) and shows when the next
+  reminder fires; delivery is unchanged. New read-only endpoint `POST /api/tasks/recurrence/preview`.
+
 - Added (MU-03): **Tasks page.** Tasks lists every task and narrows it by text, status (open by default),
   priority, project and a due-date range, sorted by urgency, due date, newest or title. The filter is in
   the page address, so a view can be bookmarked and survives a reload; **Saved filters** keep named views

@@ -33,8 +33,11 @@ from ..tasks import (
     MAX_INSTANT_LENGTH,
     MAX_LIMIT,
     MAX_SEARCH_LENGTH,
+    InvalidRecurrenceRuleError,
     InvalidTaskFilterError,
     InvalidTaskTransitionError,
+    InvalidTimeZoneError,
+    NonexistentWallTimeError,
     SubtaskRollup,
     TaskNotFoundError,
     TaskRevisionConflictError,
@@ -46,9 +49,12 @@ from ..tasks import (
     is_valid_time_zone,
     parse_change_limit,
     parse_since,
+    preview_occurrences,
 )
 from .deps import CurrentUser, DbSession
 from .schemas import (
+    RecurrencePreviewOut,
+    RecurrencePreviewRequest,
     ReminderTiming,
     TaskChangeOut,
     TaskChangesOut,
@@ -143,6 +149,25 @@ def _change_out(
         out.subtasks_done = rollup.done
     out.due_state = due_state_for(task.due_at, now=now, task_time_zone=task.time_zone)
     return out
+
+
+@router.post("/recurrence/preview", response_model=RecurrencePreviewOut)
+async def preview_recurrence(payload: RecurrencePreviewRequest, user: CurrentUser) -> Any:
+    """What an RRULE means for a task anchored at ``anchor`` (MU-04); read-only.
+
+    Uses the same validation and RFC 5545 engine as creating or completing a recurring task, so the
+    client shows the server's answer instead of reimplementing recurrence. An unusable rule, an
+    unknown zone or a wall-clock time the zone skipped is a ``422`` with the server's message.
+    """
+    try:
+        instants = preview_occurrences(
+            payload.rule, payload.anchor, time_zone=payload.time_zone, limit=payload.limit
+        )
+    except (InvalidRecurrenceRuleError, InvalidTimeZoneError, NonexistentWallTimeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+    return RecurrencePreviewOut(occurrences=instants)
 
 
 @router.post("", response_model=TaskOut, status_code=status.HTTP_201_CREATED)

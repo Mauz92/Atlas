@@ -6,7 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 
-import { tasksApi } from "../api/client";
+import { notificationsApi, tasksApi } from "../api/client";
 import { makeTask } from "../test/tasks";
 import { Today } from "./Today";
 
@@ -19,7 +19,9 @@ vi.mock("../api/client", () => ({
     get: vi.fn(),
     remove: vi.fn(),
     restore: vi.fn(),
+    subtasks: vi.fn(),
   },
+  notificationsApi: { taskReminder: vi.fn() },
 }));
 
 const listMock = vi.mocked(tasksApi.list);
@@ -29,6 +31,13 @@ const updateMock = vi.mocked(tasksApi.update);
 
 beforeEach(() => {
   vi.resetAllMocks();
+  // The task detail panel loads its subtasks and reminder when it opens.
+  vi.mocked(tasksApi.subtasks).mockResolvedValue({ tasks: [] });
+  vi.mocked(notificationsApi.taskReminder).mockResolvedValue({
+    override: null,
+    effective: null,
+    remind_at: null,
+  });
 });
 
 describe("Today", () => {

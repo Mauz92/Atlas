@@ -28,6 +28,7 @@ from ..notifications import MAX_ENDPOINT_LENGTH, MAX_KEY_LENGTH, MAX_PLATFORM_LE
 from ..reminders import MAX_DAYS_BEFORE, InvalidReminderTimingError, format_at_time, parse_at_time
 from ..reminders import ReminderTiming as DomainReminderTiming
 from ..tasks import (
+    MAX_PREVIEW,
     DueState,
     InvalidRecurrenceRuleError,
     is_valid_time_zone,
@@ -247,6 +248,23 @@ class TaskOut(BaseModel):
     revision: int
     created_at: datetime
     updated_at: datetime
+
+
+class RecurrencePreviewRequest(BaseModel):
+    """Ask what an RRULE means for a task anchored at ``anchor`` (read-only, nothing is stored)."""
+
+    rule: str = Field(min_length=1, max_length=2000)
+    anchor: datetime = Field(
+        description="First occurrence; naive wall-clock time is read in `time_zone`."
+    )
+    time_zone: str | None = Field(default=None, max_length=64)
+    limit: int = Field(default=5, ge=1, le=MAX_PREVIEW)
+
+
+class RecurrencePreviewOut(BaseModel):
+    """The series' next occurrences as UTC instants, ascending (fewer when the series ends)."""
+
+    occurrences: list[datetime]
 
 
 class TaskListOut(BaseModel):
