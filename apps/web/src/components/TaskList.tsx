@@ -12,6 +12,8 @@ interface TaskListProps {
   onComplete?: (task: Task) => void;
   /** Open the task detail surface (Enter or click on the title). */
   onOpen?: (task: Task) => void;
+  /** A control at the start of each row, for example a selection checkbox (MU-03). */
+  renderLead?: (task: Task) => ReactNode;
   /** Extra per-row controls, for example the Inbox triage actions. */
   renderActions?: (task: Task) => ReactNode;
   /** Shown in place of the list when it is empty; omitted means nothing is rendered. */
@@ -25,6 +27,7 @@ export function TaskList({
   projects,
   onComplete,
   onOpen,
+  renderLead,
   renderActions,
   emptyMessage,
 }: TaskListProps) {
@@ -40,6 +43,7 @@ export function TaskList({
           : undefined;
         return (
           <li key={task.id} className="task-item">
+            {renderLead ? renderLead(task) : null}
             {onOpen ? (
               <button
                 type="button"

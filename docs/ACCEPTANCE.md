@@ -2853,6 +2853,29 @@ Limitations: project delete is not offered in the UI (archive only); a linked no
 but not that note directly (deep links arrive with MU-06); status `completed` for a project has no
 control yet (the API supports it); project mutations are online-only (R-22); Chromium only.
 
+### MU-03 — Tasks page
+
+**Result: `DONE` (local); CI job `e2e-real` `NOT RUN` on GitHub Actions.** The Tasks placeholder is replaced
+by an all-tasks page: server filters (text, status, priority, project, due range), sort, URL-held filter
+state, client-side saved filters, row selection with bulk complete / move to project / delete (undo via the
+restore endpoint). No backend change (ADR-0045): the existing list endpoint already supported every filter.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Filter by text, priority, project and due range; sort; state in the URL and survives reload | `PASS` | `cd apps/web && npm run test:e2e:real` → `10 passed` incl. `tasks-page.spec.ts` test 1 |
+| Server validation error shown verbatim (inverted due range) | `PASS` | same journey (`due range is inverted`); `Tasks.test.tsx` |
+| Saved filters persist across reload and apply via link; storage failure tolerated | `PASS` | journey test 1; `taskFilters.test.ts` (corrupt/unavailable storage) |
+| Keyboard selection (Space on checkbox), bulk move, bulk complete, bulk delete + undo, row opens detail (Esc closes) | `PASS` | journey test 2; `Tasks.test.tsx` (partial failure lists the failing task and keeps it selected) |
+| Repository checks | `PASS` | `./scripts/verify.sh` → pytest `986 passed`; eslint, `tsc`, vitest `329 passed`; `verification: PASS` |
+| Mocked e2e still passes | `PASS` | `cd apps/web && npm run e2e` → `7 passed` |
+| No stray `atlas_e2e_*` databases | `PASS` | query of `pg_database` for `atlas_e2e_%` → empty after the runs |
+| Runs in CI | `NOT RUN` | Job exists from MU-00; not executed outside GitHub Actions |
+
+Limitations: sort and the 500-row cap are client-side/page-bound (a notice shows when hit); one priority at
+a time (server takes one); bulk actions are sequential and non-atomic; saved filters are per browser;
+no "no project" filter; keyboard selection is checkbox-based (no shift-range or arrow-key selection);
+Chromium only.
+
 ---
 
 ## Release Readiness (M9)
@@ -2872,8 +2895,8 @@ Verdicts: **`PASS`** = the requirement is delivered and demonstrably works under
 | REQ-002 Free to use (qualified by §3.1) | `PASS` | M0/M1 (design) + M9-04 | No paid *application* feature; every runtime dependency is open-source (`DEPENDENCIES.md`). The §3.1 platform costs (iOS Apple Developer Program fee; free FCM/optional relay) are **platform** costs, disclosed, not application licence costs. |
 | REQ-003 Commercial-use rights | `PASS` | M1-10 + M9-04 | Complete dependency/licence inventory (`DEPENDENCIES.md`); all licences permit intended personal + workplace use (MIT/BSD/Apache/LGPL/MPL/CC0; `psycopg` LGPL used unmodified as a library). Standing pre-release action: re-verify identifiers upstream (`DEPENDENCIES.md`). |
 | REQ-004 Markdown notes | `PASS` | **M2** (gate `PASS`) | Notes are real `.md` files, byte-identical on disk, path-traversal-safe, revision-aware with conflict copies; M9-03 exports the genuine note bytes. Tests: `test_notes_api.py`, `test_note_paths.py` (M2 gate). |
-| REQ-005 Task management | `PARTIAL` | **M3** (gate `PASS`) + M4-02 | All required capabilities delivered and integration-tested over HTTP: Inbox/Today/Upcoming (+ Day/Week planning, Board), due dates & priorities (DST-correct), recurrence (RRULE), subtasks, project assignment. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** the function audit showed the owner cannot edit a task, set a due date or priority, delete, or assign a project in the UI (capture is title-only; Complete is the only row action), so the requirement is not satisfied as a user-facing capability. Returns to `PASS` when MU-01…MU-04 journeys J1/J2 pass in a browser against the real API. **Progress 2026-11-02:** J1 and J2 pass (MU-01: edit, date, priority, tags, delete+undo, Inbox triage); recurrence/subtasks/reminders in the UI (MU-04) and the Tasks page (MU-03) remain. |
-| REQ-006 Project management | `PARTIAL` | **M4** (gate `PASS`) | Projects, task lists, Kanban board, derived progress (documented formula, ADR-0023) and note↔project links are all implemented and tested. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** there is no way to create or edit a project in the UI (the Projects page is a placeholder), so the Board is empty for a new user. Returns to `PASS` when MU-02 journey J3 passes. **Progress 2026-11-02:** J3 passes (MU-02: create/edit/archive/restore, project page with progress, list, board and linked notes, assignment from the task detail); the Tasks-page project filter/bulk move (MU-03) remains. |
+| REQ-005 Task management | `PARTIAL` | **M3** (gate `PASS`) + M4-02 | All required capabilities delivered and integration-tested over HTTP: Inbox/Today/Upcoming (+ Day/Week planning, Board), due dates & priorities (DST-correct), recurrence (RRULE), subtasks, project assignment. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** the function audit showed the owner cannot edit a task, set a due date or priority, delete, or assign a project in the UI (capture is title-only; Complete is the only row action), so the requirement is not satisfied as a user-facing capability. Returns to `PASS` when MU-01…MU-04 journeys J1/J2 pass in a browser against the real API. **Progress 2026-11-02:** J1 and J2 pass (MU-01: edit, date, priority, tags, delete+undo, Inbox triage); the Tasks page (MU-03) passes; recurrence/subtasks/reminders in the UI (MU-04) remain. |
+| REQ-006 Project management | `PARTIAL` | **M4** (gate `PASS`) | Projects, task lists, Kanban board, derived progress (documented formula, ADR-0023) and note↔project links are all implemented and tested. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** there is no way to create or edit a project in the UI (the Projects page is a placeholder), so the Board is empty for a new user. Returns to `PASS` when MU-02 journey J3 passes. **Progress 2026-11-02:** J3 passes (MU-02: create/edit/archive/restore, project page with progress, list, board and linked notes, assignment from the task detail); the Tasks-page project filter/bulk move (MU-03) also passes (journey `tasks-page.spec.ts`). Returns to `PASS` with the next full release re-score. |
 | REQ-007 Google Calendar | `NOT RUN` | — (**M5-03** `BACKLOG`; **M5-00 `BLOCKED`** — AR-001) | Only the foundations exist: encrypted credential store (M5-01), provider-neutral adapter contract (M5-02), event projection + cursors (M5-06), sync-status (M5-08), reconciliation (M5-10). The Google adapter and account-connection UI are **not built**; no provider is contacted. |
 | REQ-008 Microsoft Outlook | `NOT RUN` | — (**M5-04** `BACKLOG`; **M5-00 `BLOCKED`** — AR-001) | As REQ-007: the foundations exist but the Microsoft Graph adapter and connection UI are **not built**. |
 | REQ-009 Calendar consolidation | `NOT RUN` | — (**M5-05/M5-07** `BACKLOG`) | There is **no unified calendar view** and **no account/calendar selection UI**. The `/calendar` route is a per-provider **sync-status** surface only (M5-08), not a consolidated event view. |

@@ -6,6 +6,12 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (MU-03): **Tasks page.** Tasks lists every task and narrows it by text, status (open by default),
+  priority, project and a due-date range, sorted by urgency, due date, newest or title. The filter is in
+  the page address, so a view can be bookmarked and survives a reload; **Saved filters** keep named views
+  in this browser. Tick tasks (Space on a focused checkbox, or Select all) to complete, move them to a
+  project, or delete them, with an **Undo** for delete. Rows open the task detail. No server change.
+
 - Added (MU-02): **Projects.** The Projects page lists your projects with their progress and lets you
   create, archive and restore them. A project page shows its description, dates, progress, tasks (as a
   list or a board), and linked notes, and lets you edit it, add tasks and link or unlink notes. Tasks can

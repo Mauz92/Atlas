@@ -187,6 +187,12 @@ export interface TaskListOptions {
   dueFrom?: string;
   /** Inclusive upper bound on `due_at`, as an ISO 8601 instant (M4-06 planning windows). */
   dueTo?: string;
+  /** Only this priority (the server takes one value; MU-03). */
+  priority?: string;
+  /** Case-insensitive text search over title and description (MU-03). */
+  q?: string;
+  /** Maximum number of tasks to return (the server bounds it). */
+  limit?: number;
 }
 
 /** The writable task fields a create/update may carry (the server validates all of them). */
@@ -218,6 +224,15 @@ export const tasksApi = {
     }
     if (options.dueTo) {
       params.set("due_to", options.dueTo);
+    }
+    if (options.priority) {
+      params.set("priority", options.priority);
+    }
+    if (options.q) {
+      params.set("q", options.q);
+    }
+    if (options.limit) {
+      params.set("limit", String(options.limit));
     }
     const query = params.toString();
     return apiFetch<TaskList>(`/api/tasks${query ? `?${query}` : ""}`);

@@ -2032,6 +2032,29 @@ be brought back.
 shows a conflict. They are online-only: wiring the optimistic updates through the offline queue
 (M7-03) is not done by MU-01 (recorded in `RISKS.md`).
 
+## ADR-0045 — Tasks page: URL filter state, client-side sort and saved filters (MU-03)
+
+**Context.** The task list API already filters (`status`, `priority`, `due_from/to`, `project_id`, `q`,
+`limit` ≤ 500) but has no sort parameter and accepts one priority. MU-03 needs sort, linkable views and
+saved filters.
+
+**Decision.**
+1. **No backend change.** Sort is applied in the client over the (≤ 500) rows returned; the page says when
+   the limit was hit. A server sort parameter is the follow-up if lists outgrow one page (R-20).
+2. **The filter lives in the URL query string** (`q`, `status`, `priority`, `project`, `due_from`,
+   `due_to`, `sort`; defaults omitted). Values are passed to the server unchanged, so an invalid value is
+   rejected by the server and its message is shown verbatim.
+3. **Status default is `open`** (inbox, next, in progress); `all` and each single status are selectable.
+4. **Due-date bounds are the viewer's local days** (start of the from-day to end of the to-day, sent as
+   instants), not UTC days.
+5. **Saved filters are a client-side convenience** in `localStorage` (`atlas.savedTaskFilters`: name and
+   query string, max 20), validated on read and wrapped in try/catch. They are per browser, not synced and
+   not authoritative for anything; losing them loses nothing else.
+6. **Bulk actions are one request per task** (existing `PATCH`/`DELETE`, carrying `base_revision` and an
+   idempotency key). A failure on one task does not stop the rest; each failure is listed verbatim and the
+   failed tasks stay selected. Delete undo calls the restore endpoint for each deleted task (ADR-0044).
+   There is no atomic multi-task operation; it is online-only (R-22).
+
 ---
 
 ## Open decisions deferred to later milestones

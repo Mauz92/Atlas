@@ -14,6 +14,7 @@ import { ProjectPage } from "./pages/ProjectPage";
 import { Projects } from "./pages/Projects";
 import { Setup } from "./pages/Setup";
 import { SyncPage } from "./pages/Sync";
+import { Tasks } from "./pages/Tasks";
 import { Today } from "./pages/Today";
 import { Upcoming } from "./pages/Upcoming";
 import { Week } from "./pages/Week";
@@ -23,11 +24,6 @@ const Notes = lazy(() => import("./pages/Notes").then((module) => ({ default: mo
 
 // Views that are not part of M3-07 yet keep the placeholder screen.
 const PAGES = [
-  {
-    path: "/tasks",
-    title: "Tasks",
-    description: "All tasks, filterable by status, priority and date.",
-  },
   { path: "/search", title: "Search", description: "Full-text search across notes and tasks." },
   {
     path: "/settings",
@@ -58,6 +54,7 @@ export default function App() {
         <Route path="/day" element={<Day />} />
         <Route path="/week" element={<Week />} />
         <Route path="/board" element={<BoardPage />} />
+        <Route path="/tasks" element={<Tasks />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:id" element={<ProjectPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
