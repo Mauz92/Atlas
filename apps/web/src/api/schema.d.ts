@@ -375,6 +375,30 @@ export interface paths {
         patch: operations["update_task_api_tasks__task_id__patch"];
         trace?: never;
     };
+    "/api/tasks/{task_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Task
+         * @description Undo a delete: bring a soft-deleted task of the caller's back (the "undo" of ``DELETE``).
+         *
+         *     The task keeps its id and history; its revision advances, so offline clients learn of the
+         *     restoration through the change feed. A task that is not deleted (or not the caller's) is a
+         *     ``404``. Subtasks promoted to top level by the delete stay promoted.
+         */
+        post: operations["restore_task_api_tasks__task_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/{task_id}/reminder": {
         parameters: {
             query?: never;
@@ -1116,10 +1140,7 @@ export interface components {
         };
         /** LoginRequest */
         LoginRequest: {
-            /**
-             * Email
-             * Format: email
-             */
+            /** Email */
             email: string;
             /** Password */
             password: string;
@@ -1605,10 +1626,7 @@ export interface components {
         };
         /** SetupRequest */
         SetupRequest: {
-            /**
-             * Email
-             * Format: email
-             */
+            /** Email */
             email: string;
             /** Password */
             password: string;
@@ -1683,6 +1701,8 @@ export interface components {
             external_provider: string | null;
             /** External Id */
             external_id: string | null;
+            /** Tags */
+            tags?: string[];
             /** Revision */
             revision: number;
             /**
@@ -1744,6 +1764,8 @@ export interface components {
             external_provider?: string | null;
             /** External Id */
             external_id?: string | null;
+            /** Tags */
+            tags?: string[] | null;
         };
         /** TaskListOut */
         TaskListOut: {
@@ -1799,6 +1821,8 @@ export interface components {
             external_provider: string | null;
             /** External Id */
             external_id: string | null;
+            /** Tags */
+            tags?: string[];
             /** Revision */
             revision: number;
             /**
@@ -1879,6 +1903,8 @@ export interface components {
             external_id?: string | null;
             /** Base Revision */
             base_revision?: number | null;
+            /** Tags */
+            tags?: string[] | null;
         };
         /**
          * TaskView
@@ -2712,6 +2738,39 @@ export interface operations {
                 "application/json": components["schemas"]["TaskUpdateRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_task_api_tasks__task_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

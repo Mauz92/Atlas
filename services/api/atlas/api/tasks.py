@@ -103,6 +103,7 @@ def task_out(
     *,
     now: datetime,
     caller_tz: str | None = None,
+    tags: list[str] | None = None,
 ) -> TaskOut:
     """Serialise a task, attaching its derived subtask rollup and due state.
 
@@ -115,6 +116,8 @@ def task_out(
     if rollup is not None:
         out.subtasks_total = rollup.total
         out.subtasks_done = rollup.done
+    if tags is not None:
+        out.tags = tags
     out.due_state = due_state_for(
         task.due_at,
         now=now,
@@ -129,9 +132,12 @@ def _change_out(
     rollup: SubtaskRollup | None = None,
     *,
     now: datetime,
+    tags: list[str] | None = None,
 ) -> TaskChangeOut:
     """Serialise one change-feed item, including its tombstone marker (``deleted_at``)."""
     out = TaskChangeOut.model_validate(task)
+    if tags is not None:
+        out.tags = tags
     if rollup is not None:
         out.subtasks_total = rollup.total
         out.subtasks_done = rollup.done
@@ -163,7 +169,12 @@ async def create_task(
         _translate(exc)
     # Materialise/reschedule the task's durable reminder in the same transaction (M8-01).
     await ReminderService(session, user.id).sync_for_task(task.id)
-    out = task_out(task, await service.subtask_rollup(task.id), now=datetime.now(UTC))
+    out = task_out(
+        task,
+        await service.subtask_rollup(task.id),
+        now=datetime.now(UTC),
+        tags=(await service.tags_for([task.id])).get(task.id, []),
+    )
     if idempotency_key:
         await store.remember(idempotency_key, status_code=201, body=out.model_dump(mode="json"))
     await session.commit()
@@ -302,8 +313,18 @@ async def list_tasks(
     except Exception as exc:
         _translate(exc)
     rollups = await service.subtask_rollups([task.id for task in tasks])
+    tag_names = await service.tags_for([task.id for task in tasks])
     return TaskListOut(
-        tasks=[task_out(task, rollups.get(task.id), now=reference, caller_tz=tz) for task in tasks]
+        tasks=[
+            task_out(
+                task,
+                rollups.get(task.id),
+                now=reference,
+                caller_tz=tz,
+                tags=tag_names.get(task.id, []),
+            )
+            for task in tasks
+        ]
     )
 
 
@@ -355,8 +376,12 @@ async def task_changes(
     changes = await service.changes(since=cursor, limit=page_size)
     now = datetime.now(UTC)
     rollups = await service.subtask_rollups([task.id for task in changes.tasks])
+    tag_names = await service.tags_for([task.id for task in changes.tasks])
     return TaskChangesOut(
-        tasks=[_change_out(task, rollups.get(task.id), now=now) for task in changes.tasks],
+        tasks=[
+            _change_out(task, rollups.get(task.id), now=now, tags=tag_names.get(task.id, []))
+            for task in changes.tasks
+        ],
         since=cursor,
         next_since=changes.next_since,
         has_more=changes.has_more,
@@ -370,7 +395,12 @@ async def get_task(task_id: uuid.UUID, user: CurrentUser, session: DbSession) ->
         task = await service.get(task_id)
     except Exception as exc:
         _translate(exc)
-    return task_out(task, await service.subtask_rollup(task.id), now=datetime.now(UTC))
+    return task_out(
+        task,
+        await service.subtask_rollup(task.id),
+        now=datetime.now(UTC),
+        tags=(await service.tags_for([task.id])).get(task.id, []),
+    )
 
 
 @router.patch("/{task_id}", response_model=TaskOut)
@@ -403,7 +433,12 @@ async def update_task(
         _translate(exc)
     # An edited due date/time-zone/policy/status reschedules (or cancels) the reminder (M8-01).
     await ReminderService(session, user.id).sync_for_task(task.id)
-    out = task_out(task, await service.subtask_rollup(task.id), now=datetime.now(UTC))
+    out = task_out(
+        task,
+        await service.subtask_rollup(task.id),
+        now=datetime.now(UTC),
+        tags=(await service.tags_for([task.id])).get(task.id, []),
+    )
     if idempotency_key:
         await store.remember(idempotency_key, status_code=200, body=out.model_dump(mode="json"))
     await session.commit()
@@ -437,6 +472,47 @@ async def delete_task(
         await store.remember(idempotency_key, status_code=204, body={})
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{task_id}/restore", response_model=TaskOut)
+async def restore_task(
+    task_id: uuid.UUID,
+    user: CurrentUser,
+    session: DbSession,
+    idempotency_key: IdempotencyKey = None,
+) -> Any:
+    """Undo a delete: bring a soft-deleted task of the caller's back (the "undo" of ``DELETE``).
+
+    The task keeps its id and history; its revision advances, so offline clients learn of the
+    restoration through the change feed. A task that is not deleted (or not the caller's) is a
+    ``404``. Subtasks promoted to top level by the delete stay promoted.
+    """
+    store = IdempotencyStore(session, user.id)
+    if idempotency_key:
+        try:
+            stored = await store.reserve(
+                idempotency_key, "task.restore", fingerprint({"task_id": str(task_id)})
+            )
+        except Exception as exc:
+            _translate(exc)
+        if stored is not None:
+            return JSONResponse(status_code=stored.status_code, content=stored.body)
+    try:
+        service = TasksService(session, user.id)
+        task = await service.restore(task_id)
+    except Exception as exc:
+        _translate(exc)
+    await ReminderService(session, user.id).sync_for_task(task.id)
+    out = task_out(
+        task,
+        await service.subtask_rollup(task.id),
+        now=datetime.now(UTC),
+        tags=(await service.tags_for([task.id])).get(task.id, []),
+    )
+    if idempotency_key:
+        await store.remember(idempotency_key, status_code=200, body=out.model_dump(mode="json"))
+    await session.commit()
+    return out
 
 
 def _task_reminder_out(state: TaskReminderState) -> TaskReminderOut:

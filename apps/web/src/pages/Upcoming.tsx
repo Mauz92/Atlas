@@ -1,21 +1,23 @@
 import { LoadError } from "../components/LoadError";
 import { TaskList } from "../components/TaskList";
+import { useTaskEditor } from "../hooks/useTaskEditor";
 import { useTaskView } from "../hooks/useTaskView";
 import { groupUpcomingByDay } from "../lib/tasks";
 
 /** Tasks scheduled for later days, grouped by the calendar day they are due. */
 export function Upcoming() {
-  const { tasks, state, error, actionError, timeZone, reload, complete } =
+  const { tasks, state, error, actionError, timeZone, reload, refresh, complete } =
     useTaskView("upcoming");
+  const editor = useTaskEditor({ refresh, timeZone });
   const groups = groupUpcomingByDay(tasks, timeZone);
 
   return (
     <section className="page upcoming-page">
       <h1>Upcoming</h1>
 
-      {actionError ? (
+      {actionError || editor.error ? (
         <p className="error" role="alert">
-          {actionError}
+          {actionError ?? editor.error}
         </p>
       ) : null}
 
@@ -34,11 +36,13 @@ export function Upcoming() {
                 tasks={group.tasks}
                 timeZone={timeZone}
                 onComplete={(task) => void complete(task)}
+                onOpen={editor.open}
               />
             </section>
           ))}
         </div>
       )}
+      {editor.overlays}
     </section>
   );
 }

@@ -14,24 +14,94 @@ export const OWNER = {
 /** Create the owner through the real first-run setup form (which also signs the owner in). */
 export async function createOwner(page: Page): Promise<void> {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Create your Atlas account" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Create your Atlas account" }),
+  ).toBeVisible();
   await page.getByLabel("Name").fill(OWNER.name);
   await page.getByLabel("Email").fill(OWNER.email);
   await page.getByLabel("Password").fill(OWNER.password);
   await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page.getByRole("heading", { name: "Create your Atlas account" })).toBeHidden();
+  await expect(
+    page.getByRole("heading", { name: "Create your Atlas account" }),
+  ).toBeHidden();
 }
 
 /** Sign in through the real login form. */
 export async function signIn(page: Page): Promise<void> {
-  await expect(page.getByRole("heading", { name: "Sign in to Atlas" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Sign in to Atlas" }),
+  ).toBeVisible();
   await page.getByLabel("Email").fill(OWNER.email);
   await page.getByLabel("Password").fill(OWNER.password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Sign in to Atlas" })).toBeHidden();
+  await expect(
+    page.getByRole("heading", { name: "Sign in to Atlas" }),
+  ).toBeHidden();
 }
 
 /** Sign out via the shell's button. */
 export async function signOut(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Sign out" }).click();
+}
+
+/**
+ * Make sure the owner exists and the page is signed in, whichever journey runs first. All journeys
+ * share one database per run, so the first to start creates the owner and the rest sign in.
+ */
+export async function ensureOwner(page: Page): Promise<void> {
+  await page.goto("/");
+  const setup = page.getByRole("heading", {
+    name: "Create your Atlas account",
+  });
+  const login = page.getByRole("heading", { name: "Sign in to Atlas" });
+  const today = page.getByRole("heading", { name: "Today" });
+  await expect(setup.or(login).or(today).first()).toBeVisible();
+  if (await setup.isVisible()) {
+    await createOwner(page);
+  } else if (await login.isVisible()) {
+    await signIn(page);
+  }
+  await expect(page.getByRole("link", { name: "Inbox" })).toBeVisible();
+}
+
+/**
+ * Call the real API as the signed-in owner (cookie session + CSRF double submit), for journey
+ * set-up and read-back that the UI does not offer yet (for example creating a project, MU-02).
+ */
+export async function apiCall<T = unknown>(
+  page: Page,
+  method: "GET" | "POST",
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  return page.evaluate(
+    async ({ method, path, body }) => {
+      const csrf = document.cookie.match(/(?:^|;\s*)atlas_csrf=([^;]+)/)?.[1];
+      const response = await fetch(path, {
+        method,
+        credentials: "include",
+        headers: {
+          ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+          ...(csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {}),
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      if (!response.ok)
+        throw new Error(`${method} ${path} → ${response.status}`);
+      return response.json();
+    },
+    { method, path, body },
+  );
+}
+
+/** A local calendar date (`YYYY-MM-DD`) in `timeZone`, `days` from today. */
+export function dateIn(timeZone: string, days = 0): string {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const [y, m, d] = today.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days, 12)).toISOString().slice(0, 10);
 }

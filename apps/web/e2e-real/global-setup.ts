@@ -26,10 +26,12 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(here, "..");
 const apiDir = path.resolve(webDir, "../../services/api");
-const binDir = process.env.ATLAS_E2E_API_BIN_DIR ?? path.join(apiDir, ".venv", "bin");
+const binDir =
+  process.env.ATLAS_E2E_API_BIN_DIR ?? path.join(apiDir, ".venv", "bin");
 const python = path.join(binDir, "python");
 const adminUrl =
-  process.env.ATLAS_E2E_ADMIN_DATABASE_URL ?? "postgresql://atlas:atlas@127.0.0.1:5432/postgres";
+  process.env.ATLAS_E2E_ADMIN_DATABASE_URL ??
+  "postgresql://atlas:atlas@127.0.0.1:5432/postgres";
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -42,7 +44,12 @@ function freePort(): Promise<number> {
   });
 }
 
-function run(cmd: string, args: string[], env: NodeJS.ProcessEnv = process.env, cwd = apiDir) {
+function run(
+  cmd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+  cwd = apiDir,
+) {
   const result = spawnSync(cmd, args, { cwd, env, encoding: "utf8" });
   if (result.status !== 0) {
     throw new Error(
@@ -51,11 +58,18 @@ function run(cmd: string, args: string[], env: NodeJS.ProcessEnv = process.env, 
   }
 }
 
-async function waitFor(url: string, child: ChildProcess, label: string, logs: string[]) {
+async function waitFor(
+  url: string,
+  child: ChildProcess,
+  label: string,
+  logs: string[],
+) {
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
-      throw new Error(`${label} exited early (${child.exitCode}):\n${logs.join("")}`);
+      throw new Error(
+        `${label} exited early (${child.exitCode}):\n${logs.join("")}`,
+      );
     }
     try {
       const response = await fetch(url);
@@ -68,8 +82,19 @@ async function waitFor(url: string, child: ChildProcess, label: string, logs: st
   throw new Error(`${label} did not become ready at ${url}:\n${logs.join("")}`);
 }
 
-function start(cmd: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, logs: string[]) {
-  const child = spawn(cmd, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"], detached: false });
+function start(
+  cmd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  cwd: string,
+  logs: string[],
+) {
+  const child = spawn(cmd, args, {
+    cwd,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: false,
+  });
   child.stdout?.on("data", (d) => logs.push(String(d)));
   child.stderr?.on("data", (d) => logs.push(String(d)));
   return child;
@@ -101,7 +126,9 @@ export default async function globalSetup() {
   const dbName = `atlas_e2e_${randomBytes(6).toString("hex")}`;
   const adminParsed = new URL(adminUrl);
   adminParsed.pathname = `/${dbName}`;
-  const dbUrl = adminParsed.toString().replace(/^postgresql:/, "postgresql+psycopg:");
+  const dbUrl = adminParsed
+    .toString()
+    .replace(/^postgresql:/, "postgresql+psycopg:");
   let notesDir: string | undefined;
   let api: ChildProcess | undefined;
   let web: ChildProcess | undefined;
@@ -139,7 +166,15 @@ export default async function globalSetup() {
 
     api = start(
       python,
-      ["-m", "uvicorn", "atlas.main:app", "--host", "127.0.0.1", "--port", String(apiPort)],
+      [
+        "-m",
+        "uvicorn",
+        "atlas.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(apiPort),
+      ],
       apiEnv,
       apiDir,
       logs,

@@ -618,8 +618,8 @@ checks pass. A task that is reachable only via the API is not `DONE`.
 | ID | Title | Depends on | Scope and acceptance | Tests | Status |
 |---|---|---|---|---|---|
 | MU-00 | **Real-stack journey harness** | M1-02 | Playwright runs against the real API + PostgreSQL (compose or CI service) with a fresh database per run and a helper that creates the owner account. The existing mocked-API specs stay as unit-level E2E. A trivial journey (setup → login → add task → see it in Inbox) passes in CI | Playwright (real API) | `DONE` (local PASS 2026-11-01; GitHub Actions job `e2e-real` added, **NOT RUN on Actions**; evidence: `ACCEPTANCE.md` MU-00) |
-| MU-01 | **Task detail and editing; capture lands where expected** | MU-00, M3-02…M3-09 | One task detail panel (side sheet on desktop, full page on mobile) opened from any list: edit title, description, status, priority, due date/time/time zone, start, tags; delete with undo. Today capture sets due = today; Inbox rows get schedule/file/delete actions. Opens with Enter, closes with Esc. Server validation errors shown verbatim. **J1, J2 pass** | Component + Playwright J1, J2 | `BACKLOG` |
-| MU-02 | **Projects UI** | MU-01, M4-01…M4-07 | Replace the Projects placeholder: list, create, edit, archive/restore; project page with description, derived progress (ADR-0023), task list, board and linked notes; assign/move tasks to a project from the task detail. Sidebar shows active projects. **J3 passes** | Component + Playwright J3 | `BACKLOG` |
+| MU-01 | **Task detail and editing; capture lands where expected** | MU-00, M3-02…M3-09 | One task detail panel (side sheet on desktop, full page on mobile) opened from any list: edit title, description, status, priority, due date/time/time zone, start, tags; delete with undo. Today capture sets due = today; Inbox rows get schedule/file/delete actions. Opens with Enter, closes with Esc. Server validation errors shown verbatim. **J1, J2 pass** | Component + Playwright J1, J2 | `DONE` (local PASS 2026-11-02: J1 + J2 pass against the real stack; evidence: `ACCEPTANCE.md` MU-01; CI job `e2e-real` **NOT RUN on Actions**) |
+| MU-02 | **Projects UI** | MU-01, M4-01…M4-07 | Replace the Projects placeholder: list, create, edit, archive/restore; project page with description, derived progress (ADR-0023), task list, board and linked notes; assign/move tasks to a project from the task detail. Sidebar shows active projects. **J3 passes** | Component + Playwright J3 | `READY` |
 | MU-03 | **Tasks page: all tasks, filters, sort** | MU-01, M3-08 | Replace the Tasks placeholder with the existing server filters (status, priority, due range, project, text) plus sort and a saved-filters shortcut list stored client-side; bulk complete/delete/move to project | Component + Playwright | `BACKLOG` |
 | MU-04 | **Recurrence, subtasks and reminders in the UI** | MU-01, M3-05, M3-06, M8-05 | Repeat picker (daily/weekly/monthly/custom RRULE preview) with server validation; completing a recurring task shows the next occurrence; subtask list with progress; per-task reminder override; delivery behaviour unchanged | Component + Playwright | `BACKLOG` |
 | MU-05 | **Command palette, quick switcher and unified search** | MU-01, MU-02, M2-06 | Global shortcut opens a palette: fuzzy find notes, tasks, projects; actions (new note/task/project, go to view, toggle theme). Backend adds one `GET /api/search` over notes (existing FTS), tasks and projects, user-scoped, bounded and indexed (resolves R-20). Replace the Search placeholder. **J5 passes** | Backend integration + Component + Playwright J5 | `BACKLOG` |
@@ -639,8 +639,8 @@ default mobile path until then. Scope decisions D-1…D-4 are settled in ADR-004
 
 ## Immediate Next Tasks
 
-**Next: milestone MU (usable core): `MU-00` (real-stack journey harness) is `DONE`; next is `MU-01`
-(task detail and editing).** See the MU section and ADR-0043 for why this precedes calendar and mobile
+**Next: milestone MU (usable core): `MU-00` (real-stack journey harness) and `MU-01` (task detail and
+editing) are `DONE`; next is `MU-02` (Projects UI, `READY`).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 
 - **M5-00** — validate Microsoft tenant + Google publishing mode with **real accounts** (AR-001). Until

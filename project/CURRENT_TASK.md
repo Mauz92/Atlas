@@ -1,23 +1,26 @@
 # Current Task
 
-- Task ID: MU-01
+- Task ID: MU-02
 - Status: READY
-- Depends on: MU-00 (`DONE`, 2026-11-01), M3-02…M3-09 (`DONE`)
+- Depends on: MU-01 (`DONE`, 2026-11-02), M4-01…M4-07 (`DONE`)
 - Milestone: MU — Usable Core (docs/ROADMAP.md, ADR-0043)
 
 ## Goal
-Task detail and editing; capture lands where expected (full definition: `docs/ROADMAP.md`, MU-01 row):
-one task detail panel (side sheet on desktop, full page on mobile) opened from any list to edit title,
-description, status, priority, due date/time/time zone, start and tags, with delete + undo; Today capture
-sets due = today; Inbox rows get schedule/file/delete actions; Enter opens, Esc closes; server validation
-errors shown verbatim. Journeys J1 and J2 must pass.
+Projects UI (full definition: `docs/ROADMAP.md`, MU-02 row): replace the Projects placeholder with a list,
+create/edit/archive/restore, and a project page with description, derived progress (ADR-0023), task list,
+board and linked notes; assign/move tasks to a project from the task detail (extend `TaskDetail` — there is
+a project field to add; the Inbox "File to…" control already files to existing projects); the sidebar shows
+active projects. Journey J3 must pass.
 
 ## Verification gate
-Journeys run with the real-stack harness (MU-00): `cd apps/web && npm run test:e2e:real`
-(see `docs/TESTING.md` §1b). Add new specs under `apps/web/e2e-real/`, using `createOwner` / `signIn`
-from `e2e-real/helpers.ts`.
+Journeys run with the real-stack harness: `cd apps/web && npm run test:e2e:real` (see `docs/TESTING.md`
+§1b). Add `j3-*.spec.ts` under `apps/web/e2e-real/`; start with `ensureOwner(page)` and use unique titles
+(journeys share one database per run). `apiCall` in `e2e-real/helpers.ts` can be dropped from J3 once
+projects can be created in the UI.
 
 ## Notes
-- Setup now accepts `.test` addresses and the UI shows FastAPI validation messages (fixed ahead of MU-08).
-  `.local` addresses are still rejected by `email-validator` (known, minor).
-- Do not start MU-02 until MU-01 is `DONE`. Do not start blocked M5/M6/M8 work.
+- MU-01 delivered the shared task detail (`components/TaskDetail.tsx`, opened through
+  `hooks/useTaskEditor.tsx`), tags (`tags: string[]`) and `POST /api/tasks/{id}/restore` (ADR-0044).
+- Known limitations carried forward: UI task mutations are online-only (not via the offline queue,
+  R-22); a due time of exactly 23:59 reads as "end of day"; `.local` email addresses are still rejected.
+- Do not start MU-03 until MU-02 is `DONE`. Do not start blocked M5/M6/M8 work.

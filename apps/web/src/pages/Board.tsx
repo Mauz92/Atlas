@@ -1,6 +1,7 @@
 import { Board } from "../components/Board";
 import { LoadError } from "../components/LoadError";
 import { useBoard } from "../hooks/useBoard";
+import { useTaskEditor } from "../hooks/useTaskEditor";
 
 /**
  * The global Kanban board (M4-03, ADR-0022). Columns are the task statuses and a task's column is
@@ -21,8 +22,10 @@ export function BoardPage() {
     movingId,
     timeZone,
     reload,
+    refresh,
     move,
   } = useBoard();
+  const editor = useTaskEditor({ refresh, timeZone });
 
   return (
     <section className="page board-page">
@@ -32,9 +35,9 @@ export function BoardPage() {
         transitions Atlas allows are offered, and a rejected move is reported here.
       </p>
 
-      {actionError ? (
+      {actionError || editor.error ? (
         <p className="error" role="alert">
-          {actionError}
+          {actionError ?? editor.error}
         </p>
       ) : null}
 
@@ -48,10 +51,12 @@ export function BoardPage() {
           tasksByStatus={tasksByStatus}
           timeZone={timeZone}
           onMove={(task, toStatus) => void move(task, toStatus)}
+          onOpen={editor.open}
           movingId={movingId}
           empty={total === 0}
         />
       )}
+      {editor.overlays}
     </section>
   );
 }

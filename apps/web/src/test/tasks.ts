@@ -22,6 +22,7 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     recurrence_parent_id: null,
     external_provider: null,
     external_id: null,
+    tags: [],
     revision: 1,
     created_at: "2026-10-26T08:00:00+00:00",
     updated_at: "2026-10-26T08:00:00+00:00",

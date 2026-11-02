@@ -69,14 +69,54 @@ export function groupUpcomingByDay(tasks: Task[], timeZone?: string): DayGroup[]
   return [...groups.values()].sort((a, b) => a.key.localeCompare(b.key));
 }
 
-/** A short "date and time" label for a task's due instant, rendered in the viewer's zone. */
+/** The wall-clock time that stands for "no particular time" on a due date. */
+export const END_OF_DAY = "23:59";
+
+interface WallClock {
+  date: string;
+  time: string;
+}
+
+/** The wall-clock date and time of an instant in `timeZone` (the viewer's when omitted). */
+export function wallClock(instant: string, timeZone?: string): WallClock {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timeZone || undefined,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date(instant));
+  } catch {
+    // An unknown zone cannot be formatted here; the server will explain it when saved.
+    return wallClock(instant, undefined);
+  }
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    time: `${get("hour")}:${get("minute")}`,
+  };
+}
+
+/** True when a due instant is a date-only due (end of day in its zone). */
+export function isDateOnlyDue(instant: string, timeZone?: string): boolean {
+  return wallClock(instant, timeZone).time === END_OF_DAY;
+}
+
+/**
+ * A short label for a task's due instant, rendered in `timeZone`. A date-only due (end of day,
+ * ADR-0044) shows the date without a clock time.
+ */
 export function formatDue(due: string, timeZone?: string): string {
+  const dateOnly = isDateOnlyDue(due, timeZone);
   return new Intl.DateTimeFormat(undefined, {
     timeZone,
     weekday: "short",
     month: "short",
     day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+    ...(dateOnly ? {} : { hour: "2-digit", minute: "2-digit" }),
   }).format(new Date(due));
 }

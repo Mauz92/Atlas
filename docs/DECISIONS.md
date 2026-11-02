@@ -2005,6 +2005,35 @@ built by MU; D-1/D-3 are deferred with a named trigger, D-2 is a standing constr
 browser journeys in CI (MU-07). The excluded list in the spec is unchanged except that daily notes,
 templates, the command palette and unified search are now in scope. Revisit D-1 and D-3 after MU-06.
 
+## ADR-0044 — Task detail conventions: date-only due dates, tags and restore (MU-01)
+
+**Context.** MU-01 adds editing, quick scheduling and delete-with-undo. Three gaps surfaced: tasks have
+no all-day concept; the `tags`/`task_tags` tables existed without an API; a soft-deleted task could not
+be brought back.
+
+**Decision.**
+1. **A due *date* without a time is stored as 23:59 on that date in the task's zone** ("end of day").
+   The client sends the naive wall-clock time plus the IANA zone and the server converts it (no date
+   maths in the client beyond "today + N calendar days"). The form shows an empty time for such a task
+   and lists omit the clock time. A real 23:59 due time is indistinguishable from "end of day"; the
+   trade-off is accepted to avoid a schema change. Revisit if an `is_all_day` flag is wanted (MU-04/M5).
+2. **Tags are exposed on the task API** as `tags: string[]` (create/update replace the whole set; omit
+   to leave unchanged; max 20, each ≤ 64 characters, trimmed, leading `#` removed, de-duplicated
+   case-insensitively; an existing tag keeps its spelling). Stored in the existing `tags`/`task_tags`
+   tables, user-scoped. No migration.
+3. **`POST /api/tasks/{id}/restore` undoes `DELETE`.** The task keeps its id, history and tags; its
+   revision advances and the change feed announces it, so offline clients converge. Subtasks promoted by
+   the delete (ADR-0016) stay promoted; a project deleted in the meantime is detached. Idempotent via
+   `Idempotency-Key`.
+4. **Capture on Today sets `due = today` (date-only) and leaves the status `inbox`**; Inbox triage
+   ("schedule", "file") sets `status = next` together with the date/project so the task leaves the Inbox.
+
+**Consequences.** UI mutations send an `Idempotency-Key` and the task's `base_revision`; a stale edit
+shows a conflict. They are online-only: wiring the optimistic updates through the offline queue
+(M7-03) is not done by MU-01 (recorded in `RISKS.md`).
+
+---
+
 ## Open decisions deferred to later milestones
 
 | # | Question | Milestone |

@@ -4,6 +4,7 @@ import { LoadError } from "../components/LoadError";
 import { ProjectSummary } from "../components/ProjectSummary";
 import { TaskList } from "../components/TaskList";
 import { usePlanning } from "../hooks/usePlanning";
+import { useTaskEditor } from "../hooks/useTaskEditor";
 import {
   addDays,
   projectsForTasks,
@@ -39,8 +40,10 @@ export function Week() {
     actionError,
     timeZone,
     reload,
+    refresh,
     complete,
   } = usePlanning(window);
+  const editor = useTaskEditor({ refresh, timeZone });
 
   const groups = weekDayGroups(tasks, anchor, timeZone);
   const projects = projectsForTasks(tasks, projectById);
@@ -66,9 +69,9 @@ export function Week() {
         </nav>
       </header>
 
-      {actionError ? (
+      {actionError || editor.error ? (
         <p className="error" role="alert">
-          {actionError}
+          {actionError ?? editor.error}
         </p>
       ) : null}
 
@@ -99,6 +102,7 @@ export function Week() {
                     timeZone={timeZone}
                     projects={projectById}
                     onComplete={(task) => void complete(task)}
+                  onOpen={editor.open}
                     emptyMessage="Nothing scheduled."
                   />
                 </section>
@@ -107,6 +111,7 @@ export function Week() {
           )}
         </>
       )}
+      {editor.overlays}
     </section>
   );
 }

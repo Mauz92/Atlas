@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import ColumnExpressionArgument, case, func, or_, select
+from sqlalchemy import ColumnExpressionArgument, case, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
@@ -48,7 +48,7 @@ from ..changes import (
     ChangeRecorder,
     entity_id_for,
 )
-from ..models import Project, RecurrenceSeries, Task, TaskStatus
+from ..models import Project, RecurrenceSeries, Tag, Task, TaskStatus, TaskTag
 from .changes import plan_change_page
 from .filters import DEFAULT_LIMIT, LIKE_ESCAPE, TaskFilters, search_pattern
 from .priority import PRIORITY_ORDER
@@ -91,6 +91,34 @@ _WRITABLE = frozenset(
         "external_id",
     }
 )
+
+
+#: Limits on a task's tags (client-supplied labels; enforced here as well as in the API schema).
+MAX_TAGS = 20
+MAX_TAG_LENGTH = 64
+
+#: Alias so annotations inside ``TasksService`` are not confused with its ``list`` method.
+TagNames = list[str]
+
+
+def normalize_tags(names: Iterable[str]) -> list[str]:
+    """Trim, strip a leading ``#``, drop blanks and de-duplicate case-insensitively."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in names:
+        name = raw.strip().lstrip("#").strip()
+        if not name:
+            continue
+        if len(name) > MAX_TAG_LENGTH:
+            raise TaskValidationError(f"tag is longer than {MAX_TAG_LENGTH} characters")
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(name)
+    if len(result) > MAX_TAGS:
+        raise TaskValidationError(f"a task can have at most {MAX_TAGS} tags")
+    return result
 
 
 class TaskNotFoundError(LookupError):
@@ -372,6 +400,74 @@ class TasksService:
         """The rollup for a single task (``total=0, done=0`` when it has no subtasks)."""
         return (await self.subtask_rollups([task_id])).get(task_id, SubtaskRollup())
 
+    async def tags_for(self, task_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, TagNames]:
+        """The tag names of each task (sorted case-insensitively), keyed by task id."""
+        if not task_ids:
+            return {}
+        rows = await self.session.execute(
+            select(TaskTag.task_id, Tag.name)
+            .join(Tag, Tag.id == TaskTag.tag_id)
+            .where(TaskTag.task_id.in_(list(task_ids)), Tag.user_id == self.user_id)
+        )
+        result: dict[uuid.UUID, TagNames] = {}
+        for task_id, name in rows:
+            result.setdefault(task_id, []).append(name)
+        for names in result.values():
+            names.sort(key=str.casefold)
+        return result
+
+    async def _set_tags(self, task_id: uuid.UUID, names: Iterable[str]) -> None:
+        """Replace the task's tag assignments with ``names`` (creating tags that do not exist)."""
+        wanted = normalize_tags(names)
+        existing = {
+            tag.name.casefold(): tag
+            for tag in await self.session.scalars(select(Tag).where(Tag.user_id == self.user_id))
+        }
+        tag_ids: list[uuid.UUID] = []
+        for name in wanted:
+            tag = existing.get(name.casefold())
+            if tag is None:
+                tag = Tag(user_id=self.user_id, name=name)
+                self.session.add(tag)
+                await self.session.flush()
+            tag_ids.append(tag.id)
+        await self.session.execute(delete(TaskTag).where(TaskTag.task_id == task_id))
+        for tag_id in tag_ids:
+            self.session.add(TaskTag(task_id=task_id, tag_id=tag_id))
+        await self.session.flush()
+
+    async def restore(self, task_id: uuid.UUID) -> Task:
+        """Undo a soft delete (the undo of "delete"): the task returns with its id and history.
+
+        Subtasks that were promoted to top level by the delete (ADR-0016) stay promoted. Restoring a
+        task that is not deleted, or that is not the caller's, is a ``TaskNotFoundError``.
+        """
+        task = await self.session.scalar(
+            select(Task).where(
+                Task.id == task_id,
+                Task.user_id == self.user_id,
+                Task.deleted_at.is_not(None),
+            )
+        )
+        if task is None:
+            raise TaskNotFoundError(str(task_id))
+        if task.project_id is not None:
+            project_alive = await self.session.scalar(
+                select(Project.id).where(
+                    Project.id == task.project_id,
+                    Project.user_id == self.user_id,
+                    Project.deleted_at.is_(None),
+                )
+            )
+            if project_alive is None:
+                task.project_id = None
+        task.deleted_at = None
+        task.revision += 1
+        await self.session.flush()
+        await self._record_change(task.id, ChangeOperation.UPSERT)
+        await self.session.refresh(task)
+        return task
+
     async def _record_change(self, task_id: uuid.UUID, operation: ChangeOperation) -> None:
         """Announce a task change on the caller's personal change feed (M7-01)."""
         await ChangeRecorder(self.session, self.user_id).record(
@@ -380,6 +476,9 @@ class TasksService:
 
     async def create(self, data: Mapping[str, Any]) -> Task:
         fields = {name: value for name, value in data.items() if name in _WRITABLE}
+        tags = data.get("tags")
+        if tags is not None:
+            normalize_tags(tags)  # validate before anything is written
         parent = await self._resolve_parent(fields.get("parent_task_id"))
         if parent is not None:
             _inherit_project(fields, parent, provided=fields.get("project_id") is not None)
@@ -393,6 +492,8 @@ class TasksService:
         spec = self._head_spec(task)
         self.session.add(task)
         await self.session.flush()
+        if tags:
+            await self._set_tags(task.id, tags)
         await self._record_change(task.id, ChangeOperation.UPSERT)
         if spec is not None:
             await self._write_series(task, spec)
@@ -409,6 +510,9 @@ class TasksService:
         if base_revision is not None and base_revision != task.revision:
             raise TaskRevisionConflictError(task.revision)
         fields = {name: value for name, value in changes.items() if name in _WRITABLE}
+        new_tags: TagNames | None = None
+        if "tags" in changes:
+            new_tags = normalize_tags(changes["tags"] or [])
         parent = await self._resolve_parent(
             fields.get("parent_task_id", task.parent_task_id), itself=task.id
         )
@@ -443,6 +547,8 @@ class TasksService:
             await self._advance_series(task)
         task.revision += 1
         await self.session.flush()
+        if new_tags is not None:
+            await self._set_tags(task.id, new_tags)
         await self._record_change(task.id, ChangeOperation.UPSERT)
         await self.session.refresh(task)
         return task

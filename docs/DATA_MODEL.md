@@ -109,7 +109,8 @@ Unique per `(user_id, provider)`.
 **TaskLink** (task ↔ note) — `task_id`, `note_id`, `created_at`.
 Survives note renames by referencing the stable note id, not the path.
 
-**Tag assignment** — `TaskTag(task_id, tag_id)`.
+**Tag assignment** — `TaskTag(task_id, tag_id)`. Exposed on the task API as `tags: string[]` (replace
+semantics, ADR-0044); the `Tag` row is per user and matched case-insensitively.
 
 **Project** — owner: PostgreSQL
 `id`, `user_id`, `name`, `description`, `status`, `start_date`, `target_date`,

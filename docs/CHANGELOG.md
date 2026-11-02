@@ -6,6 +6,17 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (MU-01): **task detail and editing.** Open any task from Today, Inbox, Upcoming, Day, Week or the
+  Board (click the title, or focus it and press Enter) to edit its title, description, status, priority,
+  due date and time, time zone, start and tags in a side sheet (a full page on narrow screens); Esc
+  closes it (after asking when edits are unsaved). The server's validation message is shown as-is, and a
+  task edited elsewhere shows a conflict instead of being overwritten. Tasks can be deleted from the
+  detail or the Inbox with an **Undo**.
+- Added (MU-01): capturing a task on **Today** makes it due today. **Inbox** rows can be scheduled
+  (Today / Tomorrow / a date), filed to a project, or deleted; scheduling and filing move the task out of
+  the Inbox. A due date without a time is stored as the end of that day and shown without a clock time.
+- Added (MU-01, API): tasks carry **tags** (`tags` on create/update/read, replace semantics) and
+  `POST /api/tasks/{id}/restore` undoes a delete. No schema change.
 - Fixed: account setup accepts addresses on special-use domains such as `.test`, and form errors show
   the server's validation message instead of "Unprocessable Content".
 - Fixed: the new-note controls no longer squash the note-name field in a narrow sidebar.

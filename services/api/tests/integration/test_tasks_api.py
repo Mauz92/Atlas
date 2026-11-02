@@ -263,3 +263,100 @@ async def test_a_due_date_in_the_dst_gap_is_rejected(client: AsyncClient) -> Non
         headers=headers,
     )
     assert response.status_code == 400
+
+
+async def test_tags_are_set_replaced_and_listed(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    created = await _create_task(client, headers, tags=["Home", "  #errands ", "home"])
+    # Trimmed, '#' stripped and de-duplicated case-insensitively; returned sorted.
+    assert created["tags"] == ["errands", "Home"]
+
+    replaced = await client.patch(
+        f"/api/tasks/{created['id']}",
+        json={"tags": ["work"], "base_revision": created["revision"]},
+        headers=headers,
+    )
+    assert replaced.status_code == 200, replaced.text
+    assert replaced.json()["tags"] == ["work"]
+
+    # Omitting `tags` leaves them alone; an empty list clears them.
+    untouched = await client.patch(
+        f"/api/tasks/{created['id']}", json={"title": "Renamed"}, headers=headers
+    )
+    assert untouched.json()["tags"] == ["work"]
+    cleared = await client.patch(f"/api/tasks/{created['id']}", json={"tags": []}, headers=headers)
+    assert cleared.json()["tags"] == []
+
+    # An existing tag is matched case-insensitively and keeps its original spelling.
+    await client.patch(f"/api/tasks/{created['id']}", json={"tags": ["Work"]}, headers=headers)
+    listing = (await client.get("/api/tasks")).json()["tasks"]
+    assert listing[0]["tags"] == ["work"]
+    assert (await client.get(f"/api/tasks/{created['id']}")).json()["tags"] == ["work"]
+
+
+async def test_invalid_tags_are_rejected_without_side_effects(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    too_long = await client.post(
+        "/api/tasks", json={"title": "x", "tags": ["a" * 65]}, headers=headers
+    )
+    assert too_long.status_code == 422
+    too_many = await client.post(
+        "/api/tasks", json={"title": "x", "tags": [f"t{n}" for n in range(21)]}, headers=headers
+    )
+    assert too_many.status_code == 422
+    assert (await client.get("/api/tasks")).json()["tasks"] == []
+
+
+async def test_tags_are_user_scoped(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    task = await _create_task(client, headers, tags=["private"])
+    assert task["tags"] == ["private"]
+    # Another user's task id is not reachable, so its tags cannot be read or changed.
+    other = await client.patch(f"/api/tasks/{uuid.uuid4()}", json={"tags": ["x"]}, headers=headers)
+    assert other.status_code == 404
+
+
+async def test_restore_undoes_a_delete(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    created = await _create_task(client, headers, tags=["keep"], priority="high")
+    assert (await client.delete(f"/api/tasks/{created['id']}", headers=headers)).status_code == 204
+    assert (await client.get(f"/api/tasks/{created['id']}")).status_code == 404
+
+    restored = await client.post(f"/api/tasks/{created['id']}/restore", headers=headers)
+    assert restored.status_code == 200, restored.text
+    body = restored.json()
+    assert body["id"] == created["id"]
+    assert body["priority"] == "high"
+    assert body["tags"] == ["keep"]
+    assert body["revision"] > created["revision"]
+    assert [t["id"] for t in (await client.get("/api/tasks")).json()["tasks"]] == [created["id"]]
+
+    # A task that is not deleted cannot be "restored", and an unknown id is a 404 too.
+    assert (
+        await client.post(f"/api/tasks/{created['id']}/restore", headers=headers)
+    ).status_code == 404
+    assert (
+        await client.post(f"/api/tasks/{uuid.uuid4()}/restore", headers=headers)
+    ).status_code == 404
+
+
+async def test_restore_with_an_idempotency_key_replays(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    created = await _create_task(client, headers)
+    await client.delete(f"/api/tasks/{created['id']}", headers=headers)
+    key_headers = {**headers, "Idempotency-Key": "restore-1"}
+
+    first = await client.post(f"/api/tasks/{created['id']}/restore", headers=key_headers)
+    replay = await client.post(f"/api/tasks/{created['id']}/restore", headers=key_headers)
+    assert first.status_code == replay.status_code == 200
+    assert first.json() == replay.json()
+
+
+async def test_restore_appears_in_the_change_feed(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    created = await _create_task(client, headers)
+    await client.delete(f"/api/tasks/{created['id']}", headers=headers)
+    await client.post(f"/api/tasks/{created['id']}/restore", headers=headers)
+    feed = (await client.get("/api/tasks/changes")).json()
+    (item,) = [t for t in feed["tasks"] if t["id"] == created["id"]]
+    assert item["deleted_at"] is None

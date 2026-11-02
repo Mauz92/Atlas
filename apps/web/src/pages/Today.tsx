@@ -2,17 +2,30 @@ import { tasksApi } from "../api/client";
 import { LoadError } from "../components/LoadError";
 import { QuickCapture } from "../components/QuickCapture";
 import { TaskList } from "../components/TaskList";
+import { useTaskEditor } from "../hooks/useTaskEditor";
 import { useTaskView } from "../hooks/useTaskView";
+import { dueOn, localDate } from "../lib/taskForm";
 import { groupToday } from "../lib/tasks";
 
 /** The landing view: overdue and due-today tasks, with title-only quick capture. */
 export function Today() {
-  const { tasks, state, error, actionError, timeZone, reload, complete } = useTaskView("today");
+  const {
+    tasks,
+    state,
+    error,
+    actionError,
+    timeZone,
+    reload,
+    refresh,
+    complete,
+  } = useTaskView("today");
+  const editor = useTaskEditor({ refresh, timeZone });
   const { overdue, dueToday } = groupToday(tasks);
 
+  /** Capturing on Today means "today": the task is due on the viewer's current calendar day. */
   async function capture(title: string) {
-    await tasksApi.create(title);
-    await reload();
+    await tasksApi.create(title, dueOn(localDate(0, timeZone), timeZone));
+    await refresh();
   }
 
   return (
@@ -20,9 +33,9 @@ export function Today() {
       <h1>Today</h1>
       <QuickCapture onCapture={capture} placeholder="Add a task for today…" />
 
-      {actionError ? (
+      {actionError || editor.error ? (
         <p className="error" role="alert">
-          {actionError}
+          {actionError ?? editor.error}
         </p>
       ) : null}
 
@@ -31,7 +44,9 @@ export function Today() {
       ) : state === "loading" ? (
         <p className="muted">Loading today…</p>
       ) : tasks.length === 0 ? (
-        <div className="empty-state">Nothing is due today. Enjoy the clear runway.</div>
+        <div className="empty-state">
+          Nothing is due today. Enjoy the clear runway.
+        </div>
       ) : (
         <div className="view-sections">
           <section className="view-section">
@@ -40,6 +55,7 @@ export function Today() {
               tasks={overdue}
               timeZone={timeZone}
               onComplete={(task) => void complete(task)}
+              onOpen={editor.open}
               emptyMessage="Nothing overdue."
             />
           </section>
@@ -49,11 +65,13 @@ export function Today() {
               tasks={dueToday}
               timeZone={timeZone}
               onComplete={(task) => void complete(task)}
+              onOpen={editor.open}
               emptyMessage="Nothing else due today."
             />
           </section>
         </div>
       )}
+      {editor.overlays}
     </section>
   );
 }

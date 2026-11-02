@@ -19,7 +19,9 @@ function makeDataTransfer() {
 }
 
 function column(name: string): HTMLElement {
-  return screen.getByRole("heading", { name }).closest("section") as HTMLElement;
+  return screen
+    .getByRole("heading", { name })
+    .closest("section") as HTMLElement;
 }
 
 function renderBoard(tasks: Task[], onMove = vi.fn(), empty = false) {
@@ -42,7 +44,13 @@ describe("Board", () => {
       makeTask({ id: "c", title: "Gamma", status: "inbox" }),
     ]);
 
-    for (const label of ["Inbox", "Next", "In progress", "Completed", "Archived"]) {
+    for (const label of [
+      "Inbox",
+      "Next",
+      "In progress",
+      "Completed",
+      "Archived",
+    ]) {
       expect(screen.getByRole("heading", { name: label })).toBeInTheDocument();
     }
     expect(within(column("Inbox")).getByText("Alpha")).toBeInTheDocument();
@@ -99,13 +107,37 @@ describe("Board", () => {
     const select = screen.getByLabelText("Move Gamma");
     // Completed tasks may only be reopened or archived.
     expect(within(select).getByRole("option", { name: "Next" })).toBeDisabled();
-    expect(within(select).getByRole("option", { name: "Inbox" })).toBeDisabled();
-    expect(within(select).getByRole("option", { name: "In progress" })).toBeEnabled();
-    expect(within(select).getByRole("option", { name: "Archived" })).toBeEnabled();
+    expect(
+      within(select).getByRole("option", { name: "Inbox" }),
+    ).toBeDisabled();
+    expect(
+      within(select).getByRole("option", { name: "In progress" }),
+    ).toBeEnabled();
+    expect(
+      within(select).getByRole("option", { name: "Archived" }),
+    ).toBeEnabled();
 
     fireEvent.change(select, { target: { value: "in_progress" } });
 
     expect(onMove).toHaveBeenCalledTimes(1);
-    expect(onMove).toHaveBeenCalledWith(expect.objectContaining({ id: "c" }), "in_progress");
+    expect(onMove).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "c" }),
+      "in_progress",
+    );
+  });
+
+  it("opens a card in the task detail from its title", () => {
+    const onOpen = vi.fn();
+    const task = makeTask({ id: "a", title: "Alpha", status: "inbox" });
+    render(
+      <Board
+        columns={boardColumns()}
+        tasksByStatus={groupByStatus([task])}
+        onMove={vi.fn()}
+        onOpen={onOpen}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open Alpha" }));
+    expect(onOpen).toHaveBeenCalledWith(task);
   });
 });

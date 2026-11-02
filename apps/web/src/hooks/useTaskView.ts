@@ -15,6 +15,8 @@ export interface TaskViewResult {
   /** The viewer's IANA zone, forwarded to the API so "today" is the caller's calendar day. */
   timeZone: string | undefined;
   reload: () => Promise<void>;
+  /** Re-read the view without the loading state (after an edit made elsewhere on the page). */
+  refresh: () => Promise<void>;
   complete: (task: Task) => Promise<void>;
 }
 
@@ -63,5 +65,5 @@ export function useTaskView(view: TaskView): TaskViewResult {
     void load();
   }, [load]);
 
-  return { tasks, state, error, actionError, timeZone, reload, complete };
+  return { tasks, state, error, actionError, timeZone, reload, refresh: load, complete };
 }

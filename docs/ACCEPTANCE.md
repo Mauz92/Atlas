@@ -2801,6 +2801,35 @@ served; Chromium only. Defect noticed then fixed: `.test` email addresses were r
 "Unprocessable Content"; the API now accepts them (`test_auth_schema.py`) and the client renders
 FastAPI validation messages (`client.test.ts`). `.local` is still rejected.
 
+### MU-01 — Task detail and editing; capture lands where expected
+
+**Result: `DONE` (local); CI job `e2e-real` `NOT RUN` on GitHub Actions.** One task detail surface (side
+sheet ≥ 721 px, full-screen page below) opens from Today, Inbox, Upcoming, Day, Week and the Board.
+Backend additions (ADR-0044): `tags` on the task API and `POST /api/tasks/{id}/restore`; no migration.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| J1 capture and plan: "Buy milk" on Today appears immediately, priority High + due tomorrow moves it to Upcoming, survives reload, stale second-tab edit shows a conflict | `PASS` | `cd apps/web && npm run test:e2e:real` → `7 passed` incl. `j1-capture-and-plan.spec.ts` (8 consecutive green runs on 2026-11-02 after fixing a focus race that had caused one J2 flake) |
+| J2 triage inbox: five items scheduled (today / tomorrow / picked date), filed to a project, deleted with undo, keyboard driven | `PASS` | `j2-triage-inbox.spec.ts` (same runs); project filing verified by reading `project_id`/`status` back from the API |
+| Edit title, description, status, priority, due date/time/time zone, start, tags; persisted after reload | `PASS` | `J1: every field can be edited…` (real API); component tests `TaskDetail.test.tsx`, `taskForm.test.ts` |
+| Delete with undo (detail and Inbox row); restore keeps id/history/tags | `PASS` | `J1: a task can be deleted…`, J2; API `test_restore_*` (`test_tasks_api.py`) |
+| Today capture sets due = today | `PASS` | J1; `Today.test.tsx` (`due_at` = today `T23:59:00`, viewer zone) |
+| Enter opens, Esc closes (asks before discarding edits) | `PASS` | J1 (focus + Enter, Esc); `TaskDetail.test.tsx` |
+| Server validation errors shown verbatim | `PASS` | J1 (`title: String should have at least 1 character`, `time_zone` message, no "Unprocessable"); `TaskDetail.test.tsx` |
+| Stale edit never silently overwrites | `PASS` | J1 second-tab conflict → "Load latest version"; PATCH carries `base_revision` |
+| Narrow screens: detail is a full page | `PASS` | `J1: on a narrow screen…` (375×800: dialog fills the viewport) |
+| Backend: tags validated and user-scoped; restore idempotent; change feed announces restore | `PASS` | `test_tasks_api.py` (+6 tests); `./scripts/verify.sh` → `986 passed` backend |
+| Repository checks | `PASS` | `./scripts/verify.sh` → ruff, format, mypy, pytest `986 passed`; eslint, `tsc`, vitest `302 passed`; `verification: PASS` |
+| Mocked e2e still passes | `PASS` | `cd apps/web && npm run e2e` → `7 passed` |
+| No stray `atlas_e2e_*` databases | `PASS` | `select datname from pg_database like 'atlas%'` → `atlas, atlas_test` after the runs |
+| Runs in CI | `NOT RUN` | Job exists from MU-00; not executed outside GitHub Actions |
+
+Limitations: UI mutations are online-only (idempotency key + `base_revision`; not queued offline, see
+`RISKS.md` R-22); a real 23:59 due time is shown as "end of day" (ADR-0044); project assignment from the
+detail panel is MU-02 (Inbox "File to…" works with existing projects); recurrence, subtasks and per-task
+reminder in the panel are MU-04; the shortcut help overlay is MU-08; Chromium only; the date/datetime
+inputs use the browser's native pickers.
+
 ---
 
 ## Release Readiness (M9)
@@ -2820,7 +2849,7 @@ Verdicts: **`PASS`** = the requirement is delivered and demonstrably works under
 | REQ-002 Free to use (qualified by §3.1) | `PASS` | M0/M1 (design) + M9-04 | No paid *application* feature; every runtime dependency is open-source (`DEPENDENCIES.md`). The §3.1 platform costs (iOS Apple Developer Program fee; free FCM/optional relay) are **platform** costs, disclosed, not application licence costs. |
 | REQ-003 Commercial-use rights | `PASS` | M1-10 + M9-04 | Complete dependency/licence inventory (`DEPENDENCIES.md`); all licences permit intended personal + workplace use (MIT/BSD/Apache/LGPL/MPL/CC0; `psycopg` LGPL used unmodified as a library). Standing pre-release action: re-verify identifiers upstream (`DEPENDENCIES.md`). |
 | REQ-004 Markdown notes | `PASS` | **M2** (gate `PASS`) | Notes are real `.md` files, byte-identical on disk, path-traversal-safe, revision-aware with conflict copies; M9-03 exports the genuine note bytes. Tests: `test_notes_api.py`, `test_note_paths.py` (M2 gate). |
-| REQ-005 Task management | `PARTIAL` | **M3** (gate `PASS`) + M4-02 | All required capabilities delivered and integration-tested over HTTP: Inbox/Today/Upcoming (+ Day/Week planning, Board), due dates & priorities (DST-correct), recurrence (RRULE), subtasks, project assignment. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** the function audit showed the owner cannot edit a task, set a due date or priority, delete, or assign a project in the UI (capture is title-only; Complete is the only row action), so the requirement is not satisfied as a user-facing capability. Returns to `PASS` when MU-01…MU-04 journeys J1/J2 pass in a browser against the real API. |
+| REQ-005 Task management | `PARTIAL` | **M3** (gate `PASS`) + M4-02 | All required capabilities delivered and integration-tested over HTTP: Inbox/Today/Upcoming (+ Day/Week planning, Board), due dates & priorities (DST-correct), recurrence (RRULE), subtasks, project assignment. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** the function audit showed the owner cannot edit a task, set a due date or priority, delete, or assign a project in the UI (capture is title-only; Complete is the only row action), so the requirement is not satisfied as a user-facing capability. Returns to `PASS` when MU-01…MU-04 journeys J1/J2 pass in a browser against the real API. **Progress 2026-11-02:** J1 and J2 pass (MU-01: edit, date, priority, tags, delete+undo, Inbox triage); recurrence/subtasks/reminders in the UI (MU-04) and the Tasks page (MU-03) remain. |
 | REQ-006 Project management | `PARTIAL` | **M4** (gate `PASS`) | Projects, task lists, Kanban board, derived progress (documented formula, ADR-0023) and note↔project links are all implemented and tested. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** there is no way to create or edit a project in the UI (the Projects page is a placeholder), so the Board is empty for a new user. Returns to `PASS` when MU-02 journey J3 passes. |
 | REQ-007 Google Calendar | `NOT RUN` | — (**M5-03** `BACKLOG`; **M5-00 `BLOCKED`** — AR-001) | Only the foundations exist: encrypted credential store (M5-01), provider-neutral adapter contract (M5-02), event projection + cursors (M5-06), sync-status (M5-08), reconciliation (M5-10). The Google adapter and account-connection UI are **not built**; no provider is contacted. |
 | REQ-008 Microsoft Outlook | `NOT RUN` | — (**M5-04** `BACKLOG`; **M5-00 `BLOCKED`** — AR-001) | As REQ-007: the foundations exist but the Microsoft Graph adapter and connection UI are **not built**. |

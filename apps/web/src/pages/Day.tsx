@@ -4,6 +4,7 @@ import { LoadError } from "../components/LoadError";
 import { ProjectSummary } from "../components/ProjectSummary";
 import { TaskList } from "../components/TaskList";
 import { usePlanning } from "../hooks/usePlanning";
+import { useTaskEditor } from "../hooks/useTaskEditor";
 import {
   addDays,
   dayLabelOf,
@@ -43,8 +44,10 @@ export function Day() {
     actionError,
     timeZone,
     reload,
+    refresh,
     complete,
   } = usePlanning(window);
+  const editor = useTaskEditor({ refresh, timeZone });
 
   const label = dayLabelOf(selected, timeZone);
   const { overdue, dueToday } = groupToday(tasks);
@@ -71,9 +74,9 @@ export function Day() {
         </nav>
       </header>
 
-      {actionError ? (
+      {actionError || editor.error ? (
         <p className="error" role="alert">
-          {actionError}
+          {actionError ?? editor.error}
         </p>
       ) : null}
 
@@ -100,6 +103,7 @@ export function Day() {
                   timeZone={timeZone}
                   projects={projectById}
                   onComplete={(task) => void complete(task)}
+                  onOpen={editor.open}
                   emptyMessage="Nothing overdue."
                 />
               </section>
@@ -110,6 +114,7 @@ export function Day() {
                   timeZone={timeZone}
                   projects={projectById}
                   onComplete={(task) => void complete(task)}
+                  onOpen={editor.open}
                   emptyMessage="Nothing else due today."
                 />
               </section>
@@ -123,6 +128,7 @@ export function Day() {
                   timeZone={timeZone}
                   projects={projectById}
                   onComplete={(task) => void complete(task)}
+                  onOpen={editor.open}
                   emptyMessage="Nothing due this day."
                 />
               </section>
@@ -130,6 +136,7 @@ export function Day() {
           )}
         </>
       )}
+      {editor.overlays}
     </section>
   );
 }

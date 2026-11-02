@@ -98,7 +98,13 @@ an empty database, so repeated runs do not interfere. CI runs the same command i
 of `.github/workflows/ci.yml` (PostgreSQL service). Like the mocked suite it is **not** part of the
 protected `scripts/verify.sh`.
 
-Current journeys: `capture-journey.spec.ts` (setup → login → capture "Buy milk" → Inbox → reload).
+Current journeys: `capture-journey.spec.ts` (setup → login → capture "Buy milk" → Inbox → reload);
+`j1-capture-and-plan.spec.ts` (J1: capture on Today, plan via the task detail, Upcoming, reload, stale
+second-tab conflict, all fields, verbatim validation errors, delete + undo, narrow-screen full page);
+`j2-triage-inbox.spec.ts` (J2: five inbox items scheduled / filed / deleted with undo, keyboard driven).
+Journeys share one owner: start each with `ensureOwner(page)` (creates the owner or signs in) and use
+unique titles, since earlier journeys' tasks stay in the database. `apiCall` (helpers) performs set-up
+that has no UI yet (for example creating a project).
 
 ## 2. Unit Tests
 

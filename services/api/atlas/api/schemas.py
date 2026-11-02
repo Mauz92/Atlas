@@ -178,6 +178,7 @@ class TaskCreateRequest(BaseModel):
     recurrence_rule: str | None = Field(default=None, max_length=2000)
     external_provider: str | None = Field(default=None, max_length=32)
     external_id: str | None = Field(default=None, max_length=255)
+    tags: list[Annotated[str, Field(max_length=64)]] | None = Field(default=None, max_length=20)
 
     @field_validator("time_zone")
     @classmethod
@@ -207,6 +208,7 @@ class TaskUpdateRequest(BaseModel):
     external_provider: str | None = Field(default=None, max_length=32)
     external_id: str | None = Field(default=None, max_length=255)
     base_revision: int | None = Field(default=None, ge=0)
+    tags: list[Annotated[str, Field(max_length=64)]] | None = Field(default=None, max_length=20)
 
     @field_validator("time_zone")
     @classmethod
@@ -241,6 +243,7 @@ class TaskOut(BaseModel):
     recurrence_parent_id: uuid.UUID | None
     external_provider: str | None
     external_id: str | None
+    tags: list[str] = Field(default_factory=list)
     revision: int
     created_at: datetime
     updated_at: datetime

@@ -300,7 +300,13 @@ async def list_project_tasks(
     )
     now = datetime.now(UTC)
     rollups = await service.subtask_rollups([task.id for task in tasks])
-    return TaskListOut(tasks=[task_out(task, rollups.get(task.id), now=now) for task in tasks])
+    tag_names = await service.tags_for([task.id for task in tasks])
+    return TaskListOut(
+        tasks=[
+            task_out(task, rollups.get(task.id), now=now, tags=tag_names.get(task.id, []))
+            for task in tasks
+        ]
+    )
 
 
 @router.get("/{project_id}/notes", response_model=ProjectNotesOut)

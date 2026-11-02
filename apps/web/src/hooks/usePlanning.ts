@@ -21,6 +21,8 @@ export interface PlanningResult {
   /** The viewer's IANA zone, forwarded to the API so placement matches the server's. */
   timeZone: string | undefined;
   reload: () => Promise<void>;
+  /** Re-read the plan without the loading state (after an edit made elsewhere on the page). */
+  refresh: () => Promise<void>;
   complete: (task: Task) => Promise<void>;
 }
 
@@ -114,6 +116,7 @@ export function usePlanning(window: PlanningWindow): PlanningResult {
     actionError,
     timeZone,
     reload,
+    refresh: loadTasks,
     complete,
   };
 }

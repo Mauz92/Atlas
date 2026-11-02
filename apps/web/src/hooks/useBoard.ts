@@ -30,6 +30,8 @@ export interface BoardResult {
   /** The viewer's IANA zone, forwarded to the API so due states match the server's. */
   timeZone: string | undefined;
   reload: () => Promise<void>;
+  /** Re-read the board without the loading state (after an edit made in the detail panel). */
+  refresh: () => Promise<void>;
   move: (task: Task, toStatus: string) => Promise<void>;
 }
 
@@ -118,6 +120,7 @@ export function useBoard(projectId?: string): BoardResult {
     movingId,
     timeZone,
     reload,
+    refresh: load,
     move,
   };
 }

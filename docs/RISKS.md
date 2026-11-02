@@ -199,6 +199,10 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 - **Mitigation:** ADR-0043 — done means a browser journey passes against the real API; milestone MU
   (usable core) precedes further backend/calendar work; the release table is scored on user-reachable
   behaviour; journey tests run in CI (MU-07).
+- **Progress:** MU-00 (harness) and MU-01 (task detail, J1/J2) delivered 2026-11-02. Open sub-risk from
+  MU-01: task edits from the UI are online-only (idempotency key + `base_revision`, conflict shown); they
+  are not yet routed through the offline queue (M7-03), so an edit made while offline fails visibly
+  instead of queueing. Address when MU-08/M8 touch offline UX.
 - **Owner milestone:** MU. **Status:** Mitigating.
 
 ---
@@ -213,3 +217,4 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 | 2026-10-27 | M9-04 | R-17 reviewed: `pip-audit` (91 pkgs) and `npm audit` (370 pkgs, prod+dev) both clean — 0 advisories at every severity. No finding accepted or suppressed; CI gate confirmed by inspection + local positive controls. |
 | 2026-10-27 | M9-05 | Security review (threat model vs implementation). R-21 added (push endpoint not scheme/host-constrained; accepted for the single-user model). F1 (SPA missing security headers/CSP) found and fixed in `apps/web/nginx.conf`; R-SEC-1/2/4 re-confirmed, R-SEC-3 resolved. Detail in `docs/SECURITY.md` §"Milestone 9 security review". |
 | 2026-11-01 | Audit | Function audit: R-22 added (backend-heavy, interface-light); ADR-0043 re-prioritises to a usable core. |
+| 2026-11-02 | MU-01 | R-22 progress: task detail/editing delivered (J1, J2 pass in a browser). Sub-risk recorded: UI task mutations are online-only (not via the offline queue). |

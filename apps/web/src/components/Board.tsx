@@ -16,6 +16,8 @@ interface BoardProps {
   onMove: (task: Task, toStatus: string) => void;
   /** The task whose move is in flight; its controls are disabled while it persists. */
   movingId?: string | null;
+  /** Open the task detail surface (Enter or click on the card title). */
+  onOpen?: (task: Task) => void;
   /** Show a board-level hint when there are no tasks at all. */
   empty?: boolean;
 }
@@ -33,6 +35,7 @@ export function Board({
   tasksByStatus,
   timeZone,
   onMove,
+  onOpen,
   movingId,
   empty,
 }: BoardProps) {
@@ -120,14 +123,25 @@ export function Board({
                       onDragStart={(event) => onDragStart(event, task)}
                       onDragEnd={onDragEnd}
                     >
-                      <span className="board-card-title">{task.title}</span>
+                      {onOpen ? (
+                        <button
+                          type="button"
+                          className="board-card-title task-open"
+                          aria-label={`Open ${task.title}`}
+                          onClick={() => onOpen(task)}
+                        >
+                          {task.title}
+                        </button>
+                      ) : (
+                        <span className="board-card-title">{task.title}</span>
+                      )}
                       {task.priority !== "none" || task.due_at ? (
                         <div className="board-card-meta">
                           {task.priority !== "none" ? (
                             <span className="badge">{task.priority}</span>
                           ) : null}
                           {task.due_at ? (
-                            <span className="muted">{formatDue(task.due_at, timeZone)}</span>
+                            <span className="muted">{formatDue(task.due_at, task.time_zone ?? timeZone)}</span>
                           ) : null}
                         </div>
                       ) : null}

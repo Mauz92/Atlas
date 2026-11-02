@@ -7,7 +7,10 @@ export const test = base.extend({
   /* eslint-disable react-hooks/rules-of-hooks, no-empty-pattern */
   baseURL: async ({}, use) => {
     const url = process.env.ATLAS_E2E_BASE_URL;
-    if (!url) throw new Error("ATLAS_E2E_BASE_URL is not set — global setup did not run");
+    if (!url)
+      throw new Error(
+        "ATLAS_E2E_BASE_URL is not set — global setup did not run",
+      );
     await use(url);
   },
   /* eslint-enable react-hooks/rules-of-hooks, no-empty-pattern */

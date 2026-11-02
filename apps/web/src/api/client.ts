@@ -1,3 +1,4 @@
+import { newIdempotencyKey } from "../lib/offlineQueue";
 import type { components } from "./schema";
 
 export type UserPublic = components["schemas"]["UserPublic"];
@@ -42,7 +43,7 @@ export class ApiError extends Error {
     this.body = body;
   }
 
-  /** The revision the server currently holds, for a 409 on a note update. */
+  /** The revision the server currently holds, for a 409 on a note or task update. */
   get currentRevision(): number | null {
     const detail = (this.body as { detail?: { current_revision?: number } } | undefined)?.detail;
     return typeof detail?.current_revision === "number" ? detail.current_revision : null;
@@ -188,6 +189,12 @@ export interface TaskListOptions {
   dueTo?: string;
 }
 
+/** The writable task fields a create/update may carry (the server validates all of them). */
+export type TaskFields = Omit<
+  components["schemas"]["TaskUpdateRequest"],
+  "base_revision" | "completed_at"
+>;
+
 export const tasksApi = {
   /** List tasks. A `view` returns one of the primary views; `tz` is the caller's IANA zone. */
   list: (options: TaskListOptions = {}) => {
@@ -215,13 +222,36 @@ export const tasksApi = {
     const query = params.toString();
     return apiFetch<TaskList>(`/api/tasks${query ? `?${query}` : ""}`);
   },
-  /** Quick capture: a title is the only required field. */
-  create: (title: string) =>
-    apiFetch<Task>("/api/tasks", { method: "POST", body: JSON.stringify({ title }) }),
+  /** One task (the detail panel re-reads it to recover from a stale-revision conflict). */
+  get: (id: string) => apiFetch<Task>(`/api/tasks/${id}`),
+  /**
+   * Quick capture: a title is the only required field. `fields` may add server-validated fields
+   * (for example the due date that Today capture sets). Every mutation below carries a fresh
+   * `Idempotency-Key`, so a re-sent request is applied once (AGENTS.md §9).
+   */
+  create: (title: string, fields: TaskFields = {}) =>
+    apiFetch<Task>("/api/tasks", {
+      method: "POST",
+      body: JSON.stringify({ title, ...fields }),
+      idempotencyKey: newIdempotencyKey(),
+    }),
   complete: (task: Task) =>
     apiFetch<Task>(`/api/tasks/${task.id}`, {
       method: "PATCH",
       body: JSON.stringify({ status: "completed", base_revision: task.revision }),
+      idempotencyKey: newIdempotencyKey(),
+    }),
+  /**
+   * Edit a task (MU-01 detail panel and Inbox triage). `changes` holds only the fields to change
+   * (`null` clears a nullable field). It carries the task's `base_revision`, so a stale edit is
+   * rejected with `409` instead of overwriting a newer one; the server validates every value and
+   * the transition rules, and its message is surfaced verbatim.
+   */
+  update: (task: Task, changes: TaskFields) =>
+    apiFetch<Task>(`/api/tasks/${task.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ ...changes, base_revision: task.revision }),
+      idempotencyKey: newIdempotencyKey(),
     }),
   /**
    * Move a task to another status (M4-03 board). Carries the task's `base_revision` so a stale
@@ -233,6 +263,19 @@ export const tasksApi = {
     apiFetch<Task>(`/api/tasks/${task.id}`, {
       method: "PATCH",
       body: JSON.stringify({ status, base_revision: task.revision }),
+      idempotencyKey: newIdempotencyKey(),
+    }),
+  /** Delete a task (a soft delete on the server, so {@link tasksApi.restore} can undo it). */
+  remove: (task: Task) =>
+    apiFetch<void>(`/api/tasks/${task.id}`, {
+      method: "DELETE",
+      idempotencyKey: newIdempotencyKey(),
+    }),
+  /** Undo a delete: the task returns with its id and history. */
+  restore: (taskId: string) =>
+    apiFetch<Task>(`/api/tasks/${taskId}/restore`, {
+      method: "POST",
+      idempotencyKey: newIdempotencyKey(),
     }),
 };
 
