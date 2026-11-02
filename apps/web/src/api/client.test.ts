@@ -239,3 +239,34 @@ describe("apiFetch idempotency", () => {
     expect((init.headers as Headers).has("Idempotency-Key")).toBe(false);
   });
 });
+
+describe("apiFetch validation errors", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("turns a FastAPI 422 detail list into a readable message", async () => {
+    const body = {
+      detail: [
+        {
+          type: "value_error",
+          loc: ["body", "email"],
+          msg: "value is not a valid email address: The part after the @-sign is a special-use or reserved name.",
+        },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 422,
+        statusText: "Unprocessable Content",
+        json: async () => body,
+      }),
+    );
+
+    await expect(apiFetch("/api/auth/setup", { method: "POST" })).rejects.toThrow(
+      /^email: value is not a valid email address/,
+    );
+  });
+});

@@ -4,8 +4,17 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+from email_validator import EmailNotValidError, validate_email
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from ..calendar import (
     MAX_SCOPE_COUNT,
@@ -26,13 +35,28 @@ from ..tasks import (
 )
 
 
+def _check_email(value: str) -> str:
+    """Syntax-check and normalise an address.
+
+    Atlas is single-owner and self-hosted, so special-use domains such as ``.test`` or ``.local``
+    are accepted; deliverability is never checked (no DNS lookups).
+    """
+    try:
+        return validate_email(value, check_deliverability=False, test_environment=True).normalized
+    except EmailNotValidError as exc:
+        raise ValueError(str(exc)) from exc
+
+
+Email = Annotated[str, AfterValidator(_check_email)]
+
+
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: Email
     password: str = Field(min_length=1, max_length=1024)
 
 
 class SetupRequest(BaseModel):
-    email: EmailStr
+    email: Email
     password: str = Field(min_length=12, max_length=1024)
     display_name: str = Field(min_length=1, max_length=120)
 

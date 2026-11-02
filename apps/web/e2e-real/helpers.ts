@@ -3,8 +3,7 @@ import { expect } from "./fixtures";
 
 /**
  * Credentials for the owner created by {@link createOwner}. `example.com` is used on purpose: the
- * server rejects reserved domains such as `.test` with a bare "Unprocessable Content" (known
- * defect, MU-08). The password is a throwaway value for the disposable per-run database.
+ * server rejects reserved domains such as `.test` (the form now shows why). The password is a throwaway value for the disposable per-run database.
  */
 export const OWNER = {
   name: "Journey Owner",

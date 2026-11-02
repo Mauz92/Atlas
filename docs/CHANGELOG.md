@@ -4,6 +4,12 @@ All notable, user-visible changes to Atlas are recorded here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+- Fixed: account setup accepts addresses on special-use domains such as `.test`, and form errors show
+  the server's validation message instead of "Unprocessable Content".
+- Fixed: the new-note controls no longer squash the note-name field in a narrow sidebar.
+
 ## [0.1.0-pre] — 2026-10-27 — development snapshot · **NOT production-ready**
 
 **Release label: `0.1.0-pre` — a development snapshot, neither a finished nor a production release.**

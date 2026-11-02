@@ -2797,8 +2797,9 @@ real FastAPI app (from `services/api/.venv`) and a fresh PostgreSQL database per
 | Runs in CI | `NOT RUN` | Job `e2e-real` added to `.github/workflows/ci.yml` (PostgreSQL service, API from source in a venv, Chromium, `npm run test:e2e:real`); it could not be executed outside GitHub Actions |
 
 Limitations: the harness is serial (one DB, one owner); the dev server (not the production build) is
-served; Chromium only. Defect noticed (not fixed): `.test` email addresses are rejected at setup with a bare
-"Unprocessable Content" (MU-08).
+served; Chromium only. Defect noticed then fixed: `.test` email addresses were rejected at setup with a bare
+"Unprocessable Content"; the API now accepts them (`test_auth_schema.py`) and the client renders
+FastAPI validation messages (`client.test.ts`). `.local` is still rejected.
 
 ---
 

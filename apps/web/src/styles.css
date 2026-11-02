@@ -260,6 +260,14 @@ button.ghost {
   width: 100%;
 }
 
+.notes-sidebar .row {
+  flex-wrap: wrap;
+}
+
+.notes-sidebar .row input {
+  flex: 1 1 100%;
+}
+
 .tree {
   list-style: none;
   margin: 4px 0 0;

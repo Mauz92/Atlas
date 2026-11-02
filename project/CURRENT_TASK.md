@@ -18,6 +18,6 @@ Journeys run with the real-stack harness (MU-00): `cd apps/web && npm run test:e
 from `e2e-real/helpers.ts`.
 
 ## Notes
-- Account setup rejects reserved email domains (e.g. `.test`) with a bare "Unprocessable Content"; the
-  harness uses `example.com` until MU-08 fixes validation and error display.
+- Setup now accepts `.test` addresses and the UI shows FastAPI validation messages (fixed ahead of MU-08).
+  `.local` addresses are still rejected by `email-validator` (known, minor).
 - Do not start MU-02 until MU-01 is `DONE`. Do not start blocked M5/M6/M8 work.

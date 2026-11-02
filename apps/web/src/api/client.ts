@@ -60,6 +60,23 @@ function describe(detail: unknown, fallback: string): string {
   if (typeof detail === "string") {
     return detail;
   }
+  if (Array.isArray(detail)) {
+    // FastAPI validation errors: [{ loc: ["body", "email"], msg: "..." }]
+    const lines = detail
+      .map((item) => {
+        const { loc, msg } = (item ?? {}) as { loc?: unknown; msg?: unknown };
+        if (typeof msg !== "string") {
+          return null;
+        }
+        const field = Array.isArray(loc) ? loc.filter((p) => p !== "body").join(".") : "";
+        const text = msg.replace(/^Value error, /, "");
+        return field ? `${field}: ${text}` : text;
+      })
+      .filter((line): line is string => line !== null);
+    if (lines.length > 0) {
+      return lines.join("; ");
+    }
+  }
   if (detail && typeof detail === "object" && "message" in detail) {
     const message = (detail as { message?: unknown }).message;
     if (typeof message === "string") {
