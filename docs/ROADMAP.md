@@ -24,7 +24,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M8 | Notifications and mobile apps | `IN_PROGRESS` | Platform behaviour tested on real devices |
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
-| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `IN_PROGRESS` | UX-01 `DONE` 2026-11-02, UX-02 next; J1–J7 and the axe sweep keep passing while the UI is rebuilt |
+| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `IN_PROGRESS` | UX-01 and UX-02 `DONE` 2026-11-02, UX-03 next; J1–J7 and the axe sweep keep passing while the UI is rebuilt |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -660,8 +660,8 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 | ID | Title | Depends on | Status |
 |---|---|---|---|
 | UX-01 | Design tokens (neutral), base controls, pre-paint theme, quick wins 1, 3, 5, 6, 7, 8, 10 | MU-08 | `DONE` (local PASS 2026-11-02; evidence `ACCEPTANCE.md` UX-01; CI `e2e-real` NOT RUN) |
-| UX-02 | App shell: rail, sectioned sidebar, status bar, mobile bottom nav, vendored icons; Day removed from nav | UX-01 | `READY` |
-| UX-03 | Task row, menus, quick actions (fixes: subtasks shown without parent; Complete shown on completed tasks) | UX-02 | `BACKLOG` |
+| UX-02 | App shell: rail, sectioned sidebar, status bar, mobile bottom nav, vendored icons; Day removed from nav | UX-01 | `DONE` (local PASS 2026-11-02; evidence `ACCEPTANCE.md` UX-02; CI `e2e-real` NOT RUN; not committed) |
+| UX-03 | Task row, menus, quick actions (fixes: subtasks shown without parent; Complete shown on completed tasks) | UX-02 | `READY` |
 | UX-04 | Task detail as property panel with per-field autosave | UX-03 | `BACKLOG` |
 | UX-05 | Notes workspace + note autosave (own tests before Save is removed) | UX-02 | `BACKLOG` |
 | UX-06 | Live preview mode; Live becomes default once round-trip tests pass | UX-05 | `BACKLOG` |
@@ -706,12 +706,27 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
   nav and no horizontal nav strip; J1–J7 and axe sweep pass with updated nav selectors only; screenshots.
 - **Tests.** Component tests (nav config, active state, collapse persistence, status bar), redirect test,
   existing real-stack suite. **Size** L. **Risk** medium (IA change; selectors).
+- **Status: `DONE` (2026-11-02).** As built: `lib/navigation.ts` `NAV_SECTIONS` (Planning: Today, Inbox,
+  Upcoming, Week; Workspace: Tasks, Board, Projects + active projects, Notes; More, collapsed by default: Search,
+  Calendar, Sync, Notifications, Settings) is the one source for the sidebar, the rail (items marked `rail`), the
+  phone bottom nav and the palette's "Go to …"; each item has a rail `group`, so the rail lights the group and the
+  sidebar the page (`activeNavKey`/`activeRail`; a section holding the current page opens by itself). Calendar,
+  Sync, Notifications and Search stay at their URLs in *More* (least change; folding them into Settings sections is
+  UX-08). `/day` → `<Navigate to="/" replace>`; `Day.tsx` stays unrouted until the Today date picker. Ctrl/⌘ B:
+  wide (≥ 1024 px) docks/hides the sidebar, remembered as `atlas-sidebar`; section folds as
+  `atlas-sidebar-sections`; below 1024 px the sidebar is a modal drawer (rest `inert`, focus in, Esc and focus
+  return). Status bar (`StatusBar.tsx`, wording in `lib/statusBar.ts`) reads `useOfflineQueue`, `useSyncStatus`
+  and the online/offline events; it is a labelled `<footer>`, not `role="status"`. Topbar removed; name, theme
+  and Sign out in the sidebar footer; palette adds *Toggle sidebar* and *Sign out*. 24 vendored Lucide icons
+  (`components/Icon.tsx`). Breakpoints: 1024 px (dock vs drawer), 720 px (rail vs header + bottom nav). Known
+  follow-ups: the open note at 1024 px is narrower than before (shell 288 px vs 220 px) until UX-05 collapses the
+  sidebar on notes; Settings is not in the phone bottom nav (drawer).
 
 ---
 
 ## Immediate Next Tasks
 
-**Next: UX-02 (app shell, ADR-0051; UX-01 is `DONE`), then close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
+**Next: UX-03 (task row, menus and quick actions, ADR-0051; UX-01 and UX-02 are `DONE`), then close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
 editing) and `MU-02` (Projects UI), `MU-03` (Tasks page) and `MU-04` (recurrence, subtasks and reminders in the UI) and `MU-05` (command palette, quick switcher and unified search) and `MU-06` (note ↔ task ↔ project linking) and `MU-07` (daily note, templates and Today as home) and `MU-08` (settings and shell polish) are `DONE`; MU itself is not closed (CI run and release re-score outstanding, see the MU exit-criteria evaluation).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 

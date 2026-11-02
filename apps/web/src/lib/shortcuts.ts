@@ -9,6 +9,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: "Anywhere",
     items: [
       { keys: "Ctrl/⌘ K", action: "Open or close the command palette (search and commands)" },
+      { keys: "Ctrl/⌘ B", action: "Show or hide the sidebar" },
       { keys: "?", action: "Show this list (when you are not typing in a field)" },
       { keys: "Esc", action: "Close the open panel, palette or this list" },
     ],

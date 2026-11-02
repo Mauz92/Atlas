@@ -39,6 +39,16 @@ export async function signIn(page: Page): Promise<void> {
   ).toBeHidden();
 }
 
+/** The shell's icon rail (UX-02): Today, Inbox, Tasks, Projects, Notes and Settings. */
+export function rail(page: Page) {
+  return page.getByRole("navigation", { name: "Destinations" });
+}
+
+/** The button that opens the command palette (the sidebar's Search row). */
+export function searchButton(page: Page) {
+  return page.getByRole("button", { name: "Search", exact: true });
+}
+
 /** Sign out via the shell's button. */
 export async function signOut(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Sign out" }).click();
@@ -61,7 +71,12 @@ export async function ensureOwner(page: Page): Promise<void> {
   } else if (await login.isVisible()) {
     await signIn(page);
   }
-  await expect(page.getByRole("link", { name: "Inbox" })).toBeVisible();
+  // The rail on a wide screen, the bottom nav on a phone (UX-02).
+  await expect(
+    page
+      .getByRole("navigation", { name: /^(Destinations|Bottom navigation)$/ })
+      .getByRole("link", { name: "Inbox" }),
+  ).toBeVisible();
 }
 
 /**

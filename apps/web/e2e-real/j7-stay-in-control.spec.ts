@@ -2,7 +2,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { expect, test } from "./fixtures";
-import { OWNER, apiCall, ensureOwner, signIn } from "./helpers";
+import { OWNER, apiCall, ensureOwner, rail, searchButton, signIn } from "./helpers";
 
 /**
  * MU-08 journey J7 — stay in control (docs/ROADMAP.md, MU). Real API, real database. Settings must
@@ -23,7 +23,7 @@ test("J7: account, theme, reminders, export, backup status and instance info all
   browser,
 }) => {
   await ensureOwner(page);
-  await page.getByRole("link", { name: "Settings" }).click();
+  await rail(page).getByRole("link", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
 
   // --- Account: the name -------------------------------------------------------------------
@@ -34,7 +34,7 @@ test("J7: account, theme, reminders, export, backup status and instance info all
   await name.fill("J7 Renamed Owner");
   await page.getByRole("button", { name: "Save name" }).click();
   await expect(page.getByText("Name saved")).toBeVisible();
-  await expect(page.locator(".topbar")).toContainText("J7 Renamed Owner");
+  await expect(page.getByRole("complementary", { name: "Sidebar" })).toContainText("J7 Renamed Owner");
   await page.reload();
   await expect(page.getByLabel("Display name")).toHaveValue("J7 Renamed Owner");
 
@@ -50,7 +50,7 @@ test("J7: account, theme, reminders, export, backup status and instance info all
   try {
     await other.goto("/");
     await signIn(other);
-    await expect(other.getByRole("link", { name: "Inbox" })).toBeVisible();
+    await expect(rail(other).getByRole("link", { name: "Inbox" })).toBeVisible();
 
     await fillPasswords("not the current one", NEW_PASSWORD);
     await expect(page.getByRole("alert")).toHaveText("Current password is incorrect");
@@ -152,7 +152,7 @@ test("J7: account, theme, reminders, export, backup status and instance info all
   await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeHidden();
-  await page.getByRole("button", { name: /Search · Ctrl K/ }).click();
+  await searchButton(page).click();
   await page.getByRole("dialog", { name: "Command palette" }).getByRole("combobox").fill("shortcuts");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();

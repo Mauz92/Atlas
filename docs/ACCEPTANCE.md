@@ -3106,3 +3106,62 @@ ISO dates on the project page (UX-07).
 Limitations: the inline `<style>` in `index.html` relies on `style-src 'unsafe-inline'`, which the CSP already
 allows for CodeMirror; in the Vite dev server CSS is injected by script, so dev mode (not production) can still
 paint unstyled for a moment — the browser canvas already follows the theme there; Chromium only.
+
+### UX-02 — App shell: rail, sectioned sidebar, status bar, mobile bottom nav
+
+**Result: `DONE` (local, 2026-11-02); CI job `e2e-real` `NOT RUN` on GitHub Actions; not committed.** `Layout.tsx`
+is a new shell: a 48 px icon rail (Today, Inbox, Tasks, Projects, Notes; Settings at the bottom), a 240 px
+sidebar generated from one `NAV_SECTIONS` config (`lib/navigation.ts`; the palette reads the same list) with
+sections *Planning* (Today, Inbox, Upcoming, Week), *Workspace* (Tasks, Board, Projects + active projects, Notes)
+and *More* (Search, Calendar, Sync, Notifications, Settings; collapsed by default), Ctrl/⌘ B to hide it
+(remembered per browser), a 24 px status bar, and on phones a header (menu, search), a bottom nav and the
+sidebar as a modal drawer. The topbar is gone: name, theme and Sign out are in the sidebar footer, Search is the
+sidebar's first row (rail icon when the sidebar is hidden, header icon on phones), and the palette gained
+*Toggle sidebar* and *Sign out*. `/day` redirects to Today; every other route is unchanged. Icons: 24 Lucide
+shapes vendored in `components/Icon.tsx` (ISC notice in `DEPENDENCIES.md`). Page contents unchanged. No backend
+change, no migration, no new dependency.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| At most 6 top-level destinations | `PASS` | `lib/navigation.test.ts` (rail = Today, Inbox, Tasks, Projects, Notes, Settings; one per group); `Layout.test.tsx` reads the rail's links; the phone bottom nav has 5 (`Layout.test.tsx`, `ux02-shell.spec.ts`) |
+| Exactly one active item at any time (project pages and nested routes included) | `PASS` | `Layout.test.tsx`: for 16 URLs (incl. `/day`, `/projects/<active>`, `/projects/<archived>`, `/sync` inside the collapsed More section) exactly one `aria-current="page"` in *Main navigation*, it is visible, and exactly one rail item is current (`page` on its own page, `true` for a page in its group, e.g. Upcoming → Today, Sync → Settings). Real stack: `ux02-shell.spec.ts` checks the count on every old URL. A section holding the current page opens by itself |
+| Status bar states, component test with mocked hooks | `PASS` | `StatusBar.test.tsx` (13 tests, `useOfflineQueue` and `useSyncStatus` mocked): Synced; Offline · 3 queued; online/offline events; 2 queued; conflicts first in the danger tone; failed changes; unreadable queue; calendar not connected / never synced / failed / unavailable / last sync time / hidden while loading; links to `/sync` and `/calendar`; Shortcuts button. It is a labelled `<footer>` with an `aria-live="polite"` sync text, not `role="status"` (pages own that role) |
+| All old URLs resolve; `/day` → Today | `PASS` | `App.routes.test.tsx` (16 URLs incl. `/day?date=…`, stubbed pages) and `ux02-shell.spec.ts` (13 URLs against the real API, then `/day` lands on `/` with the Today heading) |
+| Ctrl+B collapse, remembered per browser, storage wrapped | `PASS` | `Layout.test.tsx` (toggle with Ctrl and ⌘, persists across remount, focus moves to *Show sidebar*, works when `localStorage` throws), `navigation.test.ts` (storage helpers incl. malformed JSON and throwing storage), `ux02-shell.spec.ts` (survives a reload). Listed in the shortcut help (`lib/shortcuts.ts`) |
+| Mobile: bottom nav, no horizontal nav strip, no page overflow at 375 / 800 px | `PASS` | `mu08-a11y-and-layout.spec.ts` overflow loop (16 routes × 375/800 px) and `ux02-shell.spec.ts` (375 px: 5-link bottom nav, sidebar and rail hidden, 0 px overflow). The old scrolling nav row and its CSS are deleted. Screenshot run: 0 px overflow on all 88 shots |
+| Keyboard-only navigation, drawer focus management | `PASS` | `ux02-shell.spec.ts`: Tab reaches the skip link, Enter focuses `<main>`; Tab to the rail, Enter on Tasks opens `/tasks`; Enter on the *More* header expands it, Tab/Enter opens Sync; Ctrl+B; at 375 px Enter on *Open menu* opens the drawer with focus on *Close menu*, Esc closes it and focus returns to *Open menu*. `Layout.test.tsx` covers the drawer too (rest of the page `inert` while open, closes on navigation) |
+| Landmarks, skip link, aria-current, axe clean | `PASS` | rail `nav "Destinations"`, sidebar `aside "Sidebar"` with `nav "Main navigation"`, `main#main-content`, `footer "Status bar"`, phone `nav "Bottom navigation"`. `mu08-a11y-and-layout.spec.ts` (16 routes × 2 themes + task panel, palette, shortcut help) and two new axe checks in `ux02-shell.spec.ts` (sidebar collapsed; phone drawer open): 0 violations. One finding during the work, fixed in the app: `label-content-name-mismatch` on the sidebar Search row (its `aria-label` hid the visible `Ctrl K`; the hint is now `aria-hidden` and the row is named by its text) |
+| J1–J7 and every other real-stack spec, only navigation selectors changed | `PASS` | `cd apps/web && npm run test:e2e:real` → `20 passed` (19 existing + `ux02-shell.spec.ts`). Selector changes: `ensureOwner` waits for the Inbox link in the rail or the bottom nav (was any Inbox link); capture journey and J7 click Inbox/Settings in the rail; J7 and the axe spec open the palette with the *Search* button (was `Search · Ctrl K`); J7 reads the renamed owner in the sidebar instead of `.topbar`. No assertion was weakened |
+| Mocked e2e | `PASS` | `npm run e2e` → `7 passed` |
+| Repository checks | `PASS` | `./scripts/verify.sh` → ruff, format, mypy; pytest `1053 passed`; eslint + scale check, `tsc`, vitest `542 passed` (63 files); `verification: PASS` |
+| No stray `atlas_e2e_*` databases; owner's stack untouched | `PASS` | after all runs `pg_database` has no `atlas_e2e_*`; no harness API/Vite left running; the owner's API (826156), worker (826157) and Vite (826171) kept running and were not restarted |
+| Screenshots reviewed | `PASS` (manual) | see below |
+| Other browsers, forced colours, 200 % zoom, screen reader, real phones | `NOT RUN` | Chromium emulation only |
+
+**Screenshots** (throwaway real stack through the harness global setup, same fictional seed as UX-01; Today,
+Inbox, Tasks, Projects, a project page, Notes (open), Settings, Sync, the palette, sidebar collapsed, drawer,
+offline status bar and the task panel at 1440/1024/390 × light/dark, plus Today, Tasks, collapsed, drawer and
+offline at 800 px: 88 PNGs in the session scratchpad, not in the repository). Reviewed and iterated:
+- 1440/1024: rail, sidebar and status bar share the sidebar tone and hairline borders; one grey fill marks the
+  current page in the sidebar and the rail icon of its group; on a project page only the project's row is
+  filled (the audit's double highlight is gone); the Projects row folds its list with a chevron; More is folded.
+  Status bar: `Synced · Calendar not connected … Shortcuts`.
+- Collapsed: the rail alone, with *Show sidebar* and *Search* above the destinations; the page uses the width.
+- 800 px: rail plus page; the sidebar opens over a scrim from the rail.
+- 390 px: header `☰ Atlas ⌕`, bottom nav with labelled icons and the current one in bold; the status bar is
+  hidden while synced and shows `Offline` in the warning colour above the bottom nav when offline; the drawer
+  fills the height (a first capture showed it content-high: an absolutely positioned grid child with
+  `align-self: start` ignores its bottom inset; fixed with `align-self: stretch`), with the Ctrl K hint and
+  Shortcuts hidden on phones.
+- Iterations from review: mobile header showed the page title twice (header and H1), now shows *Atlas*; the
+  Shortcuts item leaked onto phones (selector specificity); active project dot now inked; sidebar width
+  248 → 240 px.
+Still visible and left to later tasks: page contents are unchanged (Inbox row controls UX-03, Notes' inner
+panel UX-05; at 1024 px the open note is narrower than before because the shell takes 288 px instead of 220 px,
+which UX-05's "sidebar starts collapsed on notes below 1280 px" addresses; Ctrl+B is the workaround now). The
+sidebar has both the Search row (palette) and More → Search (the results page).
+
+Limitations: `Day.tsx` and its unit test remain in the tree but are unrouted until the Today date picker
+(ADR-0051 §2) decides whether to reuse it; the status bar re-reads the offline queue on page change, focus and
+connectivity change only (the queue has no change events); "last sync" is the calendar's last successful sync
+(the offline queue keeps no sync time); Settings has no item in the phone bottom nav (it is in the drawer).

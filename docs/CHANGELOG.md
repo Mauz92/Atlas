@@ -6,6 +6,20 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Changed (UX-02): **a new app shell.** On the left an icon rail goes to **Today**, **Inbox**, **Tasks**,
+  **Projects** and **Notes**, with **Settings** at the bottom. Next to it the sidebar has **Search** (opens the
+  Ctrl/⌘ K palette) and three foldable sections: **Planning** (Today, Inbox, Upcoming, Week), **Workspace**
+  (Tasks, Board, Projects with your active projects, Notes) and **More** (Search page, Calendar, Sync,
+  Notifications, Settings). **Ctrl/⌘ B** hides or shows the sidebar; Atlas remembers it, and which sections are
+  folded, in this browser. Exactly one item is highlighted for the page you are on. The top bar is gone: your
+  name, the theme button and **Sign out** are at the bottom of the sidebar (and *Toggle sidebar* / *Sign out* are
+  in the palette). A status bar at the bottom shows **Synced**, **Offline · N queued** or **N conflicts** (opens
+  Sync), the calendar's last sync (opens Calendar) and **Shortcuts**. On phones there is a bottom bar (Today,
+  Inbox, Tasks, Projects, Notes), a menu button that opens the sidebar as a drawer and a search button; the
+  sideways-scrolling nav row is gone. The **Day** view is no longer in the navigation: `/day` opens Today. Every
+  other address works as before. A **Skip to content** link is the first stop for keyboard users. Icons are
+  bundled with Atlas (Lucide, ISC licence); nothing is downloaded. No migration.
+
 - Changed (UX-01): **a calmer, consistent look, and dark mode everywhere.** Atlas now uses one neutral design
   (grey surfaces, ink text, no blue): one type and spacing scale, quieter buttons (one dark primary button per
   form; other actions are plain text buttons), visible outlines on fields and checkboxes, and colour only where

@@ -29,6 +29,10 @@ interface CommandPaletteProps {
   onOpenTask: (task: Task) => void;
   /** Open the keyboard shortcut help (the host owns it, so it survives the palette closing). */
   onShowShortcuts: () => void;
+  /** Show or hide the sidebar (the shell owns it; Ctrl/Cmd+B does the same). */
+  onToggleSidebar?: () => void;
+  /** Sign out (the shell owns the session). */
+  onSignOut?: () => void;
 }
 
 function errorMessage(err: unknown): string {
@@ -42,7 +46,13 @@ function errorMessage(err: unknown): string {
  * through the list, Enter runs the active entry, Esc closes, Tab stays inside, and focus returns
  * to where it was.
  */
-export function CommandPalette({ onClose, onOpenTask, onShowShortcuts }: CommandPaletteProps) {
+export function CommandPalette({
+  onClose,
+  onOpenTask,
+  onShowShortcuts,
+  onToggleSidebar,
+  onSignOut,
+}: CommandPaletteProps) {
   const navigate = useNavigate();
   const { reload: reloadProjects } = useProjects();
   const [query, setQuery] = useState("");
@@ -147,6 +157,33 @@ export function CommandPalette({ onClose, onOpenTask, onShowShortcuts }: Command
           onClose();
         },
       },
+      ...(onToggleSidebar
+        ? [
+            {
+              id: "toggle-sidebar",
+              group: "Commands",
+              label: "Toggle sidebar",
+              hint: "Ctrl B",
+              run: () => {
+                onClose();
+                onToggleSidebar();
+              },
+            },
+          ]
+        : []),
+      ...(onSignOut
+        ? [
+            {
+              id: "sign-out",
+              group: "Commands",
+              label: "Sign out",
+              run: () => {
+                onClose();
+                onSignOut();
+              },
+            },
+          ]
+        : []),
     ];
     list.push(...rankByQuery(commands, text, (command) => command.label));
 
@@ -192,7 +229,17 @@ export function CommandPalette({ onClose, onOpenTask, onShowShortcuts }: Command
       );
     }
     return list;
-  }, [search.results, text, navigate, onClose, onOpenTask, onShowShortcuts, reloadProjects]);
+  }, [
+    search.results,
+    text,
+    navigate,
+    onClose,
+    onOpenTask,
+    onShowShortcuts,
+    onToggleSidebar,
+    onSignOut,
+    reloadProjects,
+  ]);
 
   // A new list starts on its best match; with only "create" entries nothing is active.
   const firstSafe = entries.findIndex((entry) => !entry.creates);

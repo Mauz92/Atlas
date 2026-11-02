@@ -619,76 +619,335 @@ kbd {
   margin-top: var(--s-2);
 }
 
-/* --- Shell ------------------------------------------------------------- */
+/* --- Shell (UX-02) ------------------------------------------------------ */
+/*
+ * Rail (48px) | sidebar (240px, Ctrl+B) | page, with a 24px status bar fixed at the bottom. The page
+ * scrolls the document (so overflow checks see it); rail and sidebar stay put with `sticky`.
+ * Below 1024px the sidebar is a drawer over the page; at 720px and below the rail gives way to a
+ * header (menu, title, search) and a bottom nav. Breakpoints match WIDE/NARROW in Layout.tsx.
+ */
 
 .app-shell {
+  --rail: 48px;
+  --sidebar: 240px;
+  --statusbar: 24px;
+  --bottom-nav: 56px;
+  --nav-row: 28px;
+
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: var(--rail) minmax(0, 1fr);
   min-height: 100%;
 }
 
-.sidebar {
+.app-shell.has-sidebar {
+  grid-template-columns: var(--rail) var(--sidebar) minmax(0, 1fr);
+}
+
+.skip-link {
+  position: fixed;
+  top: var(--s-2);
+  left: var(--s-2);
+  z-index: 70;
+  padding: var(--s-2) var(--s-3);
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+.icon {
+  flex: none;
+}
+
+button.icon-button {
+  width: var(--control-sm);
+  min-height: var(--control-sm);
+  height: var(--control-sm);
+  padding: 0;
+  color: var(--text-3);
+}
+
+button.icon-button:hover {
+  color: var(--text);
+}
+
+/* Rail: icons only, the label is the link's name and its tooltip. */
+.rail {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: calc(100dvh - var(--statusbar));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
-  padding: var(--s-3) var(--s-2);
 }
 
-.brand {
-  font-weight: 600;
-  padding: var(--s-1) var(--s-2);
-  margin-bottom: var(--s-3);
-}
-
-.sidebar ul {
-  list-style: none;
+.rail-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-1);
   margin: 0;
   padding: 0;
+  list-style: none;
+}
+
+.rail-bottom {
+  margin-top: auto;
+}
+
+.rail-link,
+button.rail-button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  border-radius: var(--r-md);
+  color: var(--text-3);
+}
+
+.rail-link:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.rail-link.active {
+  color: var(--text);
+  background: var(--bg-selected);
+}
+
+/* Sidebar */
+.sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: calc(100dvh - var(--statusbar));
   display: flex;
   flex-direction: column;
   gap: var(--s-1);
+  min-width: 0;
+  padding: var(--s-2);
+  overflow-y: auto;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
 }
 
-.sidebar a {
-  display: block;
-  padding: var(--s-1) var(--s-2);
+.sidebar[hidden] {
+  display: none;
+}
+
+.sidebar ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sidebar ul[hidden] {
+  display: none;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--control);
+  padding: 0 0 0 var(--s-2);
+}
+
+.sidebar-brand {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Search reads as a quiet row, not a button: icon, word, shortcut. */
+button.sidebar-search {
+  justify-content: flex-start;
+  gap: var(--s-2);
+  width: 100%;
+  min-height: var(--nav-row);
+  height: var(--nav-row);
+  padding: 0 var(--s-2);
+  margin-bottom: var(--s-2);
+  color: var(--text-2);
+  font-weight: 400;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+button.sidebar-search:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.sidebar-search kbd {
+  margin-left: auto;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+button.sidebar-section-header {
+  justify-content: flex-start;
+  gap: var(--s-1);
+  width: 100%;
+  min-height: 24px;
+  height: 24px;
+  padding: 0 var(--s-2) 0 var(--s-1);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: 600;
+  color: var(--text-3);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+button.sidebar-section-header:hover {
+  color: var(--text-2);
+  background: transparent;
+}
+
+.sidebar-section-header .chevron {
+  transition: transform var(--motion);
+}
+
+.sidebar-section-header[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
+}
+
+.nav-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.nav-link {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  height: var(--nav-row);
+  padding: 0 var(--s-2);
   border-radius: var(--r-md);
   color: var(--text-2);
 }
 
-.sidebar a:hover {
-  background: var(--bg-hover);
-  color: var(--text);
+.nav-link .icon {
+  color: var(--text-3);
 }
 
-.sidebar a.active {
-  background: var(--bg-selected);
+.nav-link:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.nav-link.active {
   color: var(--text);
   font-weight: 500;
+  background: var(--bg-selected);
 }
 
-.main {
+.nav-link.active .icon {
+  color: var(--text);
+}
+
+.nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.nav-row-toggle {
+  position: absolute;
+  right: var(--s-1);
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+}
+
+.sidebar-projects .nav-link {
+  padding: 0 var(--s-2) 0 var(--s-5);
+}
+
+.nav-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin: 0 5px;
+  border-radius: var(--r-full);
+  background: var(--border-control);
+}
+
+.nav-link.active .nav-dot {
+  background: var(--text);
+}
+
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: auto;
+  padding: var(--s-2) 0 0 var(--s-2);
+  border-top: 1px solid var(--border);
+}
+
+.avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-full);
+  background: var(--bg-selected);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-xs);
+  font-weight: 600;
+}
+
+.sidebar-user {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+
+/* Page */
+.main-column {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  margin-bottom: var(--statusbar);
 }
 
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-4);
-  padding: var(--s-2) var(--s-4);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-}
-
-.topbar-actions {
-  display: flex;
-  gap: var(--s-1);
+.mobile-header {
+  display: none;
 }
 
 .content {
   padding: var(--s-5) var(--s-6);
+}
+
+.content:focus {
+  outline: none;
 }
 
 .page h1 {
@@ -704,60 +963,202 @@ kbd {
   text-align: center;
 }
 
-@media (max-width: 720px) {
-  .app-shell {
-    grid-template-columns: minmax(0, 1fr);
-    /* Without this the spare height of a short page is shared with the nav row. */
-    grid-template-rows: auto 1fr;
+/* Status bar */
+.shell-bottom {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+}
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  height: var(--statusbar);
+  padding: 0 var(--s-2);
+  background: var(--bg-sidebar);
+  border-top: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.statusbar-item,
+button.statusbar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  height: 20px;
+  min-height: 20px;
+  padding: 0 var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.statusbar-item:hover,
+button.statusbar-item:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.statusbar-item.tone-warning {
+  color: var(--warning);
+}
+
+.statusbar-item.tone-danger {
+  color: var(--danger);
+}
+
+.statusbar-spacer {
+  flex: 1;
+}
+
+/* Below 1024px the sidebar is a drawer over the page, opened from the rail or the menu button. */
+@media (max-width: 1023px) {
+  .app-shell.has-sidebar {
+    grid-template-columns: var(--rail) minmax(0, 1fr);
   }
 
-  /* One scrolling row of views instead of a wrapped block that fills the phone's first screen. */
   .sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    padding: var(--s-2) var(--s-4);
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 45;
+    width: min(300px, 85vw);
+    height: auto;
+    /* Insets size an absolutely positioned box only when it stretches. */
+    align-self: stretch;
+    border-right: 1px solid var(--border);
+    box-shadow: var(--shadow-3);
   }
 
-  .brand {
-    padding: 0;
-    margin-bottom: var(--s-1);
+  .drawer-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 44;
+    background: var(--scrim);
+  }
+}
+
+/* Phones: header + bottom nav; the status bar only shows itself when something needs attention. */
+@media (max-width: 720px) {
+  .app-shell,
+  .app-shell.has-sidebar {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .sidebar nav {
-    overflow-x: auto;
-  }
-
-  .sidebar ul {
-    flex-direction: row;
-    flex-wrap: nowrap;
-  }
-
-  .sidebar a {
-    white-space: nowrap;
-  }
-
-  .sidebar .sidebar-projects {
+  .rail {
     display: none;
   }
 
-  .topbar {
-    padding: var(--s-2) var(--s-4);
+  .main-column {
+    margin-bottom: calc(var(--bottom-nav) + var(--statusbar));
   }
 
-  .topbar > span {
+  .app-shell:has(.statusbar.is-quiet) .main-column {
+    margin-bottom: var(--bottom-nav);
+  }
+
+  .mobile-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    height: 48px;
+    padding: 0 var(--s-2);
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mobile-header button.icon-button {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .mobile-title {
+    flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .topbar-actions button {
-    padding: 0 var(--s-2);
-    white-space: nowrap;
+    font-weight: 600;
   }
 
   .content {
     padding: var(--s-4);
+  }
+
+  .statusbar.is-quiet {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .statusbar .statusbar-calendar,
+  .statusbar button.statusbar-shortcuts {
+    display: none;
+  }
+
+  .bottom-nav {
+    height: var(--bottom-nav);
+    background: var(--bg-sidebar);
+    border-top: 1px solid var(--border);
+  }
+
+  .bottom-nav ul {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .bottom-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    height: 100%;
+    min-height: 44px;
+    color: var(--text-3);
+    font-size: var(--fs-xs);
+    line-height: var(--lh-xs);
+  }
+
+  .bottom-nav a.active {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .sidebar-search kbd {
+    display: none;
+  }
+
+  .sidebar .nav-link,
+  button.sidebar-search {
+    height: 40px;
+    min-height: 40px;
   }
 }
 
@@ -1756,7 +2157,8 @@ kbd {
 .undo-toast {
   position: fixed;
   left: 50%;
-  bottom: var(--s-5);
+  /* Above the shell's status bar (and the bottom nav on phones, below). */
+  bottom: calc(24px + var(--s-3));
   transform: translateX(-50%);
   z-index: 50;
   display: flex;
@@ -1771,6 +2173,10 @@ kbd {
 
 /* Narrow screens: the sheet becomes a full page. */
 @media (max-width: 720px) {
+  .undo-toast {
+    bottom: calc(56px + var(--s-3));
+  }
+
   .task-detail {
     width: 100vw;
     border-left: none;
@@ -1778,17 +2184,6 @@ kbd {
 }
 
 /* --- Projects (MU-02) -------------------------------------------------- */
-
-.sidebar-projects {
-  list-style: none;
-  margin: var(--s-1) 0;
-  padding: 0 0 0 var(--s-3);
-}
-
-.sidebar .sidebar-projects a {
-  font-size: var(--fs-sm);
-  line-height: var(--lh-sm);
-}
 
 .project-create {
   margin: var(--s-4) 0;

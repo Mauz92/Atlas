@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
-import { apiCall, ensureOwner } from "./helpers";
+import { apiCall, ensureOwner, searchButton } from "./helpers";
 
 /**
  * MU-08 accessibility and layout sweep. Every main page is checked with axe-core (WCAG 2.x A/AA
@@ -96,7 +96,7 @@ test("axe finds no violations on the main pages in either theme, and no page ove
   await expect(page.getByRole("dialog", { name: "Task details" })).toBeVisible();
   await check("task details");
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: /Search · Ctrl K/ }).click();
+  await searchButton(page).click();
   await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
   await check("command palette");
   await page.keyboard.press("Escape");

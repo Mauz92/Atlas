@@ -1,11 +1,10 @@
 import { lazy, Suspense } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import { useAuth } from "./auth/AuthProvider";
 import { Layout } from "./components/Layout";
 import { BoardPage } from "./pages/Board";
 import { CalendarPage } from "./pages/Calendar";
-import { Day } from "./pages/Day";
 import { Inbox } from "./pages/Inbox";
 import { Login } from "./pages/Login";
 import { NotificationsPage } from "./pages/Notifications";
@@ -42,7 +41,8 @@ export default function App() {
         <Route path="/" element={<Today />} />
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/upcoming" element={<Upcoming />} />
-        <Route path="/day" element={<Day />} />
+        {/* Day is no longer a destination (ADR-0051 §2): old links land on Today. */}
+        <Route path="/day" element={<Navigate to="/" replace />} />
         <Route path="/week" element={<Week />} />
         <Route path="/board" element={<BoardPage />} />
         <Route path="/tasks" element={<Tasks />} />

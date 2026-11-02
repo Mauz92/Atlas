@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import { createOwner, signIn, signOut } from "./helpers";
+import { createOwner, rail, signIn, signOut } from "./helpers";
 
 /**
  * MU-00 trivial journey against the real API and a fresh database:
@@ -18,7 +18,7 @@ test("owner sets up, signs in, captures a task and finds it in the Inbox after a
   await page.getByRole("button", { name: "Add" }).click();
   await expect(page.getByLabel("Task title")).toHaveValue("");
 
-  await page.getByRole("link", { name: "Inbox" }).click();
+  await rail(page).getByRole("link", { name: "Inbox" }).click();
   await expect(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
   await expect(page.getByText("Buy milk")).toBeVisible();
 

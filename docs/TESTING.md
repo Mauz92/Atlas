@@ -154,6 +154,15 @@ Cover, at minimum:
   a token change that breaks contrast fails `npm test`. `src/lib/theme.test.ts` covers System/Light/Dark
   and the pre-paint script `public/theme-init.js`; `e2e-real/ux01-theme.spec.ts` checks the login screen
   follows the OS theme and that a stored choice is on `<html>` before the app script has loaded.
+- App shell (UX-02): `src/lib/navigation.test.ts` (the one `NAV_SECTIONS` config: ≤ 6 rail destinations, every
+  page once, active-item rules, per-browser preferences incl. throwing storage), `src/components/Layout.test.tsx`
+  (exactly one current item per navigation for every route, sections, Ctrl/⌘ B, phone drawer focus and `inert`),
+  `src/components/StatusBar.test.tsx` (every status-bar state with `useOfflineQueue`/`useSyncStatus` mocked) and
+  `src/App.routes.test.tsx` (every old URL resolves, `/day` → `/`). `e2e-real/ux02-shell.spec.ts` drives the
+  shell by keyboard on the real stack (skip link, rail, sections, Ctrl+B across a reload, phone drawer with Esc
+  and focus return), checks the old URLs, the offline status bar and runs axe on the collapsed and drawer states.
+  e2e specs find navigation through the rail (`rail(page)` in `e2e-real/helpers.ts`) or the bottom nav on phones,
+  and open the palette with `searchButton(page)`.
 
 ## 5. Calendar Adapter Tests
 

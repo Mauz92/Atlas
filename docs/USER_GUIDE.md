@@ -23,7 +23,7 @@ Atlas is being built milestone by milestone. This table is the honest state of e
 |---|---|---|
 | Markdown notes (create, edit, preview, rename, delete, tags, wiki links, search) | **Available** | Real `.md` files on disk — see [`MARKDOWN_STORAGE.md`](MARKDOWN_STORAGE.md). `[[` suggests notes; **Today's note** and templates (§4). |
 | Tasks — capture, edit, Today, Inbox, Upcoming, the **Tasks** page with filters | **Available** | Open any task to edit title, dates, priority, tags, repeat, subtasks, reminder and linked notes; delete with undo. |
-| Planning — Day and Week views | **Available** | Day-by-day / week-by-week work, in your local time zone. |
+| Planning — Upcoming and Week views | **Available** | Later days and week-by-week work, in your local time zone. (The separate Day view was removed from navigation in UX-02; `/day` opens Today.) |
 | Kanban board (move a task between statuses) | **Available** | Global board at **Board**; columns are the task statuses. |
 | Projects and derived progress | **Available** | **Projects** page: create, edit, archive; each project has progress, tasks, a board and linked notes. |
 | Search | **Available** | **Ctrl+K** finds notes, tasks and projects and runs commands; the **Search** page shows the same results. |
@@ -52,31 +52,46 @@ it owns the instance.
 ### Signing in and out
 
 - Sign in with your **Email** and **Password** on the **Sign in to Atlas** screen.
-- The top bar shows your name and a **Sign out** button.
+- The bottom of the sidebar shows your name and a **Sign out** button (also in the palette: *Sign out*).
 
 ### Theme
 
-Use the **Dark / Light** button in the top bar, or **Settings → Appearance**. Your choice is remembered
+Use the moon/sun button at the bottom of the sidebar, *Toggle theme* in the palette, or **Settings → Appearance**. Your choice is remembered
 in this browser and follows your system preference until you change it.
 
 ### Keyboard shortcuts
 
 Press **?** (when you are not typing in a field) or choose **Keyboard shortcuts** in the palette to see
-them. The main ones: **Ctrl/⌘ K** opens the palette, **Esc** closes a panel, **Enter** on a task title
-opens it, **Ctrl/⌘ Enter** saves it.
+them (also **Shortcuts** in the status bar). The main ones: **Ctrl/⌘ K** opens the palette, **Ctrl/⌘ B**
+shows or hides the sidebar, **Esc** closes a panel, **Enter** on a task title opens it, **Ctrl/⌘ Enter** saves it.
 
 ---
 
 ## 3. Finding your way around
 
-The left sidebar is the main navigation (on a phone it is one row you can scroll sideways).
+The window has four parts (UX-02):
 
-| Nav item | Route | What it does today |
+- **Rail** (far left): icons for **Today**, **Inbox**, **Tasks**, **Projects**, **Notes** and, at the bottom,
+  **Settings**. The icon of the area you are in is highlighted.
+- **Sidebar**: **Search** (opens the palette, Ctrl/⌘ K), then the sections **Planning** (Today, Inbox,
+  Upcoming, Week), **Workspace** (Tasks, Board, Projects with your active projects, Notes) and **More**
+  (Search page, Calendar, Sync, Notifications, Settings; collapsed until you open it). Select a section
+  heading to fold it; Atlas remembers this in the browser. **Ctrl/⌘ B** hides or shows the whole sidebar.
+  Your name, the theme button and **Sign out** are at the bottom.
+- **Status bar** (bottom): sync state (*Synced*, *Offline · 3 queued*, *1 conflict*; select it to open
+  **Sync**), the calendar's last sync (opens **Calendar**) and **Shortcuts**.
+- **On a phone** (720 px wide or less): a bottom bar with Today, Inbox, Tasks, Projects and Notes; the
+  menu button (top left) opens the sidebar as a drawer, and the search button (top right) opens the
+  palette. The status bar only appears when something needs attention (offline, queued, conflicts).
+  Between 721 and 1023 px the sidebar opens over the page from the rail's sidebar button.
+
+
+| Page | Route | What it does today |
 |---|---|---|
 | **Today** | `/` | Landing page: overdue, due today, work scheduled today, today's note and quick capture. |
 | **Inbox** | `/inbox` | Captured tasks waiting to be triaged; schedule, file or delete each. |
 | **Upcoming** | `/upcoming` | Tasks for later days, grouped by the day they are due. |
-| **Day** | `/day` | One day at a time, with day navigation. |
+| *(Day)* | `/day` | Removed from navigation (ADR-0051); the address now opens **Today**. |
 | **Week** | `/week` | The current week (Monday first), day by day. |
 | **Tasks** | `/tasks` | Every task with filters, sort, saved filters and bulk actions. |
 | **Board** | `/board` | Kanban board; drag a card (or use its status menu) to change status. |
@@ -147,8 +162,6 @@ it.
   events area that stays empty until calendars are connected. This is the landing page.
 - **Inbox** — everything captured but not yet triaged (status `inbox`).
 - **Upcoming** — tasks due on later days, grouped by day.
-- **Day** — one day at a time, with **Previous day / Today / Next day**. Today's page reuses the
-  server's *today* classification; other days show what is due that day.
 - **Week** — the seven days of the current week (Monday first), with week navigation. Empty days
   still render, so the week keeps a stable shape.
 
@@ -177,7 +190,7 @@ Business rule and rationale: `ROADMAP.md` M4-03 (ADR-0022).
 Open **Projects** to create a project, then open it for its description, **progress**, tasks (list or
 board), linked notes, **Edit** and **Archive** / **Restore**. Active projects are also listed under
 **Projects** in the sidebar. A task is filed in a project from its task panel (or from the Inbox's *File
-to…*); a note is linked to a project from the note. **Day** and **Week** show a short **Projects** summary
+to…*); a note is linked to a project from the note. **Week** shows a short **Projects** summary
 with each project's progress.
 
 **How project progress is calculated** (canonical in [`PRODUCT_SPEC.md`](PRODUCT_SPEC.md) §5.3,
