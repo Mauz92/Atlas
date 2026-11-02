@@ -55,7 +55,7 @@ export function Projects() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted">Loading projects…</p>
+        <p className="muted" role="status">Loading projects…</p>
       ) : live.length === 0 ? (
         <div className="empty-state">
           No projects yet — create one to start grouping tasks.

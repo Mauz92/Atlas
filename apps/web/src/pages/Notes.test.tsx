@@ -234,3 +234,18 @@ describe("Notes: daily note and templates", () => {
     expect(screen.getByText(/No templates/)).toBeInTheDocument();
   });
 });
+
+describe("Notes: loading the list", () => {
+  it("shows the server's message with a retry when the first read fails", async () => {
+    vi.mocked(notesApi.list).mockRejectedValueOnce(new Error("Notes folder is not readable"));
+    render(
+      <MemoryRouter initialEntries={["/notes"]}>
+        <Notes />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("Notes folder is not readable");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(screen.queryByText("Loading notes…")).toBeNull();
+  });
+});

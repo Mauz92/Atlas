@@ -53,10 +53,11 @@ def _schema() -> Iterator[None]:
 @pytest.fixture
 async def _db(_schema: None) -> AsyncIterator[None]:
     """Per-test database isolation, requested only by DB-backed fixtures."""
-    from atlas.api.auth import _login_limiter
+    from atlas.api.auth import _login_limiter, _password_limiter
     from atlas.db import dispose_engine, session_scope
 
     _login_limiter.reset()
+    _password_limiter.reset()
     yield
     async with session_scope() as session:
         await session.execute(text(_TRUNCATE))

@@ -38,7 +38,7 @@ function Where() {
 }
 
 function setup() {
-  const props = { onClose: vi.fn(), onOpenTask: vi.fn() };
+  const props = { onClose: vi.fn(), onOpenTask: vi.fn(), onShowShortcuts: vi.fn() };
   render(
     <MemoryRouter initialEntries={["/inbox"]}>
       <CommandPalette {...props} />

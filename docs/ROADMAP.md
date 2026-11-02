@@ -625,11 +625,23 @@ checks pass. A task that is reachable only via the API is not `DONE`.
 | MU-05 | **Command palette, quick switcher and unified search** | MU-01, MU-02, M2-06 | Global shortcut opens a palette: fuzzy find notes, tasks, projects; actions (new note/task/project, go to view, toggle theme). Backend adds one `GET /api/search` over notes (existing FTS), tasks and projects, user-scoped, bounded and indexed (resolves R-20). Replace the Search placeholder. **J5 passes** | Backend integration + Component + Playwright J5 | `DONE` (local PASS 2026-11-02: `j5-find-anything.spec.ts` passes against the real stack; ADR-0047; evidence: `ACCEPTANCE.md` MU-05; CI job `e2e-real` **NOT RUN on Actions**) |
 | MU-06 | **Note ↔ task ↔ project linking** | MU-02, MU-05, M2-07, M4-05 | Create a task from the selected text/line in a note (explicit action; the task stores a link to the note; Markdown checkboxes are **not** parsed as tasks — AGENTS.md §8); note shows its tasks and project; task detail shows linked notes; `[[` autocomplete picks notes; backlinks list tasks and projects too. **J4 passes** | Backend + Component + Playwright J4 | `DONE` (local PASS 2026-11-02: `j4-write-and-link.spec.ts` passes against the real stack; ADR-0048; evidence: `ACCEPTANCE.md` MU-06; CI job `e2e-real` **NOT RUN on Actions**) |
 | MU-07 | **Daily note, templates and Today as home** | MU-06 | "Today's note" creates/opens `daily/YYYY-MM-DD.md` on demand (a normal Markdown file); template notes from a `templates/` folder when creating a note; Today shows overdue, due today, scheduled work, the daily note and an events slot that stays empty until M5. **J6 passes** | Backend + Component + Playwright J6 | `DONE` (local PASS 2026-11-02: `j6-daily-note-and-today.spec.ts` passes against the real stack; ADR-0049; evidence: `ACCEPTANCE.md` MU-07; CI job `e2e-real` **NOT RUN on Actions**) |
-| MU-08 | **Settings and shell polish** | MU-01 | Replace the Settings placeholder: account (name, password change), theme, reminder timing + notification status, export download, backup status/last run, instance info and version. Fix layout defects (note-name field squashed: fixed early), loading/empty/error states, mobile layout, shortcut help overlay, accessibility pass; (setup email validation: fixed early, `.local` still rejected). **J7 passes** | Component + Playwright J7 + axe check | `READY` |
+| MU-08 | **Settings and shell polish** | MU-01 | Replace the Settings placeholder: account (name, password change), theme, reminder timing + notification status, export download, backup status/last run, instance info and version. Fix layout defects (note-name field squashed: fixed early), loading/empty/error states, mobile layout, shortcut help overlay, accessibility pass; (setup email validation: fixed early, `.local` still rejected). **J7 passes** | Component + Playwright J7 + axe check | `DONE` (local PASS 2026-11-02: `j7-stay-in-control.spec.ts` and the axe/layout sweep `mu08-a11y-and-layout.spec.ts` pass against the real stack; ADR-0050; `.local` emails now accepted; evidence: `ACCEPTANCE.md` MU-08; CI job `e2e-real` **NOT RUN on Actions**) |
 
 **Exit criteria for MU.** J1–J7 pass in CI against the real API; every sidebar item is a working
 screen (no "Not implemented yet" placeholders remain); `ACCEPTANCE.md` records the journey evidence;
 the release table is re-scored from user-reachable behaviour.
+
+**MU exit criteria — evaluation after MU-08 (2026-11-02). MU is NOT declared complete.**
+
+| Criterion | Result | Evidence / gap |
+|---|---|---|
+| J1–J7 pass against the real API and a real database | `PASS` locally | `cd apps/web && npm run test:e2e:real` → `17 passed` (J1, J2, J3, J4, J5, J6, J7 plus MU-04/MU-03 and the axe sweep) |
+| J1–J7 pass **in CI** | **`NOT RUN`** | the `e2e-real` job exists in `.github/workflows/ci.yml` but has never executed on GitHub Actions; this criterion is unverified |
+| Every sidebar item is a working screen, no "Not implemented yet" placeholders | `PASS` (with a caveat) | `Placeholder` removed; all 14 items route to real pages (`App.tsx`). Caveat: **Calendar** shows sync status only, no events (M5 is blocked) and Today's events slot is empty by design |
+| `ACCEPTANCE.md` records the journey evidence | `PASS` | sections MU-00…MU-08 |
+| Release table re-scored from user-reachable behaviour | **`NOT DONE`** | REQ-005/REQ-006 are still `PARTIAL` as set on 2026-11-01; the re-score has not been run and needs the owner's review |
+
+MU therefore stays open until CI has run the journeys and the release table has been re-scored.
 
 **After MU.** Resume calendar: M5-00 (needs owner accounts, AR-001) → M5-03/04 → M5-05/07 so events
 appear in Today/Day/Week. Mobile (M8-06/07) waits for decision A-09; the installable PWA is the
@@ -640,7 +652,7 @@ default mobile path until then. Scope decisions D-1…D-4 are settled in ADR-004
 ## Immediate Next Tasks
 
 **Next: milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
-editing) and `MU-02` (Projects UI), `MU-03` (Tasks page) and `MU-04` (recurrence, subtasks and reminders in the UI) and `MU-05` (command palette, quick switcher and unified search) and `MU-06` (note ↔ task ↔ project linking) and `MU-07` (daily note, templates and Today as home) are `DONE`; next is `MU-08` (settings and shell polish, `READY`).** See the MU section and ADR-0043 for why this precedes calendar and mobile
+editing) and `MU-02` (Projects UI), `MU-03` (Tasks page) and `MU-04` (recurrence, subtasks and reminders in the UI) and `MU-05` (command palette, quick switcher and unified search) and `MU-06` (note ↔ task ↔ project linking) and `MU-07` (daily note, templates and Today as home) and `MU-08` (settings and shell polish) are `DONE`; MU itself is not closed (CI run and release re-score outstanding, see the MU exit-criteria evaluation).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 
 - **M5-00** — validate Microsoft tenant + Google publishing mode with **real accounts** (AR-001). Until

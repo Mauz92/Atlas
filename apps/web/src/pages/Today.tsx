@@ -142,7 +142,7 @@ export function Today() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted">Loading today…</p>
+        <p className="muted" role="status">Loading today…</p>
       ) : (
         <div className="view-sections">
           <section className="view-section">

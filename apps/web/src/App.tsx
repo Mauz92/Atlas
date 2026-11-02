@@ -9,10 +9,10 @@ import { Day } from "./pages/Day";
 import { Inbox } from "./pages/Inbox";
 import { Login } from "./pages/Login";
 import { NotificationsPage } from "./pages/Notifications";
-import { Placeholder } from "./pages/Placeholder";
 import { ProjectPage } from "./pages/ProjectPage";
 import { Projects } from "./pages/Projects";
 import { SearchPage } from "./pages/Search";
+import { Settings } from "./pages/Settings";
 import { Setup } from "./pages/Setup";
 import { SyncPage } from "./pages/Sync";
 import { Tasks } from "./pages/Tasks";
@@ -22,15 +22,6 @@ import { Week } from "./pages/Week";
 
 // The editor (CodeMirror) and Markdown renderer are only needed on the notes route.
 const Notes = lazy(() => import("./pages/Notes").then((module) => ({ default: module.Notes })));
-
-// Views that are not part of M3-07 yet keep the placeholder screen.
-const PAGES = [
-  {
-    path: "/settings",
-    title: "Settings",
-    description: "Connections, notifications and account preferences.",
-  },
-] as const;
 
 export default function App() {
   const { state } = useAuth();
@@ -69,13 +60,7 @@ export default function App() {
             </Suspense>
           }
         />
-        {PAGES.map((page) => (
-          <Route
-            key={page.path}
-            path={page.path}
-            element={<Placeholder title={page.title} description={page.description} />}
-          />
-        ))}
+        <Route path="/settings" element={<Settings />} />
       </Route>
     </Routes>
   );

@@ -3008,3 +3008,31 @@ found again, so "Today's note" creates a new one; only `{{date}}` and `{{title}}
 notes; creating needs a filesystem with hard links; a stale index row for a file deleted outside Atlas gives
 `409` until reconciliation runs; scheduled work is "start date is today" (no work-block entity exists);
 UI mutations are online-only (R-22); Chromium only.
+
+### MU-08 — Settings and shell polish
+
+**Result: `DONE` (local); CI job `e2e-real` `NOT RUN` on GitHub Actions.** The Settings placeholder is replaced
+(account, theme, reminders/notifications, export, backup status, instance info); a shortcut help overlay,
+a mobile navigation, loading/error consistency and an axe accessibility gate were added (ADR-0050). No migration.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| J7: rename (blank name shows the server's message verbatim; saved name appears in the top bar and survives reload); password change (wrong current and unchanged password show the server's messages verbatim; success keeps this browser signed in and signs a second browser context out; the new password then works as "current" and the owner's password is restored); theme radio persists across reload; reminder timing saved and read back from the API; notification status shown; export downloads `atlas-export-*.zip` starting with `PK`; backup card says the folder is not visible, then shows last backup and sizes after a manifest is written to the run's backup folder; instance card matches `GET /api/instance`; `?` opens the help (not while typing in a field), Esc closes, "Keyboard shortcuts" in Ctrl+K opens it | `PASS` | `cd apps/web && npm run test:e2e:real` -> `17 passed` incl. `j7-stay-in-control.spec.ts` |
+| axe-core (WCAG 2 A/AA, 2.1 A/AA, best-practice) reports no violation on Today, Inbox, Upcoming, Day, Week, Tasks, Board, Projects, a project, Calendar, Sync, Notifications, Notes, Search, Settings in light and dark, and on the task panel, command palette and shortcut help | `PASS` after fixes | `mu08-a11y-and-layout.spec.ts`. Real findings fixed, none suppressed: light accent contrast (`color-contrast`), task panel `aside role=dialog` (`aria-allowed-role`) and its `header` (`landmark-no-duplicate-banner`, `landmark-unique`). The first runs failed on them |
+| No page scrolls sideways at 375 px or 800 px (all pages above) | `PASS` | same spec; also reviewed by screenshots at both widths. Found and fixed on the way: the wrapped nav filled half of a phone screen and spare height stretched it on short pages |
+| Backend: name edit (trim, blank `422` verbatim, persisted, CSRF `403`); password change rejections leave the password unchanged (too short `422`, wrong current `400`, same password `400`) and echo neither value; success revokes the other device's session, keeps this one, leaves another account's session valid, old password `401` / new `200`; rate limit `400` x limit then `429`; `GET /api/instance` (version, revision, backup state from a manifest and a staging leftover, absent folder reported as unavailable, no path/URL/secret in the body); the three endpoints return `401` without a session; `.local` accepted, `.localhost`/`.invalid` still rejected | `PASS` | `services/api/tests/integration/test_account_settings.py` (10 tests), `tests/unit/test_auth_schema.py` |
+| Components: Settings (instance and backup facts, folder-not-visible message, load retry, verbatim name/password/export errors, mismatch check, fields cleared after success), shortcut help (`?`, not while typing, from the palette), palette command, Notes first-load error with retry | `PASS` | `Settings.test.tsx`, `Layout.test.tsx`, `CommandPalette.test.tsx`, `Notes.test.tsx` |
+| Repository checks | `PASS` | `./scripts/verify.sh` -> ruff, format, mypy; pytest `1053 passed`; eslint, `tsc`, vitest `430 passed`; `verification: PASS` |
+| Mocked e2e still passes | `PASS` | `cd apps/web && npm run e2e` -> `7 passed` |
+| No stray `atlas_e2e_*` databases from this task | `PASS` | `docker exec atlas-db-1 psql -U atlas -d postgres` lists one `atlas_e2e_uxaudit_caa2ecd8`; it is not created by the harness (harness names are `atlas_e2e_<12 hex>`), predates this task and was left alone |
+| `.local` addresses accepted at setup/login | `PASS` | unit test above (library list adjusted, ADR-0050 §8); not exercised in a browser |
+| Backup status against a real worker-made backup set | `NOT RUN` | the journey writes a manifest by hand; the reader was not run against a set produced by `atlas-backup run` or the Compose volume layout |
+| Password change over HTTPS with `ATLAS_ENV=production` cookies, or from a real second device | `NOT RUN` | the journey uses a second browser context over HTTP (test environment) |
+| User time-zone setting | `NOT RUN` | not requested; "today" is still the browser's zone (ADR-0049) |
+| Screen-reader and contrast review beyond axe's automated rules; other browsers | `NOT RUN` | axe finds only a share of issues; Chromium only |
+| Runs in CI | `NOT RUN` | job exists from MU-00; not executed on GitHub Actions |
+| Dev dependency audit | `FAIL` (pre-existing) | `npm audit --include=dev` reports a moderate `minimatch` advisory in the eslint toolchain, identical with and without the new package; recorded in `RISKS.md`, not suppressed, not fixed here (breaking tooling upgrade) |
+
+Limitations: password change ends every other session (no per-device list); the password rate limiter is
+in-process; backup status depends on the API seeing `BACKUP_DIR` and does not re-verify checksums; the theme is
+per browser; email and time zone cannot be changed; UI mutations are online-only (R-22); Chromium only.

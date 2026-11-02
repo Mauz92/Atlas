@@ -208,7 +208,7 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 - **Progress:** MU-00 (harness) and MU-01 (task detail, J1/J2) delivered 2026-11-02. Open sub-risk from
   MU-01: task edits from the UI are online-only (idempotency key + `base_revision`, conflict shown); they
   are not yet routed through the offline queue (M7-03), so an edit made while offline fails visibly
-  instead of queueing. Address when MU-08/M8 touch offline UX.
+  instead of queueing. MU-08 did not change this; address with M8 offline UX.
 - **Owner milestone:** MU. **Status:** Mitigating.
 
 ---
@@ -223,6 +223,7 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 | 2026-10-27 | M9-04 | R-17 reviewed: `pip-audit` (91 pkgs) and `npm audit` (370 pkgs, prod+dev) both clean — 0 advisories at every severity. No finding accepted or suppressed; CI gate confirmed by inspection + local positive controls. |
 | 2026-10-27 | M9-05 | Security review (threat model vs implementation). R-21 added (push endpoint not scheme/host-constrained; accepted for the single-user model). F1 (SPA missing security headers/CSP) found and fixed in `apps/web/nginx.conf`; R-SEC-1/2/4 re-confirmed, R-SEC-3 resolved. Detail in `docs/SECURITY.md` §"Milestone 9 security review". |
 | 2026-11-01 | Audit | Function audit: R-22 added (backend-heavy, interface-light); ADR-0043 re-prioritises to a usable core. |
+| 2026-11-02 | MU-08 | R-22 progress: Settings, shortcut help, mobile nav and an axe accessibility gate delivered (J7 passes). Sub-risks: password change signs out all other sessions (no per-device session list); the password limiter is in-process; backup status is only as visible as `BACKUP_DIR` is to the API and does not re-verify checksums; **`npm audit --include=dev` reports a moderate `minimatch` advisory (GHSA-g3hv-75wg-m249) in the eslint/typescript-eslint toolchain — present before MU-08, dev-only, not yet fixed (the fix needs a breaking tooling upgrade), so the 2026-10-27 "0 advisories" claim no longer holds**; no user time-zone setting; MU exit needs a CI run and a release re-score. |
 | 2026-11-02 | MU-07 | R-22 progress: Today as home, daily note and templates delivered (J6 passes). Sub-risks: "today" is the browser's zone until a user zone setting exists (MU-08); `write_new` needs hard links on the notes filesystem (fails loudly, never overwrites); a renamed daily note is not found again; template text is untrusted and only two placeholders are substituted (no scripting). |
 | 2026-11-02 | MU-06 | R-22 progress: note↔task↔project linking delivered (J4 passes). Sub-risks: links exist only for tasks created from a note (no link-existing action); wiki-link text is path-based and not rewritten on rename; an externally renamed file may get a new id and lose task links; link/unlink are online-only. |
 | 2026-11-02 | MU-05 | R-20 reviewed: search path indexed (GIN expression indexes, ADR-0047); the task-list `q` filter and `project_id` remain unindexed. R-22 progress: palette and Search page delivered (J5 passes); palette creates are online-only. Limitation: search matches word prefixes, not mid-word substrings. |

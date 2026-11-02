@@ -120,6 +120,35 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /**
+         * Update Me
+         * @description Edit the display name (the only editable profile field; the email is the login identity).
+         */
+        patch: operations["update_me_api_auth_me_patch"];
+        trace?: never;
+    };
+    "/api/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Password
+         * @description Change the caller's password (ADR-0050).
+         *
+         *     The current password is required and rate limited like login. On success **every** session of
+         *     the account is revoked (a stolen session must not survive a password change) and a fresh one is
+         *     issued to the caller, so this browser stays signed in while other devices must sign in again.
+         *     Neither password is ever logged or echoed (see the validation handler in ``main.py``).
+         */
+        post: operations["change_password_api_auth_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -1068,10 +1097,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/instance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Instance Info */
+        get: operations["instance_info_api_instance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BackupLatest */
+        BackupLatest: {
+            /** Backup Id */
+            backup_id: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Atlas Version */
+            atlas_version: string | null;
+            /** Database Bytes */
+            database_bytes: number | null;
+            /** Notes Bytes */
+            notes_bytes: number | null;
+        };
+        /**
+         * BackupStatus
+         * @description Read-only view of the backup destination and the scheduled job (no paths, no secrets).
+         */
+        BackupStatus: {
+            /** Destination Available */
+            destination_available: boolean;
+            /** Sets */
+            sets: number;
+            latest: components["schemas"]["BackupLatest"] | null;
+            /** Incomplete Sets */
+            incomplete_sets: number;
+            /** Interval Seconds */
+            interval_seconds: number;
+            /** Retain */
+            retain: number;
+            /** Last Job Status */
+            last_job_status: string | null;
+            /** Last Job At */
+            last_job_at: string | null;
+        };
         /**
          * CalendarCursorStatusOut
          * @description The derived sync status of one ``(provider, calendar)``.
@@ -1300,6 +1380,20 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** InstanceInfo */
+        InstanceInfo: {
+            /** Version */
+            version: string;
+            /** Environment */
+            environment: string;
+            /** Database */
+            database: string;
+            /** Migration Revision */
+            migration_revision: string | null;
+            /** Web Push Configured */
+            web_push_configured: boolean;
+            backups: components["schemas"]["BackupStatus"];
+        };
         /** LoginRequest */
         LoginRequest: {
             /** Email */
@@ -1442,6 +1536,18 @@ export interface components {
             content: string;
             /** Base Revision */
             base_revision: number;
+        };
+        /** PasswordChange */
+        PasswordChange: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
+        /** ProfileUpdate */
+        ProfileUpdate: {
+            /** Display Name */
+            display_name: string;
         };
         /** ProjectCreateRequest */
         ProjectCreateRequest: {
@@ -2432,6 +2538,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserPublic"];
+                };
+            };
+        };
+    };
+    update_me_api_auth_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_password_api_auth_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4157,6 +4327,26 @@ export interface operations {
                 };
                 content: {
                     "application/zip": unknown;
+                };
+            };
+        };
+    };
+    instance_info_api_instance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceInfo"];
                 };
             };
         };

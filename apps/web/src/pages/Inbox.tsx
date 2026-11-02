@@ -120,7 +120,7 @@ export function Inbox() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted">Loading inbox…</p>
+        <p className="muted" role="status">Loading inbox…</p>
       ) : tasks.length === 0 ? (
         <div className="empty-state">
           Inbox zero — everything has been triaged.

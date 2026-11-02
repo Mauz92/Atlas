@@ -27,6 +27,8 @@ interface CommandPaletteProps {
   onClose: () => void;
   /** Open the shared task detail (the host owns it, so it survives the palette closing). */
   onOpenTask: (task: Task) => void;
+  /** Open the keyboard shortcut help (the host owns it, so it survives the palette closing). */
+  onShowShortcuts: () => void;
 }
 
 function errorMessage(err: unknown): string {
@@ -40,7 +42,7 @@ function errorMessage(err: unknown): string {
  * through the list, Enter runs the active entry, Esc closes, Tab stays inside, and focus returns
  * to where it was.
  */
-export function CommandPalette({ onClose, onOpenTask }: CommandPaletteProps) {
+export function CommandPalette({ onClose, onOpenTask, onShowShortcuts }: CommandPaletteProps) {
   const navigate = useNavigate();
   const { reload: reloadProjects } = useProjects();
   const [query, setQuery] = useState("");
@@ -126,6 +128,16 @@ export function CommandPalette({ onClose, onOpenTask }: CommandPaletteProps) {
         run: go("/notes?new=template"),
       },
       {
+        id: "show-shortcuts",
+        group: "Commands",
+        label: "Keyboard shortcuts",
+        hint: "?",
+        run: () => {
+          onClose();
+          onShowShortcuts();
+        },
+      },
+      {
         id: "toggle-theme",
         group: "Commands",
         label: "Toggle theme",
@@ -180,7 +192,7 @@ export function CommandPalette({ onClose, onOpenTask }: CommandPaletteProps) {
       );
     }
     return list;
-  }, [search.results, text, navigate, onClose, onOpenTask, reloadProjects]);
+  }, [search.results, text, navigate, onClose, onOpenTask, onShowShortcuts, reloadProjects]);
 
   // A new list starts on its best match; with only "create" entries nothing is active.
   const firstSafe = entries.findIndex((entry) => !entry.creates);

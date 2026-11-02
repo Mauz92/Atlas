@@ -254,7 +254,7 @@ export function TaskDetail({
   }));
 
   return (
-    <aside
+    <div
       className="task-detail"
       role="dialog"
       aria-label="Task details"
@@ -265,12 +265,12 @@ export function TaskDetail({
         }
       }}
     >
-      <header className="task-detail-header">
+      <div className="task-detail-header">
         <h2>Task details</h2>
         <button type="button" className="ghost" onClick={requestClose}>
           Close
         </button>
-      </header>
+      </div>
 
       <form className="task-detail-form" onSubmit={(event) => void save(event)}>
         <label htmlFor={`${ids}-title`}>Title</label>
@@ -521,6 +521,6 @@ export function TaskDetail({
         />
         <TaskReminder taskId={current.id} />
       </div>
-    </aside>
+    </div>
   );
 }

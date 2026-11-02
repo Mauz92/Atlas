@@ -44,6 +44,14 @@ a security property. This document defines the threat model and the controls Atl
 - Optional OIDC via Authlib for users who prefer an identity provider.
 - Authorisation enforced on the server for **every** protected operation; clients are never the
   authority.
+- **Password change (MU-08, ADR-0050).** `POST /api/auth/password` requires the current password,
+  enforces the 12-character minimum, is CSRF-protected and rate limited per account with the login
+  budget, revokes **all** the account's sessions and issues a fresh one to the caller. Passwords are
+  never logged and validation errors on every `/api/auth/*` path omit the submitted value. The
+  limiter is in-process (single-process deployment, as for login). Verified by
+  `tests/integration/test_account_settings.py` and the J7 journey.
+- `GET /api/instance` is authenticated and returns version, migration revision and backup counts only
+  (no paths, connection strings, keys or job error text).
 
 ## 4. Secrets Management
 

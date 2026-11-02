@@ -6,6 +6,7 @@ import uuid
 from datetime import date, datetime
 from typing import Annotated
 
+import email_validator
 from email_validator import EmailNotValidError, validate_email
 from pydantic import (
     AfterValidator,
@@ -35,6 +36,13 @@ from ..tasks import (
     validate_rule,
 )
 
+# ``email_validator`` rejects ``.local`` (mDNS) as special-use even in test mode. A self-hosted,
+# single-owner instance on a home network legitimately uses ``me@host.local``; the library
+# documents this list as adjustable. Only ``local`` is released; ``invalid``, ``localhost`` and the
+# rest stay rejected.
+if "local" in email_validator.SPECIAL_USE_DOMAIN_NAMES:
+    email_validator.SPECIAL_USE_DOMAIN_NAMES.remove("local")
+
 
 def _check_email(value: str) -> str:
     """Syntax-check and normalise an address.
@@ -62,6 +70,24 @@ class SetupRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
 
 
+class ProfileUpdate(BaseModel):
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            msg = "Name must not be blank"
+            raise ValueError(msg)
+        return value
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=12, max_length=1024)
+
+
 class UserPublic(BaseModel):
     id: uuid.UUID
     email: str
@@ -80,6 +106,36 @@ class HealthStatus(BaseModel):
 class ReadyStatus(BaseModel):
     status: str
     database: str
+
+
+class BackupLatest(BaseModel):
+    backup_id: str | None
+    created_at: datetime | None
+    atlas_version: str | None
+    database_bytes: int | None
+    notes_bytes: int | None
+
+
+class BackupStatus(BaseModel):
+    """Read-only view of the backup destination and the scheduled job (no paths, no secrets)."""
+
+    destination_available: bool
+    sets: int
+    latest: BackupLatest | None
+    incomplete_sets: int
+    interval_seconds: int
+    retain: int
+    last_job_status: str | None
+    last_job_at: datetime | None
+
+
+class InstanceInfo(BaseModel):
+    version: str
+    environment: str
+    database: str
+    migration_revision: str | None
+    web_push_configured: bool
+    backups: BackupStatus
 
 
 # --- Notes ---------------------------------------------------------------

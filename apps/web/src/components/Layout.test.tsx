@@ -43,3 +43,36 @@ describe("Layout shortcut", () => {
     expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
   });
 });
+
+describe("Shortcut help", () => {
+  function open() {
+    render(
+      <MemoryRouter>
+        <Layout />
+      </MemoryRouter>,
+    );
+  }
+
+  it("opens with ? outside a text field and closes with Esc", () => {
+    open();
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+    expect(screen.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Close" }), { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).toBeNull();
+  });
+
+  it("does not open while typing in a field", () => {
+    open();
+    fireEvent.click(screen.getByRole("button", { name: /Search · Ctrl K/ }));
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "?" });
+    expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).toBeNull();
+  });
+
+  it("opens from the command palette", () => {
+    open();
+    fireEvent.click(screen.getByRole("button", { name: /Search · Ctrl K/ }));
+    fireEvent.click(screen.getByRole("option", { name: /Keyboard shortcuts/ }));
+    expect(screen.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
+  });
+});

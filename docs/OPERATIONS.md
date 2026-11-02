@@ -65,6 +65,12 @@ In the Docker Compose deployment the `worker` service mounts the `atlas-backups`
 `/data/atlas/backups` and the image installs the PostgreSQL client, so backups run out of the box.
 Point `BACKUP_DIR` at a volume that is backed up separately (and ideally off the primary volume).
 
+**Status in the web app (MU-08).** Settings shows a read-only summary: number of published sets, the newest
+set's time and part sizes, interrupted staging runs and the newest scheduled-run status. The **API** reads
+`BACKUP_DIR`, so it must see the same volume the worker writes (the Compose file mounts `atlas-backups` into
+both). If it cannot, Settings says it cannot report instead of claiming there are no backups. It does not
+re-verify checksums; use `atlas-backup verify`.
+
 ### 1.2 Running and checking a backup by hand
 
 The `atlas-backup` command (also `python -m atlas.backups`) uses the same settings as the worker:

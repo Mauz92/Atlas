@@ -115,7 +115,7 @@ export function ProjectPage() {
   if (!project) {
     return (
       <section className="page project-page">
-        <p className="muted">Loading project…</p>
+        <p className="muted" role="status">Loading project…</p>
       </section>
     );
   }
@@ -202,7 +202,7 @@ export function ProjectPage() {
       {board.state === "error" ? (
         <LoadError message={board.error} onRetry={() => void board.reload()} />
       ) : board.state === "loading" ? (
-        <p className="muted">Loading tasks…</p>
+        <p className="muted" role="status">Loading tasks…</p>
       ) : view === "list" ? (
         <TaskList
           tasks={tasks}

@@ -6,6 +6,18 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (MU-08): **Settings, keyboard help and a tidier shell.** Settings now has your **account** (change your
+  display name; change your password — it asks for the current one, needs at least 12 characters and signs
+  you out on your other devices), **theme** (Light/Dark), **reminder timing and notification status**,
+  **Export your data** (downloads the zip), **Backups** (a read-only summary: last backup, sizes, schedule,
+  last scheduled run; it says so if the backup folder is not visible to the app) and **Instance** (Atlas
+  version, database status, schema revision). Press **?** (when not typing) or choose **Keyboard shortcuts**
+  in Ctrl+K to see the shortcuts. On phones the navigation is a single scrolling row. Email addresses ending
+  in `.local` are now accepted. Accessibility fixes found by an automated check: stronger button colour in
+  the light theme and a duplicate page landmark in the task panel. Loading messages are announced to screen
+  readers and the Notes page shows a loading state and a retry. New endpoints `PATCH /api/auth/me`,
+  `POST /api/auth/password` and `GET /api/instance`; validation errors on `/api/auth/*` no longer echo the
+  submitted value. No migration. See ADR-0050.
 - Added (MU-07): **Today is your home page, with a note for each day and note templates.** Today now shows
   overdue work, what is due today, work scheduled to start today, a card for today's note and a place for
   calendar events (empty until a calendar is connected). **Open today's note** (on Today, on the Notes page

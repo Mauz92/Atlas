@@ -2231,3 +2231,67 @@ rename or edit externally; the daily note for a day is found by its path, so ren
 "Today's note" create a new one. The daily note is not linked to tasks automatically. A stale index row whose
 file was deleted outside Atlas still conflicts until reconciliation runs (`409`, message shown). Weekly or
 monthly notes, template variables beyond the two above and a user time-zone setting are not done.
+
+## ADR-0050 — Settings: account endpoints, session policy, instance and backup status, accessibility gate (MU-08)
+
+**Context.** MU-08 replaces the Settings placeholder (J7). Several parts needed a decision: how the account
+can be edited safely, what a password change does to sessions, where "backup status" can come from without
+inventing data, and how accessibility is checked.
+
+**Decision.**
+1. **Account endpoints** (new; `services/api/atlas/api/auth.py`). `PATCH /api/auth/me {display_name}` edits
+   the name only (the email is the login identity and is not editable). `POST /api/auth/password
+   {current_password, new_password}` returns `204`. Server rules: the **current password is required** and
+   checked with Argon2 (`400 "Current password is incorrect"`; not `401`, so the client never reads it as a
+   lost session); the new password has the setup rule, **at least 12 and at most 1024 characters**
+   (`422`, the framework message); a new password equal to the current one is `400`; CSRF applies as for every
+   authenticated write; attempts are rate limited with the login limit and window (`AUTH_RATE_LIMIT_PER_MINUTE`,
+   in-process like login), keyed **per account** rather than per address; an unauthenticated call is `401`.
+2. **Sessions on password change.** All of the account's sessions are **revoked** and a **fresh session is
+   issued to the caller** in the same response (new cookies). The browser that changed the password stays
+   signed in; every other device (and any stolen session) must sign in again. This also rotates the session
+   token. Offline edits queued on another device are kept in that device's queue and replay after it signs in
+   again (the queue is client-side). Trade-off: the user may be surprised to lose other devices; the page says
+   so before and after.
+3. **No secret in logs or errors.** Request bodies are never logged (the access log records method, path and
+   status). The framework's 422 body echoes the submitted value as `input`; the existing redaction handler
+   (SECURITY T2, previously `/api/calendar/credentials` only) now also covers every path under `/api/auth/`,
+   which includes passwords on setup, login and the new endpoint.
+4. **Instance information** — `GET /api/instance` (authenticated; read-only): Atlas version, `ATLAS_ENV`,
+   database status, the migration revision (`alembic_version`), whether Web Push keys are configured (a
+   boolean, never the keys), and the backup summary. It returns no path, connection string or secret and no
+   job error text. Database "ok" means the query ran; it does not replace `/health/ready`.
+5. **Backup status** has a safe read-only source, with limits that the page states. The API reads the
+   **published backup sets' manifests** in `BACKUP_DIR` (the Compose `api` service already mounts the backup
+   volume; the worker writes to it): number of sets, the newest set's time, version and part sizes, the number
+   of leftover staging directories (an interrupted run, never counted as a backup), plus the status and time of
+   the newest `backups.run` job from the durable queue and the configured interval/retention. It does **not**
+   recompute checksums (a dump can be large; `atlas-backup verify` does that) and says so. If the folder is not
+   visible to the API (not mounted, or different host) the page says it cannot report, instead of claiming "no
+   backups". New module `atlas/backups/status.py`.
+6. **Export** uses the existing `GET /api/export`, fetched by the page with the session cookie and saved as a
+   file, so a failure shows the server's message instead of navigating to a JSON error.
+7. **Theme** stays a per-browser setting (`localStorage`), now also a Light/Dark choice on Settings. Reminder
+   timing and notification status are the existing M8 components, shared with the Notifications route
+   (`NotificationSettings`). There is **no user time-zone setting** (ADR-0049 §1): not requested for MU-08, the
+   browser's zone still decides "today".
+8. **`.local` addresses.** `email_validator` rejects `.local` as a special-use name even with
+   `test_environment=True`. Its documented module list `SPECIAL_USE_DOMAIN_NAMES` has `local` removed at import
+   (`atlas/api/schemas.py`); `invalid`, `localhost`, `arpa` and the others stay rejected, and no DNS check is made.
+9. **Accessibility gate.** `@axe-core/playwright` (MPL-2.0, dev only, `docs/DEPENDENCIES.md`) runs in the
+   real-stack suite (`mu08-a11y-and-layout.spec.ts`) with the WCAG 2 A/AA, 2.1 A/AA and best-practice rule
+   sets, over all main pages in light and dark, the task panel, the palette and the shortcut help; the same
+   spec asserts no page scrolls sideways at 375 px and 800 px. Findings are fixed, not suppressed. Fixed:
+   light-theme accent colour contrast (`#3b6ef5` to `#2c5ce0`), the task panel's `aside role=dialog` and
+   `header` (now `div`s) that produced a second banner landmark.
+10. **Shell.** `?` (when focus is not in a text field, CodeMirror included) and the palette command "Keyboard
+    shortcuts" open one help overlay listing only shortcuts that exist (`lib/shortcuts.ts`). On screens up to
+    720 px the nav is one scrolling row (the current view is scrolled into view), the sidebar project list is
+    hidden (Projects is one tap away) and the top bar is compact. Loading messages are `role="status"`; the
+    Notes page got a loading state and a retry for its first read.
+
+**Consequences.** One migration-free change set; the only dependency is dev-only. Sessions are no longer
+manageable one by one (no "sessions" list or "sign out other devices" button). The password rate limiter is
+in-process (single-process deployment; see SECURITY §3 note). Backup status reflects the folder as the API
+sees it; a worker writing elsewhere would show nothing. Not done: email change, user time zone, account
+deletion, OIDC/2FA.

@@ -1,7 +1,7 @@
 # Atlas — User Guide
 
 **Status:** Delivered-feature guide
-**Last updated:** 2026-10-27
+**Last updated:** 2026-11-02
 **Audience:** the person *using* Atlas (notes, tasks, planning, sync, notifications).
 
 This guide describes **what Atlas does today** and how to use it. It is deliberately honest about
@@ -21,21 +21,21 @@ Atlas is being built milestone by milestone. This table is the honest state of e
 
 | Area | State | Notes |
 |---|---|---|
-| Markdown notes (create, edit, preview, rename, delete, tags, wiki links, search) | **Available** | Real `.md` files on disk — see [`MARKDOWN_STORAGE.md`](MARKDOWN_STORAGE.md). |
-| Tasks — quick capture, Today, Inbox, Upcoming | **Available** | Title-only capture; complete a task from any list. |
+| Markdown notes (create, edit, preview, rename, delete, tags, wiki links, search) | **Available** | Real `.md` files on disk — see [`MARKDOWN_STORAGE.md`](MARKDOWN_STORAGE.md). `[[` suggests notes; **Today's note** and templates (§4). |
+| Tasks — capture, edit, Today, Inbox, Upcoming, the **Tasks** page with filters | **Available** | Open any task to edit title, dates, priority, tags, repeat, subtasks, reminder and linked notes; delete with undo. |
 | Planning — Day and Week views | **Available** | Day-by-day / week-by-week work, in your local time zone. |
 | Kanban board (move a task between statuses) | **Available** | Global board at **Board**; columns are the task statuses. |
-| Projects and derived progress | **Partial** | Stored and calculated by the server and shown as context in Day/Week; **no Projects page** yet (see below). |
-| Search and filters | **Partial** | Note search works inside **Notes**; task filters/search exist only through the API — **no Search page** yet. |
-| Offline edits and cross-device sync | **Available** | A **Sync** page shows the queue, conflicts and a manual "Sync now". |
-| Desktop notifications (Web Push) | **Partial** | The **Notifications** page can register this browser; **an operator must configure VAPID keys**, and a real delivery has not been verified on this install. |
-| Reminder timing preferences | **Available** | Default timing on **Notifications**; per-task override is API-only for now. |
-| Calendar accounts (Google / Microsoft) and event views | **Not available** | Blocked on real provider accounts (`ROADMAP.md` M5/M6, AR-001). **Calendar** shows sync *status* only. |
-| Mobile apps (Android / iOS) and native push | **Not available** | M8; needs real devices. |
-| Settings, Projects, Tasks, Search pages | **Not available** | These nav items open a placeholder screen. |
+| Projects and derived progress | **Available** | **Projects** page: create, edit, archive; each project has progress, tasks, a board and linked notes. |
+| Search | **Available** | **Ctrl+K** finds notes, tasks and projects and runs commands; the **Search** page shows the same results. |
+| Offline edits and cross-device sync | **Available** | A **Sync** page shows the queue, conflicts and a manual "Sync now". Edits made in the task and project screens need a connection. |
+| Desktop notifications (Web Push) | **Partial** | Notification status is on **Settings**; **an operator must configure VAPID keys**, and a real delivery has not been verified on this install. |
+| Reminder timing preferences | **Available** | Default timing on **Settings**; per-task override in the task panel. |
+| Settings (account, theme, export, backup status, instance info) | **Available** | Change your name and password; download an export; see backup status and the version. |
+| Calendar accounts (Google / Microsoft) and event views | **Not available** | Blocked on real provider accounts (`ROADMAP.md` M5/M6, AR-001). **Calendar** shows sync *status* only; Today's events area stays empty. |
+| Mobile apps (Android / iOS) and native push | **Not available** | M8; needs real devices. The web app works on a phone-sized screen. |
 
 Anything marked **Not available** or **Partial** does **not** exist as a working feature yet — the nav
-item, if present, is a placeholder or shows status only.
+item, if present, shows status only.
 
 ---
 
@@ -56,31 +56,37 @@ it owns the instance.
 
 ### Theme
 
-Use the **Dark / Light** button in the top bar to switch themes. Your choice is remembered in this
-browser and follows your system preference until you change it.
+Use the **Dark / Light** button in the top bar, or **Settings → Appearance**. Your choice is remembered
+in this browser and follows your system preference until you change it.
+
+### Keyboard shortcuts
+
+Press **?** (when you are not typing in a field) or choose **Keyboard shortcuts** in the palette to see
+them. The main ones: **Ctrl/⌘ K** opens the palette, **Esc** closes a panel, **Enter** on a task title
+opens it, **Ctrl/⌘ Enter** saves it.
 
 ---
 
 ## 3. Finding your way around
 
-The left sidebar is the main navigation. Some entries are placeholders today:
+The left sidebar is the main navigation (on a phone it is one row you can scroll sideways).
 
 | Nav item | Route | What it does today |
 |---|---|---|
-| **Today** | `/` | Landing page: overdue and due-today tasks, with quick capture. |
-| **Inbox** | `/inbox` | Captured tasks waiting to be triaged, with quick capture. |
+| **Today** | `/` | Landing page: overdue, due today, work scheduled today, today's note and quick capture. |
+| **Inbox** | `/inbox` | Captured tasks waiting to be triaged; schedule, file or delete each. |
 | **Upcoming** | `/upcoming` | Tasks for later days, grouped by the day they are due. |
 | **Day** | `/day` | One day at a time, with day navigation. |
 | **Week** | `/week` | The current week (Monday first), day by day. |
-| **Tasks** | `/tasks` | **Placeholder** — a filterable task list is not built yet. |
+| **Tasks** | `/tasks` | Every task with filters, sort, saved filters and bulk actions. |
 | **Board** | `/board` | Kanban board; drag a card (or use its status menu) to change status. |
-| **Projects** | `/projects` | **Placeholder** — no project page yet. |
+| **Projects** | `/projects` | Your projects and each project's page. |
 | **Calendar** | `/calendar` | Sync **status** for connected calendars only (no event views yet). |
 | **Sync** | `/sync` | Offline queue, conflicts, and a manual "Sync now". |
-| **Notifications** | `/notifications` | Turn desktop notifications on/off; set reminder timing. |
+| **Notifications** | `/notifications` | Notification permission and reminder timing (also on **Settings**). |
 | **Notes** | `/notes` | The Markdown notebook (editor, preview, tree, search). |
-| **Search** | `/search` | **Placeholder** — use search inside **Notes**. |
-| **Settings** | `/settings` | **Placeholder** — theme lives in the top bar. |
+| **Search** | `/search` | Search notes, tasks and projects. |
+| **Settings** | `/settings` | Account, theme, reminders, export, backup status, instance info. |
 
 ---
 
@@ -132,12 +138,13 @@ the server.
 ### Quick capture
 
 Every list view (Today, Inbox) has a capture box: type a title and press **Add**. The task is created
-immediately.
+immediately (on Today it is due today). Press **Enter** on a task title to open it and edit everything about
+it.
 
 ### The views
 
-- **Today** — overdue work carried forward plus what is due today, split into *Overdue* and *Due
-  today*. This is the landing page.
+- **Today** — *Overdue*, *Due today*, *Scheduled today* (work that starts today), today's note and an
+  events area that stays empty until calendars are connected. This is the landing page.
 - **Inbox** — everything captured but not yet triaged (status `inbox`).
 - **Upcoming** — tasks due on later days, grouped by day.
 - **Day** — one day at a time, with **Previous day / Today / Next day**. Today's page reuses the
@@ -158,25 +165,20 @@ Business rule and rationale: `ROADMAP.md` M4-03 (ADR-0022).
 
 ### What you cannot do from the UI yet
 
-The task API supports far more than the current screens expose. The following are **not** in the web
-UI yet and need the API (see [`ARCHITECTURE.md`](ARCHITECTURE.md) / the OpenAPI docs):
-
-- Editing a task's title, due date, priority, recurrence, subtasks or notes.
-- Creating tasks with a due date, priority or recurrence (capture is title-only).
-- The full task list with **filters** (status, priority, date range, project) and text **search**.
-- Per-task reminder timing overrides (the *default* is in the UI; see §8).
+- Change a repeating task's rule or stop the series from an occurrence (the rule is shown read-only).
+- Link an existing task to a note (a task links to a note when it is created from that note).
+- Delete a project (you can archive it).
+- Edit anything while offline: task and project changes need a connection; notes use the Sync page's queue.
 
 ---
 
 ## 6. Projects and planning
 
-Projects, their task membership and a **derived progress** figure are implemented on the server and
-covered by tests, but there is **no Projects page yet**, so you cannot create or manage a project from
-the web UI in this release. Project support exists through the API and is surfaced where it helps:
-
-- A task that belongs to a project shows a **project tag** in the planning views.
-- **Day** and **Week** show a short **Projects** summary naming the projects the plan touches, each
-  with its derived progress.
+Open **Projects** to create a project, then open it for its description, **progress**, tasks (list or
+board), linked notes, **Edit** and **Archive** / **Restore**. Active projects are also listed under
+**Projects** in the sidebar. A task is filed in a project from its task panel (or from the Inbox's *File
+to…*); a note is linked to a project from the note. **Day** and **Week** show a short **Projects** summary
+with each project's progress.
 
 **How project progress is calculated** (canonical in [`PRODUCT_SPEC.md`](PRODUCT_SPEC.md) §5.3,
 ADR-0023): `total` = the project's live, non-`archived` tasks; `completed` = those whose status is
@@ -212,7 +214,7 @@ and resumes cleanly. Reasoning: `ROADMAP.md` M7 (ADR-0032…ADR-0036).
 
 ## 8. Notifications and reminders
 
-Open **Notifications** for two things.
+Open **Settings** (or **Notifications**) for two things.
 
 **Turn desktop notifications on.** Select **Enable notifications** to allow this browser to show a
 reminder when it is due — even when the Atlas tab is closed. Atlas reports the state explicitly:
@@ -250,20 +252,29 @@ are separate concepts (`CALENDAR_SYNC.md` §7).
 
 ## 10. Settings, themes and data portability
 
-- **Settings** is a placeholder; there is no account or connection settings page yet.
-- **Theme** (light/dark) is the top-bar toggle (§2).
-- **Data portability.** Your notes are already plain Markdown on disk. A complete export of your
-  notes, tasks and projects (as open formats) is implemented on the server-side as
-  `GET /api/export` (a zip) and the operator `atlas-export` command — **there is no in-app "Export"
-  button in this release**. See [`OPERATIONS.md`](OPERATIONS.md) §1.3.
+Open **Settings** for:
+
+- **Account.** Change your **display name**. **Change password** asks for your current password and a new one
+  of at least 12 characters; afterwards you stay signed in here and are **signed out everywhere else**. The
+  email cannot be changed.
+- **Appearance.** Light or Dark (remembered in this browser).
+- **Reminders and notifications.** Notification status for this browser and the default reminder timing (§8).
+- **Export your data.** **Download export** saves a zip with your notes (the real Markdown files), tasks and
+  projects in open formats. It is for portability; it is not a backup.
+- **Backups.** A read-only summary of the automatic backups: the last one, its size, the schedule and the last
+  scheduled run. It cannot check the backup files themselves and says so; your operator can
+  (`atlas-backup verify`, [`OPERATIONS.md`](OPERATIONS.md) §1). If the app cannot see the backup folder it tells
+  you instead of saying there are no backups.
+- **Instance.** The Atlas version, the environment, database status and schema revision.
 
 ---
 
 ## 11. Accessibility and troubleshooting
 
-**Keyboard and accessibility.** Navigation, capture, the board's status menu, the sync and
-notification controls are keyboard-focusable buttons, selects and inputs; the board offers a
-non-drag path; errors are announced (`role="alert"`) and empty states are explicit.
+**Keyboard and accessibility.** Everything is reachable with the keyboard (**?** lists the shortcuts); the
+board offers a non-drag path; errors are announced (`role="alert"`) and empty states are explicit. The pages
+are checked automatically with axe-core in both themes; that is a partial check, not a full accessibility
+audit.
 
 **Common questions**
 

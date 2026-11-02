@@ -13,6 +13,7 @@ interface AuthValue {
   login: (email: string, password: string) => Promise<void>;
   setup: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateDisplayName: (displayName: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -69,9 +70,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState("anonymous");
   }, []);
 
+  const updateDisplayName = useCallback(async (displayName: string) => {
+    setUser(await api.updateProfile(displayName));
+  }, []);
+
   const value = useMemo<AuthValue>(
-    () => ({ state, user, error, login, setup, logout }),
-    [state, user, error, login, setup, logout],
+    () => ({ state, user, error, login, setup, logout, updateDisplayName }),
+    [state, user, error, login, setup, logout, updateDisplayName],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

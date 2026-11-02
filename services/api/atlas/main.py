@@ -21,6 +21,7 @@ from .api import (
     export_router,
     folders_router,
     health_router,
+    instance_router,
     notes_router,
     notifications_router,
     projects_router,
@@ -33,8 +34,8 @@ from .logging import configure_logging
 from .middleware import CsrfMiddleware, RequestContextMiddleware, SecurityHeadersMiddleware
 
 #: Requests under this prefix carry OAuth token material, so their validation errors must not echo
-#: the submitted value (SECURITY.md T2).
-_CREDENTIAL_PATH_PREFIX = "/api/calendar/credentials"
+#: the submitted value (SECURITY.md T2); the auth endpoints carry passwords.
+_CREDENTIAL_PATH_PREFIXES = ("/api/calendar/credentials", "/api/auth/")
 
 
 @asynccontextmanager
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
     app.include_router(changes_router)
     app.include_router(notifications_router)
     app.include_router(export_router)
+    app.include_router(instance_router)
 
     @app.exception_handler(RequestValidationError)
     async def _redact_credential_validation_errors(
@@ -99,7 +101,7 @@ def create_app() -> FastAPI:
         framework default behaviour and response shape.
         """
         errors: list[dict[str, Any]] = [dict(error) for error in exc.errors()]
-        if request.url.path.startswith(_CREDENTIAL_PATH_PREFIX):
+        if request.url.path.startswith(_CREDENTIAL_PATH_PREFIXES):
             errors = [
                 {key: value for key, value in error.items() if key != "input"} for error in errors
             ]

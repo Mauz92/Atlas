@@ -78,7 +78,7 @@ export function Week() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted">Loading the week…</p>
+        <p className="muted" role="status">Loading the week…</p>
       ) : (
         <>
           {projectsError ? (

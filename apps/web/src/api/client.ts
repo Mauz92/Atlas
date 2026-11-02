@@ -35,6 +35,7 @@ export type ReminderPreferences = components["schemas"]["ReminderPreferencesOut"
 export type TaskReminder = components["schemas"]["TaskReminderOut"];
 export type SearchResults = components["schemas"]["SearchOut"];
 export type SearchTask = components["schemas"]["SearchTaskOut"];
+export type InstanceInfo = components["schemas"]["InstanceInfo"];
 export type RecurrencePreview = components["schemas"]["RecurrencePreviewOut"];
 
 export class ApiError extends Error {
@@ -145,7 +146,40 @@ export const api = {
       body: JSON.stringify({ email, password, display_name: displayName }),
     }),
   logout: () => apiFetch<void>("/api/auth/logout", { method: "POST" }),
+  updateProfile: (displayName: string) =>
+    apiFetch<UserPublic>("/api/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify({ display_name: displayName }),
+    }),
+  /** Every other session is signed out by the server; this browser receives a fresh one. */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    apiFetch<void>("/api/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }),
 };
+
+export const instanceApi = {
+  get: () => apiFetch<InstanceInfo>("/api/instance"),
+};
+
+/** The full data export (a zip) fetched with the session cookie, so a failure shows its real message. */
+export async function fetchExport(): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch("/api/export", { credentials: "include" });
+  if (!response.ok) {
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      body = undefined;
+    }
+    const detail = (body as { detail?: unknown } | undefined)?.detail;
+    throw new ApiError(response.status, describe(detail, response.statusText), body);
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "atlas-export.zip";
+  return { blob: await response.blob(), filename };
+}
 
 export const notesApi = {
   list: (folder?: string) =>

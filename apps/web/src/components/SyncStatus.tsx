@@ -81,7 +81,7 @@ export function SyncStatus({
   onSyncNow,
 }: SyncStatusProps) {
   if (state === "loading") {
-    return <p className="muted">Loading sync status…</p>;
+    return <p className="muted" role="status">Loading sync status…</p>;
   }
   if (state === "error") {
     return <LoadError message={error} onRetry={onRetry} />;

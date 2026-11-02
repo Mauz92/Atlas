@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from ..auth import (
     generate_session_token,
@@ -20,11 +20,21 @@ from ..auth.ratelimit import RateLimiter
 from ..config import get_settings
 from ..models import AuthSession, User
 from .deps import CurrentUser, DbSession
-from .schemas import LoginRequest, SetupRequest, SetupStatus, UserPublic
+from .schemas import (
+    LoginRequest,
+    PasswordChange,
+    ProfileUpdate,
+    SetupRequest,
+    SetupStatus,
+    UserPublic,
+)
 
 router = APIRouter(tags=["auth"])
 
 _login_limiter = RateLimiter(limit=get_settings().auth_rate_limit_per_minute)
+# Password changes are another way to guess the current password, so they share the login budget
+# (same limit and window) but are keyed per account rather than per address.
+_password_limiter = RateLimiter(limit=get_settings().auth_rate_limit_per_minute)
 
 
 @lru_cache(maxsize=1)
@@ -167,3 +177,51 @@ async def logout(request: Request, response: Response, session: DbSession) -> Re
 @router.get("/api/auth/me", response_model=UserPublic)
 async def me(user: CurrentUser) -> UserPublic:
     return UserPublic(id=user.id, email=user.email, display_name=user.display_name)
+
+
+@router.patch("/api/auth/me", response_model=UserPublic)
+async def update_me(payload: ProfileUpdate, user: CurrentUser, session: DbSession) -> UserPublic:
+    """Edit the display name (the only editable profile field; the email is the login identity)."""
+    user.display_name = payload.display_name
+    await session.commit()
+    return UserPublic(id=user.id, email=user.email, display_name=user.display_name)
+
+
+@router.post("/api/auth/password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    payload: PasswordChange,
+    request: Request,
+    response: Response,
+    user: CurrentUser,
+    session: DbSession,
+) -> Response:
+    """Change the caller's password (ADR-0050).
+
+    The current password is required and rate limited like login. On success **every** session of
+    the account is revoked (a stolen session must not survive a password change) and a fresh one is
+    issued to the caller, so this browser stays signed in while other devices must sign in again.
+    Neither password is ever logged or echoed (see the validation handler in ``main.py``).
+    """
+    if not _password_limiter.allow(str(user.id)):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests"
+        )
+    if not verify_password(user.password_hash, payload.current_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect"
+        )
+    if payload.new_password == payload.current_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must differ from the current password",
+        )
+    user.password_hash = hash_password(payload.new_password)
+    await session.execute(
+        update(AuthSession)
+        .where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
+    )
+    await _issue_session(session, user, request, response)
+    await session.commit()
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response

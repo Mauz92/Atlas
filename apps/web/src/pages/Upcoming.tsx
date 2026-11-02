@@ -24,7 +24,7 @@ export function Upcoming() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted">Loading upcoming…</p>
+        <p className="muted" role="status">Loading upcoming…</p>
       ) : groups.length === 0 ? (
         <div className="empty-state">Nothing is scheduled for the days ahead.</div>
       ) : (

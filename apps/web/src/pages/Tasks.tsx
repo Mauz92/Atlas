@@ -384,7 +384,7 @@ export function Tasks() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted">Loading tasks…</p>
+        <p className="muted" role="status">Loading tasks…</p>
       ) : (
         <>
           <div className="task-count">

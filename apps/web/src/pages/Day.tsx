@@ -83,7 +83,7 @@ export function Day() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted">Loading the day…</p>
+        <p className="muted" role="status">Loading the day…</p>
       ) : (
         <>
           {projectsError ? (

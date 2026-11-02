@@ -93,7 +93,7 @@ Configuration (optional): `ATLAS_E2E_ADMIN_DATABASE_URL` (default
 `postgresql://atlas:atlas@127.0.0.1:5432/postgres`) and `ATLAS_E2E_API_BIN_DIR` (default
 `services/api/.venv/bin`). `e2e-real/helpers.ts` creates the owner through the real setup form
 (`createOwner`, `signIn`, `signOut`); use `example.com` addresses — `.test` is rejected by the server
-(known defect, MU-08). Journeys run serially against one database and one owner; every run starts from
+(`.local` is accepted since MU-08). Journeys run serially against one database and one owner; every run starts from
 an empty database, so repeated runs do not interfere. CI runs the same command in the `e2e-real` job
 of `.github/workflows/ci.yml` (PostgreSQL service). Like the mocked suite it is **not** part of the
 protected `scripts/verify.sh`.
@@ -106,8 +106,10 @@ second-tab conflict, all fields, verbatim validation errors, delete + undo, narr
 `mu04-recurrence-subtasks-reminders.spec.ts` (MU-04: repeat picker with server preview/validation, completing a repeating task and its next occurrence, series end, subtasks with progress, per-task reminder override);
 `j6-daily-note-and-today.spec.ts` (J6: Today as home, daily note created once as a plain file, template substitution; reads the notes directory via `ATLAS_E2E_NOTES_DIR`),
 `j5-find-anything.spec.ts` (J5: Ctrl+K palette — grouped results for notes/tasks/projects, Enter opens each, go-to/theme commands, create task/note/project from the same box, verbatim server error, Search page).
+`j7-stay-in-control.spec.ts` (J7: Settings — display name, password change with the other device signed out, theme, reminder timing, export download, backup status from a manifest written to the run's backup folder, instance info, shortcut help; restores the shared owner's name, password and reminder default);
+`mu08-a11y-and-layout.spec.ts` (MU-08: axe-core over every main page in light and dark, the task panel, palette and shortcut help; no horizontal scroll at 375 px and 800 px — violations are fixed, never suppressed; uses `@axe-core/playwright`, `DEPENDENCIES.md`).
 Journeys share one owner: start each with `ensureOwner(page)` (creates the owner or signs in) and use
-unique titles, since earlier journeys' tasks stay in the database. `apiCall` (helpers) performs set-up
+unique titles, since earlier journeys' tasks stay in the database. A journey that changes shared owner state (name, password, reminder default) must put it back before it ends. `apiCall` (helpers) performs set-up
 that has no UI yet (for example creating a project).
 
 ## 2. Unit Tests

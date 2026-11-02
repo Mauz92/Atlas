@@ -10,6 +10,7 @@ import {
 } from "../api/client";
 import { NoteEditor, type NoteEditorHandle } from "../components/NoteEditor";
 import { MarkdownPreview } from "../components/MarkdownPreview";
+import { LoadError } from "../components/LoadError";
 import { NoteTree } from "../components/NoteTree";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 import { taskTitleFromText } from "../lib/noteLinks";
@@ -25,6 +26,8 @@ export function Notes() {
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The first read of the note list: shown as "Loading notes…" and, if it fails, with a retry.
+  const [listState, setListState] = useState<"loading" | "ready" | "error">("loading");
   const [conflictRevision, setConflictRevision] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<NoteSummary[] | null>(null);
@@ -74,9 +77,20 @@ export function Notes() {
   }, [selectedId]);
   const taskEditor = useTaskEditor({ refresh: reloadLinked });
 
-  useEffect(() => {
-    refresh().catch((err: unknown) => setError(err instanceof Error ? err.message : "Failed to load"));
+  const loadList = useCallback(() => {
+    setListState("loading");
+    setError(null);
+    refresh()
+      .then(() => setListState("ready"))
+      .catch((err: unknown) => {
+        setListState("error");
+        setError(err instanceof Error ? err.message : "Failed to load");
+      });
   }, [refresh]);
+
+  useEffect(() => {
+    loadList();
+  }, [loadList]);
 
   async function openNote(id: string) {
     if (dirty && !window.confirm("Discard unsaved changes?")) {
@@ -315,8 +329,23 @@ export function Notes() {
   return (
     <section className="page notes-page">
       <h1>Notes</h1>
-      {error ? <p className="error">{error}</p> : null}
-      {status ? <p className="muted">{status}</p> : null}
+      {error && listState === "error" ? (
+        <LoadError message={error} onRetry={loadList} />
+      ) : error ? (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {listState === "loading" ? (
+        <p className="muted" role="status">
+          Loading notes…
+        </p>
+      ) : null}
+      {status ? (
+        <p className="muted" role="status">
+          {status}
+        </p>
+      ) : null}
 
       <div className="notes-layout">
         <aside className="notes-sidebar">

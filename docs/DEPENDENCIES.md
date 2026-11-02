@@ -48,6 +48,7 @@ as reported by the package metadata; verify against the upstream project before 
 | mypy | Static type checking | MIT |
 | pip-audit | Python advisory scanning (CI) | Apache-2.0 |
 | npm audit | JS advisory scanning (CI, built in) | — |
+| @axe-core/playwright (+ axe-core) | Automated accessibility checks in the real-stack suite (MU-08, ADR-0050) | MPL-2.0 | Dev-only, never bundled. Deque's `axe-core` engine; version 4.14.0 (published 2026-10-15). MPL-2.0 is file-level copyleft and imposes nothing on Atlas code because the package is not modified or distributed. Peer: `playwright-core`. |
 | openapi-typescript | Generate TS types from OpenAPI | MIT |
 | vitest, jsdom, @testing-library/react | Frontend unit tests | MIT |
 | fake-indexeddb | In-memory IndexedDB for frontend tests (exercises the real offline-queue storage path under jsdom, which has no IndexedDB) | MIT |

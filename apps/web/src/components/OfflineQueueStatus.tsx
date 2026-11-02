@@ -47,7 +47,7 @@ export function OfflineQueueStatus({
   onSyncNow,
 }: OfflineQueueStatusProps) {
   if (state === "loading") {
-    return <p className="muted">Loading offline queue…</p>;
+    return <p className="muted" role="status">Loading offline queue…</p>;
   }
   if (state === "error") {
     return <LoadError message={error} onRetry={onRefresh} />;

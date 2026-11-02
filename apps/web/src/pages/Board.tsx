@@ -44,7 +44,7 @@ export function BoardPage() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted">Loading board…</p>
+        <p className="muted" role="status">Loading board…</p>
       ) : (
         <Board
           columns={columns}
