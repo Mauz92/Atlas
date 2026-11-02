@@ -95,6 +95,54 @@ export function dueOn(date: string, timeZone?: string): TaskFields {
   };
 }
 
+/** A schedule choice from a task row or its menu (UX-03). `null` clears the due date. */
+export type ScheduleChoice = "today" | "tomorrow" | "next-week" | { date: string } | null;
+
+/** The local calendar date a schedule choice means; "next week" is the coming Monday. */
+export function scheduleDate(
+  when: Exclude<ScheduleChoice, null>,
+  timeZone: string | undefined = viewerTimeZone(),
+  now = new Date(),
+): string {
+  if (typeof when === "object") {
+    return when.date;
+  }
+  if (when === "today") {
+    return localDate(0, timeZone, now);
+  }
+  if (when === "tomorrow") {
+    return localDate(1, timeZone, now);
+  }
+  const [year, month, day] = localDate(0, timeZone, now).split("-").map(Number);
+  const weekday = (new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay() + 6) % 7; // Mon = 0
+  return localDate(7 - weekday, timeZone, now);
+}
+
+/**
+ * The `PATCH` fields that move a task to another day (UX-03 quick actions). A task with a clock
+ * time keeps it, in its own zone; a date-only task stays date-only (ADR-0044). Giving an Inbox
+ * task a date triages it, so it also moves to `next` (the J2 rule, ADR-0052).
+ */
+export function scheduleFields(
+  task: Task,
+  when: ScheduleChoice,
+  viewerZone: string | undefined,
+  now = new Date(),
+): TaskFields {
+  const triage: TaskFields = task.status === "inbox" && when !== null ? { status: "next" } : {};
+  if (when === null) {
+    return { due_at: null };
+  }
+  const zone = task.time_zone ?? viewerZone;
+  const date = scheduleDate(when, viewerZone, now);
+  const time = task.due_at ? wallClock(task.due_at, zone).time : END_OF_DAY;
+  return {
+    ...triage,
+    due_at: `${date}T${time}:00`,
+    ...(zone ? { time_zone: zone } : {}),
+  };
+}
+
 /** The initial form values for a task, rendering its instants in the task's own zone. */
 export function draftFromTask(
   task: Task,

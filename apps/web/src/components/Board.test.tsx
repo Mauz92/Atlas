@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import type { Task } from "../api/client";
 import { boardColumns, groupByStatus } from "../lib/taskStatus";
+import { menuItem } from "../test/menu";
 import { makeTask } from "../test/tasks";
 import { Board } from "./Board";
 
@@ -99,31 +100,26 @@ describe("Board", () => {
     expect(onMove).not.toHaveBeenCalled();
   });
 
-  it("offers a keyboard alternative that only enables allowed targets", () => {
+  it("offers a keyboard alternative: the card menu's Move to… lists only allowed targets", () => {
     const { onMove } = renderBoard([
       makeTask({ id: "c", title: "Gamma", status: "completed" }),
     ]);
 
-    const select = screen.getByLabelText("Move Gamma");
-    // Completed tasks may only be reopened or archived.
-    expect(within(select).getByRole("option", { name: "Next" })).toBeDisabled();
-    expect(
-      within(select).getByRole("option", { name: "Inbox" }),
-    ).toBeDisabled();
-    expect(
-      within(select).getByRole("option", { name: "In progress" }),
-    ).toBeEnabled();
-    expect(
-      within(select).getByRole("option", { name: "Archived" }),
-    ).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Gamma" }));
+    fireEvent.click(menuItem("Move to…"));
+    // Completed tasks may only be reopened or archived; the current status is marked.
+    const choices = screen.getAllByRole("menuitemradio").map((item) => item.textContent);
+    expect(choices).toEqual(["Completed", "In progress", "Archived"]);
+    expect(menuItem("Completed")).toHaveAttribute("aria-checked", "true");
 
-    fireEvent.change(select, { target: { value: "in_progress" } });
+    fireEvent.click(menuItem("In progress"));
 
     expect(onMove).toHaveBeenCalledTimes(1);
     expect(onMove).toHaveBeenCalledWith(
       expect.objectContaining({ id: "c" }),
       "in_progress",
     );
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("opens a card in the task detail from its title", () => {

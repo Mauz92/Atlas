@@ -8,6 +8,8 @@ import {
   parseTags,
   recurrenceAnchor,
   repeatChoice,
+  scheduleDate,
+  scheduleFields,
 } from "./taskForm";
 import { formatDue, wallClock } from "./tasks";
 
@@ -46,6 +48,44 @@ describe("localDate / dueOn", () => {
     expect(dueOn("2026-11-03", undefined)).toEqual({
       due_at: "2026-11-03T23:59:00",
     });
+  });
+});
+
+describe("scheduleDate / scheduleFields (UX-03 quick actions)", () => {
+  // Sunday 2026-11-01 13:00 in Stockholm.
+  const now = new Date("2026-11-01T12:00:00Z");
+  const zone = "Europe/Stockholm";
+
+  it.each([
+    ["today", "2026-11-01"],
+    ["tomorrow", "2026-11-02"],
+    ["next-week", "2026-11-02"], // the coming Monday
+    [{ date: "2031-03-04" }, "2031-03-04"],
+  ] as const)("%j is %s", (when, date) => {
+    expect(scheduleDate(when, zone, now)).toBe(date);
+  });
+
+  it("next week from a Monday is the Monday after", () => {
+    expect(scheduleDate("next-week", zone, new Date("2026-11-02T12:00:00Z"))).toBe("2026-11-09");
+  });
+
+  it.each([
+    ["an inbox task gets a date-only due and is triaged to next", { status: "inbox" }, {
+      status: "next",
+      due_at: "2026-11-02T23:59:00",
+      time_zone: zone,
+    }],
+    ["a timed task keeps its clock time in its own zone", {
+      status: "next",
+      due_at: "2026-10-30T14:00:00Z",
+      time_zone: "UTC",
+    }, { due_at: "2026-11-02T14:00:00", time_zone: "UTC" }],
+  ])("%s", (_, task, expected) => {
+    expect(scheduleFields(makeTask(task), "tomorrow", zone, now)).toEqual(expected);
+  });
+
+  it("clears the due date without changing the status", () => {
+    expect(scheduleFields(makeTask({ status: "inbox" }), null, zone, now)).toEqual({ due_at: null });
   });
 });
 

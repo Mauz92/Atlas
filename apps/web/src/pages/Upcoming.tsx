@@ -6,8 +6,7 @@ import { groupUpcomingByDay } from "../lib/tasks";
 
 /** Tasks scheduled for later days, grouped by the calendar day they are due. */
 export function Upcoming() {
-  const { tasks, state, error, actionError, timeZone, reload, refresh, complete } =
-    useTaskView("upcoming");
+  const { tasks, state, error, timeZone, reload, refresh } = useTaskView("upcoming");
   const editor = useTaskEditor({ refresh, timeZone });
   const groups = groupUpcomingByDay(tasks, timeZone);
 
@@ -15,9 +14,9 @@ export function Upcoming() {
     <section className="page upcoming-page">
       <h1>Upcoming</h1>
 
-      {actionError || editor.error ? (
+      {editor.error ? (
         <p className="error" role="alert">
-          {actionError ?? editor.error}
+          {editor.error}
         </p>
       ) : null}
 
@@ -35,7 +34,8 @@ export function Upcoming() {
               <TaskList
                 tasks={group.tasks}
                 timeZone={timeZone}
-                onComplete={(task) => void complete(task)}
+                actions={editor.actions}
+                filable={editor.projects}
                 onOpen={editor.open}
               />
             </section>

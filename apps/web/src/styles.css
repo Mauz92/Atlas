@@ -1462,37 +1462,62 @@ button.statusbar-item:hover {
   margin-top: var(--s-4);
 }
 
+/* --- Task rows and menus (UX-03, ADR-0052) ----------------------------- */
+
+/*
+ * One row: [select] (o) Title ........ meta [hover actions] [...]. No per-row borders: spacing
+ * and a hover fill carry the structure. Rows are 36px on desktop (<= 40px, UX-03 acceptance);
+ * quick actions overlay the right end of the row on hover or focus; on touch screens they are not
+ * shown and the always-visible "..." menu carries every action.
+ */
 .task-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: var(--bg);
-  overflow: hidden;
 }
 
 .task-item {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--s-2) var(--s-3);
-  padding: var(--s-2) var(--s-3);
-  border-top: 1px solid var(--border);
+  gap: var(--s-2);
 }
 
-.task-item:first-child {
-  border-top: none;
+.task-row {
+  position: relative;
+  min-height: 36px;
+  padding: var(--s-1) var(--s-1) var(--s-1) var(--s-2);
+  border-radius: var(--r-md);
 }
 
-.task-item:hover {
+.task-row:hover,
+.task-row:focus-within,
+.task-row.has-menu {
   background: var(--bg-hover);
+}
+
+.task-row.is-selected {
+  background: var(--bg-selected);
+}
+
+.task-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
 }
 
 .task-title {
   flex: 1 1 12rem;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.task-row .task-title {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-open {
@@ -1511,7 +1536,333 @@ button.statusbar-item:hover {
 .task-open:hover,
 .task-open:active {
   background: none;
+}
+
+.task-row .task-open:hover {
   text-decoration: underline;
+  text-decoration-color: var(--border-control);
+  text-underline-offset: 3px;
+}
+
+.task-row.is-done .task-title,
+.task-row.is-archived .task-title {
+  color: var(--text-3);
+}
+
+.task-row.is-done .task-title {
+  text-decoration: line-through;
+  text-decoration-color: var(--border-control);
+}
+
+/* The round completion checkbox. */
+input.task-check {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+input.task-check:not(:checked):not(:disabled):hover::after {
+  content: "";
+  width: 7px;
+  height: 4px;
+  border: 1.5px solid var(--text-3);
+  border-top: 0;
+  border-right: 0;
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+input.task-check:checked::after {
+  width: 7px;
+  height: 4px;
+  border-width: 1.5px;
+}
+
+input.task-check:disabled {
+  border-style: dashed;
+}
+
+/* Bulk selection (Tasks page): shown on hover, focus, while selecting, and always on touch. */
+input.task-select {
+  opacity: 0;
+  transition: opacity var(--motion);
+}
+
+.task-row:hover input.task-select,
+.task-row:focus-within input.task-select,
+.task-list.is-selecting input.task-select,
+input.task-select:checked {
+  opacity: 1;
+}
+
+/* Meta line: muted, one line, right-aligned on wide rows. */
+.task-meta {
+  flex: 0 0 auto;
+  max-width: 60%;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--text-3);
+}
+
+.task-meta > * {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+/* Only a long parent title gives way (with an ellipsis); the rest is clipped at the end. */
+.task-meta > .task-parent {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.task-meta > .task-tag {
+  display: inline;
+}
+
+.task-parent-title {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-project {
+  color: var(--text-2);
+}
+
+.task-project::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.task-due.is-overdue,
+.priority-high {
+  color: var(--warning);
+}
+
+.priority-urgent {
+  color: var(--danger);
+}
+
+.priority-medium {
+  color: var(--text-2);
+}
+
+.task-row-actions {
+  position: absolute;
+  top: 50%;
+  right: calc(var(--control-sm) + var(--s-2));
+  display: flex;
+  gap: 0;
+  /* Fades out the end of the meta it covers instead of cutting it. */
+  padding-left: var(--s-6);
+  background: linear-gradient(to right, transparent, var(--bg-hover) var(--s-5));
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity var(--motion);
+}
+
+.task-row.is-selected .task-row-actions {
+  background: linear-gradient(to right, transparent, var(--bg-selected) var(--s-5));
+}
+
+.task-row:hover .task-row-actions,
+.task-row:focus-within .task-row-actions,
+.task-row.has-menu .task-row-actions {
+  opacity: 1;
+}
+
+button.icon-button.ghost:hover {
+  background: var(--bg-selected);
+}
+
+.task-more {
+  flex: none;
+}
+
+/* Touch: no hover, so no hover actions; the menu and the checkbox reach 44px targets. */
+@media (hover: none) {
+  .task-row-actions {
+    display: none;
+  }
+
+  input.task-select {
+    opacity: 1;
+  }
+}
+
+@media (pointer: coarse) {
+  .task-row {
+    min-height: 44px;
+  }
+
+  input.task-check,
+  input.task-select {
+    width: 22px;
+    height: 22px;
+  }
+
+  .task-row button.icon-button,
+  .board-card button.icon-button {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Narrow: the title may wrap to two lines and the meta goes under it. */
+@media (max-width: 720px) {
+  .task-body {
+    flex-wrap: wrap;
+    gap: 0 var(--s-3);
+  }
+
+  .task-row .task-title {
+    flex-basis: 100%;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .task-meta {
+    max-width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+    gap: 0 var(--s-3);
+    white-space: normal;
+  }
+}
+
+/* The shared menu / popover. */
+.menu {
+  position: fixed;
+  inset: auto;
+  z-index: 60;
+  margin: 0;
+  min-width: 220px;
+  max-width: min(320px, calc(100vw - 16px));
+  max-height: min(440px, calc(100vh - 16px));
+  overflow-y: auto;
+  padding: var(--s-1);
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-2);
+}
+
+button.menu-item {
+  display: flex;
+  width: 100%;
+  min-height: var(--control-sm);
+  justify-content: flex-start;
+  gap: var(--s-2);
+  padding: 0 var(--s-2);
+  font-weight: 400;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  box-shadow: none;
+}
+
+button.menu-item:hover,
+button.menu-item:focus {
+  background: var(--bg-hover);
+  outline: none;
+}
+
+button.menu-item:focus-visible {
+  background: var(--bg-selected);
+  box-shadow: inset 0 0 0 1px var(--border-control);
+}
+
+button.menu-item .icon {
+  color: var(--text-2);
+}
+
+button.menu-item[aria-disabled="true"] {
+  color: var(--text-3);
+  cursor: default;
+}
+
+button.menu-danger,
+button.menu-danger .icon {
+  color: var(--danger);
+}
+
+button.menu-danger:hover,
+button.menu-danger:focus {
+  background: var(--danger-soft);
+}
+
+.menu-icon-space {
+  flex: none;
+  width: 16px;
+}
+
+.menu-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-hint {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+button.menu-item .menu-chevron,
+.menu-check,
+.menu-check .icon {
+  color: var(--text-3);
+}
+
+.menu-check {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+}
+
+.menu-separator {
+  height: 1px;
+  margin: var(--s-1) 0;
+  background: var(--border);
+}
+
+.menu-date {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-2);
+}
+
+.menu-date-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+
+@media (pointer: coarse) {
+  button.menu-item {
+    min-height: 44px;
+  }
 }
 
 .daily-excerpt {
@@ -1528,19 +1879,6 @@ button.statusbar-item:hover {
   border: 1px solid var(--danger);
   background: var(--danger-soft);
   border-radius: var(--r-lg);
-}
-
-.inbox-actions {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-1);
-}
-
-.inbox-actions input[type="date"],
-.inbox-actions select {
-  width: auto;
-  max-width: 11rem;
 }
 
 /* --- Board (M4-03) ----------------------------------------------------- */
@@ -1614,10 +1952,12 @@ button.statusbar-item:hover {
 }
 
 .board-card {
+  /* Contains the meta's sr-only text, which would otherwise escape the scrolling columns. */
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-1) var(--s-2) var(--s-3);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--bg-raised);
@@ -1629,21 +1969,48 @@ button.statusbar-item:hover {
   opacity: 0.5;
 }
 
+.board-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-1);
+}
+
 .board-card-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-top: var(--s-1);
   overflow-wrap: anywhere;
 }
 
-.board-card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-2);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-sm);
+.board-card.is-done .board-card-title {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-control);
 }
 
-.board-move {
-  font-size: var(--fs-sm);
+.board-card .task-more {
+  opacity: 0;
+  transition: opacity var(--motion);
+}
+
+.board-card:hover .task-more,
+.board-card:focus-within .task-more,
+.board-card .task-more[aria-expanded="true"] {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .board-card .task-more {
+    opacity: 1;
+  }
+}
+
+.board-card .task-meta {
+  max-width: none;
+  margin-left: 0;
+  flex-wrap: wrap;
+  row-gap: var(--s-1);
+  white-space: normal;
 }
 
 @media (max-width: 1100px) {
@@ -1745,14 +2112,40 @@ button.statusbar-item:hover {
   margin: 0;
 }
 
-/* Cards are tall in a seven-column grid, so stack the row's meta vertically. */
-.week-day .task-item {
-  flex-wrap: wrap;
+/* Narrow columns: the title wraps and the meta goes under it; actions live in the menu. */
+.week-day .task-row {
   align-items: flex-start;
 }
 
-.week-day .task-title {
+.week-day .task-row > input {
+  margin-top: 2px;
+}
+
+.week-day .task-body {
+  flex-wrap: wrap;
+  gap: 0 var(--s-2);
+}
+
+.week-day .task-row .task-title {
   flex-basis: 100%;
+  white-space: normal;
+}
+
+.week-day .task-meta {
+  max-width: 100%;
+  margin-left: 0;
+  flex-wrap: wrap;
+  gap: 0 var(--s-2);
+  white-space: normal;
+}
+
+.week-day .task-meta > * {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.week-day .task-row-actions {
+  display: none;
 }
 
 @media (max-width: 1100px) {

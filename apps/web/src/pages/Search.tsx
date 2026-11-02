@@ -1,21 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
-import { tasksApi, type SearchTask } from "../api/client";
+import { tasksApi } from "../api/client";
+import { TaskRow } from "../components/TaskRow";
+import { useProjects } from "../hooks/useProjects";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 import { useUnifiedSearch } from "../hooks/useUnifiedSearch";
-import { STATUS_LABELS } from "../lib/taskStatus";
-import { formatDue, viewerTimeZone } from "../lib/tasks";
+import { viewerTimeZone } from "../lib/tasks";
 
 const PAGE_LIMIT = 25;
-
-function taskMeta(task: SearchTask, timeZone: string | undefined): string {
-  const parts: string[] = [STATUS_LABELS[task.status as keyof typeof STATUS_LABELS] ?? task.status];
-  if (task.due_at) {
-    parts.push(`due ${formatDue(task.due_at, timeZone)}`);
-  }
-  return parts.join(" · ");
-}
 
 /**
  * Search across notes, tasks and projects (MU-05): the same `GET /api/search` as the command
@@ -31,6 +24,11 @@ export function SearchPage() {
   const refresh = useCallback(async () => {}, []);
   const editor = useTaskEditor({ refresh, timeZone });
   const [openError, setOpenError] = useState<string | null>(null);
+  const { projects } = useProjects();
+  const projectById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project])),
+    [projects],
+  );
   const text = query.trim();
 
   const total = results ? results.notes.length + results.tasks.length + results.projects.length : 0;
@@ -83,26 +81,24 @@ export function SearchPage() {
       {results && results.tasks.length > 0 ? (
         <section aria-labelledby="search-tasks">
           <h2 id="search-tasks">Tasks</h2>
-          <ul className="search-results">
+          <ul className="task-list search-task-list">
             {results.tasks.map((task) => (
-              <li key={task.id}>
-                <button
-                  type="button"
-                  className="link"
-                  onClick={() => {
-                    setOpenError(null);
-                    tasksApi
-                      .get(task.id)
-                      .then(editor.open)
-                      .catch((err: unknown) =>
-                        setOpenError(err instanceof Error ? err.message : "Could not open the task"),
-                      );
-                  }}
-                >
-                  {task.title}
-                </button>
-                <span className="muted"> {taskMeta(task, timeZone)}</span>
-              </li>
+              <TaskRow
+                key={task.id}
+                task={task}
+                timeZone={timeZone}
+                project={task.project_id ? projectById.get(task.project_id) : undefined}
+                showStatus
+                onOpen={(found) => {
+                  setOpenError(null);
+                  tasksApi
+                    .get(found.id)
+                    .then(editor.open)
+                    .catch((err: unknown) =>
+                      setOpenError(err instanceof Error ? err.message : "Could not open the task"),
+                    );
+                }}
+              />
             ))}
           </ul>
         </section>

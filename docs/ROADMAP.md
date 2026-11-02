@@ -24,7 +24,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M8 | Notifications and mobile apps | `IN_PROGRESS` | Platform behaviour tested on real devices |
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
-| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `IN_PROGRESS` | UX-01 and UX-02 `DONE` 2026-11-02, UX-03 next; J1–J7 and the axe sweep keep passing while the UI is rebuilt |
+| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `IN_PROGRESS` | UX-01, UX-02 and UX-03 `DONE` 2026-11-02, UX-04 next; J1–J7 and the axe sweep keep passing while the UI is rebuilt |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -661,11 +661,11 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 |---|---|---|---|
 | UX-01 | Design tokens (neutral), base controls, pre-paint theme, quick wins 1, 3, 5, 6, 7, 8, 10 | MU-08 | `DONE` (local PASS 2026-11-02; evidence `ACCEPTANCE.md` UX-01; CI `e2e-real` NOT RUN) |
 | UX-02 | App shell: rail, sectioned sidebar, status bar, mobile bottom nav, vendored icons; Day removed from nav | UX-01 | `DONE` (local PASS 2026-11-02; evidence `ACCEPTANCE.md` UX-02; CI `e2e-real` NOT RUN; not committed) |
-| UX-03 | Task row, menus, quick actions (fixes: subtasks shown without parent; Complete shown on completed tasks) | UX-02 | `READY` |
-| UX-04 | Task detail as property panel with per-field autosave | UX-03 | `BACKLOG` |
+| UX-03 | Task row, menus, quick actions (fixes: subtasks shown without parent; Complete shown on completed tasks) | UX-02 | `DONE` (local PASS 2026-11-02; evidence `ACCEPTANCE.md` UX-03; ADR-0052; CI `e2e-real` NOT RUN; not committed) |
+| UX-04 | Task detail as property panel with per-field autosave | UX-03 | `READY` |
 | UX-05 | Notes workspace + note autosave (own tests before Save is removed) | UX-02 | `BACKLOG` |
 | UX-06 | Live preview mode; Live becomes default once round-trip tests pass | UX-05 | `BACKLOG` |
-| UX-07 | Tasks, Projects and Board polish | UX-03 | `BACKLOG` |
+| UX-07 | Tasks, Projects and Board polish | UX-03 | `READY` |
 | UX-08 | Settings consolidation, skeletons, empty states | UX-02 | `BACKLOG` |
 
 ### UX-01 plan — Design tokens and base controls
@@ -722,11 +722,33 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
   follow-ups: the open note at 1024 px is narrower than before (shell 288 px vs 220 px) until UX-05 collapses the
   sidebar on notes; Settings is not in the phone bottom nav (drawer).
 
+### UX-03 plan — Task row, menus and quick actions
+- **Scope.** One shared `TaskRow` (round checkbox, title, meta, hover/focus quick actions, "…" menu) on Today,
+  Inbox, Upcoming, Week, Tasks, project lists and search results; one shared accessible `Menu` (schedule:
+  Today/Tomorrow/Next week/pick a date; priority; project; status; delete with undo); list keys `j`/`k`/`x`/`t`/
+  `m`/`p`/Enter; board cards with the same meta and a card menu "Move to…" instead of the `<select>`; fixes for
+  subtasks shown without their parent and "Complete" on completed tasks (project page).
+- **Out of scope.** Task detail (UX-04), filter chips / Completed group / board `[`/`]` keys / drag-and-drop
+  changes (UX-07), page width, backend.
+- **Acceptance.** Inbox rows ≤ 2 persistent controls; J2 ≤ 2 interactions per item; rows ≤ 40 px on desktop
+  (Playwright on seeded data); every action keyboard-only (Playwright); phone Inbox with 9 items < 1,000 px; axe
+  clean; J1–J7, tasks-page and ux02 specs pass with selectors changed only where labels legitimately changed;
+  component tests for TaskRow and Menu, one real-stack spec for the keyboard/menu flows.
+- **Status: `DONE` (2026-11-02).** As built (ADR-0052): `components/TaskRow.tsx` (+ `TaskMeta`),
+  `components/Menu.tsx` (WAI-ARIA menu in a portal inside the opener's landmark, top layer via
+  `popover="manual"`, submenus as views, a date `dialog`), `components/TaskMenu.tsx` (entries),
+  `hooks/useTaskActions.ts` (existing PATCH/DELETE with `base_revision` + idempotency key, one change per task in
+  flight; exposed as `useTaskEditor().actions`), `hooks/useParentTitles.ts`, `lib/listKeys.ts`; `InboxActions.tsx`
+  removed. Persistent: checkbox + "…"; hover/focus: Schedule for today, Pick a date, Move to a project (hidden on
+  touch). Reopen = `completed → in_progress`. Tasks page: square selection box before the round checkbox, `x`
+  selects there. Subtasks keep the server's list semantics (not a bug) and name their parent. Inbox triage rule
+  (date or project → `next`) now applies on every list. Evidence: `ACCEPTANCE.md` UX-03.
+
 ---
 
 ## Immediate Next Tasks
 
-**Next: UX-03 (task row, menus and quick actions, ADR-0051; UX-01 and UX-02 are `DONE`), then close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
+**Next: UX-04 (task detail as a property panel with per-field autosave, ADR-0051 §4; UX-01, UX-02 and UX-03 are `DONE`; UX-07 is also `READY`), then close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
 editing) and `MU-02` (Projects UI), `MU-03` (Tasks page) and `MU-04` (recurrence, subtasks and reminders in the UI) and `MU-05` (command palette, quick switcher and unified search) and `MU-06` (note ↔ task ↔ project linking) and `MU-07` (daily note, templates and Today as home) and `MU-08` (settings and shell polish) are `DONE`; MU itself is not closed (CI run and release re-score outstanding, see the MU exit-criteria evaluation).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 

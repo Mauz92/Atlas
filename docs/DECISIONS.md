@@ -2323,3 +2323,66 @@ deletion, OIDC/2FA.
 (rapid typing, offline, 409 mid-typing, tab close, reload) before the explicit Save button is removed
 (UX-05). Task detail loses its Save button in UX-04. Until then the current Save buttons stay. Nothing here
 adds a data store or changes the Markdown format. Scope: UX tasks UX-01…UX-08 in `ROADMAP.md`.
+
+## ADR-0052 — One task row, a shared menu and list keys; Tasks-page selection; subtask context (UX-03)
+
+**Status:** Accepted (2026-11-02, within the owner's UX direction ADR-0051; every choice here is UI-only and
+reversible). **Source:** `UX_AUDIT.md` §1 verdict #2, §3.4, §4.3, §6 (UX-03, quick win 4).
+
+**Context.** Every list rendered its own row (`TaskList` plus page-specific controls): a bordered "Complete"
+button, six Inbox controls (`InboxActions`), a per-card `<select>` on the board, and no keyboard model beyond
+Tab. The audit also found two defects: subtasks listed as top-level rows with no parent shown, and the project
+page offering "Complete" on tasks that were already completed.
+
+**Decisions.**
+1. **One row.** `components/TaskRow.tsx` is the only task row: Today, Inbox, Upcoming, Week, Tasks, the project
+   list (and the unrouted Day view) render it through `TaskList`; search results render it read-only (they are a
+   snapshot of `/api/search`, which returns no revision, so actions happen in the detail panel). Board cards
+   reuse its `TaskMeta` and the same menu (`TaskMenu`). Row = round checkbox, title (opens the detail as
+   before), muted meta (parent, project dot + name, due in the shared `formatDue` format and the warning colour
+   when overdue, priority flag, subtask `n/m`, `#tags`), hover/focus quick actions and a "…" menu.
+2. **Completion is a native checkbox**, styled round, named `Complete <title>` whether open or done; checked
+   means completed. Unchecking reopens through `completed → in_progress`, the only reopening transition the
+   server allows (ADR-0013); archived tasks show a disabled checkbox. The tick is shown at once and replaced by
+   the server's answer. Every action is the existing `PATCH`/`DELETE` with `base_revision` and a fresh
+   idempotency key (`hooks/useTaskActions.ts`); one change per task is in flight at a time, a failure is shown in
+   the server's words and the list is re-read.
+3. **Persistent controls: two.** The checkbox and the "…" trigger are always visible. *Schedule for today*
+   (omitted when due today or done), *Pick a date* and *Move to a project* (omitted for subtasks or with no
+   project) appear on hover or when focus is in the row, overlaying the end of the row; under
+   `(hover: none)` they are not rendered visible and the menu carries everything. J2 stays within two
+   interactions: today 1, tomorrow 2 (menu, Tomorrow), a date 2 (picker, type + Enter), a project 2 (picker,
+   choose), delete 2 (menu, Delete; undo toast unchanged). Keys: `t` 1, `m` + choice 2.
+4. **The menu** (`components/Menu.tsx`) is a WAI-ARIA `menu` (`menuitem` / `menuitemradio`), rendered in a portal
+   and promoted to the top layer with the native Popover API (`popover="manual"`) where available, so a list's
+   `overflow` cannot clip it. Open/close logic is ours, not `popover="auto"` or `<dialog>`: light dismiss and focus
+   return differ between engines and are absent in jsdom, and a menu must not trap focus. Opening focuses the
+   checked choice or the first item; ↑ ↓ Home End and type-ahead move; → opens a submenu, ← or *Back* returns;
+   Enter/Space choose; Esc and Tab close and return focus to the opener; a press outside closes without moving
+   focus; handled keys never reach the row, the page or the task panel's Esc. Submenus replace the view (works at
+   phone width). The date choice is a small `role="dialog"` with a labelled date field and *Set date* (submit on
+   Enter): committing on `change` would fire on a partially typed year. Right-hand hints (weekday, current
+   value) are `aria-hidden`, so item names stay stable. Entries: Today, Tomorrow, Next week (the coming
+   Monday), Pick a date…, No date (when due); Priority; Move to project (not for subtasks); Status (current plus
+   the allowed transitions); Delete. On the board, "Move to…" (status) comes first and replaces the `<select>`.
+5. **Triage rule.** Giving an Inbox task a date or a project moves it to `next`, on every list (it was the
+   Inbox's rule; J2). Moving to another day keeps a task's clock time in its own zone; a date-only task stays
+   date-only (ADR-0044).
+6. **Tasks-page selection (MU-03) is a separate square checkbox** before the round one (`Select <title>`), shown
+   on hover/focus, whenever anything is selected, and always on touch. *Select all*, the bulk bar and its
+   actions are unchanged. On the Tasks page `x` selects; everywhere else `x` completes or reopens.
+7. **List keys** (only when not typing; a checkbox, radio or button input no longer counts as typing, so `?`
+   works there too): `j`/`k` next/previous row across all lists on the page (from outside a list: first/last),
+   Enter opens, `x` as above, `t` today, `m` project menu, `p` priority menu. Listed in `lib/shortcuts.ts` (the
+   help overlay). When the focused row leaves a list, focus moves to the row that took its place.
+8. **Subtasks keep the server's list semantics.** A subtask is a task (ADR-0016) and the views list it like any
+   other; that is intended, not a bug, so the server is unchanged. The row names the parent as muted context
+   ("Subtask of …"): from the same list when it is there, otherwise one `GET /api/tasks/{id}` per unseen parent,
+   kept for the session. A subtask has no project choice because it always shares its parent's project.
+
+**Consequences.** No backend, schema or dependency change; nine Lucide shapes added to the vendored icons
+(`DEPENDENCIES.md`). `InboxActions.tsx` is removed. Limitations: reopening lands in *In progress*, not the
+status before completion (the server keeps no history to restore); a renamed parent shows its old title in
+rows until it is listed again or the page reloads; quick actions cover the end of the meta while shown; Week's
+narrow day columns hide the quick actions (menu only); the board's `[`/`]` keys and drag-and-drop changes are
+UX-07.

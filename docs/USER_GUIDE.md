@@ -63,7 +63,9 @@ in this browser and follows your system preference until you change it.
 
 Press **?** (when you are not typing in a field) or choose **Keyboard shortcuts** in the palette to see
 them (also **Shortcuts** in the status bar). The main ones: **Ctrl/⌘ K** opens the palette, **Ctrl/⌘ B**
-shows or hides the sidebar, **Esc** closes a panel, **Enter** on a task title opens it, **Ctrl/⌘ Enter** saves it.
+shows or hides the sidebar, **Esc** closes a panel or menu, **Enter** on a task opens it, **Ctrl/⌘ Enter** saves it.
+In task lists: **j**/**k** move, **x** completes (selects, on the Tasks page), **t** today, **m** project,
+**p** priority (see *The views* below).
 
 ---
 
@@ -89,7 +91,7 @@ The window has four parts (UX-02):
 | Page | Route | What it does today |
 |---|---|---|
 | **Today** | `/` | Landing page: overdue, due today, work scheduled today, today's note and quick capture. |
-| **Inbox** | `/inbox` | Captured tasks waiting to be triaged; schedule, file or delete each. |
+| **Inbox** | `/inbox` | Captured tasks waiting to be triaged; schedule, file or delete each (quick actions, the **…** menu or the keys **t**/**m**). |
 | **Upcoming** | `/upcoming` | Tasks for later days, grouped by the day they are due. |
 | *(Day)* | `/day` | Removed from navigation (ADR-0051); the address now opens **Today**. |
 | **Week** | `/week` | The current week (Monday first), day by day. |
@@ -165,14 +167,31 @@ it.
 - **Week** — the seven days of the current week (Monday first), with week navigation. Empty days
   still render, so the week keeps a stable shape.
 
-Each task row shows its title and, when present, its priority, project tag, subtask progress and due
-time. Use **Complete** to mark a task done; the list refreshes. Completing a subtask never completes
-its parent, and completing one occurrence of a recurring task never completes the series.
+Each task row (UX-03) starts with a round **checkbox**: tick it to complete the task, untick a completed
+task to reopen it (it goes back to *In progress*). Next come the title (select it, or press **Enter**, to open
+the task) and, in grey, the parent task for a subtask (↳ *parent*), the project, the due date (amber when
+overdue), the priority flag, subtask progress (`1/3`) and `#tags`. Completing a subtask never completes its
+parent, and completing one occurrence of a recurring task never completes the series.
+
+When you point at a row, or move into it with the keyboard, three quick actions appear: **Schedule for
+today**, **Pick a date** and **Move to a project**. The **…** button at the end of every row opens the task
+menu: *Today*, *Tomorrow*, *Next week* (the coming Monday), *Pick a date…*, *No date*, *Priority*, *Move to
+project*, *Status* and *Delete* (with **Undo**). On a phone the quick actions are not shown; use **…**.
+Giving an Inbox task a date or a project moves it out of the Inbox (to *Next*). A task that already has a
+time keeps it when you move it to another day. A subtask always belongs to its parent's project, so it has no
+project choice.
+
+**Keyboard.** In any task list (when you are not typing in a field): **j** / **k** move to the next /
+previous task, **Enter** opens it, **x** completes or reopens it, **t** schedules it for today, **m** opens the
+project menu and **p** the priority menu. In a menu, use the arrow keys (or type the first letters), **Enter**
+to choose and **Esc** to close. On the **Tasks** page, **x** selects the task for the bulk actions instead
+(the square box before the round checkbox; it shows when you point at a row or once anything is selected).
 
 ### The board
 
 On **Board**, the five columns are the task statuses. Move a task by **dragging** its card to another
-column, or with the card's **status menu** (the keyboard-accessible path). Only transitions Atlas
+column, or with **…** on the card → **Move to…** (the keyboard-accessible path; the same menu also schedules,
+sets the priority, files to a project and deletes). Only transitions Atlas
 allows are offered; a move the server rejects is reported on the page and the card is **not** moved.
 Business rule and rationale: `ROADMAP.md` M4-03 (ADR-0022).
 

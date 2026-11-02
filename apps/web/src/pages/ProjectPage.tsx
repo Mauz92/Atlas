@@ -7,7 +7,6 @@ import {
   tasksApi,
   type NoteSummary,
   type Project,
-  type Task,
 } from "../api/client";
 import { Board } from "../components/Board";
 import { LoadError } from "../components/LoadError";
@@ -92,12 +91,6 @@ export function ProjectPage() {
       setProject(await projectsApi.update(project, { status }));
       await reloadProjects();
     }, "Could not update the project");
-
-  const complete = (task: Task) =>
-    run(async () => {
-      await tasksApi.complete(task);
-      await refresh();
-    }, "Could not complete the task");
 
   const linkable = allNotes.filter(
     (note) => !notes.some((linked) => linked.id === note.id),
@@ -211,8 +204,10 @@ export function ProjectPage() {
           tasks={tasks}
           timeZone={board.timeZone}
           emptyMessage="No tasks in this project yet."
+          hideProject
+          actions={editor.actions}
+          filable={editor.projects}
           onOpen={editor.open}
-          onComplete={(task) => void complete(task)}
         />
       ) : (
         <Board
@@ -225,6 +220,8 @@ export function ProjectPage() {
           onOpen={editor.open}
           movingId={board.movingId}
           empty={board.total === 0}
+          actions={editor.actions}
+          hideProject
         />
       )}
 

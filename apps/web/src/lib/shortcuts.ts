@@ -22,11 +22,32 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
-    title: "Tasks",
+    title: "Task lists (when you are not typing in a field)",
     items: [
-      { keys: "Enter", action: "Open the focused task (on its title)" },
-      { keys: "Ctrl/⌘ Enter", action: "Save the open task" },
+      { keys: "j / k", action: "Move to the next / previous task (from outside a list: the first / last)" },
+      { keys: "Enter", action: "Open the focused task" },
+      {
+        keys: "x",
+        action:
+          "Complete the focused task, or reopen it if it is completed. On the Tasks page: select or deselect it for bulk actions",
+      },
+      { keys: "t", action: "Schedule the focused task for today" },
+      { keys: "m", action: "Move the focused task to a project (opens the project menu)" },
+      { keys: "p", action: "Set the focused task's priority (opens the priority menu)" },
+      { keys: "Space", action: "On a checkbox: complete or select" },
     ],
+  },
+  {
+    title: "Menus",
+    items: [
+      { keys: "↑ ↓  Home End", action: "Move through the items (a letter jumps to the next item starting with it)" },
+      { keys: "Enter", action: "Choose the item (→ opens a submenu, ← goes back)" },
+      { keys: "Esc", action: "Close the menu and return to where you were" },
+    ],
+  },
+  {
+    title: "Task details",
+    items: [{ keys: "Ctrl/⌘ Enter", action: "Save the open task" }],
   },
 ];
 
@@ -38,6 +59,10 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   if (target.isContentEditable || target.closest("[contenteditable='true'], .cm-editor")) {
     return true;
   }
+  if (target instanceof HTMLInputElement) {
+    // A checkbox, radio or button takes no text, so list keys (UX-03) and "?" still apply there.
+    return !["checkbox", "radio", "button", "submit", "reset"].includes(target.type);
+  }
   const tag = target.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+  return tag === "TEXTAREA" || tag === "SELECT";
 }

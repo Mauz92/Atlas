@@ -22,6 +22,7 @@ import {
   type NavItem,
   type NavSection,
 } from "../lib/navigation";
+import { focusEdgeRow, inRowOrPopup } from "../lib/listKeys";
 import { isTypingTarget } from "../lib/shortcuts";
 import { CommandPalette } from "./CommandPalette";
 import { Icon } from "./Icon";
@@ -192,6 +193,21 @@ function Shell() {
         // "?" is typed with Shift on most layouts, so Shift is allowed; a field gets its own "?".
         event.preventDefault();
         setHelpOpen(true);
+      } else if (
+        (event.key === "j" || event.key === "k") &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.defaultPrevented &&
+        !isTypingTarget(event.target) &&
+        !inRowOrPopup(document.activeElement)
+      ) {
+        // List keys (UX-03): from outside a list, j/k land on its first/last row. Inside a row
+        // the row handles them (and prevents the default, so this does not run twice).
+        const main = document.getElementById(MAIN_ID);
+        if (main && focusEdgeRow(main, event.key === "j" ? "first" : "last")) {
+          event.preventDefault();
+        }
       }
     }
     window.addEventListener("keydown", onKeyDown);

@@ -6,6 +6,21 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Changed (UX-03): **calmer task rows with a menu and keyboard keys.** Every task list (Today, Inbox,
+  Upcoming, Week, Tasks, a project's list and search results) uses one row: a round checkbox instead of the
+  **Complete** button, the title, and a grey meta line (project, due date in amber when overdue, priority
+  flag, subtask progress, `#tags`). Pointing at a row (or moving into it with the keyboard) shows **Schedule
+  for today**, **Pick a date** and **Move to a project**; the **…** button opens a menu with Today, Tomorrow,
+  Next week, Pick a date…, No date, Priority, Move to project, Status and Delete (with Undo). The Inbox no
+  longer shows six controls per row, and on a phone nine Inbox items fit on one screen. New list keys (when not
+  typing): **j**/**k** move, **Enter** opens, **x** completes or reopens (on the Tasks page: selects), **t**
+  today, **m** project menu, **p** priority menu; they are in the **?** list. Board cards are compact, and the
+  status drop-down on each card is now **…** → **Move to…**. On the Tasks page the selection box sits before the
+  round checkbox and appears when you point at a row or once something is selected.
+- Fixed (UX-03): a subtask in a list now names its parent (↳ *parent*) instead of looking like an unrelated
+  task. The project page no longer offers **Complete** on tasks that are already completed: they show a ticked
+  checkbox, and unticking it reopens the task.
+
 - Changed (UX-02): **a new app shell.** On the left an icon rail goes to **Today**, **Inbox**, **Tasks**,
   **Projects** and **Notes**, with **Settings** at the bottom. Next to it the sidebar has **Search** (opens the
   Ctrl/⌘ K palette) and three foldable sections: **Planning** (Today, Inbox, Upcoming, Week), **Workspace**

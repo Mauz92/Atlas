@@ -1,12 +1,13 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { useInRouterContext } from "react-router-dom";
 
-import { tasksApi, type Task } from "../api/client";
+import { tasksApi, type Project, type Task } from "../api/client";
 import { RoutedTaskDetail } from "../components/RoutedTaskDetail";
 import { TaskDetail } from "../components/TaskDetail";
 import { UndoToast } from "../components/UndoToast";
-import { useProjects } from "./useProjects";
+import { useTaskActions, type TaskActions } from "./useTaskActions";
+import { activeProjects, useProjects } from "./useProjects";
 
 export interface TaskEditorOptions {
   /** Refresh the list that hosts the editor, without a loading flash. */
@@ -19,7 +20,11 @@ export interface TaskEditor {
   open: (task: Task) => void;
   /** Delete a task from a list row, offering undo. */
   remove: (task: Task) => Promise<void>;
-  /** An error from a delete/undo started outside the panel. */
+  /** Row quick actions (UX-03): complete/reopen, schedule, priority, project, status, delete. */
+  actions: TaskActions;
+  /** Projects a task can be filed under (active ones), for the row menus. */
+  projects: Project[];
+  /** An error from a row action, or a delete/undo started outside the panel. */
   error: string | null;
   /** The panel and the undo notice; render once at the end of the page. */
   overlays: ReactElement;
@@ -97,6 +102,9 @@ export function useTaskEditor({
 
   const dismissToast = useCallback(() => setDeleted(null), []);
 
+  const actions = useTaskActions({ refresh: refreshAll, timeZone, remove });
+  const filable = useMemo(() => activeProjects(projects), [projects]);
+
   // Outside a router (component tests of a single list) there is nowhere to navigate to.
   const Detail = routed ? RoutedTaskDetail : TaskDetail;
 
@@ -133,5 +141,12 @@ export function useTaskEditor({
     </>
   );
 
-  return { open, remove, error, overlays };
+  return {
+    open,
+    remove,
+    actions,
+    projects: filable,
+    error: error ?? actions.error,
+    overlays,
+  };
 }

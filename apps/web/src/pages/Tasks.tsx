@@ -415,16 +415,15 @@ export function Tasks() {
             tasks={tasks}
             timeZone={timeZone}
             projects={projectsById}
+            actions={editor.actions}
+            filable={editor.projects}
             onOpen={editor.open}
             emptyMessage="No tasks match these filters."
-            renderLead={(task) => (
-              <input
-                type="checkbox"
-                aria-label={`Select ${task.title}`}
-                checked={selected.has(task.id)}
-                onChange={() => toggle(task.id)}
-              />
-            )}
+            selection={{
+              isSelected: (id) => selected.has(id),
+              toggle: (task) => toggle(task.id),
+              active: selected.size > 0,
+            }}
           />
         </>
       )}

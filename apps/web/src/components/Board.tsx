@@ -1,9 +1,14 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { DragEvent } from "react";
 
-import type { Task } from "../api/client";
-import { STATUS_LABELS, STATUS_ORDER, canMove, type BoardColumn } from "../lib/taskStatus";
-import { formatDue, priorityPillClass, sentenceCase } from "../lib/tasks";
+import type { Project, Task, TaskStatus } from "../api/client";
+import { useParentTitles } from "../hooks/useParentTitles";
+import { activeProjects, useProjects } from "../hooks/useProjects";
+import type { TaskActions } from "../hooks/useTaskActions";
+import { canMove, type BoardColumn } from "../lib/taskStatus";
+import { Icon } from "./Icon";
+import { TaskMenu } from "./TaskMenu";
+import { TaskMeta } from "./TaskRow";
 
 interface BoardProps {
   /** The columns to render, in order (each carries its allowed move targets). */
@@ -20,15 +25,19 @@ interface BoardProps {
   onOpen?: (task: Task) => void;
   /** Show a board-level hint when there are no tasks at all. */
   empty?: boolean;
+  /** Card menu actions besides "Move to…" (schedule, priority, project, delete). */
+  actions?: TaskActions;
+  /** Leave the project out of the card meta (a project's own board). */
+  hideProject?: boolean;
 }
 
 /**
  * A Kanban board whose columns are the task statuses (PRODUCT_SPEC §5.3, ADR-0022).
  *
  * Purely presentational: the page supplies the tasks and persists moves. A card can be dragged to
- * another column with native HTML5 drag-and-drop, and each card also carries a status `<select>`
- * for keyboard users. Both paths offer only the transitions the server allows (the select offers
- * every status but disables the forbidden ones); the server re-validates every move regardless.
+ * another column with native HTML5 drag-and-drop, and each compact card (UX-03) has a "…" menu
+ * whose "Move to…" offers the same moves to keyboard and touch users. Both paths offer only the
+ * transitions the server allows; the server re-validates every move regardless.
  */
 export function Board({
   columns,
@@ -38,9 +47,19 @@ export function Board({
   onOpen,
   movingId,
   empty,
+  actions,
+  hideProject,
 }: BoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overStatus, setOverStatus] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ task: Task; anchor: HTMLElement } | null>(null);
+  const menuId = useId();
+  const { projects } = useProjects();
+  const projectById = useMemo(
+    () => new Map<string, Project>(projects.map((project) => [project.id, project])),
+    [projects],
+  );
+  const filable = useMemo(() => activeProjects(projects), [projects]);
 
   const tasksById = useMemo(() => {
     const byId = new Map<string, Task>();
@@ -51,6 +70,9 @@ export function Board({
     }
     return byId;
   }, [columns, tasksByStatus]);
+
+  const allTasks = useMemo(() => [...tasksById.values()], [tasksById]);
+  const parents = useParentTitles(allTasks);
 
   function taskFor(id: string | null): Task | undefined {
     return id ? tasksById.get(id) : undefined;
@@ -118,50 +140,52 @@ export function Board({
                   {columnTasks.map((task) => (
                     <li
                       key={task.id}
-                      className={`board-card${draggingId === task.id ? " dragging" : ""}`}
+                      className={`board-card${draggingId === task.id ? " dragging" : ""}${
+                        task.status === "completed" ? " is-done" : ""
+                      }`}
+                      data-task-id={task.id}
                       draggable
                       onDragStart={(event) => onDragStart(event, task)}
                       onDragEnd={onDragEnd}
                     >
-                      {onOpen ? (
+                      <div className="board-card-head">
+                        {onOpen ? (
+                          <button
+                            type="button"
+                            className="board-card-title task-open"
+                            aria-label={`Open ${task.title}`}
+                            onClick={() => onOpen(task)}
+                          >
+                            {task.title}
+                          </button>
+                        ) : (
+                          <span className="board-card-title">{task.title}</span>
+                        )}
                         <button
                           type="button"
-                          className="board-card-title task-open"
-                          aria-label={`Open ${task.title}`}
-                          onClick={() => onOpen(task)}
+                          className="icon-button ghost task-more"
+                          aria-label={`Actions for ${task.title}`}
+                          title="More actions"
+                          aria-haspopup="menu"
+                          aria-expanded={menu?.task.id === task.id}
+                          aria-controls={menu?.task.id === task.id ? menuId : undefined}
+                          disabled={movingId === task.id}
+                          onClick={(event) => {
+                            const anchor = event.currentTarget;
+                            setMenu((open) => (open?.task.id === task.id ? null : { task, anchor }));
+                          }}
                         >
-                          {task.title}
+                          <Icon name="ellipsis" />
                         </button>
-                      ) : (
-                        <span className="board-card-title">{task.title}</span>
-                      )}
-                      {task.priority !== "none" || task.due_at ? (
-                        <div className="board-card-meta">
-                          {task.priority !== "none" ? (
-                            <span className={priorityPillClass(task.priority)}>{sentenceCase(task.priority)}</span>
-                          ) : null}
-                          {task.due_at ? (
-                            <span className="muted">{formatDue(task.due_at, task.time_zone ?? timeZone)}</span>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      <select
-                        className="board-move"
-                        aria-label={`Move ${task.title}`}
-                        value={task.status}
-                        disabled={movingId === task.id}
-                        onChange={(event) => onMove(task, event.target.value)}
-                      >
-                        {STATUS_ORDER.map((status) => (
-                          <option
-                            key={status}
-                            value={status}
-                            disabled={status !== task.status && !canMove(task.status, status)}
-                          >
-                            {STATUS_LABELS[status]}
-                          </option>
-                        ))}
-                      </select>
+                      </div>
+                      <TaskMeta
+                        task={task}
+                        timeZone={timeZone}
+                        project={
+                          task.project_id && !hideProject ? projectById.get(task.project_id) : undefined
+                        }
+                        parentTitle={task.parent_task_id ? parents.get(task.parent_task_id) : undefined}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -170,6 +194,19 @@ export function Board({
           );
         })}
       </div>
+      {menu ? (
+        <TaskMenu
+          id={menuId}
+          anchor={menu.anchor}
+          task={menu.task}
+          actions={actions}
+          projects={filable}
+          timeZone={timeZone}
+          variant="board"
+          onMove={(task: Task, status: TaskStatus) => onMove(task, status)}
+          onClose={() => setMenu(null)}
+        />
+      ) : null}
     </div>
   );
 }

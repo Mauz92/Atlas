@@ -37,11 +37,9 @@ export function Week() {
     state,
     error,
     projectsError,
-    actionError,
     timeZone,
     reload,
     refresh,
-    complete,
   } = usePlanning(window);
   const editor = useTaskEditor({ refresh, timeZone });
 
@@ -69,9 +67,9 @@ export function Week() {
         </nav>
       </header>
 
-      {actionError || editor.error ? (
+      {editor.error ? (
         <p className="error" role="alert">
-          {actionError ?? editor.error}
+          {editor.error}
         </p>
       ) : null}
 
@@ -101,8 +99,9 @@ export function Week() {
                     tasks={group.tasks}
                     timeZone={timeZone}
                     projects={projectById}
-                    onComplete={(task) => void complete(task)}
-                  onOpen={editor.open}
+                    actions={editor.actions}
+                    filable={editor.projects}
+                    onOpen={editor.open}
                     emptyMessage="Nothing scheduled."
                   />
                 </section>

@@ -163,6 +163,18 @@ Cover, at minimum:
   and focus return), checks the old URLs, the offline status bar and runs axe on the collapsed and drawer states.
   e2e specs find navigation through the rail (`rail(page)` in `e2e-real/helpers.ts`) or the bottom nav on phones,
   and open the palette with `searchButton(page)`.
+- Task rows and menus (UX-03): `src/components/Menu.test.tsx` (the shared menu, parametrized: focus on open,
+  ↑ ↓ Home End and type-ahead, Esc/Tab close and return focus, Esc does not reach document listeners, outside
+  press, submenus and Back, `initialPath`, the date dialog), `src/components/TaskRow.test.tsx` (meta line,
+  checkbox per status, two persistent controls, list keys `x`/`t`/`m`/`p`/`j`/`k`, every menu entry → its
+  action, allowed statuses only, subtask has no project choice), `src/components/TaskList.test.tsx` (read-only
+  rows, parent named from the list or the API, focus moves to the next row when one leaves),
+  `src/lib/taskForm.test.ts` (`scheduleDate`/`scheduleFields`). `e2e-real/ux03-rows-and-menus.spec.ts` measures
+  rows (≤ 40 px on Today, Inbox, Upcoming, Tasks and a project page at 1440 px), counts the Inbox row's visible
+  controls (2), the phone Inbox height (9 items, < 1000 px) and drives every row action by keyboard alone; it
+  first moves earlier specs' Inbox leftovers to *Next* (the database is shared per run). The axe sweep
+  (`mu08-a11y-and-layout.spec.ts`) also checks the open row menu and its date dialog. Unit tests open menus with
+  `choose(trigger, ...items)` / `menuItem(name)` from `src/test/menu.ts`.
 
 ## 5. Calendar Adapter Tests
 

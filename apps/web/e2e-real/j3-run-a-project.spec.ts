@@ -47,16 +47,20 @@ test("J3: create a project, run its tasks on the list and board, link a note, ar
   }
   await expect(page.getByText("0/3 done · 0%")).toBeVisible();
 
-  await page.getByRole("button", { name: "Complete J3 buy saplings" }).click();
+  // UX-03: the "Complete" button is now a round checkbox with the same accessible name.
+  await page.getByRole("checkbox", { name: "Complete J3 buy saplings" }).click();
   await expect(page.getByText("1/3 done · 33%")).toBeVisible();
 
-  // The board: move a task, and it survives a reload.
+  // The board: move a task with its card menu ("Move to…"), and it survives a reload.
+  const inProgress = page.getByRole("region", { name: "In progress" });
   await page.getByRole("button", { name: "Board", exact: true }).click();
-  await page.getByLabel("Move J3 dig holes").selectOption({ label: "In progress" });
-  await expect(page.getByLabel("Move J3 dig holes")).toHaveValue("in_progress");
+  await page.getByRole("button", { name: "Actions for J3 dig holes" }).click();
+  await page.getByRole("menuitem", { name: "Move to…" }).click();
+  await page.getByRole("menuitemradio", { name: "In progress" }).click();
+  await expect(inProgress.getByRole("button", { name: "Open J3 dig holes" })).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: "Board", exact: true }).click();
-  await expect(page.getByLabel("Move J3 dig holes")).toHaveValue("in_progress");
+  await expect(inProgress.getByRole("button", { name: "Open J3 dig holes" })).toBeVisible();
 
   // Linked notes persist.
   await page.getByLabel("Link a note").selectOption({ label: "j3/orchard-plan.md" });

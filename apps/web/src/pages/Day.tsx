@@ -41,11 +41,9 @@ export function Day() {
     state,
     error,
     projectsError,
-    actionError,
     timeZone,
     reload,
     refresh,
-    complete,
   } = usePlanning(window);
   const editor = useTaskEditor({ refresh, timeZone });
 
@@ -74,9 +72,9 @@ export function Day() {
         </nav>
       </header>
 
-      {actionError || editor.error ? (
+      {editor.error ? (
         <p className="error" role="alert">
-          {actionError ?? editor.error}
+          {editor.error}
         </p>
       ) : null}
 
@@ -102,7 +100,8 @@ export function Day() {
                   tasks={overdue}
                   timeZone={timeZone}
                   projects={projectById}
-                  onComplete={(task) => void complete(task)}
+                  actions={editor.actions}
+                  filable={editor.projects}
                   onOpen={editor.open}
                   emptyMessage="Nothing overdue."
                 />
@@ -113,7 +112,8 @@ export function Day() {
                   tasks={dueToday}
                   timeZone={timeZone}
                   projects={projectById}
-                  onComplete={(task) => void complete(task)}
+                  actions={editor.actions}
+                  filable={editor.projects}
                   onOpen={editor.open}
                   emptyMessage="Nothing else due today."
                 />
@@ -127,7 +127,8 @@ export function Day() {
                   tasks={dayTasks}
                   timeZone={timeZone}
                   projects={projectById}
-                  onComplete={(task) => void complete(task)}
+                  actions={editor.actions}
+                  filable={editor.projects}
                   onOpen={editor.open}
                   emptyMessage="Nothing due this day."
                 />

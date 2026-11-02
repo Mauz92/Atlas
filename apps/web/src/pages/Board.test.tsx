@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { ApiError, tasksApi } from "../api/client";
+import { choose } from "../test/menu";
 import { makeTask } from "../test/tasks";
 import { BoardPage } from "./Board";
 
@@ -49,8 +50,7 @@ describe("BoardPage", () => {
 
     render(<BoardPage />);
 
-    const select = await screen.findByLabelText("Move Alpha");
-    fireEvent.change(select, { target: { value: "in_progress" } });
+    await choose("Actions for Alpha", "Move to…", "In progress");
 
     await waitFor(() => expect(setStatusMock).toHaveBeenCalledWith(task, "in_progress"));
     expect(await within(column("In progress")).findByText("Alpha")).toBeInTheDocument();
@@ -68,9 +68,7 @@ describe("BoardPage", () => {
 
     render(<BoardPage />);
 
-    fireEvent.change(await screen.findByLabelText("Move Alpha"), {
-      target: { value: "in_progress" },
-    });
+    await choose("Actions for Alpha", "Move to…", "In progress");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/changed elsewhere/i);
     expect(within(column("Inbox")).getByText("Alpha")).toBeInTheDocument();
@@ -93,9 +91,7 @@ describe("BoardPage", () => {
 
     render(<BoardPage />);
 
-    fireEvent.change(await screen.findByLabelText("Move Gamma"), {
-      target: { value: "in_progress" },
-    });
+    await choose("Actions for Gamma", "Move to…", "In progress");
 
     expect(await screen.findByRole("alert")).toHaveTextContent("invalid status transition");
     expect(setStatusMock).toHaveBeenCalledTimes(1);

@@ -98,12 +98,38 @@ describe("ProjectPage", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Board" }));
-    expect(await screen.findByLabelText("Move Dig")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Actions for Dig" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Archive project" }));
     expect(
       await screen.findByRole("button", { name: "Restore project" }),
     ).toBeInTheDocument();
+  });
+
+  // UX-03 regression: completed tasks used to show a "Complete" button. They now show a checked
+  // round checkbox, and unchecking it reopens the task through the server transition.
+  it.each([
+    ["next", false, "complete"],
+    ["completed", true, "setStatus"],
+  ] as const)("a %s task shows checked=%s and toggling it calls %s", async (status, checked, call) => {
+    const task = makeTask({ id: "t2", title: "Plant", status, project_id: "p1" });
+    vi.mocked(tasksApi.list).mockResolvedValue({ tasks: [task] });
+    vi.mocked(tasksApi.complete).mockResolvedValue(task);
+    vi.mocked(tasksApi.setStatus).mockResolvedValue(task);
+    renderPage();
+
+    const box = await screen.findByRole("checkbox", { name: "Complete Plant" });
+    expect(box).toHaveProperty("checked", checked);
+    expect(screen.queryByRole("button", { name: /^Complete/ })).not.toBeInTheDocument();
+    fireEvent.click(box);
+
+    if (call === "complete") {
+      await waitFor(() => expect(tasksApi.complete).toHaveBeenCalledWith(task));
+    } else {
+      await waitFor(() => expect(tasksApi.setStatus).toHaveBeenCalledWith(task, "in_progress"));
+    }
   });
 
   it("links and unlinks notes", async () => {

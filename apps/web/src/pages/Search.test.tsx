@@ -53,7 +53,9 @@ describe("SearchPage", () => {
     expect(screen.getByRole("status")).toHaveTextContent("3 results");
     expect(searchApi.search).toHaveBeenCalledWith("zeb", expect.objectContaining({ limit: 25 }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Feed zebra" }));
+    // A result is the shared task row (UX-03): read-only, with its status in the meta line.
+    expect(screen.getByText("Next")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Feed zebra" }));
     expect(await screen.findByRole("dialog", { name: "Task details" })).toBeInTheDocument();
   });
 

@@ -324,7 +324,7 @@ describe("Today", () => {
 
     renderToday();
     fireEvent.click(
-      await screen.findByRole("button", { name: "Complete Write report" }),
+      await screen.findByRole("checkbox", { name: "Complete Write report" }),
     );
 
     await waitFor(() => expect(completeMock).toHaveBeenCalledWith(task));
@@ -339,7 +339,7 @@ describe("Today", () => {
 
     renderToday();
     fireEvent.click(
-      await screen.findByRole("button", { name: "Complete Write report" }),
+      await screen.findByRole("checkbox", { name: "Complete Write report" }),
     );
 
     expect(await screen.findByRole("alert")).toHaveTextContent(

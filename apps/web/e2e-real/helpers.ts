@@ -85,7 +85,7 @@ export async function ensureOwner(page: Page): Promise<void> {
  */
 export async function apiCall<T = unknown>(
   page: Page,
-  method: "GET" | "POST" | "PUT" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<T> {

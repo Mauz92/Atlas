@@ -1,8 +1,19 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { projectsApi, tasksApi } from "../api/client";
+import { ProjectsProvider } from "../hooks/useProjects";
+import { choose } from "../test/menu";
 import { makeProject, makeTask } from "../test/tasks";
-import { Inbox } from "./Inbox";
+import { Inbox as InboxPage } from "./Inbox";
+
+/** The Inbox inside the shared project list, as in the app (the menus file into these). */
+function Inbox() {
+  return (
+    <ProjectsProvider>
+      <InboxPage />
+    </ProjectsProvider>
+  );
+}
 
 vi.mock("../api/client", () => ({
   tasksApi: {
@@ -118,12 +129,14 @@ describe("Inbox", () => {
     updateMock.mockResolvedValue(makeTask({ ...task, status: "next" }));
 
     render(<Inbox />);
-    fireEvent.change(
-      await screen.findByLabelText("Pick a date for Call the vet"),
-      {
-        target: { value: "2031-03-04" },
-      },
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Pick a date for Call the vet" }),
     );
+    const dialog = screen.getByRole("dialog", { name: "Pick a date for Call the vet" });
+    fireEvent.change(within(dialog).getByLabelText("Due date"), {
+      target: { value: "2031-03-04" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Set date" }));
 
     await waitFor(() =>
       expect(updateMock).toHaveBeenCalledWith(
@@ -144,10 +157,7 @@ describe("Inbox", () => {
     );
 
     render(<Inbox />);
-    await screen.findByRole("option", { name: "Home" });
-    fireEvent.change(screen.getByLabelText("File Call the vet to a project"), {
-      target: { value: "p1" },
-    });
+    await choose("Move Call the vet to a project", "Home");
 
     await waitFor(() =>
       expect(updateMock).toHaveBeenCalledWith(task, {
@@ -186,9 +196,7 @@ describe("Inbox", () => {
     restoreMock.mockResolvedValue(task);
 
     render(<Inbox />);
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Delete Call the vet" }),
-    );
+    await choose("Actions for Call the vet", "Delete");
 
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Deleted “Call the vet”",

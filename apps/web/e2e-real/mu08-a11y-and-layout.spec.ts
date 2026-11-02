@@ -96,6 +96,14 @@ test("axe finds no violations on the main pages in either theme, and no page ove
   await expect(page.getByRole("dialog", { name: "Task details" })).toBeVisible();
   await check("task details");
   await page.keyboard.press("Escape");
+  // UX-03: the shared row menu (a portal in the top layer) and its date dialog.
+  await page.getByRole("button", { name: "Actions for A11y inbox task" }).click();
+  await expect(page.getByRole("menu", { name: "Actions for A11y inbox task" })).toBeVisible();
+  await check("task menu");
+  await page.getByRole("menuitem", { name: "Pick a date…" }).click();
+  await expect(page.getByRole("dialog", { name: "Pick a date for A11y inbox task" })).toBeVisible();
+  await check("task date picker");
+  await page.keyboard.press("Escape");
   await searchButton(page).click();
   await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
   await check("command palette");

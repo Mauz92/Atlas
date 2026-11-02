@@ -152,7 +152,7 @@ describe("Day", () => {
     completeMock.mockResolvedValue(makeTask({ ...task, status: "completed" }));
 
     render(<Day />);
-    fireEvent.click(await screen.findByRole("button", { name: "Complete Write report" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Complete Write report" }));
 
     await waitFor(() => expect(completeMock).toHaveBeenCalledWith(task));
     expect(listMock).toHaveBeenCalledTimes(2);
@@ -165,7 +165,7 @@ describe("Day", () => {
     completeMock.mockRejectedValue(new Error("Revision conflict"));
 
     render(<Day />);
-    fireEvent.click(await screen.findByRole("button", { name: "Complete Write report" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Complete Write report" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Revision conflict");
     expect(screen.getByText("Write report")).toBeInTheDocument();

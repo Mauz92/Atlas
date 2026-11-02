@@ -28,8 +28,7 @@ function messageOf(err: unknown, fallback: string): string {
  */
 export function Today() {
   const navigate = useNavigate();
-  const { tasks, state, error, actionError, timeZone, reload, refresh, complete } =
-    useTaskView("today");
+  const { tasks, state, error, timeZone, reload, refresh } = useTaskView("today");
   const [scheduled, setScheduled] = useState<Task[]>([]);
   const [scheduledError, setScheduledError] = useState<string | null>(null);
   const [daily, setDaily] = useState<DailyPreview | null>(null);
@@ -98,11 +97,6 @@ export function Today() {
     await refreshAll();
   }
 
-  async function completeTask(task: Task) {
-    await complete(task);
-    await loadScheduled();
-  }
-
   async function openTodaysNote() {
     if (dailyBusy) {
       return;
@@ -122,7 +116,8 @@ export function Today() {
     <TaskList
       tasks={items}
       timeZone={timeZone}
-      onComplete={(task) => void completeTask(task)}
+      actions={editor.actions}
+      filable={editor.projects}
       onOpen={editor.open}
       emptyMessage={emptyMessage}
     />
@@ -133,9 +128,9 @@ export function Today() {
       <h1>Today</h1>
       <QuickCapture onCapture={capture} placeholder="Add a task for today…" />
 
-      {actionError || editor.error ? (
+      {editor.error ? (
         <p className="error" role="alert">
-          {actionError ?? editor.error}
+          {editor.error}
         </p>
       ) : null}
 

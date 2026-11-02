@@ -3165,3 +3165,66 @@ Limitations: `Day.tsx` and its unit test remain in the tree but are unrouted unt
 (ADR-0051 §2) decides whether to reuse it; the status bar re-reads the offline queue on page change, focus and
 connectivity change only (the queue has no change events); "last sync" is the calendar's last successful sync
 (the offline queue keeps no sync time); Settings has no item in the phone bottom nav (it is in the drawer).
+
+### UX-03 — Task row, menus and quick actions
+
+**Result: `DONE` (local, 2026-11-02); CI job `e2e-real` `NOT RUN` on GitHub Actions; not committed.** One
+`TaskRow` (`components/TaskRow.tsx`) renders every task list: Today, Inbox, Upcoming, Week, Tasks, a project's list,
+the unrouted Day view and (read-only) search results. It has a round completion checkbox, the title (opens the
+detail as before), a muted meta line (parent of a subtask, project, due in the shared format and amber when
+overdue, priority flag, `n/m` subtasks, `#tags`), hover/focus quick actions (Schedule for today, Pick a date, Move
+to a project) and a "…" menu built on the new shared `components/Menu.tsx`: Today, Tomorrow, Next week, Pick a
+date…, No date, Priority, Move to project, Status, Delete (undo toast unchanged). Board cards are compact (same
+meta) and their "…" menu starts with "Move to…", replacing the per-card `<select>`. List keys `j`/`k`/Enter/`x`/
+`t`/`m`/`p` (help overlay updated). Decisions in ADR-0052. No backend, schema or npm change; nine vendored
+Lucide shapes added (`DEPENDENCIES.md`).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Inbox rows have ≤ 2 persistent controls | `PASS` | `ux03-rows-and-menus.spec.ts` (1440 px, pointer and focus away): every one of the 9 Inbox rows has exactly 2 controls with non-zero opacity besides the title (checkbox, "…"); `TaskRow.test.tsx` checks the two persistent controls and that the three quick actions are a separate hover group |
+| J2 still passes with ≤ 2 interactions per item | `PASS` | `j2-triage-inbox.spec.ts` (keyboard: focus + Enter): today 1 (quick action), tomorrow 2 (menu, Tomorrow), a picked date 2 (picker, type + Enter), file 2 (project picker, project), delete 2 (menu, Delete) + undo; end state read back from the API unchanged |
+| Each row ≤ 40 px on desktop | `PASS` | `ux03-rows-and-menus.spec.ts`: tallest `.task-row` ≤ 40 px on `/`, `/inbox`, `/upcoming`, `/tasks` and a project page at 1440×900 with seeded data incl. a long title, a subtask, overdue + priority + tag (rows are 36 px; titles truncate on one line). Week's narrow day columns wrap by design and are excluded |
+| All actions work keyboard-only (Playwright) | `PASS` | `ux03-rows-and-menus.spec.ts` "every row action works from the keyboard alone": `j` from outside the list, `j`/`k`; `t` (row leaves, focus moves to the next row); `m` + type-ahead + Enter; `p`, Esc (menu closes, focus back), `p` + arrows + Enter; Tab to "…" + Enter + ↓ + Enter (Tomorrow); Tab to the *Pick a date* quick action, type + Enter; Enter opens the detail, Esc returns focus; `x` completes; on Upcoming Tab → "…" → End → Enter (Delete) and Undo; on Tasks `x` selects / deselects. API read-back confirms each change |
+| Mobile Inbox with 9 items < 1,000 px | `PASS` | same spec, 390×844 with touch: `scrollHeight` < 1000 (the full-page screenshot of the seeded 10-item Inbox fits in the 844 px viewport); before UX-03 it was 2,746 px for 9 items (audit) |
+| Defect 1 — subtasks shown as top-level rows with no parent | `PASS` (fixed in the UI; server semantics kept, ADR-0052 §8) | Verified first by reading the code: `TaskList` had no parent field, while the API lists subtasks in every view (ADR-0016). Regression tests: `TaskList.test.tsx` (parent named from the list, or from one `GET /api/tasks/{id}`; fails on the old `TaskList`), `TaskRow.test.tsx` (subtask: "Subtask of …", no project choice), `ux03-rows-and-menus.spec.ts` (real stack: "Subtask of UX3 launch the site" on the Inbox row) |
+| Defect 2 — project page showed "Complete" on completed tasks | `PASS` | Verified first in `ProjectPage.tsx` (every task got `onComplete`). Regression: `ProjectPage.test.tsx` (parametrized: an open task's checkbox completes, a completed task's is checked and unchecking calls `setStatus(task, "in_progress")`; no `Complete …` button), `ux03-rows-and-menus.spec.ts` (real stack: checked, unchecked → API `in_progress`) |
+| Board: compact cards, card menu "Move to…" instead of the select | `PASS` | `Board.test.tsx` (menu lists only the current status and the allowed targets, calls `onMove`), `pages/Board.test.tsx` (persisted move, 409 and rejected transition via the menu), `j3-run-a-project.spec.ts` (move by "…" → Move to… → In progress, survives a reload) |
+| axe clean on the swept routes | `PASS` | `mu08-a11y-and-layout.spec.ts` (16 routes × 2 themes + task panel, palette, shortcut help and, new, the open row menu and its date dialog) and `ux03-rows-and-menus.spec.ts` (Inbox with full meta, a row hovered, light and dark): 0 violations. Finding during the work, fixed in the app: `region` on the menu (portalled to `<body>`, outside landmarks), now rendered inside the opener's landmark |
+| Existing specs pass, selectors changed only where labels legitimately changed | `PASS` | `npm run test:e2e:real` → `22 passed` (20 existing + 2 in `ux03-rows-and-menus.spec.ts`). Changes: J2 (tomorrow and delete via the menu, the date via the picker dialog, file via the project picker; today unchanged); J3 (`getByRole("button", "Complete …")` → `getByRole("checkbox", "Complete …")`, same name; board move via the card menu, asserted by the "In progress" column); mu08 (adds the two menu axe checks); `helpers.ts` `apiCall` accepts `PATCH`. tasks-page, ux02, J1, J4–J7, MU-04 unchanged. The row trigger is named "Actions for …" so ux02's `getByRole("button", { name: "More" })` stays unambiguous |
+| Lean tests | `PASS` | Component: `Menu.test.tsx` (17, parametrized keys/close reasons/submenu openers), `TaskRow.test.tsx` (25, parametrized meta/status/keys/menu entries), `TaskList.test.tsx` (4); `taskForm.test.ts` +8 (schedule helpers). One real-stack spec (`ux03-rows-and-menus.spec.ts`, 2 tests). Page tests updated in place, no near-duplicates |
+| Mocked e2e | `PASS` | `npm run e2e` → `7 passed` |
+| Repository checks | `PASS` | `./scripts/verify.sh` → ruff, format, mypy; pytest `1053 passed`; eslint + scale check, `tsc`, vitest `595 passed` (65 files); `verification: PASS` |
+| No stray `atlas_e2e_*` databases; owner's stack untouched | `PASS` | after all runs `pg_database` has no `atlas_e2e_*`; no harness API/Vite left; the owner's API (826156), worker (826157) and Vite (826171) kept running and were not restarted; the owner's `atlas` database was not touched |
+| Screenshots reviewed | `PASS` (manual) | see below |
+| Other browsers, touch on real phones, screen reader, 200 % zoom, forced colours | `NOT RUN` | Chromium (desktop and mobile emulation) only; the Popover API path is exercised in Chromium only (jsdom runs the fallback) |
+
+**Screenshots** (throwaway real stack through the harness global setup, the UX-02 fictional seed plus an Inbox
+subtask and a long urgent title): Today, Inbox, Upcoming, Week, Tasks, Tasks with two rows selected, Board, a
+project list and board, Search, a hovered row, a keyboard-focused row, the open "…" menu, the project menu (`m`),
+the priority menu (`p`), the date dialog and the board card menu, at 1440/1024/390 × light/dark (102 PNGs in the
+session scratchpad, not in the repository). Reviewed and iterated:
+- 1440/1024: rows are 36 px with no borders, a grey hover fill, a round 16 px checkbox, the title on the left and
+  muted meta on the right (project dot + name, date, amber when overdue, flag + "High"/"Urgent" in amber/red,
+  `↳ parent`, `#tag`); the "…" is a quiet grey icon; hovering or focusing a row reveals three icons that fade
+  the end of the meta. The menu is a raised panel with icons, right-aligned weekday hints and chevrons;
+  submenus open in place with *Back*, the current choice ticked. Completed tasks: ticked checkbox, struck-through
+  grey title. Board cards: title, meta, "…" on hover; the Inbox column of 10 cards is about 1,000 px tall (was
+  2,000 px with a select per card).
+- 390 px: rows are 44 px+ touch targets with the meta under the title; no hover icons; the nine-item Inbox fits
+  above the bottom nav; menus open under their button and stay on screen.
+- Iterations from review: tag `#` was spaced from its text (flex gap on the pseudo-element); meta items
+  overlapped when they did not fit (now they keep their size and the line clips; only a long parent title
+  ellipsises; on phones the line wraps); the hover icons cut the meta mid-word (now a fade); the project
+  appeared on every row of its own project page (now omitted there); Week's day columns had large gaps and
+  clipped dates (now wrap compactly); the board widened a phone's layout viewport by 107 px because the cards'
+  screen-reader text escaped the scrolling columns (fixed with a positioned card; regression check in the UX-03
+  spec, which fails without the fix). Full-page captures draw top-layer menus at a shifted position on the
+  board; viewport captures (and the live page) place them correctly.
+Still visible and left to later tasks: the Tasks filter form and saved filters (UX-07), the project header with
+ISO dates and no Completed group (UX-07), Week's seven narrow columns at 1024 px (UX-07), list width is the full
+main area (no max width yet).
+
+Limitations: reopening lands in *In progress* (the server keeps no earlier status); a renamed parent keeps its
+old title in rows until it is listed again or the page reloads; search rows are read-only (the search API
+returns no revision); quick actions are not shown under `(hover: none)` (the menu has them); a keyboard `x`
+does not show the optimistic tick (the row updates on the server's answer).
