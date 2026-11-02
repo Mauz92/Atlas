@@ -1,0 +1,327 @@
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
+import { useNavigate } from "react-router-dom";
+
+import { notesApi, projectsApi, tasksApi, type Task } from "../api/client";
+import { useProjects } from "../hooks/useProjects";
+import { useUnifiedSearch } from "../hooks/useUnifiedSearch";
+import { NAV_ITEMS } from "../lib/navigation";
+import { rankByQuery } from "../lib/palette";
+import { readTheme, toggleTheme } from "../lib/theme";
+
+const RESULT_LIMIT = 6;
+
+interface Entry {
+  id: string;
+  group: string;
+  label: string;
+  /** Secondary text (a status, a path). */
+  hint?: string;
+  /** Creating something never becomes the active entry on its own, so Enter cannot do it by accident. */
+  creates?: boolean;
+  run: () => Promise<void> | void;
+}
+
+interface CommandPaletteProps {
+  onClose: () => void;
+  /** Open the shared task detail (the host owns it, so it survives the palette closing). */
+  onOpenTask: (task: Task) => void;
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : "Something went wrong";
+}
+
+/**
+ * The command palette / quick switcher (MU-05, Ctrl/Cmd+K). One text box finds notes, tasks and
+ * projects through `GET /api/search` and offers commands: go to a view, toggle the theme, and
+ * create a task, note or project named by the typed text. It is a modal combobox: the arrows move
+ * through the list, Enter runs the active entry, Esc closes, Tab stays inside, and focus returns
+ * to where it was.
+ */
+export function CommandPalette({ onClose, onOpenTask }: CommandPaletteProps) {
+  const navigate = useNavigate();
+  const { reload: reloadProjects } = useProjects();
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const search = useUnifiedSearch(query, RESULT_LIMIT);
+  const dialog = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const listboxId = useId();
+  const text = query.trim();
+
+  // Return focus to whatever had it before the palette opened.
+  useEffect(() => {
+    const opener = document.activeElement;
+    input.current?.focus();
+    return () => {
+      if (opener instanceof HTMLElement && opener.isConnected) {
+        opener.focus();
+      }
+    };
+  }, []);
+
+  const entries = useMemo<Entry[]>(() => {
+    const go = (to: string) => () => {
+      onClose();
+      navigate(to);
+    };
+    const list: Entry[] = [];
+    for (const note of search.results?.notes ?? []) {
+      list.push({
+        id: `note-${note.id}`,
+        group: "Notes",
+        label: note.title || note.path,
+        hint: note.path,
+        run: go(`/notes?open=${note.id}`),
+      });
+    }
+    for (const task of search.results?.tasks ?? []) {
+      list.push({
+        id: `task-${task.id}`,
+        group: "Tasks",
+        label: task.title,
+        hint: task.status.replace("_", " "),
+        run: async () => {
+          onOpenTask(await tasksApi.get(task.id));
+          onClose();
+        },
+      });
+    }
+    for (const project of search.results?.projects ?? []) {
+      list.push({
+        id: `project-${project.id}`,
+        group: "Projects",
+        label: project.name,
+        hint: project.status,
+        run: go(`/projects/${project.id}`),
+      });
+    }
+
+    const commands = [
+      ...NAV_ITEMS.map((item) => ({
+        id: `go-${item.to}`,
+        group: "Commands",
+        label: `Go to ${item.label}`,
+        run: go(item.to),
+      })),
+      {
+        id: "toggle-theme",
+        group: "Commands",
+        label: "Toggle theme",
+        hint: `now ${readTheme()}`,
+        run: () => {
+          toggleTheme();
+          onClose();
+        },
+      },
+    ];
+    list.push(...rankByQuery(commands, text, (command) => command.label));
+
+    if (text) {
+      list.push(
+        {
+          id: "create-task",
+          group: "Create",
+          label: `New task “${text}”`,
+          creates: true,
+          run: async () => {
+            const task = await tasksApi.create(text);
+            onOpenTask(task);
+            onClose();
+          },
+        },
+        {
+          id: "create-note",
+          group: "Create",
+          label: `New note “${text}”`,
+          creates: true,
+          run: async () => {
+            const note = await notesApi.create(
+              text,
+              `# ${text.split("/").pop()?.replace(/\.md$/, "") ?? text}\n`,
+            );
+            onClose();
+            navigate(`/notes?open=${note.id}`);
+          },
+        },
+        {
+          id: "create-project",
+          group: "Create",
+          label: `New project “${text}”`,
+          creates: true,
+          run: async () => {
+            const project = await projectsApi.create(text);
+            void reloadProjects();
+            onClose();
+            navigate(`/projects/${project.id}`);
+          },
+        },
+      );
+    }
+    return list;
+  }, [search.results, text, navigate, onClose, onOpenTask, reloadProjects]);
+
+  // A new list starts on its best match; with only "create" entries nothing is active.
+  const firstSafe = entries.findIndex((entry) => !entry.creates);
+  const [forEntries, setForEntries] = useState(entries);
+  if (forEntries !== entries) {
+    setForEntries(entries);
+    setActiveIndex(firstSafe);
+  }
+  const active = entries[activeIndex] ?? null;
+
+  useEffect(() => {
+    if (active) {
+      document.getElementById(`${listboxId}-${active.id}`)?.scrollIntoView?.({ block: "nearest" });
+    }
+  }, [active, listboxId]);
+
+  async function run(entry: Entry) {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await entry.run();
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  function move(step: number) {
+    if (entries.length === 0) {
+      return;
+    }
+    setActiveIndex((index) =>
+      index < 0 ? (step > 0 ? 0 : entries.length - 1) : (index + step + entries.length) % entries.length,
+    );
+  }
+
+  function onKeyDown(event: KeyboardEvent) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      move(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (active) {
+        void run(active);
+      }
+    } else if (event.key === "Escape") {
+      // preventDefault also tells the task detail's document-level Esc handler to stand down.
+      event.preventDefault();
+      onClose();
+    } else if (event.key === "Tab") {
+      const focusable = dialog.current?.querySelectorAll<HTMLElement>("input, button, a[href]");
+      if (!focusable || focusable.length === 0) {
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+  }
+
+  const groups: { name: string; items: { entry: Entry; index: number }[] }[] = [];
+  entries.forEach((entry, index) => {
+    const last = groups[groups.length - 1];
+    if (last && last.name === entry.group) {
+      last.items.push({ entry, index });
+    } else {
+      groups.push({ name: entry.group, items: [{ entry, index }] });
+    }
+  });
+
+  const status = search.error
+    ? ""
+    : search.loading
+      ? "Searching…"
+      : `${entries.length} ${entries.length === 1 ? "entry" : "entries"}`;
+
+  return (
+    <div
+      className="palette-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        ref={dialog}
+        className="palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        onKeyDown={onKeyDown}
+      >
+        <input
+          ref={input}
+          className="palette-input"
+          type="text"
+          role="combobox"
+          aria-label="Search or run a command"
+          aria-expanded="true"
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          aria-activedescendant={active ? `${listboxId}-${active.id}` : undefined}
+          placeholder="Search notes, tasks and projects, or type a command…"
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={200}
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setError(null);
+          }}
+        />
+        <div role="status" className="sr-only">
+          {status}
+        </div>
+        {error || search.error ? (
+          <p className="error palette-error" role="alert">
+            {error ?? search.error}
+          </p>
+        ) : null}
+        <div id={listboxId} role="listbox" aria-label="Results" className="palette-list">
+          {groups.map((group) => (
+            <div key={group.name} role="group" aria-label={group.name}>
+              <div className="palette-group" aria-hidden="true">
+                {group.name}
+              </div>
+              {group.items.map(({ entry, index }) => (
+                <div
+                  key={entry.id}
+                  id={`${listboxId}-${entry.id}`}
+                  role="option"
+                  aria-selected={index === activeIndex}
+                  className="palette-option"
+                  data-active={index === activeIndex}
+                  onMouseMove={() => setActiveIndex(index)}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => void run(entry)}
+                >
+                  <span>{entry.label}</span>
+                  {entry.hint ? <span className="muted palette-hint">{entry.hint}</span> : null}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        <p className="muted palette-footer">
+          ↑↓ to move · Enter to open · Esc to close
+        </p>
+      </div>
+    </div>
+  );
+}

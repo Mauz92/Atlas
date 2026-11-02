@@ -1,26 +1,13 @@
+import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
 import { ProjectsProvider, activeProjects, useProjects } from "../hooks/useProjects";
 
 import { useAuth } from "../auth/AuthProvider";
+import { useTaskEditor } from "../hooks/useTaskEditor";
+import { NAV_ITEMS } from "../lib/navigation";
+import { CommandPalette } from "./CommandPalette";
 import { ThemeToggle } from "./ThemeToggle";
-
-export const NAV_ITEMS = [
-  { to: "/", label: "Today" },
-  { to: "/inbox", label: "Inbox" },
-  { to: "/upcoming", label: "Upcoming" },
-  { to: "/day", label: "Day" },
-  { to: "/week", label: "Week" },
-  { to: "/tasks", label: "Tasks" },
-  { to: "/board", label: "Board" },
-  { to: "/projects", label: "Projects" },
-  { to: "/calendar", label: "Calendar" },
-  { to: "/sync", label: "Sync" },
-  { to: "/notifications", label: "Notifications" },
-  { to: "/notes", label: "Notes" },
-  { to: "/search", label: "Search" },
-  { to: "/settings", label: "Settings" },
-] as const;
 
 function SidebarProjects() {
   const { projects } = useProjects();
@@ -49,6 +36,30 @@ export function Layout() {
 
 function Shell() {
   const { user, logout } = useAuth();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // A task opened from the palette is edited in a panel owned by the shell; after a change the page
+  // behind it is remounted so it shows the new data.
+  const [pageVersion, setPageVersion] = useState(0);
+  const refreshPage = useCallback(async () => setPageVersion((version) => version + 1), []);
+  const editor = useTaskEditor({ refresh: refreshPage });
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+
+  // Ctrl/Cmd+K toggles the command palette from anywhere, including text fields.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === "k"
+      ) {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   return (
     <div className="app-shell">
@@ -71,6 +82,14 @@ function Shell() {
         <header className="topbar">
           <span className="muted">{user?.display_name ?? user?.email}</span>
           <div className="topbar-actions">
+            <button
+              type="button"
+              className="ghost"
+              aria-haspopup="dialog"
+              onClick={() => setPaletteOpen(true)}
+            >
+              Search · Ctrl K
+            </button>
             <ThemeToggle />
             <button type="button" className="ghost" onClick={() => void logout()}>
               Sign out
@@ -78,8 +97,12 @@ function Shell() {
           </div>
         </header>
         <main className="content">
-          <Outlet />
+          <Outlet key={pageVersion} />
         </main>
+        {paletteOpen ? (
+          <CommandPalette onClose={closePalette} onOpenTask={editor.open} />
+        ) : null}
+        {editor.overlays}
       </div>
     </div>
   );

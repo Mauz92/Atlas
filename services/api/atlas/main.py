@@ -24,6 +24,7 @@ from .api import (
     notes_router,
     notifications_router,
     projects_router,
+    search_router,
     tasks_router,
 )
 from .config import get_settings
@@ -81,6 +82,7 @@ def create_app() -> FastAPI:
     app.include_router(folders_router)
     app.include_router(tasks_router)
     app.include_router(projects_router)
+    app.include_router(search_router)
     app.include_router(calendar_router)
     app.include_router(changes_router)
     app.include_router(notifications_router)

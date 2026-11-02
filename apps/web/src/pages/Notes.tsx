@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { ApiError, notesApi, type NoteDetail, type NoteSummary } from "../api/client";
 import { NoteEditor } from "../components/NoteEditor";
@@ -17,6 +18,10 @@ export function Notes() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<NoteSummary[] | null>(null);
   const [newPath, setNewPath] = useState("");
+
+  // `/notes?open=<id>` opens that note (the command palette and the Search page link here).
+  const [params] = useSearchParams();
+  const openId = params.get("open");
 
   const dirty = selected !== null && content !== selected.content;
   const tree = useMemo(() => buildTree(folders, notes), [folders, notes]);
@@ -46,6 +51,14 @@ export function Notes() {
       setError(err instanceof Error ? err.message : "Failed to open note");
     }
   }
+
+  const openRequested = useRef(openNote);
+  openRequested.current = openNote;
+  useEffect(() => {
+    if (openId) {
+      void openRequested.current(openId);
+    }
+  }, [openId]);
 
   async function save() {
     if (!selected) {

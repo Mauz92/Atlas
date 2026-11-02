@@ -115,6 +115,7 @@ def test_task_foreign_keys_and_indexes() -> None:
         "ix_tasks_due_at",
         "ix_tasks_parent_task_id",
         "ix_tasks_priority",
+        "ix_tasks_search_fts",
         "ix_tasks_status",
         "ix_tasks_user_id",
     }

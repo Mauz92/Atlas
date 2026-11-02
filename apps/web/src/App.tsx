@@ -12,6 +12,7 @@ import { NotificationsPage } from "./pages/Notifications";
 import { Placeholder } from "./pages/Placeholder";
 import { ProjectPage } from "./pages/ProjectPage";
 import { Projects } from "./pages/Projects";
+import { SearchPage } from "./pages/Search";
 import { Setup } from "./pages/Setup";
 import { SyncPage } from "./pages/Sync";
 import { Tasks } from "./pages/Tasks";
@@ -24,7 +25,6 @@ const Notes = lazy(() => import("./pages/Notes").then((module) => ({ default: mo
 
 // Views that are not part of M3-07 yet keep the placeholder screen.
 const PAGES = [
-  { path: "/search", title: "Search", description: "Full-text search across notes and tasks." },
   {
     path: "/settings",
     title: "Settings",
@@ -59,6 +59,7 @@ export default function App() {
         <Route path="/projects/:id" element={<ProjectPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/sync" element={<SyncPage />} />
+        <Route path="/search" element={<SearchPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route
           path="/notes"

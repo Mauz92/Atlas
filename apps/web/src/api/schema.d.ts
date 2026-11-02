@@ -652,6 +652,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search
+         * @description Notes, tasks and projects whose words start with every word of ``q``.
+         *
+         *     ``limit`` bounds **each** group. Text without any word character returns empty groups.
+         */
+        get: operations["search_api_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/calendar/credentials": {
         parameters: {
             query?: never;
@@ -1676,6 +1698,65 @@ export interface components {
              * @description Local wall-clock time of day, 24-hour HH:MM.
              */
             at_time: string;
+        };
+        /**
+         * SearchNoteOut
+         * @description A matching note: identity and location only, never its content.
+         */
+        SearchNoteOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Path */
+            path: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * SearchOut
+         * @description Up to ``limit`` hits of each kind, best match first (open work before closed).
+         */
+        SearchOut: {
+            /** Query */
+            query: string;
+            /** Notes */
+            notes: components["schemas"]["SearchNoteOut"][];
+            /** Tasks */
+            tasks: components["schemas"]["SearchTaskOut"][];
+            /** Projects */
+            projects: components["schemas"]["SearchProjectOut"][];
+        };
+        /** SearchProjectOut */
+        SearchProjectOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+        };
+        /** SearchTaskOut */
+        SearchTaskOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Status */
+            status: string;
+            /** Priority */
+            priority: string;
+            /** Due At */
+            due_at: string | null;
+            /** Project Id */
+            project_id: string | null;
         };
         /** SetupRequest */
         SetupRequest: {
@@ -3286,6 +3367,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_api_search_get: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchOut"];
+                };
             };
             /** @description Validation Error */
             422: {

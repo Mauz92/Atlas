@@ -20,11 +20,17 @@ import uuid
 from datetime import date, datetime
 from enum import StrEnum
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Text, Uuid, func
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Text, Uuid, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
 from .base import TimestampMixin
+
+#: The text-search expression the unified search (MU-05, ADR-0047) and ``ix_projects_search_fts``.
+PROJECT_SEARCH_VECTOR = (
+    "to_tsvector('simple'::regconfig, (COALESCE(name, ''::character varying)::text || ' '::text) "
+    "|| COALESCE(description, ''::text))"
+)
 
 
 class ProjectStatus(StrEnum):
@@ -55,6 +61,10 @@ class Project(Base, TimestampMixin):
     target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_projects_search_fts", text(PROJECT_SEARCH_VECTOR), postgresql_using="gin"),
+    )
 
 
 class NoteProject(Base):

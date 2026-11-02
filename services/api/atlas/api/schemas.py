@@ -745,3 +745,38 @@ class TaskReminderOut(BaseModel):
     override: ReminderTiming | None
     effective: ReminderTiming | None
     remind_at: datetime | None
+
+
+# --- Unified search (MU-05) ----------------------------------------------
+
+
+class SearchNoteOut(BaseModel):
+    """A matching note: identity and location only, never its content."""
+
+    id: uuid.UUID
+    path: str
+    title: str
+
+
+class SearchTaskOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    status: str
+    priority: str
+    due_at: datetime | None
+    project_id: uuid.UUID | None
+
+
+class SearchProjectOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    status: str
+
+
+class SearchOut(BaseModel):
+    """Up to ``limit`` hits of each kind, best match first (open work before closed)."""
+
+    query: str
+    notes: list[SearchNoteOut]
+    tasks: list[SearchTaskOut]
+    projects: list[SearchProjectOut]

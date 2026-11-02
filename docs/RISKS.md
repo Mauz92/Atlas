@@ -172,7 +172,13 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   the project-tasks listing on the same access path (per user, per project, bound by `limit`) and
   deliberately did **not** add the index: the statement is an index scan on `tasks.user_id` plus a
   filter, no measured need exists, and every schema change costs a migration (ADR-0021).
-- **Owner milestone:** M3. **Status:** Accepted.
+- **MU-05 update (2026-11-02, ADR-0047):** the **search** access path is now indexed — `GET /api/search`
+  uses word-prefix full-text matching on GIN expression indexes (`ix_tasks_search_fts`,
+  `ix_projects_search_fts`, migration `a8c4d9e2b7f1`) plus the existing note index, and a test proves the
+  planner uses them. **Still open:** the `GET /api/tasks?q=` filter remains an escaped substring scan
+  (it matches inside words, which the index does not), `tasks.project_id` is still unindexed and the Tasks
+  page still sorts client-side over the first 500 matches (ADR-0045). Residual severity unchanged (Low).
+- **Owner milestone:** M3. **Status:** Accepted (search path mitigated by MU-05).
 
 ### R-21 — Web Push destination endpoint is not scheme/host-constrained
 - **Severity/Likelihood:** Low / Low
@@ -217,6 +223,7 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 | 2026-10-27 | M9-04 | R-17 reviewed: `pip-audit` (91 pkgs) and `npm audit` (370 pkgs, prod+dev) both clean — 0 advisories at every severity. No finding accepted or suppressed; CI gate confirmed by inspection + local positive controls. |
 | 2026-10-27 | M9-05 | Security review (threat model vs implementation). R-21 added (push endpoint not scheme/host-constrained; accepted for the single-user model). F1 (SPA missing security headers/CSP) found and fixed in `apps/web/nginx.conf`; R-SEC-1/2/4 re-confirmed, R-SEC-3 resolved. Detail in `docs/SECURITY.md` §"Milestone 9 security review". |
 | 2026-11-01 | Audit | Function audit: R-22 added (backend-heavy, interface-light); ADR-0043 re-prioritises to a usable core. |
+| 2026-11-02 | MU-05 | R-20 reviewed: search path indexed (GIN expression indexes, ADR-0047); the task-list `q` filter and `project_id` remain unindexed. R-22 progress: palette and Search page delivered (J5 passes); palette creates are online-only. Limitation: search matches word prefixes, not mid-word substrings. |
 | 2026-11-02 | MU-04 | R-22 progress: recurrence, subtasks and per-task reminder delivered in the task detail (journey passes). Sub-risks: an occurrence of a series cannot have its rule changed or removed from the UI (series rule edit/stop is not offered); the "next occurrence" notice finds it by title and series through the task list (≤ 500 open matches); subtask and reminder changes are online-only like other UI mutations. |
 | 2026-11-02 | MU-03 | R-22 progress: Tasks page delivered (filters, sort, saved filters, bulk actions; journey passes). Sub-risks: client-side sort covers only the first 500 matches (R-20, page shows a notice); bulk actions are sequential, non-atomic and online-only. |
 | 2026-11-02 | MU-02 | R-22 progress: Projects UI delivered (J3 passes in a browser); project mutations are online-only like task mutations. |

@@ -90,6 +90,12 @@ Unique per `(user_id, provider)`.
 | `external_provider`, `external_id` | nullable task-provider mapping (future) |
 | `revision`, `created_at`, `updated_at`, `deleted_at` | sync fields |
 
+> **Search indexes (MU-05, ADR-0047, migration `a8c4d9e2b7f1`).** `tasks` and `projects` each carry one GIN
+> *expression* index for the unified search — `ix_tasks_search_fts` on `to_tsvector('simple', title ||
+> ' ' || description)` and `ix_projects_search_fts` on the same over `name`/`description`. They store
+> nothing new (no column, no second source of truth), are derived by PostgreSQL on every write and are
+> dropped by the migration's downgrade. Notes use the existing `notes.search_vector` index.
+
 > **Incremental pull (M3-09).** A client fetches everything that changed after a task `revision` it
 > holds via `GET /api/tasks/changes?since=N`: the user's tasks with `revision > N`, ordered by
 > `revision` ascending, **including soft-deleted tombstones** (`deleted_at` set) so deletions

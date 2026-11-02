@@ -1520,3 +1520,108 @@ button.danger {
   border-radius: var(--radius);
   padding: 8px 12px;
 }
+
+/* Command palette (MU-05) */
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 12vh var(--space) var(--space);
+  background: rgb(0 0 0 / 0.4);
+}
+
+.palette {
+  width: min(640px, 100%);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.3);
+  overflow: hidden;
+}
+
+.palette-input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 14px var(--space);
+  font-size: 1.05rem;
+  background: transparent;
+  color: inherit;
+}
+
+.palette-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.palette-error {
+  margin: 8px var(--space) 0;
+}
+
+.palette-list {
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.palette-group {
+  padding: 8px var(--space) 4px;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.palette-option {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space);
+  padding: 8px var(--space);
+  cursor: pointer;
+}
+
+.palette-option[data-active="true"] {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.palette-option[data-active="true"] .muted {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.palette-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-footer {
+  margin: 0;
+  padding: 8px var(--space);
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.search-input {
+  width: 100%;
+  max-width: 560px;
+}
+
+.search-results {
+  list-style: none;
+  margin: 0 0 var(--space);
+  padding: 0;
+}
+
+.search-results li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}

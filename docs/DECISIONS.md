@@ -2102,3 +2102,45 @@ recurrence in the client, and no endpoint exposed the engine without creating a 
 - [Expo push notification services](https://docs.expo.dev/guides/using-push-notifications-services/)
 - [CodeMirror / headless Markdown editors comparison](https://md2rich.com/blog/headless-markdown-editors-2026-block-workflows-en)
 - [Authlib FastAPI integration](https://docs.authlib.org/en/stable/oauth2/client/web/fastapi.html)
+
+## ADR-0047 — Unified search endpoint and command palette (MU-05)
+
+**Context.** MU-05 needs one place to find notes, tasks and projects and to run a few commands. Notes
+already have full-text search (`notes.search_vector`, GIN); `GET /api/tasks?q=` is an unindexed substring
+scan (R-20); projects have no search. The palette must feel instant while typing, so matching is by word
+*prefix*.
+
+**Decision.**
+1. **One read-only endpoint, `GET /api/search?q=&limit=`** (auth required, user-scoped). `q` is 1…200
+   characters, `limit` 1…50 (default 10) and bounds **each** group. The answer is
+   `{query, notes[], tasks[], projects[]}`; a note hit carries `id`, `path`, `title` only (never content),
+   a task `id, title, status, priority, due_at, project_id`, a project `id, name, status`. Text with no word
+   characters answers `200` with empty groups; a missing/empty/over-long `q` or an out-of-range `limit` is
+   `422` with the framework's message (shown verbatim by the client).
+2. **Matching is word-prefix, every word (AND).** The text is reduced to `\w` words (at most 8, each ≤ 64
+   characters), turned into `w1:* & w2:*` and bound as the argument of `to_tsquery`; no user character can
+   reach tsquery syntax, and every value is a bound parameter. Notes use their existing `english` vector
+   (title + content); tasks and projects use the `simple` configuration (no stemming or stop words, so short
+   names such as "the" or "to" still match) over title/name + description.
+3. **Two GIN expression indexes** (`ix_tasks_search_fts`, `ix_projects_search_fts`, migration
+   `a8c4d9e2b7f1`) back the task/project statements. The expression is one literal constant shared by the
+   model, the query and the migration, written in PostgreSQL's canonical printed form so Alembic autogenerate
+   sees no drift. Additive and reversible; no data is touched. A test runs the endpoint's own statements
+   with sequential scans disabled over 3 000 rows and asserts the plan uses the index.
+4. **Ordering.** Open work before completed/archived (tasks) and active before closed (projects), then
+   `ts_rank`, then most recently updated.
+5. **Palette (client).** Ctrl/Cmd+K toggles a modal combobox mounted in the shell; arrows/Enter/Esc, focus
+   trap, focus returns to the opener; results debounced 150 ms with the older request aborted. Commands
+   (go to a view, toggle theme) are filtered client-side with a small subsequence matcher. "New task / note /
+   project" appear for any typed text but are **never the default active entry**, so Enter alone cannot
+   create something. Created items open (task detail, note, project page). The theme is now a tiny shared
+   store (`lib/theme.ts`) so the palette and the toggle button agree.
+6. **Opening results.** A task opens the shared task detail (the shell owns a `useTaskEditor`; after a
+   save from there the page behind is remounted to show the change). A project opens its page. A note opens
+   via the new deep link `/notes?open=<note id>`, which the Notes page honours on load and on change.
+7. **Search page** replaces the placeholder: same endpoint, `limit` 25, the text kept in `?q=`.
+
+**Consequences.** No new dependency. Substring matches inside a word ("ilk" for "milk") are not found
+(use the Tasks page filter for that); the task-list `q` filter and `tasks.project_id` stay unindexed
+(R-20 remains open for those). Palette creates are online-only (R-22). A search ranks by relevance, not by
+fuzzy edit distance.

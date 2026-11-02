@@ -9,6 +9,7 @@ from .notes import folders_router
 from .notes import router as notes_router
 from .notifications import router as notifications_router
 from .projects import router as projects_router
+from .search import router as search_router
 from .tasks import router as tasks_router
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "notes_router",
     "notifications_router",
     "projects_router",
+    "search_router",
     "tasks_router",
 ]

@@ -81,6 +81,7 @@ def test_project_foreign_keys_and_indexes() -> None:
     table = _table(Project)
     assert _foreign_keys(table, "user_id") == {("users.id", "CASCADE")}
     assert {index.name for index in table.indexes} == {
+        "ix_projects_search_fts",
         "ix_projects_status",
         "ix_projects_user_id",
     }

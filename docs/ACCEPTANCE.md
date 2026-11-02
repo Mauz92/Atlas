@@ -2899,6 +2899,30 @@ notice is found via the task list (≤ 500 open matches by title); a preview sho
 panel's subtask and reminder actions are immediate and online-only (R-22); no weekday/month-day builder
 (use a custom RRULE); Chromium only.
 
+### MU-05 — Command palette, quick switcher and unified search
+
+**Result: `DONE` (local); CI job `e2e-real` `NOT RUN` on GitHub Actions.** Ctrl/Cmd+K opens a palette that finds
+notes, tasks and projects and runs commands; the Search page is replaced by full results from the same
+endpoint `GET /api/search` (ADR-0047). One migration: `a8c4d9e2b7f1` (two additive GIN indexes).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| J5: shortcut opens palette; grouped results for notes (incl. body text), tasks, projects; Enter opens each; go-to and theme commands; create task/note/project from the same box; Enter alone creates nothing; server error verbatim; Search page | `PASS` | `cd apps/web && npm run test:e2e:real` → `13 passed` incl. `j5-find-anything.spec.ts` |
+| Endpoint is user-scoped, bounded (`limit` per group), parameterised; hostile/empty text harmless; invalid parameters `422`; auth required; open before closed; deleted items hidden | `PASS` | `tests/integration/test_search_api.py` (cases incl. another user's note/task/project never returned) |
+| Indexed (R-20, search path): planner uses `ix_tasks_search_fts` / `ix_projects_search_fts` | `PASS` | `test_task_and_project_queries_use_their_indexes` (EXPLAIN of the endpoint's statements, 3 000 rows, seq scan disabled) |
+| Migration: clean upgrade from base, matches models, downgrade one step then upgrade restores exactly the two indexes; non-destructive | `PASS` | pytest session fixture (base → head), `test_migrations_match_models`, `test_migration_adds_and_removes_the_search_indexes` |
+| Palette a11y/keyboard: combobox/listbox/option roles, `aria-activedescendant`, arrows wrap, Enter, Esc, Tab trap, Ctrl/Cmd+K toggle | `PASS` | `CommandPalette.test.tsx`, `Layout.test.tsx`, `palette.test.ts`, `Search.test.tsx` |
+| Repository checks | `PASS` | `./scripts/verify.sh` → ruff, format, mypy; pytest `1011 passed`; eslint, `tsc`, vitest `378 passed`; `verification: PASS` |
+| Mocked e2e still passes | `PASS` | `cd apps/web && npm run e2e` → `7 passed` |
+| No stray `atlas_e2e_*` databases | `PASS` | `docker exec atlas-db-1 psql … pg_database like 'atlas_e2e_%'` → empty |
+| Screen-reader behaviour / mobile layout of the palette | `NOT RUN` | no assistive-technology or device run; roles verified by tests only (MU-08 axe pass) |
+| Runs in CI | `NOT RUN` | Job exists from MU-00; not executed outside GitHub Actions |
+
+Limitations: word-prefix matching only (no mid-word substring, no typo tolerance); palette shows 6 hits per
+group; creating from the palette is online-only (R-22); a note found by body text shows no snippet; after a
+task is saved from the palette the page behind is remounted (its transient state resets); `Search · Ctrl K`
+button is the only touch entry point; Chromium only.
+
 ---
 
 ## Release Readiness (M9)

@@ -31,6 +31,8 @@ export type WebPushConfig = components["schemas"]["WebPushConfigOut"];
 export type ReminderTiming = components["schemas"]["ReminderTiming"];
 export type ReminderPreferences = components["schemas"]["ReminderPreferencesOut"];
 export type TaskReminder = components["schemas"]["TaskReminderOut"];
+export type SearchResults = components["schemas"]["SearchOut"];
+export type SearchTask = components["schemas"]["SearchTaskOut"];
 export type RecurrencePreview = components["schemas"]["RecurrencePreviewOut"];
 
 export class ApiError extends Error {
@@ -351,6 +353,23 @@ export const projectsApi = {
     apiFetch<void>(`/api/projects/${projectId}/notes/${noteId}`, { method: "PUT" }),
   unlinkNote: (projectId: string, noteId: string) =>
     apiFetch<void>(`/api/projects/${projectId}/notes/${noteId}`, { method: "DELETE" }),
+};
+
+export const searchApi = {
+  /**
+   * Unified search (MU-05): notes, tasks and projects whose words start with every word of `q`,
+   * at most `limit` of each kind. The server validates the text and the limit; its message is
+   * shown verbatim.
+   */
+  search: (q: string, options: { limit?: number; signal?: AbortSignal } = {}) => {
+    const params = new URLSearchParams({ q });
+    if (options.limit) {
+      params.set("limit", String(options.limit));
+    }
+    return apiFetch<SearchResults>(`/api/search?${params.toString()}`, {
+      signal: options.signal,
+    });
+  },
 };
 
 export const calendarApi = {

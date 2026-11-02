@@ -6,6 +6,15 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (MU-05): **command palette and search.** Press **Ctrl+K** (**Cmd+K** on a Mac) anywhere, or use
+  the *Search* button in the top bar, and type: notes, tasks and projects whose words start with what you
+  typed appear in groups (a word inside a note's text counts too). Arrow keys move, **Enter** opens, **Esc**
+  closes. A task opens its detail, a project its page and a note opens in Notes. The same box runs
+  commands: *Go to* any view, *Toggle theme*, and *New task / note / project* named by the text you typed
+  (nothing is created by Enter alone). The Search page now shows full results for the same query and keeps
+  it in the address. Notes can be linked as `/notes?open=<note id>`. New endpoint `GET /api/search`; new
+  database indexes for task and project search (migration `a8c4d9e2b7f1`).
+
 - Added (MU-04): **repeat, subtasks and reminders in the task detail.** *Repeat* offers daily, weekly,
   monthly or a custom RRULE and previews the next occurrences as the server computes them; a bad rule shows
   the server's message. Completing a repeating task completes only that occurrence and shows (and opens)

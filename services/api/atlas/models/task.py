@@ -18,16 +18,25 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
 from .base import TimestampMixin
+
+#: The text-search expression the unified search (MU-05, ADR-0047) and ``ix_tasks_search_fts``.
+#: Written as one literal so the query and the index are guaranteed to be the same expression.
+TASK_SEARCH_VECTOR = (
+    "to_tsvector('simple'::regconfig, (COALESCE(title, ''::character varying)::text || ' '::text) "
+    "|| COALESCE(description, ''::text))"
+)
 
 
 class TaskStatus(StrEnum):
@@ -93,6 +102,10 @@ class Task(Base, TimestampMixin):
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_tasks_search_fts", text(TASK_SEARCH_VECTOR), postgresql_using="gin"),
+    )
 
 
 class RecurrenceSeries(Base, TimestampMixin):
