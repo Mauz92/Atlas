@@ -219,6 +219,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/notes/{note_id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Task From Note
+         * @description Create a task from a note and link the two (MU-06): an explicit action, never inferred.
+         *
+         *     Takes the same body as ``POST /api/tasks``. The note is validated first (unknown, another
+         *     user's or deleted → ``404``), then the task and its link are written in one transaction. A
+         *     retry with the same ``Idempotency-Key`` returns the original response and creates nothing new.
+         *     The note file is not touched.
+         */
+        post: operations["create_task_from_note_api_notes__note_id__tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notes/{note_id}/conflict": {
         parameters: {
             query?: never;
@@ -375,6 +400,46 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{task_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Task Notes
+         * @description The caller's notes linked to one task (MU-06), in path order. The link survives renames.
+         */
+        get: operations["list_task_notes_api_tasks__task_id__notes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{task_id}/notes/{note_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unlink Task Note
+         * @description Remove the link between a task and a note (idempotent); neither is deleted.
+         */
+        delete: operations["unlink_task_note_api_tasks__task_id__notes__note_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1233,6 +1298,10 @@ export interface components {
             backlinks: components["schemas"]["NoteSummaryOut"][];
             /** Unresolved Links */
             unresolved_links: string[];
+            /** Tasks */
+            tasks: components["schemas"]["NoteTaskOut"][];
+            /** Projects */
+            projects: components["schemas"]["NoteProjectOut"][];
         };
         /** NoteLinkOut */
         NoteLinkOut: {
@@ -1253,6 +1322,20 @@ export interface components {
             /** Path */
             path: string;
         };
+        /**
+         * NoteProjectOut
+         * @description A project linked to a note (``note_projects``).
+         */
+        NoteProjectOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            status: components["schemas"]["ProjectStatus"];
+        };
         /** NoteSummaryOut */
         NoteSummaryOut: {
             /**
@@ -1270,6 +1353,25 @@ export interface components {
             content_hash: string;
             /** Size Bytes */
             size_bytes: number;
+        };
+        /**
+         * NoteTaskOut
+         * @description A task linked to a note (MU-06): enough to list and open it, nothing more.
+         */
+        NoteTaskOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            status: components["schemas"]["TaskStatus"];
+            priority: components["schemas"]["TaskPriority"];
+            /** Due At */
+            due_at: string | null;
+            /** Project Id */
+            project_id: string | null;
         };
         /** NoteUpdateRequest */
         NoteUpdateRequest: {
@@ -1906,6 +2008,14 @@ export interface components {
             /** Tasks */
             tasks: components["schemas"]["TaskOut"][];
         };
+        /**
+         * TaskNotesOut
+         * @description The notes linked to one task (MU-06).
+         */
+        TaskNotesOut: {
+            /** Notes */
+            notes: components["schemas"]["NoteSummaryOut"][];
+        };
         /** TaskOut */
         TaskOut: {
             /**
@@ -2505,6 +2615,43 @@ export interface operations {
             };
         };
     };
+    create_task_from_note_api_notes__note_id__tasks_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_conflict_copy_api_notes__note_id__conflict_post: {
         parameters: {
             query?: never;
@@ -2815,6 +2962,67 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TaskChangesOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_task_notes_api_tasks__task_id__notes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskNotesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlink_task_note_api_tasks__task_id__notes__note_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

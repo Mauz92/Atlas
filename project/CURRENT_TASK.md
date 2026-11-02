@@ -1,15 +1,15 @@
 # Current Task
 
-- Task ID: MU-06
+- Task ID: MU-07
 - Status: READY
-- Depends on: MU-02 (`DONE`), MU-05 (`DONE`, 2026-11-02), M2-07 (`DONE`), M4-05 (`DONE`)
+- Depends on: MU-06 (`DONE`, 2026-11-02)
 - Milestone: MU — Usable Core (docs/ROADMAP.md, ADR-0043)
 
 ## Goal
-Note ↔ task ↔ project linking (full definition: `docs/ROADMAP.md`, MU-06 row): create a task from the
-selected text/line in a note (explicit action; the task stores a link to the note; Markdown checkboxes are
-**not** parsed as tasks — AGENTS.md §8); the note shows its tasks and project; the task detail shows linked
-notes; `[[` autocomplete picks notes; backlinks list tasks and projects too. Journey J4.
+Daily note, templates and Today as home (full definition: `docs/ROADMAP.md`, MU-07 row): "Today's note"
+creates/opens `daily/YYYY-MM-DD.md` on demand (a normal Markdown file); template notes from a `templates/`
+folder when creating a note; Today shows overdue, due today, scheduled work, the daily note and an events
+slot that stays empty until M5. Journey J6.
 
 ## Verification gate
 Backend + component tests plus a real-stack Playwright journey (`cd apps/web && npm run test:e2e:real`, see
@@ -17,16 +17,19 @@ Backend + component tests plus a real-stack Playwright journey (`cd apps/web && 
 database per run). Keep tests lean: parametrize, one spec with shared setup.
 
 ## Notes
-- Reuse: `task_links` table (task ↔ note, `ON DELETE CASCADE`, ADR-0024) and `note_projects`; the deep link
-  `/notes?open=<note id>` and `GET /api/search` from MU-05 (a `[[` autocomplete can call the search
-  endpoint); `useTaskEditor` / `TaskDetail`; `e2e-real/helpers.ts` (`apiCall`, `dateIn`, `ensureOwner`).
+- Reuse: `notesApi` (create/get, `/notes?open=<id>` deep link), `NotesService` (path validation, atomic
+  create), `useTaskEditor`, `e2e-real/helpers.ts` (`apiCall` now also does PUT/DELETE and 204, `dateIn`,
+  `ensureOwner`). Creating a note that exists must open it, not overwrite it (AGENTS.md §8).
+- Delivered by MU-06 (ADR-0048): `POST /api/notes/{id}/tasks`, `GET /api/tasks/{id}/notes`, note detail
+  `tasks`/`projects`, `[[` completion, `TaskNotes` in the task detail. Known limitations: tasks link to
+  notes only at creation; wiki-link text is path based and not rewritten on rename.
 - Known limitations carried forward: UI mutations are online-only (R-22); a due time of exactly 23:59
   reads as "end of day"; `.local` email addresses are still rejected; no project delete in the UI; Tasks
   page sorts client-side over the first 500 matches (ADR-0045); an occurrence of a repeating series shows
   its rule read-only (ADR-0046); search matches word prefixes only, and the task-list `q` filter and
   `tasks.project_id` stay unindexed (R-20, ADR-0047); the palette's page-behind remount after a task save
   resets that page's transient state.
-- Task detail buttons: the form's save is "Save"; the reminder section uses "Set reminder" (keep names
-  distinct so `getByRole("button", { name: "Save" })` stays unambiguous in specs). The top bar now has a
-  "Search · Ctrl K" button; scope `getByRole("combobox")` to the palette dialog in specs.
-- Do not start MU-07 until MU-06 is `DONE`. Do not start blocked M5/M6/M8 work.
+- Task detail buttons: the form's save is "Save"; the reminder section uses "Set reminder"; linked notes use
+  "Open note <path>" / "Unlink note <path>". The top bar has a "Search · Ctrl K" button; scope
+  `getByRole("combobox")` to the palette dialog in specs.
+- Do not start MU-08 until MU-07 is `DONE`. Do not start blocked M5/M6/M8 work.

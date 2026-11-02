@@ -2923,6 +2923,31 @@ group; creating from the palette is online-only (R-22); a note found by body tex
 task is saved from the palette the page behind is remounted (its transient state resets); `Search · Ctrl K`
 button is the only touch entry point; Chromium only.
 
+### MU-06 — Note ↔ task ↔ project linking
+
+**Result: `DONE` (local); CI job `e2e-real` `NOT RUN` on GitHub Actions.** A task can be created from the
+text/line under the cursor in a note (explicit action, ADR-0048); the note lists its tasks and projects, the
+task detail lists its notes; `[[` completes note paths. One migration: `b7d3e1a95c24` (additive index).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| J4: `[[` picks a note; a checkbox line is not a task until "Task from selection"; title cleaned; too-long title refused with the server's text; task filed in the note's only project; note lists task + project; unsaved editor text untouched; save keeps the link text and the target note gets the backlink; task opens from the note; task detail lists the note; rename keeps the link; open-note and unlink from the task | `PASS` | `cd apps/web && npm run test:e2e:real` → `14 passed` incl. `j4-write-and-link.spec.ts` |
+| Backend: link both ways, project in note detail, rename survival, unlink idempotent, one change-feed row; retry with same `Idempotency-Key` = 1 task + 1 link (different body with the same key = 409); delete/undo of task and note hide/restore the link; invalid input writes nothing; another user's/unknown ids are 404 and nothing of the caller's changes; auth required | `PASS` | `tests/integration/test_task_note_links.py` (7 tests) |
+| Migration: clean upgrade from base, matches models, upgrade from previous head, downgrade one step, upgrade again, `alembic check` clean; non-destructive | `PASS` | pytest session fixture (base → head), `test_tasks_schema.py` drift check, manual run on a scratch database (dropped afterwards): `a8c4d9e2b7f1 → b7d3e1a95c24 → a8c4d9e2b7f1 → b7d3e1a95c24`, `No new upgrade operations detected` |
+| Components: title from selection, `[[` completion rules, linked notes in the task detail, note page backlinks/tasks/projects, create form (project hint, verbatim server error, cancel) | `PASS` | `noteLinks.test.ts`, `TaskNotes.test.tsx`, `Notes.test.tsx` |
+| Repository checks | `PASS` | `./scripts/verify.sh` → ruff, format, mypy; pytest `1018 passed`; eslint, `tsc`, vitest `406 passed`; `verification: PASS` |
+| Mocked e2e still passes | `PASS` | `cd apps/web && npm run e2e` → `7 passed` |
+| No stray `atlas_e2e_*` databases | `PASS` | `docker exec atlas-db-1 psql … pg_database` → only `atlas`, `atlas_test`, `postgres` |
+| CodeMirror completion popup rendering/keyboard in a unit test | `NOT RUN` | covered only by J4 in Chromium (the pure matching is unit tested) |
+| Runs in CI | `NOT RUN` | Job exists from MU-00; not executed outside GitHub Actions |
+
+Limitations: a task can be linked to a note only at creation ("Task from selection"); there is no "link an
+existing task" action; links are not parsed from or written into the note file; `[[` offers the notes loaded
+in the page and does not alias or insert headings; wiki links are path-based, so renaming a note does not
+rewrite `[[old/path]]` text in other notes (the task/project links, keyed on note id, do survive); an
+externally renamed file that reconciliation sees as a new file gets a new id and loses its task links (same
+as note↔project links); UI mutations are online-only (R-22); Chromium only.
+
 ---
 
 ## Release Readiness (M9)

@@ -43,9 +43,8 @@ class InvalidChangeCursorError(ValueError):
 class ChangeEntityType(StrEnum):
     """The structured entity kinds that appear in the change feed.
 
-    ``TASK_NOTE_LINK`` is reserved for the task↔note association (``task_links``); no mutation
-    endpoint creates those rows yet, so it produces no changes until one does — but the feed
-    vocabulary is complete so a client can handle it without a contract change.
+    ``TASK_NOTE_LINK`` is the task↔note association (``task_links``, MU-06): recorded when a task is
+    created from a note or a link is removed, with ``task_note_link_id`` as the entity id.
     """
 
     TASK = "task"
@@ -70,6 +69,11 @@ def entity_id_for(entity_id: object) -> str:
 def note_project_link_id(note_id: object, project_id: object) -> str:
     """The stored ``entity_id`` for a note↔project link (a pair, not a single UUID)."""
     return f"{note_id}:{project_id}"
+
+
+def task_note_link_id(task_id: object, note_id: object) -> str:
+    """The stored ``entity_id`` for a task↔note link (a pair, not a single UUID)."""
+    return f"{task_id}:{note_id}"
 
 
 @dataclass(frozen=True, slots=True)

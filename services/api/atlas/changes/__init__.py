@@ -30,6 +30,7 @@ from .feed import (
     parse_limit,
     parse_since,
     plan_change_page,
+    task_note_link_id,
 )
 from .purge import ChangePurgeService, PurgeSummary
 from .record import ChangeRecorder
@@ -65,4 +66,5 @@ __all__ = [
     "plan_change_page",
     "resync_required",
     "retention_cutoff",
+    "task_note_link_id",
 ]

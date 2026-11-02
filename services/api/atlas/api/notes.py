@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Annotated, NoReturn
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 
 from ..config import get_settings
+from ..idempotency import IdempotencyConflictError, IdempotencyStore, fingerprint
 from ..models import NoteIndex
 from ..notes import (
     NoteConflictError,
@@ -26,6 +29,9 @@ from ..projects import (
     ProjectNotFoundError,
     ProjectsService,
 )
+from ..reminders import ReminderService
+from ..tasks import TasksService, TaskValidationError
+from ..tasks.note_links import TaskNoteLinks
 from .deps import CurrentUser, DbSession
 from .projects import project_out
 from .schemas import (
@@ -37,11 +43,16 @@ from .schemas import (
     NoteLinkOut,
     NoteListOut,
     NoteMoveRequest,
+    NoteProjectOut,
     NoteSummaryOut,
+    NoteTaskOut,
     NoteUpdateRequest,
     ProjectListOut,
     ReconcileOut,
+    TaskCreateRequest,
+    TaskOut,
 )
+from .tasks import task_out
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
 folders_router = APIRouter(prefix="/api/folders", tags=["notes"])
@@ -70,6 +81,13 @@ def _translate(exc: Exception) -> NoReturn:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="A note or folder already exists there"
         ) from exc
+    if isinstance(exc, IdempotencyConflictError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="idempotency key reused with a different request",
+        ) from exc
+    if isinstance(exc, TaskValidationError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if isinstance(exc, UnsafePathError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if isinstance(exc, NoteTooLargeError):
@@ -96,6 +114,7 @@ async def _detail(service: NotesService, note: NoteIndex) -> NoteDetailOut:
     file = service.storage.read(note.path)
     links = await service.outgoing_links(note.id)
     backlinks = await service.backlinks(note.id)
+    related = TaskNoteLinks(service.session, service.user_id)
     return NoteDetailOut(
         **_summary(note).model_dump(),
         content=file.content,
@@ -105,6 +124,11 @@ async def _detail(service: NotesService, note: NoteIndex) -> NoteDetailOut:
         ],
         backlinks=[NoteSummaryOut(**asdict(item)) for item in backlinks],
         unresolved_links=[target for target, resolved in links if resolved is None],
+        tasks=[NoteTaskOut.model_validate(task) for task in await related.tasks_for_note(note.id)],
+        projects=[
+            NoteProjectOut.model_validate(project)
+            for project in await related.projects_for_note(note.id)
+        ],
     )
 
 
@@ -201,6 +225,50 @@ async def list_note_projects(
             project_out(project, progress.get(project.id, ZERO_PROGRESS)) for project in projects
         ]
     )
+
+
+@router.post("/{note_id}/tasks", response_model=TaskOut, status_code=status.HTTP_201_CREATED)
+async def create_task_from_note(
+    note_id: uuid.UUID,
+    payload: TaskCreateRequest,
+    user: CurrentUser,
+    session: DbSession,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=200)] = None,
+) -> TaskOut:
+    """Create a task from a note and link the two (MU-06): an explicit action, never inferred.
+
+    Takes the same body as ``POST /api/tasks``. The note is validated first (unknown, another
+    user's or deleted → ``404``), then the task and its link are written in one transaction. A
+    retry with the same ``Idempotency-Key`` returns the original response and creates nothing new.
+    The note file is not touched.
+    """
+    store = IdempotencyStore(session, user.id)
+    body = {"note_id": str(note_id), **payload.model_dump(mode="json")}
+    if idempotency_key:
+        try:
+            stored = await store.reserve(
+                idempotency_key, "task.create_from_note", fingerprint(body)
+            )
+        except Exception as exc:
+            _translate(exc)
+        if stored is not None:
+            return JSONResponse(status_code=stored.status_code, content=stored.body)  # type: ignore[return-value]
+    try:
+        task = await TaskNoteLinks(session, user.id).create_task(note_id, payload.model_dump())
+    except Exception as exc:
+        _translate(exc)
+    await ReminderService(session, user.id).sync_for_task(task.id)
+    tasks = TasksService(session, user.id)
+    out = task_out(
+        task,
+        await tasks.subtask_rollup(task.id),
+        now=datetime.now(UTC),
+        tags=(await tasks.tags_for([task.id])).get(task.id, []),
+    )
+    if idempotency_key:
+        await store.remember(idempotency_key, status_code=201, body=out.model_dump(mode="json"))
+    await session.commit()
+    return out
 
 
 @router.put("/{note_id}", response_model=NoteDetailOut)

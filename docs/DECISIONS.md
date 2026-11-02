@@ -2144,3 +2144,43 @@ scan (R-20); projects have no search. The palette must feel instant while typing
 (use the Tasks page filter for that); the task-list `q` filter and `tasks.project_id` stay unindexed
 (R-20 remains open for those). Palette creates are online-only (R-22). A search ranks by relevance, not by
 fuzzy edit distance.
+
+## ADR-0048 — Task↔note links: create-from-note, stable ids, backlinks (MU-06)
+
+**Context.** The `task_links` table (task ↔ note, `ON DELETE CASCADE`, ADR-0024) existed with no writer and
+no API; `TASK_NOTE_LINK` was a reserved change-feed entity. MU-06 makes the association reachable without
+adding a source of truth (ADR-0043 §3, AGENTS.md §8).
+
+**Decision.**
+1. **Links are created only by an explicit action:** `POST /api/notes/{id}/tasks` takes the body of
+   `POST /api/tasks`, validates the note first (unknown, another user's or deleted → `404`), then creates the
+   task and its link in one transaction. An `Idempotency-Key` makes a retry return the first response; the
+   link insert is `ON CONFLICT DO NOTHING`. The note file is never read or written, and Markdown checkboxes
+   are never parsed into tasks. There is deliberately no "link an existing task" endpoint yet (nothing in the
+   UI would use it).
+2. **Identity is the note's id**, never its path, so an API rename keeps links (tested). Wiki-link *text*
+   remains path-based (M2-07) and is not rewritten on rename.
+3. **Reading:** `GET /api/tasks/{id}/notes` (live notes, path order) and `DELETE /api/tasks/{id}/notes/{note_id}`
+   (idempotent unlink; neither side is deleted). `NoteDetailOut` gains `tasks` (id, title, status, priority,
+   due_at, project_id; open work first) and `projects` (from `note_projects`) — the non-note part of a note's
+   backlinks, in the same response as the note.
+4. **Tombstones:** rows for soft-deleted tasks/notes are kept and hidden by the listings, so undoing a task
+   delete (or a reappearing note file) restores the link. Hard deletes cascade.
+5. **Change feed:** a created or removed link is recorded as `task_note_link` (`<task>:<note>`) in the same
+   transaction; a repeated no-op unlink records nothing.
+6. **Migration `b7d3e1a95c24`:** adds `ix_task_links_note_id` (the primary key leads with `task_id`), additive
+   and reversible.
+7. **Client:** "Task from selection" uses the selection, or the cursor's line, reduced to its first non-empty
+   line with list/checkbox/heading markers removed; the person confirms or edits the title. If the note has
+   exactly one project the task is filed in it (shown before creating). Creating a task refreshes only the
+   note's tasks/projects/backlinks, never the editor text or its base revision, so unsaved text and conflict
+   handling are untouched. The task detail lists linked notes (open, unlink). A note found by the task detail
+   opens through `/notes?open=`.
+8. **`[[` completion** uses `@codemirror/autocomplete` (already installed as a dependency of
+   `@codemirror/lang-markdown`; now declared directly, same version, MIT). Candidates are the notes already
+   loaded by the page, matched on path and title; unsafe paths (`[ ] | # ^ \`) are never offered.
+
+**Consequences.** Linking an existing task to a note, rewriting wiki links on rename and a graph view are
+not done (D-3 trigger is now met: backlinks cover notes, tasks and projects). A file renamed outside Atlas
+may get a new id and lose task links, as for project links. Online-only mutations (R-22).
+

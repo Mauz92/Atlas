@@ -126,6 +126,7 @@ def test_auxiliary_tables_reference_stable_ids() -> None:
     assert set(links.columns.keys()) == {"task_id", "note_id", "created_at"}
     assert _foreign_keys(links, "task_id") == {("tasks.id", "CASCADE")}
     assert _foreign_keys(links, "note_id") == {("notes.id", "CASCADE")}
+    assert {index.name for index in links.indexes} == {"ix_task_links_note_id"}  # MU-06
 
     tags = _table(TaskTag)
     assert set(tags.columns.keys()) == {"task_id", "tag_id"}

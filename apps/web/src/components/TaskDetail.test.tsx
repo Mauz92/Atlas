@@ -15,6 +15,8 @@ vi.mock("../api/client", async () => {
       remove: vi.fn(),
       list: vi.fn(),
       subtasks: vi.fn(),
+      notes: vi.fn(),
+      unlinkNote: vi.fn(),
       addSubtask: vi.fn(),
       complete: vi.fn(),
       previewRecurrence: vi.fn(),
@@ -56,6 +58,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   getMock.mockResolvedValue(task);
   vi.mocked(tasksApi.subtasks).mockResolvedValue({ tasks: [] });
+  vi.mocked(tasksApi.notes).mockResolvedValue({ notes: [] });
   vi.mocked(notificationsApi.taskReminder).mockResolvedValue({
     override: null,
     effective: null,

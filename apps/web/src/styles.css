@@ -385,6 +385,15 @@ button.ghost {
   margin-bottom: 6px;
 }
 
+.note-task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
 .notes-links ul {
   list-style: none;
   margin: 0;
@@ -1624,4 +1633,10 @@ button.danger {
 .search-results li {
   padding: 6px 0;
   border-bottom: 1px solid var(--border);
+}
+
+.task-notes ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }

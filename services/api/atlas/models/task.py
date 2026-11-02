@@ -128,8 +128,9 @@ class TaskLink(Base):
     task_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True
     )
+    # The primary key leads with ``task_id``; this index serves "which tasks link to this note".
     note_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("notes.id", ondelete="CASCADE"), primary_key=True
+        Uuid, ForeignKey("notes.id", ondelete="CASCADE"), primary_key=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

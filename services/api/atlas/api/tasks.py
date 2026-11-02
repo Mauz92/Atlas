@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 
 from ..idempotency import IdempotencyConflictError, IdempotencyStore, fingerprint
 from ..models import Task
+from ..notes import NoteNotFoundError
 from ..reminders import (
     ReminderPreferencesService,
     ReminderService,
@@ -51,8 +52,10 @@ from ..tasks import (
     parse_since,
     preview_occurrences,
 )
+from ..tasks.note_links import TaskNoteLinks
 from .deps import CurrentUser, DbSession
 from .schemas import (
+    NoteSummaryOut,
     RecurrencePreviewOut,
     RecurrencePreviewRequest,
     ReminderTiming,
@@ -60,6 +63,7 @@ from .schemas import (
     TaskChangesOut,
     TaskCreateRequest,
     TaskListOut,
+    TaskNotesOut,
     TaskOut,
     TaskReminderOut,
     TaskReminderRequest,
@@ -411,6 +415,42 @@ async def task_changes(
         next_since=changes.next_since,
         has_more=changes.has_more,
     )
+
+
+@router.get("/{task_id}/notes", response_model=TaskNotesOut)
+async def list_task_notes(task_id: uuid.UUID, user: CurrentUser, session: DbSession) -> Any:
+    """The caller's notes linked to one task (MU-06), in path order. The link survives renames."""
+    try:
+        notes = await TaskNoteLinks(session, user.id).notes_for_task(task_id)
+    except Exception as exc:
+        _translate(exc)
+    return TaskNotesOut(
+        notes=[
+            NoteSummaryOut(
+                id=n.id,
+                path=n.path,
+                title=n.title,
+                revision=n.revision,
+                content_hash=n.content_hash,
+                size_bytes=n.size_bytes,
+            )
+            for n in notes
+        ]
+    )
+
+
+@router.delete("/{task_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unlink_task_note(
+    task_id: uuid.UUID, note_id: uuid.UUID, user: CurrentUser, session: DbSession
+) -> None:
+    """Remove the link between a task and a note (idempotent); neither is deleted."""
+    try:
+        await TaskNoteLinks(session, user.id).unlink(task_id, note_id)
+    except NoteNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    except Exception as exc:
+        _translate(exc)
+    await session.commit()
 
 
 @router.get("/{task_id}", response_model=TaskOut)

@@ -6,6 +6,16 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (MU-06): **notes, tasks and projects linked.** In a note, put the cursor on a line (or select
+  text) and choose **Task from selection**: a title is proposed from the text (list marker and checkbox
+  removed) and you confirm it; the new task links back to the note and, if the note belongs to exactly one
+  project, is filed there. A checkbox in a note never becomes a task by itself, and the note text is not
+  changed. The note's **Backlinks** now list the notes that link to it, its tasks and its projects; a task's
+  detail lists its **Linked notes** (open or unlink) and the link follows a renamed note. Typing `[[` in the
+  editor offers your notes and inserts `[[path]]`. New endpoints `POST /api/notes/{id}/tasks`,
+  `GET /api/tasks/{id}/notes`, `DELETE /api/tasks/{id}/notes/{note_id}`; the note detail gains `tasks` and
+  `projects`; one additive index (migration `b7d3e1a95c24`).
+
 - Added (MU-05): **command palette and search.** Press **Ctrl+K** (**Cmd+K** on a Mac) anywhere, or use
   the *Search* button in the top bar, and type: notes, tasks and projects whose words start with what you
   typed appear in groups (a word inside a note's text counts too). Arrow keys move, **Enter** opens, **Esc**

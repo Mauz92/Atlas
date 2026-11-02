@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
-import { ApiError, notesApi, type NoteDetail, type NoteSummary } from "../api/client";
-import { NoteEditor } from "../components/NoteEditor";
+import {
+  ApiError,
+  notesApi,
+  tasksApi,
+  type NoteDetail,
+  type NoteSummary,
+} from "../api/client";
+import { NoteEditor, type NoteEditorHandle } from "../components/NoteEditor";
 import { MarkdownPreview } from "../components/MarkdownPreview";
 import { NoteTree } from "../components/NoteTree";
+import { useTaskEditor } from "../hooks/useTaskEditor";
+import { taskTitleFromText } from "../lib/noteLinks";
 import { buildTree } from "../lib/noteTree";
+import { STATUS_LABELS } from "../lib/taskStatus";
 
 export function Notes() {
   const [notes, setNotes] = useState<NoteSummary[]>([]);
@@ -18,6 +27,11 @@ export function Notes() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<NoteSummary[] | null>(null);
   const [newPath, setNewPath] = useState("");
+  // "Task from selection" (MU-06): the title being confirmed, or null when the form is closed.
+  const [taskTitle, setTaskTitle] = useState<string | null>(null);
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const [taskBusy, setTaskBusy] = useState(false);
+  const editor = useRef<NoteEditorHandle | null>(null);
 
   // `/notes?open=<id>` opens that note (the command palette and the Search page link here).
   const [params] = useSearchParams();
@@ -32,6 +46,27 @@ export function Notes() {
     setFolders(listing.folders);
   }, []);
 
+  // Tasks and projects linked to the open note can change without the note changing (a task is
+  // created, edited or deleted), so re-read only those parts and leave the editor text alone.
+  const selectedId = selected?.id ?? null;
+  const reloadLinked = useCallback(async () => {
+    if (!selectedId) {
+      return;
+    }
+    const fresh = await notesApi.get(selectedId);
+    setSelected((current) =>
+      current && current.id === fresh.id
+        ? {
+            ...current,
+            tasks: fresh.tasks,
+            projects: fresh.projects,
+            backlinks: fresh.backlinks,
+          }
+        : current,
+    );
+  }, [selectedId]);
+  const taskEditor = useTaskEditor({ refresh: reloadLinked });
+
   useEffect(() => {
     refresh().catch((err: unknown) => setError(err instanceof Error ? err.message : "Failed to load"));
   }, [refresh]);
@@ -43,6 +78,7 @@ export function Notes() {
     setError(null);
     setStatus(null);
     setConflictRevision(null);
+    setTaskTitle(null);
     try {
       const detail = await notesApi.get(id);
       setSelected(detail);
@@ -120,6 +156,44 @@ export function Notes() {
       setStatus("Created");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create the note");
+    }
+  }
+
+  function startTask() {
+    setTaskError(null);
+    setTaskTitle(taskTitleFromText(editor.current?.selectionOrLine() ?? ""));
+  }
+
+  async function createTask() {
+    if (!selected || taskTitle === null || taskBusy) {
+      return;
+    }
+    setTaskBusy(true);
+    setTaskError(null);
+    try {
+      // A note filed under exactly one project files its new task there; otherwise it is an
+      // Inbox task. Either way the task holds a link to this note.
+      const project = selected.projects.length === 1 ? selected.projects[0] : null;
+      const created = await notesApi.createTask(
+        selected.id,
+        taskTitle.trim(),
+        project ? { project_id: project.id } : {},
+      );
+      setTaskTitle(null);
+      setStatus(`Created task “${created.title}”`);
+      await reloadLinked();
+    } catch (err) {
+      setTaskError(err instanceof Error ? err.message : "Could not create the task");
+    } finally {
+      setTaskBusy(false);
+    }
+  }
+
+  async function openTask(id: string) {
+    try {
+      taskEditor.open(await tasksApi.get(id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open the task");
     }
   }
 
@@ -248,6 +322,9 @@ export function Notes() {
                   <button type="button" onClick={() => void save()} disabled={!dirty}>
                     Save
                   </button>
+                  <button type="button" className="ghost" onClick={startTask}>
+                    Task from selection
+                  </button>
                   <button type="button" className="ghost" onClick={() => void renameSelected()}>
                     Rename
                   </button>
@@ -271,8 +348,47 @@ export function Notes() {
                 </div>
               ) : null}
 
+              {taskTitle !== null ? (
+                <form
+                  className="note-task-form"
+                  aria-label="New task from note"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void createTask();
+                  }}
+                >
+                  <label htmlFor="note-task-title">Task title</label>
+                  <input
+                    id="note-task-title"
+                    type="text"
+                    value={taskTitle}
+                    autoFocus
+                    onChange={(event) => setTaskTitle(event.target.value)}
+                  />
+                  <p className="muted">
+                    {selected.projects.length === 1
+                      ? `Will be filed in “${selected.projects[0].name}”. `
+                      : ""}
+                    The task links back to this note; the note is not changed.
+                  </p>
+                  {taskError ? (
+                    <p className="error" role="alert">
+                      {taskError}
+                    </p>
+                  ) : null}
+                  <div className="row">
+                    <button type="submit" disabled={taskBusy}>
+                      Create task
+                    </button>
+                    <button type="button" className="ghost" onClick={() => setTaskTitle(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+
               <div className="editor-split">
-                <NoteEditor value={content} onChange={setContent} />
+                <NoteEditor ref={editor} value={content} onChange={setContent} notes={notes} />
                 <MarkdownPreview content={content} />
               </div>
 
@@ -307,10 +423,12 @@ export function Notes() {
                 </div>
                 <div>
                   <h2>Backlinks</h2>
-                  {selected.backlinks.length === 0 ? (
+                  {selected.backlinks.length + selected.tasks.length + selected.projects.length ===
+                  0 ? (
                     <p className="muted">Nothing links here yet.</p>
-                  ) : (
-                    <ul>
+                  ) : null}
+                  {selected.backlinks.length > 0 ? (
+                    <ul aria-label="Linked notes">
                       {selected.backlinks.map((note) => (
                         <li key={note.id}>
                           <button type="button" className="link" onClick={() => void openNote(note.id)}>
@@ -319,7 +437,33 @@ export function Notes() {
                         </li>
                       ))}
                     </ul>
-                  )}
+                  ) : null}
+                  {selected.tasks.length > 0 ? (
+                    <ul aria-label="Linked tasks">
+                      {selected.tasks.map((task) => (
+                        <li key={task.id}>
+                          <button
+                            type="button"
+                            className="link"
+                            onClick={() => void openTask(task.id)}
+                          >
+                            {task.title}
+                          </button>{" "}
+                          <span className="muted">· {STATUS_LABELS[task.status]}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {selected.projects.length > 0 ? (
+                    <ul aria-label="Linked projects">
+                      {selected.projects.map((project) => (
+                        <li key={project.id}>
+                          <Link to={`/projects/${project.id}`}>{project.name}</Link>{" "}
+                          <span className="muted">· project</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               </div>
             </>
@@ -328,6 +472,7 @@ export function Notes() {
           )}
         </div>
       </div>
+      {taskEditor.overlays}
     </section>
   );
 }

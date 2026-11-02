@@ -70,7 +70,7 @@ export async function ensureOwner(page: Page): Promise<void> {
  */
 export async function apiCall<T = unknown>(
   page: Page,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<T> {
@@ -88,7 +88,7 @@ export async function apiCall<T = unknown>(
       });
       if (!response.ok)
         throw new Error(`${method} ${path} → ${response.status}`);
-      return response.json();
+      return response.status === 204 ? null : response.json();
     },
     { method, path, body },
   );

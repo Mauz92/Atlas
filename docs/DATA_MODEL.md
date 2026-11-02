@@ -296,6 +296,10 @@ User 1─* NotificationDevice
   delete) removes the link rows in the same transaction, so no dangling reference survives; the
   `note_id`/`project_id` foreign keys' `ON DELETE CASCADE` covers the hard-delete paths (ADR-0024).
   A note's *wiki* links (`NoteLink`) are unaffected and unrelated.
+- Task↔note links (`task_links`, MU-06, ADR-0048) reference the note's stable id and are created only by
+  "create task from note". Unlike `note_projects`, the rows of a soft-deleted task or note are **kept** and
+  hidden by the listings, so restoring either restores the link; hard deletes cascade. Index
+  `ix_task_links_note_id` serves "tasks of a note". Each change is recorded as `task_note_link`.
 - External events: a provider deletion removes/marks the projection; the projection is never
   re-created from stale local data.
 

@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+import { TaskNotes } from "./TaskNotes";
 import { TaskReminder } from "./TaskReminder";
 import { TaskRepeat } from "./TaskRepeat";
 import { TaskSubtasks } from "./TaskSubtasks";
@@ -38,6 +39,8 @@ interface TaskDetailProps {
   onOpenTask?: (task: Task) => void;
   /** Subtasks changed; the lists should refresh (the panel keeps its unsaved edits). */
   onRefresh?: () => void;
+  /** Open a linked note (MU-06); the owner closes the panel and navigates. */
+  onOpenNote?: (noteId: string) => void;
 }
 
 /** A 409 carrying the server's current revision means the task changed since it was read. */
@@ -116,6 +119,7 @@ export function TaskDetail({
   onDeleted,
   onOpenTask,
   onRefresh,
+  onOpenNote,
 }: TaskDetailProps) {
   const ids = useId();
   const titleRef = useRef<HTMLInputElement>(null);
@@ -509,6 +513,11 @@ export function TaskDetail({
           openDisabled={dirty || !onOpenTask}
           onOpen={(sub) => onOpenTask?.(sub)}
           onChanged={() => onRefresh?.()}
+        />
+        <TaskNotes
+          taskId={current.id}
+          openDisabled={dirty || !onOpenNote}
+          onOpen={(noteId) => onOpenNote?.(noteId)}
         />
         <TaskReminder taskId={current.id} />
       </div>

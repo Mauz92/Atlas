@@ -34,7 +34,7 @@ as reported by the package metadata; verify against the upstream project before 
 | react-router-dom | Client routing | MIT | |
 | vite | Build tool / dev server | MIT | |
 | typescript | Type checking | Apache-2.0 | |
-| codemirror (+ @codemirror/*) | Markdown source editor | MIT | Lazy-loaded on the notes route |
+| codemirror (+ @codemirror/*) | Markdown source editor; `@codemirror/autocomplete` for `[[` note completion (MU-06, ADR-0048; was already a transitive dependency) | MIT | Lazy-loaded on the notes route |
 | marked | Markdown → HTML rendering | MIT | |
 | dompurify | HTML sanitisation of rendered notes | MPL-2.0 OR Apache-2.0 | Untrusted content (SECURITY T3/T6) |
 

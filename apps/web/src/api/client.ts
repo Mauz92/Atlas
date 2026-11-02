@@ -7,6 +7,8 @@ export type NoteSummary = components["schemas"]["NoteSummaryOut"];
 export type NoteDetail = components["schemas"]["NoteDetailOut"];
 export type NoteLink = components["schemas"]["NoteLinkOut"];
 export type NoteList = components["schemas"]["NoteListOut"];
+export type NoteTask = components["schemas"]["NoteTaskOut"];
+export type NoteProject = components["schemas"]["NoteProjectOut"];
 export type Task = components["schemas"]["TaskOut"];
 export type TaskList = components["schemas"]["TaskListOut"];
 export type TaskStatus = components["schemas"]["TaskStatus"];
@@ -166,6 +168,16 @@ export const notesApi = {
   move: (id: string, path: string) =>
     apiFetch<NoteDetail>(`/api/notes/${id}/move`, { method: "POST", body: JSON.stringify({ path }) }),
   remove: (id: string) => apiFetch<void>(`/api/notes/${id}`, { method: "DELETE" }),
+  /**
+   * Create a task from a note and link the two (MU-06). The task fields are validated by the
+   * server and its message is shown verbatim; the key makes a re-sent request create one task.
+   */
+  createTask: (id: string, title: string, fields: TaskFields = {}) =>
+    apiFetch<Task>(`/api/notes/${id}/tasks`, {
+      method: "POST",
+      body: JSON.stringify({ title, ...fields }),
+      idempotencyKey: newIdempotencyKey(),
+    }),
   createFolder: (path: string) =>
     apiFetch<{ path: string }>("/api/folders", { method: "POST", body: JSON.stringify({ path }) }),
   renameFolder: (path: string, newPath: string) =>
@@ -283,6 +295,11 @@ export const tasksApi = {
       body: JSON.stringify({ status, base_revision: task.revision }),
       idempotencyKey: newIdempotencyKey(),
     }),
+  /** The notes linked to a task (MU-06). */
+  notes: (id: string) => apiFetch<{ notes: NoteSummary[] }>(`/api/tasks/${id}/notes`),
+  /** Remove a task↔note link; neither the task nor the note is deleted. */
+  unlinkNote: (taskId: string, noteId: string) =>
+    apiFetch<void>(`/api/tasks/${taskId}/notes/${noteId}`, { method: "DELETE" }),
   /** A task's direct subtasks (any status), in capture order. */
   subtasks: (parentId: string) =>
     apiFetch<TaskList>(`/api/tasks?parent_task_id=${encodeURIComponent(parentId)}&limit=500`),

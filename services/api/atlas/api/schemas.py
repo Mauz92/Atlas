@@ -126,12 +126,44 @@ class NoteLinkOut(BaseModel):
     target_note_id: uuid.UUID | None
 
 
+class NoteTaskOut(BaseModel):
+    """A task linked to a note (MU-06): enough to list and open it, nothing more."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    status: TaskStatus
+    priority: TaskPriority
+    due_at: datetime | None
+    project_id: uuid.UUID | None
+
+
+class NoteProjectOut(BaseModel):
+    """A project linked to a note (``note_projects``)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    status: ProjectStatus
+
+
 class NoteDetailOut(NoteSummaryOut):
     content: str
     tags: list[str]
     links: list[NoteLinkOut]
     backlinks: list[NoteSummaryOut]
     unresolved_links: list[str]
+    #: Tasks and projects that link to this note: the non-note part of its backlinks (MU-06).
+    tasks: list[NoteTaskOut]
+    projects: list[NoteProjectOut]
+
+
+class TaskNotesOut(BaseModel):
+    """The notes linked to one task (MU-06)."""
+
+    notes: list[NoteSummaryOut]
 
 
 class NoteListOut(BaseModel):

@@ -1,7 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import type { ReactElement } from "react";
+import { useInRouterContext } from "react-router-dom";
 
 import { tasksApi, type Task } from "../api/client";
+import { RoutedTaskDetail } from "../components/RoutedTaskDetail";
 import { TaskDetail } from "../components/TaskDetail";
 import { UndoToast } from "../components/UndoToast";
 import { useProjects } from "./useProjects";
@@ -37,6 +39,7 @@ export function useTaskEditor({
   const [error, setError] = useState<string | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const { projects, reload: reloadProjects } = useProjects();
+  const routed = useInRouterContext();
 
   // A task change can move a project's progress (or its membership), so refresh both.
   const refreshAll = useCallback(async () => {
@@ -94,10 +97,13 @@ export function useTaskEditor({
 
   const dismissToast = useCallback(() => setDeleted(null), []);
 
+  // Outside a router (component tests of a single list) there is nowhere to navigate to.
+  const Detail = routed ? RoutedTaskDetail : TaskDetail;
+
   const overlays = (
     <>
       {selected ? (
-        <TaskDetail
+        <Detail
           task={selected}
           timeZone={timeZone}
           projects={projects}
