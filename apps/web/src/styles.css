@@ -1288,3 +1288,80 @@ button.danger {
     border-left: none;
   }
 }
+
+/* Projects (MU-02) */
+.sidebar-projects {
+  list-style: none;
+  margin: 2px 0 6px;
+  padding-left: 14px;
+}
+
+.sidebar-projects a {
+  font-size: 0.9rem;
+}
+
+.project-create {
+  margin: var(--space) 0;
+}
+
+.project-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 520px;
+  margin-top: 8px;
+}
+
+.project-form label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.project-form input,
+.project-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.project-form-dates,
+.project-form-actions,
+.project-actions,
+.view-toggle {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  margin: 8px 0;
+}
+
+.project-list,
+.project-notes {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.project-item,
+.project-notes li,
+.project-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.project-progress-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-description {
+  white-space: pre-wrap;
+}
+
+.view-toggle [aria-pressed="true"] {
+  font-weight: 600;
+  border-color: var(--accent, currentColor);
+}

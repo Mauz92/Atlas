@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 
 import {
   tasksApi,
+  type Project,
   type Task,
   type TaskPriority,
   type TaskStatus,
@@ -20,6 +21,8 @@ interface TaskDetailProps {
   task: Task;
   /** The viewer's IANA zone, used to render the task's instants when it has no zone of its own. */
   timeZone?: string;
+  /** Projects the task can be filed under (archived ones are offered only while the task is in one). */
+  projects?: Project[];
   /** Close the panel (Esc and the Close button). */
   onClose: () => void;
   /** The task was saved; the lists should refresh. The panel stays open on the saved task. */
@@ -66,6 +69,7 @@ function supportedZones(): string[] {
 export function TaskDetail({
   task,
   timeZone,
+  projects = [],
   onClose,
   onSaved,
   onDeleted,
@@ -308,6 +312,27 @@ export function TaskDetail({
           value={draft.start}
           onChange={(event) => set("start", event.target.value)}
         />
+
+        <label htmlFor={`${ids}-project`}>Project</label>
+        <select
+          id={`${ids}-project`}
+          value={draft.projectId}
+          onChange={(event) => set("projectId", event.target.value)}
+        >
+          <option value="">No project</option>
+          {projects
+            .filter(
+              (project) =>
+                project.status !== "archived" ||
+                project.id === initial.projectId,
+            )
+            .map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+                {project.status === "archived" ? " (archived)" : ""}
+              </option>
+            ))}
+        </select>
 
         <label htmlFor={`${ids}-tags`}>Tags</label>
         <input

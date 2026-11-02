@@ -279,12 +279,43 @@ export const tasksApi = {
     }),
 };
 
+/** The writable project fields (the server validates all of them; its messages are shown verbatim). */
+export type ProjectFields = Omit<
+  components["schemas"]["ProjectUpdateRequest"],
+  "base_revision"
+>;
+export type ProjectNotes = components["schemas"]["ProjectNotesOut"];
+
 export const projectsApi = {
   /**
    * The caller's live projects, in capture order. Each carries its derived `progress` (M4-04), so
    * the planning views can show project context without a per-task request.
    */
   list: () => apiFetch<ProjectList>("/api/projects"),
+  get: (id: string) => apiFetch<Project>(`/api/projects/${id}`),
+  /** Create a project (MU-02). */
+  create: (name: string, fields: ProjectFields = {}) =>
+    apiFetch<Project>("/api/projects", {
+      method: "POST",
+      body: JSON.stringify({ ...fields, name }),
+      idempotencyKey: newIdempotencyKey(),
+    }),
+  /**
+   * Edit, archive (`status: "archived"`) or restore (`status: "active"`) a project. Carries the
+   * project's `base_revision`, so a stale edit is rejected with `409` instead of overwriting.
+   */
+  update: (project: Project, changes: ProjectFields) =>
+    apiFetch<Project>(`/api/projects/${project.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ ...changes, base_revision: project.revision }),
+      idempotencyKey: newIdempotencyKey(),
+    }),
+  /** The notes linked to a project (M4-05). */
+  notes: (id: string) => apiFetch<ProjectNotes>(`/api/projects/${id}/notes`),
+  linkNote: (projectId: string, noteId: string) =>
+    apiFetch<void>(`/api/projects/${projectId}/notes/${noteId}`, { method: "PUT" }),
+  unlinkNote: (projectId: string, noteId: string) =>
+    apiFetch<void>(`/api/projects/${projectId}/notes/${noteId}`, { method: "DELETE" }),
 };
 
 export const calendarApi = {

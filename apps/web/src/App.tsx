@@ -10,6 +10,8 @@ import { Inbox } from "./pages/Inbox";
 import { Login } from "./pages/Login";
 import { NotificationsPage } from "./pages/Notifications";
 import { Placeholder } from "./pages/Placeholder";
+import { ProjectPage } from "./pages/ProjectPage";
+import { Projects } from "./pages/Projects";
 import { Setup } from "./pages/Setup";
 import { SyncPage } from "./pages/Sync";
 import { Today } from "./pages/Today";
@@ -26,7 +28,6 @@ const PAGES = [
     title: "Tasks",
     description: "All tasks, filterable by status, priority and date.",
   },
-  { path: "/projects", title: "Projects", description: "Projects, task lists and Kanban boards." },
   { path: "/search", title: "Search", description: "Full-text search across notes and tasks." },
   {
     path: "/settings",
@@ -57,6 +58,8 @@ export default function App() {
         <Route path="/day" element={<Day />} />
         <Route path="/week" element={<Week />} />
         <Route path="/board" element={<BoardPage />} />
+        <Route path="/projects" element={<Projects />} />
+        <Route path="/projects/:id" element={<ProjectPage />} />
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/sync" element={<SyncPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />

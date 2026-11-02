@@ -4,6 +4,7 @@ import type { ReactElement } from "react";
 import { tasksApi, type Task } from "../api/client";
 import { TaskDetail } from "../components/TaskDetail";
 import { UndoToast } from "../components/UndoToast";
+import { useProjects } from "./useProjects";
 
 export interface TaskEditorOptions {
   /** Refresh the list that hosts the editor, without a loading flash. */
@@ -35,6 +36,13 @@ export function useTaskEditor({
   const [deleted, setDeleted] = useState<Task | null>(null);
   const [error, setError] = useState<string | null>(null);
   const opener = useRef<HTMLElement | null>(null);
+  const { projects, reload: reloadProjects } = useProjects();
+
+  // A task change can move a project's progress (or its membership), so refresh both.
+  const refreshAll = useCallback(async () => {
+    void reloadProjects();
+    await refresh();
+  }, [refresh, reloadProjects]);
 
   const open = useCallback((task: Task) => {
     if (document.activeElement instanceof HTMLElement) {
@@ -58,14 +66,14 @@ export function useTaskEditor({
       try {
         await tasksApi.remove(task);
         setDeleted(task);
-        await refresh();
+        await refreshAll();
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Could not delete the task",
         );
       }
     },
-    [refresh],
+    [refreshAll],
   );
 
   const undo = useCallback(async () => {
@@ -76,13 +84,13 @@ export function useTaskEditor({
     setDeleted(null);
     try {
       await tasksApi.restore(task.id);
-      await refresh();
+      await refreshAll();
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not undo the delete",
       );
     }
-  }, [deleted, refresh]);
+  }, [deleted, refreshAll]);
 
   const dismissToast = useCallback(() => setDeleted(null), []);
 
@@ -92,17 +100,18 @@ export function useTaskEditor({
         <TaskDetail
           task={selected}
           timeZone={timeZone}
+          projects={projects}
           onClose={close}
           onSaved={(saved) => {
             setSelected(saved);
-            void refresh();
+            void refreshAll();
           }}
           onDeleted={(task) => {
             // The panel already deleted it; close, show the undo and refresh the list.
             setSelected(null);
             setDeleted(task);
             opener.current = null;
-            void refresh();
+            void refreshAll();
           }}
         />
       ) : null}

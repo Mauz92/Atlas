@@ -2830,6 +2830,29 @@ detail panel is MU-02 (Inbox "File to…" works with existing projects); recurre
 reminder in the panel are MU-04; the shortcut help overlay is MU-08; Chromium only; the date/datetime
 inputs use the browser's native pickers.
 
+### MU-02 — Projects UI
+
+**Result: `DONE` (local); CI job `e2e-real` `NOT RUN` on GitHub Actions.** The Projects placeholder is
+replaced by a project list (create, archive, restore) and a project page (description, dates, derived
+progress, task list / board, linked notes). The task detail has a Project picker; the sidebar lists
+active projects. No backend change: the existing projects API was sufficient.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| J3 run a project: create in the UI, add tasks, file an inbox task from the task detail, complete one, move one on the board, link a note, edit, archive (leaves sidebar), restore | `PASS` | `cd apps/web && npm run test:e2e:real` → `8 passed` incl. `j3-run-a-project.spec.ts` |
+| Progress is the server's derived value (ADR-0023) and refreshes after complete/move/assign | `PASS` | J3 (`0/3 · 0%` → `1/3 · 33%`, unchanged after restore); `Projects.test.tsx`, `ProjectPage.test.tsx` |
+| Board moves persist; linked notes persist after reload | `PASS` | J3 (reload checks) |
+| Assign / move / detach a task from the detail panel (archived projects not offered) | `PASS` | J3; `TaskDetail.test.tsx` |
+| Server validation errors shown verbatim | `PASS` | `ProjectForm.test.tsx` (message unchanged, input kept); not exercised in J3 |
+| Repository checks | `PASS` | `./scripts/verify.sh` → ruff, mypy, pytest `986 passed`; eslint, `tsc`, vitest `311 passed`; `verification: PASS` |
+| Mocked e2e still passes | `PASS` | `cd apps/web && npm run e2e` → `7 passed` |
+| No stray `atlas_e2e_*` databases | `PASS` | query of `pg_database` for `atlas_e2e_%` → empty after the runs |
+| Runs in CI | `NOT RUN` | Job exists from MU-00; not executed outside GitHub Actions |
+
+Limitations: project delete is not offered in the UI (archive only); a linked note opens the Notes page
+but not that note directly (deep links arrive with MU-06); status `completed` for a project has no
+control yet (the API supports it); project mutations are online-only (R-22); Chromium only.
+
 ---
 
 ## Release Readiness (M9)
@@ -2850,7 +2873,7 @@ Verdicts: **`PASS`** = the requirement is delivered and demonstrably works under
 | REQ-003 Commercial-use rights | `PASS` | M1-10 + M9-04 | Complete dependency/licence inventory (`DEPENDENCIES.md`); all licences permit intended personal + workplace use (MIT/BSD/Apache/LGPL/MPL/CC0; `psycopg` LGPL used unmodified as a library). Standing pre-release action: re-verify identifiers upstream (`DEPENDENCIES.md`). |
 | REQ-004 Markdown notes | `PASS` | **M2** (gate `PASS`) | Notes are real `.md` files, byte-identical on disk, path-traversal-safe, revision-aware with conflict copies; M9-03 exports the genuine note bytes. Tests: `test_notes_api.py`, `test_note_paths.py` (M2 gate). |
 | REQ-005 Task management | `PARTIAL` | **M3** (gate `PASS`) + M4-02 | All required capabilities delivered and integration-tested over HTTP: Inbox/Today/Upcoming (+ Day/Week planning, Board), due dates & priorities (DST-correct), recurrence (RRULE), subtasks, project assignment. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** the function audit showed the owner cannot edit a task, set a due date or priority, delete, or assign a project in the UI (capture is title-only; Complete is the only row action), so the requirement is not satisfied as a user-facing capability. Returns to `PASS` when MU-01…MU-04 journeys J1/J2 pass in a browser against the real API. **Progress 2026-11-02:** J1 and J2 pass (MU-01: edit, date, priority, tags, delete+undo, Inbox triage); recurrence/subtasks/reminders in the UI (MU-04) and the Tasks page (MU-03) remain. |
-| REQ-006 Project management | `PARTIAL` | **M4** (gate `PASS`) | Projects, task lists, Kanban board, derived progress (documented formula, ADR-0023) and note↔project links are all implemented and tested. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** there is no way to create or edit a project in the UI (the Projects page is a placeholder), so the Board is empty for a new user. Returns to `PASS` when MU-02 journey J3 passes. |
+| REQ-006 Project management | `PARTIAL` | **M4** (gate `PASS`) | Projects, task lists, Kanban board, derived progress (documented formula, ADR-0023) and note↔project links are all implemented and tested. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** there is no way to create or edit a project in the UI (the Projects page is a placeholder), so the Board is empty for a new user. Returns to `PASS` when MU-02 journey J3 passes. **Progress 2026-11-02:** J3 passes (MU-02: create/edit/archive/restore, project page with progress, list, board and linked notes, assignment from the task detail); the Tasks-page project filter/bulk move (MU-03) remains. |
 | REQ-007 Google Calendar | `NOT RUN` | — (**M5-03** `BACKLOG`; **M5-00 `BLOCKED`** — AR-001) | Only the foundations exist: encrypted credential store (M5-01), provider-neutral adapter contract (M5-02), event projection + cursors (M5-06), sync-status (M5-08), reconciliation (M5-10). The Google adapter and account-connection UI are **not built**; no provider is contacted. |
 | REQ-008 Microsoft Outlook | `NOT RUN` | — (**M5-04** `BACKLOG`; **M5-00 `BLOCKED`** — AR-001) | As REQ-007: the foundations exist but the Microsoft Graph adapter and connection UI are **not built**. |
 | REQ-009 Calendar consolidation | `NOT RUN` | — (**M5-05/M5-07** `BACKLOG`) | There is **no unified calendar view** and **no account/calendar selection UI**. The `/calendar` route is a per-provider **sync-status** surface only (M5-08), not a consolidated event view. |

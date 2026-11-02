@@ -1,5 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 
+import { ProjectsProvider, activeProjects, useProjects } from "../hooks/useProjects";
+
 import { useAuth } from "../auth/AuthProvider";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -20,7 +22,32 @@ export const NAV_ITEMS = [
   { to: "/settings", label: "Settings" },
 ] as const;
 
+function SidebarProjects() {
+  const { projects } = useProjects();
+  const active = activeProjects(projects);
+  if (active.length === 0) {
+    return null;
+  }
+  return (
+    <ul className="sidebar-projects" aria-label="Active projects">
+      {active.map((project) => (
+        <li key={project.id}>
+          <NavLink to={`/projects/${project.id}`}>{project.name}</NavLink>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function Layout() {
+  return (
+    <ProjectsProvider>
+      <Shell />
+    </ProjectsProvider>
+  );
+}
+
+function Shell() {
   const { user, logout } = useAuth();
 
   return (
@@ -34,6 +61,7 @@ export function Layout() {
                 <NavLink to={item.to} end={item.to === "/"}>
                   {item.label}
                 </NavLink>
+                {item.to === "/projects" ? <SidebarProjects /> : null}
               </li>
             ))}
           </ul>

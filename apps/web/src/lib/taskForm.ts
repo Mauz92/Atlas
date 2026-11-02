@@ -38,6 +38,8 @@ export interface TaskDraft {
   start: string;
   /** Comma-separated tag names. */
   tags: string;
+  /** The project's id, or empty for no project. */
+  projectId: string;
 }
 
 /** Today's calendar date (`YYYY-MM-DD`) in `timeZone`, offset by `days`. */
@@ -82,6 +84,7 @@ export function draftFromTask(
     timeZone: task.time_zone ?? "",
     start: start ? `${start.date}T${start.time}` : "",
     tags: (task.tags ?? []).join(", "),
+    projectId: task.project_id ?? "",
   };
 }
 
@@ -154,5 +157,8 @@ export function changesFromDraft(
     }
   }
   if (draft.tags !== initial.tags) changes.tags = parseTags(draft.tags);
+  if (draft.projectId !== initial.projectId) {
+    changes.project_id = draft.projectId === "" ? null : draft.projectId;
+  }
   return changes;
 }

@@ -6,6 +6,12 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (MU-02): **Projects.** The Projects page lists your projects with their progress and lets you
+  create, archive and restore them. A project page shows its description, dates, progress, tasks (as a
+  list or a board), and linked notes, and lets you edit it, add tasks and link or unlink notes. Tasks can
+  be filed under, moved between or removed from a project in the task detail. Active projects are listed
+  in the sidebar.
+
 - Added (MU-01): **task detail and editing.** Open any task from Today, Inbox, Upcoming, Day, Week or the
   Board (click the title, or focus it and press Enter) to edit its title, description, status, priority,
   due date and time, time zone, start and tags in a side sheet (a full page on narrow screens); Esc

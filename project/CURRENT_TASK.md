@@ -1,26 +1,24 @@
 # Current Task
 
-- Task ID: MU-02
+- Task ID: MU-03
 - Status: READY
-- Depends on: MU-01 (`DONE`, 2026-11-02), M4-01…M4-07 (`DONE`)
+- Depends on: MU-01 (`DONE`, 2026-11-02), MU-02 (`DONE`, 2026-11-02), M3-08 (`DONE`)
 - Milestone: MU — Usable Core (docs/ROADMAP.md, ADR-0043)
 
 ## Goal
-Projects UI (full definition: `docs/ROADMAP.md`, MU-02 row): replace the Projects placeholder with a list,
-create/edit/archive/restore, and a project page with description, derived progress (ADR-0023), task list,
-board and linked notes; assign/move tasks to a project from the task detail (extend `TaskDetail` — there is
-a project field to add; the Inbox "File to…" control already files to existing projects); the sidebar shows
-active projects. Journey J3 must pass.
+Tasks page (full definition: `docs/ROADMAP.md`, MU-03 row): replace the Tasks placeholder with the
+existing server filters (status, priority, due range, project, text) plus sort and a client-side
+saved-filters shortcut list; bulk complete / delete / move to project.
 
 ## Verification gate
-Journeys run with the real-stack harness: `cd apps/web && npm run test:e2e:real` (see `docs/TESTING.md`
-§1b). Add `j3-*.spec.ts` under `apps/web/e2e-real/`; start with `ensureOwner(page)` and use unique titles
-(journeys share one database per run). `apiCall` in `e2e-real/helpers.ts` can be dropped from J3 once
-projects can be created in the UI.
+Component tests plus a real-stack Playwright journey (`cd apps/web && npm run test:e2e:real`, see
+`docs/TESTING.md` §1b). Start specs with `ensureOwner(page)`, use unique titles (journeys share one
+database per run). Keep tests lean: parametrize, one spec with shared setup.
 
 ## Notes
-- MU-01 delivered the shared task detail (`components/TaskDetail.tsx`, opened through
-  `hooks/useTaskEditor.tsx`), tags (`tags: string[]`) and `POST /api/tasks/{id}/restore` (ADR-0044).
-- Known limitations carried forward: UI task mutations are online-only (not via the offline queue,
-  R-22); a due time of exactly 23:59 reads as "end of day"; `.local` email addresses are still rejected.
-- Do not start MU-03 until MU-02 is `DONE`. Do not start blocked M5/M6/M8 work.
+- Reuse: `TaskDetail` via `hooks/useTaskEditor.tsx` (it now takes projects from `hooks/useProjects.tsx`,
+  the shared project list provided by `Layout`), `TaskList`, `tasksApi.list` filters, `ProjectForm`.
+- Known limitations carried forward: UI mutations (tasks and projects) are online-only (not via the
+  offline queue, R-22); a due time of exactly 23:59 reads as "end of day"; `.local` email addresses are
+  still rejected; no project delete in the UI (archive only); linked notes do not deep-link (MU-06).
+- Do not start MU-04 until MU-03 is `DONE`. Do not start blocked M5/M6/M8 work.

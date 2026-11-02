@@ -101,7 +101,8 @@ protected `scripts/verify.sh`.
 Current journeys: `capture-journey.spec.ts` (setup → login → capture "Buy milk" → Inbox → reload);
 `j1-capture-and-plan.spec.ts` (J1: capture on Today, plan via the task detail, Upcoming, reload, stale
 second-tab conflict, all fields, verbatim validation errors, delete + undo, narrow-screen full page);
-`j2-triage-inbox.spec.ts` (J2: five inbox items scheduled / filed / deleted with undo, keyboard driven).
+`j2-triage-inbox.spec.ts` (J2: five inbox items scheduled / filed / deleted with undo, keyboard driven);
+`j3-run-a-project.spec.ts` (J3: create a project in the UI, add/file/complete/move tasks, link a note, edit, archive, restore).
 Journeys share one owner: start each with `ensureOwner(page)` (creates the owner or signs in) and use
 unique titles, since earlier journeys' tasks stay in the database. `apiCall` (helpers) performs set-up
 that has no UI yet (for example creating a project).

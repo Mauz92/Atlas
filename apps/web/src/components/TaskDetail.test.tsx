@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { ApiError, tasksApi } from "../api/client";
-import { makeTask } from "../test/tasks";
+import { makeProject, makeTask } from "../test/tasks";
 import { TaskDetail } from "./TaskDetail";
 
 vi.mock("../api/client", async () => {
@@ -95,6 +95,30 @@ describe("TaskDetail", () => {
     await waitFor(() =>
       expect(props.onSaved).toHaveBeenCalledWith(
         expect.objectContaining({ revision: 2 }),
+      ),
+    );
+  });
+
+  it("moves the task between projects (archived ones are not offered) and detaches it", async () => {
+    updateMock.mockResolvedValue({ ...task, revision: 2 });
+    const projects = [
+      makeProject({ id: "a", name: "Home" }),
+      makeProject({ id: "b", name: "Old", status: "archived" }),
+    ];
+    setup({ task: { ...task, project_id: "a" }, projects });
+    const select = screen.getByLabelText("Project") as HTMLSelectElement;
+    expect(select).toHaveValue("a");
+    expect(Array.from(select.options).map((o) => o.text)).toEqual([
+      "No project",
+      "Home",
+    ]);
+
+    fireEvent.change(select, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "t1" }),
+        { project_id: null },
       ),
     );
   });
