@@ -2984,3 +2984,27 @@ Verdicts: **`PASS`** = the requirement is delivered and demonstrably works under
 `NOT RUN` and REQ-010/011/012 are `PARTIAL`, the release is **explicitly not production-ready** —
 label and rationale in [`RELEASE.md`](RELEASE.md) §1. No requirement is overstated: the blocked
 calendar work (AR-001) and the device-bound notification/mobile work are recorded, not waived.
+
+### MU-07 — Daily note, templates and Today as home
+
+**Result: `DONE` (local); CI job `e2e-real` `NOT RUN` on GitHub Actions.** Today (`/`) shows overdue, due today,
+work scheduled to start today, a daily-note card and an empty events slot; "Today's note" creates or opens
+`daily/YYYY-MM-DD.md`; notes can be started from a note in `templates/` (ADR-0049). No migration.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| J6 (browser zone UTC+14): Today lists overdue / due today / scheduled and an empty events slot; "Create today's note" opens `daily/<viewer's day>.md` whose file on disk is exactly `# <date>\n`; saved text is previewed as plain text on Today (HTML not rendered); opening it again from the card and from the palette leaves revision and file unchanged and the folder holds one note; palette "New note from template" focuses the picker; the note made from a template is the plain file with `{{date}}`/`{{title}}` replaced and `{{time}}`/HTML left verbatim; creating over an existing path shows the server's message and leaves the file unchanged | `PASS` | `cd apps/web && npm run test:e2e:real` → `15 passed` incl. `j6-daily-note-and-today.spec.ts` |
+| Backend: daily note `201` then `200`, never rewritten after an edit; 6 concurrent calls = one `201`, one index row, one file; a file added outside Atlas is adopted unchanged; invalid days (impossible date, short form, traversal, full-width digits, text) = `400` verbatim and nothing created; another user's row does not count; `templates/daily.md` is used; substitution cases (spaces, unknown placeholders, no re-expansion); template failures (outside `templates/`, unknown id, existing path, traversal, bad date) change nothing; `write_new` never replaces and leaves no temp file; auth required | `PASS` | `services/api/tests/integration/test_daily_notes.py` (22 tests) |
+| Components: Today (groups, scheduled once and only today, daily preview as text + open, create + verbatim error, events slot), Notes (today's note, template picker, verbatim error, no templates), palette commands, helpers | `PASS` | `Today.test.tsx`, `Notes.test.tsx`, `CommandPalette.test.tsx`, `dailyNote.test.ts` |
+| Repository checks | `PASS` | `./scripts/verify.sh` → ruff, format, mypy; pytest `1040 passed`; eslint, `tsc`, vitest `422 passed`; `verification: PASS` |
+| Mocked e2e still passes | `PASS` | `cd apps/web && npm run e2e` → `7 passed` |
+| No stray `atlas_e2e_*` databases | `PASS` | `docker exec atlas-db-1 psql … \l` → only `atlas`, `atlas_test`, `postgres` |
+| Calendar events on Today | `NOT RUN` | out of scope: the slot is a placeholder until M5 |
+| Date near midnight / DST for the daily note | `NOT RUN` | the day string comes from the browser; only a fixed far-ahead zone (UTC+14) is exercised |
+| Runs in CI | `NOT RUN` | Job exists from MU-00; not executed outside GitHub Actions |
+
+Limitations: the browser's zone decides "today" (no user zone setting until MU-08); a renamed daily note is not
+found again, so "Today's note" creates a new one; only `{{date}}` and `{{title}}` exist, no weekly/monthly
+notes; creating needs a filesystem with hard links; a stale index row for a file deleted outside Atlas gives
+`409` until reconciliation runs; scheduled work is "start date is today" (no work-block entity exists);
+UI mutations are online-only (R-22); Chromium only.

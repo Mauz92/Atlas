@@ -11,7 +11,7 @@ vi.mock("../api/client", async () => {
     ApiError: actual.ApiError,
     searchApi: { search: vi.fn() },
     tasksApi: { get: vi.fn(), create: vi.fn() },
-    notesApi: { create: vi.fn() },
+    notesApi: { create: vi.fn(), openDaily: vi.fn() },
     projectsApi: { create: vi.fn() },
   };
 });
@@ -55,6 +55,7 @@ function type(box: HTMLElement, value: string) {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(searchApi.search).mockResolvedValue(RESULTS);
+  vi.mocked(notesApi.openDaily).mockResolvedValue({ id: "d1" } as never);
   document.documentElement.removeAttribute("data-theme");
 });
 
@@ -95,6 +96,8 @@ describe("CommandPalette", () => {
     ["a note", "zeb", /Zebra plan/, "/notes?open=n1"],
     ["a project", "zeb", /Zebra crossing/, "/projects/p1"],
     ["a view", "notes", /Go to Notes/, "/notes"],
+    ["today's note", "today", /Open today's note/, "/notes?open=d1"],
+    ["the template picker", "template", /New note from template/, "/notes?new=template"],
   ])("opens %s with Enter and closes", async (_name, text, option, path) => {
     const { box, onClose } = setup();
     type(box, text);

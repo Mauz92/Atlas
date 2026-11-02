@@ -90,6 +90,18 @@ class NoteCreateRequest(BaseModel):
     content: str = Field(default="", max_length=5 * 1024 * 1024)
 
 
+class DailyNoteRequest(BaseModel):
+    """The calendar day (``YYYY-MM-DD``) in the caller's time zone; the server never guesses it."""
+
+    date: str = Field(min_length=1, max_length=32)
+
+
+class NoteFromTemplateRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=1024)
+    template_id: uuid.UUID
+    date: str | None = Field(default=None, max_length=32)
+
+
 class NoteUpdateRequest(BaseModel):
     content: str = Field(max_length=5 * 1024 * 1024)
     base_revision: int = Field(ge=0)

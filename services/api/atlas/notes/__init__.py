@@ -20,10 +20,13 @@ from .storage import (
     normalize_note_path,
     normalize_rel_path,
 )
+from .templates import DAILY_DIR, TEMPLATES_DIR, TemplateError, parse_day, render_template
 
 __all__ = [
+    "DAILY_DIR",
     "MAX_NOTE_BYTES",
     "NOTE_SUFFIX",
+    "TEMPLATES_DIR",
     "NoteConflictError",
     "NoteFile",
     "NoteNotFoundError",
@@ -35,6 +38,7 @@ __all__ = [
     "NotesStorage",
     "ParsedNote",
     "ReconcileSummary",
+    "TemplateError",
     "UnsafePathError",
     "content_hash",
     "extract_links",
@@ -43,4 +47,6 @@ __all__ = [
     "normalize_note_path",
     "normalize_rel_path",
     "parse",
+    "parse_day",
+    "render_template",
 ]

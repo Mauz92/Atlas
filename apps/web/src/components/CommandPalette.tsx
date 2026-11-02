@@ -7,6 +7,7 @@ import { useProjects } from "../hooks/useProjects";
 import { useUnifiedSearch } from "../hooks/useUnifiedSearch";
 import { NAV_ITEMS } from "../lib/navigation";
 import { rankByQuery } from "../lib/palette";
+import { localDate } from "../lib/taskForm";
 import { readTheme, toggleTheme } from "../lib/theme";
 
 const RESULT_LIMIT = 6;
@@ -107,6 +108,23 @@ export function CommandPalette({ onClose, onOpenTask }: CommandPaletteProps) {
         label: `Go to ${item.label}`,
         run: go(item.to),
       })),
+      {
+        id: "open-today-note",
+        group: "Commands",
+        label: "Open today's note",
+        hint: "creates it if missing",
+        run: async () => {
+          const note = await notesApi.openDaily(localDate());
+          onClose();
+          navigate(`/notes?open=${note.id}`);
+        },
+      },
+      {
+        id: "new-from-template",
+        group: "Commands",
+        label: "New note from template",
+        run: go("/notes?new=template"),
+      },
       {
         id: "toggle-theme",
         group: "Commands",

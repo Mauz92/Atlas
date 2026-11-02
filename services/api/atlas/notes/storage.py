@@ -135,7 +135,28 @@ class NotesStorage:
             modified_at=path.stat().st_mtime,
         )
 
-    def _atomic_write(self, path: Path, content: str) -> None:
+    def write_new(self, rel: str, content: str) -> NoteFile:
+        """Create a note that must not exist yet; an existing file is never replaced.
+
+        The content is written to a temporary file and published with a hard link, which fails
+        with ``FileExistsError`` if the target appeared in the meantime, so two concurrent
+        creators cannot overwrite each other and a reader never sees a half-written note.
+        """
+        normalized = normalize_note_path(rel)
+        path = self.absolute(normalized)
+        encoded = content.encode("utf-8")
+        if len(encoded) > MAX_NOTE_BYTES:
+            raise NoteTooLargeError(f"{normalized} exceeds {MAX_NOTE_BYTES} bytes")
+        self._atomic_write(path, content, exclusive=True)
+        return NoteFile(
+            path=normalized,
+            content=content,
+            content_hash=content_hash(content),
+            size_bytes=len(encoded),
+            modified_at=path.stat().st_mtime,
+        )
+
+    def _atomic_write(self, path: Path, content: str, *, exclusive: bool = False) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=_TMP_PREFIX, suffix=NOTE_SUFFIX)
         tmp_path = Path(tmp_name)
@@ -144,7 +165,11 @@ class NotesStorage:
                 handle.write(content)
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.replace(tmp_path, path)
+            if exclusive:
+                os.link(tmp_path, path)
+                tmp_path.unlink(missing_ok=True)
+            else:
+                os.replace(tmp_path, path)
             self._fsync_dir(path.parent)
         except BaseException:
             tmp_path.unlink(missing_ok=True)

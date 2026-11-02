@@ -296,6 +296,8 @@ User 1─* NotificationDevice
   delete) removes the link rows in the same transaction, so no dangling reference survives; the
   `note_id`/`project_id` foreign keys' `ON DELETE CASCADE` covers the hard-delete paths (ADR-0024).
   A note's *wiki* links (`NoteLink`) are unaffected and unrelated.
+- Daily notes and templates (MU-07, ADR-0049) add **no table**: `daily/<YYYY-MM-DD>.md` and `templates/*.md` are
+  ordinary notes in `notes` and on disk; the daily note for a day is found by its path.
 - Task↔note links (`task_links`, MU-06, ADR-0048) reference the note's stable id and are created only by
   "create task from note". Unlike `note_projects`, the rows of a soft-deleted task or note are **kept** and
   hidden by the listings, so restoring either restores the link; hard deletes cascade. Index

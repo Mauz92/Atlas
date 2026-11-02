@@ -2184,3 +2184,50 @@ adding a source of truth (ADR-0043 §3, AGENTS.md §8).
 not done (D-3 trigger is now met: backlinks cover notes, tasks and projects). A file renamed outside Atlas
 may get a new id and lose task links, as for project links. Online-only mutations (R-22).
 
+## ADR-0049 — Daily note, templates and Today as home (MU-07)
+
+**Context.** MU-07 adds a note for each day, notes started from templates and a Today home page. Notes stay
+plain Markdown files with no new source of truth (ADR-0043 §3, AGENTS.md §8). Two things needed deciding:
+what "today" means and how a create can never overwrite.
+
+**Decision.**
+1. **Which day.** There is no per-user time-zone setting (tasks carry their own zone, Settings arrives in
+   MU-08). The browser's zone is the viewer's zone everywhere else (Today view, `tz` parameter), so the
+   **client sends the calendar day** (`YYYY-MM-DD` in the browser's zone) and the server only validates it
+   (`^\d{4}-\d{2}-\d{2}$`, ASCII, a real date). The server never guesses a day from its own clock for the
+   daily note. For `{{date}}` in a template note made without a `date` the server falls back to the UTC day;
+   the web client always sends its own day. Revisit when MU-08 adds a user zone setting.
+2. **Daily note.** `POST /api/notes/daily {date}` opens `daily/<date>.md`: `201` when this call created it,
+   `200` with the untouched note otherwise. Content is `# <date>\n`, or the rendered `templates/daily.md` if
+   that note exists. Concurrent calls are serialised with a per-user-and-path transaction advisory lock, so
+   exactly one creates the file; a file that already exists on disk but is not indexed yet (added in an
+   editor) is **adopted** (indexed as it is), never rewritten. The folder is `daily/` (lower case, as in the
+   roadmap); `MARKDOWN_STORAGE.md` §1 is updated from the older `Daily/` sketch.
+3. **No overwrite, ever.** New `NotesStorage.write_new` writes a temporary file, fsyncs it and publishes it
+   with a hard link, which fails if the target exists. `NotesService.create` now uses it, which also closes a
+   check-then-write race in the existing `POST /api/notes`. It requires a filesystem with hard links (any
+   Linux local filesystem or Docker volume); elsewhere the create fails with the OS error and nothing is
+   overwritten.
+4. **Templates** are ordinary notes whose path starts with `templates/` (nothing is registered anywhere).
+   `POST /api/notes/from-template {path, template_id, date?}` reads the template by id (user-scoped; not in
+   `templates/` → `400`), substitutes and creates the note with the normal create rules (an existing path →
+   `409`, bad path → `400`). Placeholders are exactly `{{date}}` (`YYYY-MM-DD`) and `{{title}}` (the new
+   note's file name without `.md`; for the daily note, the date), optionally with spaces inside the braces.
+   Substitution is a single regular-expression pass: other `{{...}}` text, HTML and anything else is copied
+   verbatim, inserted values are not expanded again, nothing is evaluated or included. Template content is
+   treated as untrusted text like every note (the preview does not render raw HTML).
+5. **Today** (route `/`, already the default) shows Overdue, Due today, **Scheduled today** (open tasks whose
+   `start_at` falls on the viewer's day, via the existing `start_from`/`start_to` filter, minus tasks already
+   listed above), a **Daily note** card and an **Events** slot that says it is empty until a calendar is
+   connected (M5). The card previews the note's first lines as plain text and never creates a file just by
+   being displayed: creating happens only on the button. Listing templates and finding the daily note use the
+   existing `GET /api/notes`, so no list endpoint was added.
+6. **Palette and Notes page:** commands "Open today's note" and "New note from template" (the latter goes to
+   `/notes?new=template`, which focuses the template picker next to the new-note path field); the Notes page
+   also has a "Today's note" button.
+
+**Consequences.** No migration, no new dependency. `daily/` and `templates/` are normal folders the user can
+rename or edit externally; the daily note for a day is found by its path, so renaming it makes the next
+"Today's note" create a new one. The daily note is not linked to tasks automatically. A stale index row whose
+file was deleted outside Atlas still conflicts until reconciliation runs (`409`, message shown). Weekly or
+monthly notes, template variables beyond the two above and a user time-zone setting are not done.

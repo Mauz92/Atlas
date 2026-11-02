@@ -25,7 +25,20 @@ from ..changes import (
 )
 from ..models import NoteIndex, NoteLink, NoteProject, NoteTag, Tag
 from .markdown import parse
-from .storage import NoteFile, NotesStorage, normalize_note_path, normalize_rel_path
+from .storage import (
+    NOTE_SUFFIX,
+    NoteFile,
+    NotesStorage,
+    normalize_note_path,
+    normalize_rel_path,
+)
+from .templates import (
+    DAILY_DIR,
+    TEMPLATES_DIR,
+    TemplateError,
+    parse_day,
+    render_template,
+)
 
 
 class NoteNotFoundError(LookupError):
@@ -173,7 +186,10 @@ class NotesService:
         if existing is not None and existing.deleted_at is None:
             raise NotePathConflictError(normalized)
 
-        file = self.storage.write(normalized, content)
+        try:
+            file = self.storage.write_new(normalized, content)
+        except FileExistsError as exc:  # created by someone else since the check above
+            raise NotePathConflictError(normalized) from exc
         if existing is not None:
             note = existing
             note.deleted_at = None
@@ -188,6 +204,65 @@ class NotesService:
         await self.session.flush()
         await self._record_change(note.id, ChangeOperation.UPSERT)
         return note
+
+    async def open_daily(self, day: str) -> tuple[NoteIndex, bool]:
+        """Open the daily note for ``day`` (``YYYY-MM-DD``), creating it only if it is missing.
+
+        Idempotent: an existing note is returned untouched, never rewritten, and concurrent calls
+        are serialised per path so exactly one creates it. A file that exists on disk but is not
+        indexed yet (added outside Atlas) is adopted rather than replaced. Returns the note and
+        whether this call created it.
+        """
+        stamp = parse_day(day)
+        path = f"{DAILY_DIR}/{stamp}{NOTE_SUFFIX}"
+        await self.session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended(f"{self.user_id}:{path}", 0)))
+        )
+        if self.storage.exists(path):
+            return await self._adopt(path), False
+        template = f"{TEMPLATES_DIR}/daily{NOTE_SUFFIX}"
+        body = f"# {stamp}\n"
+        if self.storage.exists(template):
+            body = render_template(self.storage.read(template).content, title=stamp, day=stamp)
+        return await self.create(path, body), True
+
+    async def create_from_template(
+        self, path: str, template_id: uuid.UUID, day: str | None = None
+    ) -> NoteIndex:
+        """Create a note whose content is a template note with its placeholders substituted."""
+        template = await self.get(template_id)
+        if PurePosixPath(template.path).parts[0] != TEMPLATES_DIR:
+            raise TemplateError(f"a template must be a note in the {TEMPLATES_DIR}/ folder")
+        stamp = parse_day(day) if day else datetime.now(UTC).date().isoformat()
+        normalized = normalize_note_path(path)
+        content = render_template(
+            self.storage.read(template.path).content,
+            title=PurePosixPath(normalized).stem,
+            day=stamp,
+        )
+        return await self.create(normalized, content)
+
+    async def _adopt(self, path: str) -> NoteIndex:
+        """Return the live index row for a file that exists, indexing the file if it has none."""
+        existing = await self.session.scalar(
+            select(NoteIndex).where(NoteIndex.user_id == self.user_id, NoteIndex.path == path)
+        )
+        if existing is not None and existing.deleted_at is None:
+            return existing
+        file = self.storage.read(path)
+        if existing is None:
+            existing = NoteIndex(
+                user_id=self.user_id, path=path, revision=1, size_bytes=0, content_hash="", title=""
+            )
+            self.session.add(existing)
+            await self.session.flush()
+        else:
+            existing.revision += 1
+        await self._apply(existing, file)
+        await self._relink_unresolved()
+        await self.session.flush()
+        await self._record_change(existing.id, ChangeOperation.UPSERT)
+        return existing
 
     async def update(self, note_id: uuid.UUID, content: str, base_revision: int) -> NoteIndex:
         note = await self.get(note_id)

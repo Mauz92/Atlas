@@ -7,7 +7,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Annotated, NoReturn
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
 
 from ..config import get_settings
@@ -21,6 +21,7 @@ from ..notes import (
     NotesService,
     NotesStorage,
     NoteTooLargeError,
+    TemplateError,
     UnsafePathError,
 )
 from ..projects import (
@@ -35,11 +36,13 @@ from ..tasks.note_links import TaskNoteLinks
 from .deps import CurrentUser, DbSession
 from .projects import project_out
 from .schemas import (
+    DailyNoteRequest,
     FolderCreateRequest,
     FolderRenameRequest,
     NoteConflictCopyRequest,
     NoteCreateRequest,
     NoteDetailOut,
+    NoteFromTemplateRequest,
     NoteLinkOut,
     NoteListOut,
     NoteMoveRequest,
@@ -88,7 +91,7 @@ def _translate(exc: Exception) -> NoReturn:
         ) from exc
     if isinstance(exc, TaskValidationError):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    if isinstance(exc, UnsafePathError):
+    if isinstance(exc, (UnsafePathError, TemplateError)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if isinstance(exc, NoteTooLargeError):
         raise HTTPException(
@@ -183,6 +186,45 @@ async def create_note(
     service = NotesService(session, user.id, storage)
     try:
         note = await service.create(payload.path, payload.content)
+        detail = await _detail(service, note)
+    except Exception as exc:
+        _translate(exc)
+    await session.commit()
+    return detail
+
+
+@router.post("/daily", response_model=NoteDetailOut)
+async def open_daily_note(
+    payload: DailyNoteRequest,
+    response: Response,
+    user: CurrentUser,
+    session: DbSession,
+    storage: StorageDep,
+) -> NoteDetailOut:
+    """Open ``daily/<date>.md``, creating it if missing (MU-07, ADR-0049).
+
+    ``date`` is the caller's calendar day. Idempotent: ``201`` when this call created the file,
+    ``200`` with the untouched note when it already existed (also under concurrent calls).
+    """
+    service = NotesService(session, user.id, storage)
+    try:
+        note, created = await service.open_daily(payload.date)
+        detail = await _detail(service, note)
+    except Exception as exc:
+        _translate(exc)
+    await session.commit()
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return detail
+
+
+@router.post("/from-template", response_model=NoteDetailOut, status_code=status.HTTP_201_CREATED)
+async def create_note_from_template(
+    payload: NoteFromTemplateRequest, user: CurrentUser, session: DbSession, storage: StorageDep
+) -> NoteDetailOut:
+    """Create a note from a note in ``templates/``, substituting ``{{date}}`` and ``{{title}}``."""
+    service = NotesService(session, user.id, storage)
+    try:
+        note = await service.create_from_template(payload.path, payload.template_id, payload.date)
         detail = await _detail(service, note)
     except Exception as exc:
         _translate(exc)

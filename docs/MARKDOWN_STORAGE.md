@@ -16,7 +16,8 @@ A configurable root is mounted into the container:
 /data/atlas/
   notes/
     Inbox/
-    Daily/
+    daily/        (YYYY-MM-DD.md, created on demand, ADR-0049)
+    templates/    (notes offered when creating a note, ADR-0049)
     Projects/
     Areas/
     Resources/
@@ -47,6 +48,10 @@ The storage layer must:
   paths, encoded traversal).
 - **Refuse to follow symlinks** that resolve outside the notes root.
 - **Write atomically** — write to a temp file in the same directory, `fsync`, then rename.
+- **Create without overwriting** — a new note is published with a hard link of the fsynced temp file
+  (`NotesStorage.write_new`), which fails if the path exists, so concurrent creators and a file added by
+  an editor are never replaced (ADR-0049). Daily-note creation is also serialised per path and adopts an
+  existing unindexed file instead of writing.
 - **Track revisions** — a revision identifier and/or content hash (e.g. SHA-256 of bytes).
 - **Detect stale writes** — compare the client's base revision to the current revision.
 - **Preserve conflicts** — never silently overwrite.

@@ -6,6 +6,15 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (MU-07): **Today is your home page, with a note for each day and note templates.** Today now shows
+  overdue work, what is due today, work scheduled to start today, a card for today's note and a place for
+  calendar events (empty until a calendar is connected). **Open today's note** (on Today, on the Notes page
+  or Ctrl+K) creates `daily/YYYY-MM-DD.md` the first time and opens the same file afterwards; the day is your
+  browser's calendar day and an existing note is never overwritten. Notes can be started from any note in the
+  `templates/` folder (**New note from template**, also in Ctrl+K); `{{date}}` and `{{title}}` are replaced,
+  nothing else is. A note `templates/daily.md`, if you have one, is the template for daily notes. New
+  endpoints `POST /api/notes/daily` and `POST /api/notes/from-template`; creating any note can no longer
+  replace a file that appeared in the meantime. No migration. See ADR-0049.
 - Added (MU-06): **notes, tasks and projects linked.** In a note, put the cursor on a line (or select
   text) and choose **Task from selection**: a title is proposed from the text (list marker and checkbox
   removed) and you confirm it; the new task links back to the note and, if the note belongs to exactly one

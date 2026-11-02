@@ -178,6 +178,18 @@ export const notesApi = {
       body: JSON.stringify({ title, ...fields }),
       idempotencyKey: newIdempotencyKey(),
     }),
+  /**
+   * Open `daily/<date>.md`, creating it if missing (MU-07). `date` is the viewer's calendar day;
+   * calling it again returns the same, untouched note.
+   */
+  openDaily: (date: string) =>
+    apiFetch<NoteDetail>("/api/notes/daily", { method: "POST", body: JSON.stringify({ date }) }),
+  /** Create a note from a note in `templates/`; the server substitutes `{{date}}` and `{{title}}`. */
+  createFromTemplate: (path: string, templateId: string, date: string) =>
+    apiFetch<NoteDetail>("/api/notes/from-template", {
+      method: "POST",
+      body: JSON.stringify({ path, template_id: templateId, date }),
+    }),
   createFolder: (path: string) =>
     apiFetch<{ path: string }>("/api/folders", { method: "POST", body: JSON.stringify({ path }) }),
   renameFolder: (path: string, newPath: string) =>
@@ -202,6 +214,10 @@ export interface TaskListOptions {
   dueFrom?: string;
   /** Inclusive upper bound on `due_at`, as an ISO 8601 instant (M4-06 planning windows). */
   dueTo?: string;
+  /** Inclusive lower bound on `start_at`, as an ISO 8601 instant (scheduled work, MU-07). */
+  startFrom?: string;
+  /** Inclusive upper bound on `start_at`, as an ISO 8601 instant (scheduled work, MU-07). */
+  startTo?: string;
   /** Only this priority (the server takes one value; MU-03). */
   priority?: string;
   /** Case-insensitive text search over title and description (MU-03). */
@@ -239,6 +255,12 @@ export const tasksApi = {
     }
     if (options.dueTo) {
       params.set("due_to", options.dueTo);
+    }
+    if (options.startFrom) {
+      params.set("start_from", options.startFrom);
+    }
+    if (options.startTo) {
+      params.set("start_to", options.startTo);
     }
     if (options.priority) {
       params.set("priority", options.priority);

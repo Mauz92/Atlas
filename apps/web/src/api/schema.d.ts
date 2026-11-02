@@ -175,6 +175,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/notes/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Daily Note
+         * @description Open ``daily/<date>.md``, creating it if missing (MU-07, ADR-0049).
+         *
+         *     ``date`` is the caller's calendar day. Idempotent: ``201`` when this call created the file,
+         *     ``200`` with the untouched note when it already existed (also under concurrent calls).
+         */
+        post: operations["open_daily_note_api_notes_daily_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notes/from-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Note From Template
+         * @description Create a note from a note in ``templates/``, substituting ``{{date}}`` and ``{{title}}``.
+         */
+        post: operations["create_note_from_template_api_notes_from_template_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notes/{note_id}": {
         parameters: {
             query?: never;
@@ -1169,6 +1212,14 @@ export interface components {
          */
         CursorHealth: "ok" | "missing" | "error";
         /**
+         * DailyNoteRequest
+         * @description The calendar day (``YYYY-MM-DD``) in the caller's time zone; the server never guesses it.
+         */
+        DailyNoteRequest: {
+            /** Date */
+            date: string;
+        };
+        /**
          * DeviceListOut
          * @description The caller's registered push destinations, oldest first.
          */
@@ -1302,6 +1353,18 @@ export interface components {
             tasks: components["schemas"]["NoteTaskOut"][];
             /** Projects */
             projects: components["schemas"]["NoteProjectOut"][];
+        };
+        /** NoteFromTemplateRequest */
+        NoteFromTemplateRequest: {
+            /** Path */
+            path: string;
+            /**
+             * Template Id
+             * Format: uuid
+             */
+            template_id: string;
+            /** Date */
+            date?: string | null;
         };
         /** NoteLinkOut */
         NoteLinkOut: {
@@ -2485,6 +2548,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReconcileOut"];
+                };
+            };
+        };
+    };
+    open_daily_note_api_notes_daily_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DailyNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_note_from_template_api_notes_from_template_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteFromTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

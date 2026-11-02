@@ -13,7 +13,9 @@ import { MarkdownPreview } from "../components/MarkdownPreview";
 import { NoteTree } from "../components/NoteTree";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 import { taskTitleFromText } from "../lib/noteLinks";
+import { templatesOf } from "../lib/dailyNote";
 import { buildTree } from "../lib/noteTree";
+import { localDate } from "../lib/taskForm";
 import { STATUS_LABELS } from "../lib/taskStatus";
 
 export function Notes() {
@@ -27,6 +29,8 @@ export function Notes() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<NoteSummary[] | null>(null);
   const [newPath, setNewPath] = useState("");
+  const [templateId, setTemplateId] = useState("");
+  const templateSelect = useRef<HTMLSelectElement | null>(null);
   // "Task from selection" (MU-06): the title being confirmed, or null when the form is closed.
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
   const [taskError, setTaskError] = useState<string | null>(null);
@@ -36,9 +40,12 @@ export function Notes() {
   // `/notes?open=<id>` opens that note (the command palette and the Search page link here).
   const [params] = useSearchParams();
   const openId = params.get("open");
+  // `/notes?new=template` (the palette's "New note from template") jumps to the template picker.
+  const wantsTemplate = params.get("new") === "template";
 
   const dirty = selected !== null && content !== selected.content;
   const tree = useMemo(() => buildTree(folders, notes), [folders, notes]);
+  const templates = useMemo(() => templatesOf(notes), [notes]);
 
   const refresh = useCallback(async () => {
     const listing = await notesApi.list();
@@ -95,6 +102,54 @@ export function Notes() {
       void openRequested.current(openId);
     }
   }, [openId]);
+
+  useEffect(() => {
+    if (wantsTemplate) {
+      templateSelect.current?.focus();
+    }
+  }, [wantsTemplate, templates.length]);
+
+  /** Open today's note, creating `daily/<date>.md` if it is missing (the server never rewrites it). */
+  async function openTodaysNote() {
+    if (dirty && !window.confirm("Discard unsaved changes?")) {
+      return;
+    }
+    setError(null);
+    try {
+      const note = await notesApi.openDaily(localDate());
+      await refresh();
+      setSelected(note);
+      setContent(note.content);
+      setConflictRevision(null);
+      setTaskTitle(null);
+      setStatus("Opened today's note");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open today's note");
+    }
+  }
+
+  async function createFromTemplate() {
+    const path = newPath.trim();
+    if (!path || !templateId) {
+      return;
+    }
+    if (dirty && !window.confirm("Discard unsaved changes?")) {
+      return;
+    }
+    setError(null);
+    try {
+      const created = await notesApi.createFromTemplate(path, templateId, localDate());
+      setNewPath("");
+      await refresh();
+      setSelected(created);
+      setContent(created.content);
+      setConflictRevision(null);
+      setTaskTitle(null);
+      setStatus("Created from template");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create the note");
+    }
+  }
 
   async function save() {
     if (!selected) {
@@ -287,6 +342,35 @@ export function Notes() {
               New folder
             </button>
           </div>
+          <div className="row">
+            <select
+              ref={templateSelect}
+              aria-label="Template"
+              value={templateId}
+              disabled={templates.length === 0}
+              onChange={(event) => setTemplateId(event.target.value)}
+            >
+              <option value="">
+                {templates.length === 0 ? "No templates (add notes to templates/)" : "Choose a template"}
+              </option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.path.replace(/^templates\//, "").replace(/\.md$/, "")}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="ghost"
+              disabled={!templateId || !newPath.trim()}
+              onClick={() => void createFromTemplate()}
+            >
+              New from template
+            </button>
+          </div>
+          <button type="button" className="ghost" onClick={() => void openTodaysNote()}>
+            {"Today's note"}
+          </button>
           {results ? (
             <div>
               <p className="muted">{results.length} result(s)</p>

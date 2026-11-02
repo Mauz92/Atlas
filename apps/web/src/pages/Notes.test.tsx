@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 
 import { notesApi, projectsApi, tasksApi, type NoteDetail } from "../api/client";
+import { localDate } from "../lib/taskForm";
 import { makeTask } from "../test/tasks";
 import { Notes } from "./Notes";
 
@@ -9,7 +10,13 @@ vi.mock("../api/client", async () => {
   const actual = await vi.importActual<typeof import("../api/client")>("../api/client");
   return {
     ApiError: actual.ApiError,
-    notesApi: { list: vi.fn(), get: vi.fn(), createTask: vi.fn() },
+    notesApi: {
+      list: vi.fn(),
+      get: vi.fn(),
+      createTask: vi.fn(),
+      openDaily: vi.fn(),
+      createFromTemplate: vi.fn(),
+    },
     tasksApi: { get: vi.fn() },
     projectsApi: { list: vi.fn() },
   };
@@ -144,5 +151,86 @@ describe("Notes: task from selection", () => {
     expect(notesApi.createTask).toHaveBeenCalledWith("n1", "Call the plumber", {});
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("form", { name: "New task from note" })).toBeNull();
+  });
+});
+
+describe("Notes: daily note and templates", () => {
+  const template = {
+    ...summary,
+    id: "tpl",
+    path: "templates/Meeting.md",
+    title: "Meeting",
+  };
+
+  function renderNotes(url = "/notes") {
+    render(
+      <MemoryRouter initialEntries={[url]}>
+        <Notes />
+      </MemoryRouter>,
+    );
+  }
+
+  it("opens today's note for the viewer's calendar day", async () => {
+    vi.mocked(notesApi.openDaily).mockResolvedValue(
+      detail({ id: "d1", path: `daily/${localDate()}.md`, content: "# Day\n" }),
+    );
+    renderNotes();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Today's note" }),
+    );
+    expect(
+      await screen.findByText(
+        new RegExp(`daily/${localDate()}.md · revision 3`),
+      ),
+    ).toBeInTheDocument();
+    expect(notesApi.openDaily).toHaveBeenCalledWith(localDate());
+  });
+
+  it("offers only templates/ notes, creates from one, and shows server errors verbatim", async () => {
+    vi.mocked(notesApi.list).mockResolvedValue({
+      notes: [summary, template],
+      folders: [],
+    });
+    vi.mocked(notesApi.createFromTemplate)
+      .mockRejectedValueOnce(new Error("A note or folder already exists there"))
+      .mockResolvedValueOnce(
+        detail({ id: "new", path: "Work/Standup.md", content: "# Standup\n" }),
+      );
+    renderNotes("/notes?new=template");
+
+    const picker = await screen.findByRole("combobox", { name: "Template" });
+    await waitFor(() => expect(picker).toHaveFocus());
+    expect(
+      within(picker)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Choose a template", "Meeting"]);
+    const create = screen.getByRole("button", { name: "New from template" });
+    expect(create).toBeDisabled();
+    fireEvent.change(picker, { target: { value: "tpl" } });
+    fireEvent.change(screen.getByLabelText("New note or folder path"), {
+      target: { value: "Work/Standup" },
+    });
+    fireEvent.click(create);
+    expect(
+      await screen.findByText("A note or folder already exists there"),
+    ).toBeInTheDocument();
+    fireEvent.click(create);
+    expect(
+      await screen.findByText(/Work\/Standup.md · revision 3/),
+    ).toBeInTheDocument();
+    expect(notesApi.createFromTemplate).toHaveBeenLastCalledWith(
+      "Work/Standup",
+      "tpl",
+      localDate(),
+    );
+  });
+
+  it("explains when there are no templates", async () => {
+    renderNotes();
+    expect(
+      await screen.findByRole("combobox", { name: "Template" }),
+    ).toBeDisabled();
+    expect(screen.getByText(/No templates/)).toBeInTheDocument();
   });
 });

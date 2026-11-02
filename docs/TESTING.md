@@ -104,6 +104,7 @@ second-tab conflict, all fields, verbatim validation errors, delete + undo, narr
 `j2-triage-inbox.spec.ts` (J2: five inbox items scheduled / filed / deleted with undo, keyboard driven);
 `j3-run-a-project.spec.ts` (J3: create a project in the UI, add/file/complete/move tasks, link a note, edit, archive, restore);
 `mu04-recurrence-subtasks-reminders.spec.ts` (MU-04: repeat picker with server preview/validation, completing a repeating task and its next occurrence, series end, subtasks with progress, per-task reminder override);
+`j6-daily-note-and-today.spec.ts` (J6: Today as home, daily note created once as a plain file, template substitution; reads the notes directory via `ATLAS_E2E_NOTES_DIR`),
 `j5-find-anything.spec.ts` (J5: Ctrl+K palette — grouped results for notes/tasks/projects, Enter opens each, go-to/theme commands, create task/note/project from the same box, verbatim server error, Search page).
 Journeys share one owner: start each with `ensureOwner(page)` (creates the owner or signs in) and use
 unique titles, since earlier journeys' tasks stay in the database. `apiCall` (helpers) performs set-up

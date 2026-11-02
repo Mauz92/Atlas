@@ -192,6 +192,8 @@ export default async function globalSetup() {
 
     // Workers are spawned after globalSetup and inherit this.
     process.env.ATLAS_E2E_BASE_URL = `http://127.0.0.1:${webPort}`;
+    // Specs that check the Markdown files themselves read them from here.
+    process.env.ATLAS_E2E_NOTES_DIR = notesDir;
   } catch (err) {
     await cleanup();
     throw err;
