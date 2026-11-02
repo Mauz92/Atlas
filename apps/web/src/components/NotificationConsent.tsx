@@ -82,7 +82,7 @@ export function NotificationConsent({
   return (
     <div className="notification-consent">
       <div className="notification-consent-head">
-        <span className={`notification-badge notification-badge-${state}`}>{copy.badge}</span>
+        <span className={`pill${state === "denied" ? " pill-danger" : state === "subscribed" ? " pill-success" : ""} notification-badge notification-badge-${state}`}>{copy.badge}</span>
         <h2>{copy.title}</h2>
       </div>
       <p className="muted">{copy.description}</p>

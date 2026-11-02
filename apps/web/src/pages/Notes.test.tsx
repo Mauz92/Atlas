@@ -70,7 +70,9 @@ async function openNote() {
       <Notes />
     </MemoryRouter>,
   );
-  await screen.findByText(/Home\/Repairs.md · revision 3/);
+  // The toolbar shows the path and saved state; the revision is only in the tooltip (UX-01).
+  expect(await screen.findByTitle("Revision 3")).toHaveTextContent("Home/Repairs.md");
+  expect(screen.getByText("Saved")).toBeInTheDocument();
 }
 
 beforeEach(() => {
@@ -178,11 +180,9 @@ describe("Notes: daily note and templates", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Today's note" }),
     );
-    expect(
-      await screen.findByText(
-        new RegExp(`daily/${localDate()}.md · revision 3`),
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByTitle("Revision 3")).toHaveTextContent(
+      `daily/${localDate()}.md`,
+    );
     expect(notesApi.openDaily).toHaveBeenCalledWith(localDate());
   });
 
@@ -216,9 +216,7 @@ describe("Notes: daily note and templates", () => {
       await screen.findByText("A note or folder already exists there"),
     ).toBeInTheDocument();
     fireEvent.click(create);
-    expect(
-      await screen.findByText(/Work\/Standup.md · revision 3/),
-    ).toBeInTheDocument();
+    expect(await screen.findByTitle("Revision 3")).toHaveTextContent("Work/Standup.md");
     expect(notesApi.createFromTemplate).toHaveBeenLastCalledWith(
       "Work/Standup",
       "tpl",

@@ -57,13 +57,13 @@ export function Week() {
           <p className="muted">The week ahead, day by day, in your local time zone.</p>
         </div>
         <nav className="planning-nav" aria-label="Change week">
-          <button type="button" onClick={() => setAnchor(addDays(anchor, -7))}>
+          <button type="button" className="ghost" onClick={() => setAnchor(addDays(anchor, -7))}>
             Previous week
           </button>
-          <button type="button" onClick={() => setAnchor(thisWeek)} disabled={isThisWeek}>
+          <button type="button" className="ghost" onClick={() => setAnchor(thisWeek)} disabled={isThisWeek}>
             This week
           </button>
-          <button type="button" onClick={() => setAnchor(addDays(anchor, 7))}>
+          <button type="button" className="ghost" onClick={() => setAnchor(addDays(anchor, 7))}>
             Next week
           </button>
         </nav>

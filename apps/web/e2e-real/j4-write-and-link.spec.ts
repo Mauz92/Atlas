@@ -38,7 +38,7 @@ test("J4: [[ autocomplete, task from a line, project and backlinks, rename and u
   expect((await tasksMatching()).tasks).toHaveLength(0);
 
   await page.goto(`/notes?open=${plan.id}`);
-  await expect(page.getByText("j4/garden-plan.md · revision 1")).toBeVisible();
+  await expect(page.getByTitle("Revision 1").filter({ hasText: "j4/garden-plan.md" })).toBeVisible();
   await expect(page.getByRole("list", { name: "Linked projects" }).getByRole("link", { name: "J4 Garden" })).toBeVisible();
 
   // `[[` offers notes; accepting one inserts its path and the closing brackets.
@@ -50,7 +50,7 @@ test("J4: [[ autocomplete, task from a line, project and backlinks, rename and u
   await expect(option).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(editor).toContainText("See: [[j4/seed-list]]");
-  await expect(page.getByText(/unsaved/)).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
 
   // Task from the line under the cursor (nothing selected): the title is the cleaned line, and a
   // too-long title is refused with the server's own message.
@@ -72,7 +72,7 @@ test("J4: [[ autocomplete, task from a line, project and backlinks, rename and u
   await expect(linkedTasks.getByRole("button", { name: "J4 buy bulbs" })).toBeVisible();
   await expect(page.getByRole("list", { name: "Linked projects" })).toBeVisible();
   await expect(editor).toContainText("See: [[j4/seed-list]]");
-  await expect(page.getByText(/unsaved/)).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
   const created = (await tasksMatching()).tasks;
   expect(created).toHaveLength(1);
   const taskDetail = await apiCall<{ project_id: string }>(page, "GET", `/api/tasks/${created[0].id}`);
@@ -80,7 +80,7 @@ test("J4: [[ autocomplete, task from a line, project and backlinks, rename and u
 
   // Saving writes the link text; the target note now has the plan as a backlink.
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByText("j4/garden-plan.md · revision 2")).toBeVisible();
+  await expect(page.getByTitle("Revision 2").filter({ hasText: "j4/garden-plan.md" })).toBeVisible();
   await page.goto(`/notes?open=${seeds.id}`);
   await expect(
     page.getByRole("list", { name: "Linked notes" }).getByRole("button", { name: "j4/garden-plan.md" }),
@@ -97,7 +97,7 @@ test("J4: [[ autocomplete, task from a line, project and backlinks, rename and u
   // Rename the note: the link follows (it holds the note's id, not its path).
   page.once("dialog", (dialog) => void dialog.accept("j4/garden-plan-renamed.md"));
   await page.getByRole("button", { name: "Rename" }).click();
-  await expect(page.getByText("j4/garden-plan-renamed.md · revision 3")).toBeVisible();
+  await expect(page.getByTitle("Revision 3").filter({ hasText: "j4/garden-plan-renamed.md" })).toBeVisible();
   await page.getByRole("list", { name: "Linked tasks" }).getByRole("button", { name: "J4 buy bulbs" }).click();
   await expect(detail.getByRole("button", { name: "Open note j4/garden-plan-renamed.md" })).toBeVisible();
 
@@ -110,7 +110,7 @@ test("J4: [[ autocomplete, task from a line, project and backlinks, rename and u
   await expect(detail.getByText(/No linked notes/)).toBeVisible();
   await page.keyboard.press("Escape");
   await page.reload();
-  await expect(page.getByText("j4/garden-plan-renamed.md · revision 3")).toBeVisible();
+  await expect(page.getByTitle("Revision 3").filter({ hasText: "j4/garden-plan-renamed.md" })).toBeVisible();
   await expect(page.getByRole("list", { name: "Linked tasks" })).toHaveCount(0);
   await expect(page.getByRole("list", { name: "Linked projects" })).toBeVisible();
 });

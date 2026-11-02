@@ -18,6 +18,7 @@ import { TaskList } from "../components/TaskList";
 import { useBoard } from "../hooks/useBoard";
 import { useProjects } from "../hooks/useProjects";
 import { useTaskEditor } from "../hooks/useTaskEditor";
+import { sentenceCase } from "../lib/tasks";
 
 type View = "list" | "board";
 
@@ -127,7 +128,9 @@ export function ProjectPage() {
       </p>
       <h1>{project.name}</h1>
       <p className="project-meta">
-        <span className="badge">{project.status}</span>
+        <span className={project.status === "completed" ? "pill pill-success" : "pill"}>
+          {sentenceCase(project.status)}
+        </span>
         <ProjectProgressBar progress={project.progress} />
         {project.start_date ? (
           <span className="muted">Starts {project.start_date}</span>

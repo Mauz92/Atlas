@@ -73,9 +73,9 @@ test("J5: find notes, tasks and projects from anywhere, open them, and create fr
   );
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/notes\?open=/);
-  await expect(page.getByText("j5/quokka-habitat.md · revision 1")).toBeVisible();
+  await expect(page.getByTitle("Revision 1").filter({ hasText: "j5/quokka-habitat.md" })).toBeVisible();
   await page.reload();
-  await expect(page.getByText("j5/quokka-habitat.md · revision 1")).toBeVisible();
+  await expect(page.getByTitle("Revision 1").filter({ hasText: "j5/quokka-habitat.md" })).toBeVisible();
 
   // Esc closes and gives focus back; commands: go to a view, toggle the theme.
   await openPalette(page, "go to tas");
@@ -106,7 +106,7 @@ test("J5: find notes, tasks and projects from anywhere, open them, and create fr
 
   await openPalette(page, "j5/created note");
   await palette(page).getByRole("option", { name: /New note/ }).click();
-  await expect(page.getByText("j5/created note.md · revision 1")).toBeVisible();
+  await expect(page.getByTitle("Revision 1").filter({ hasText: "j5/created note.md" })).toBeVisible();
 
   await openPalette(page, "J5 Fresh project");
   await palette(page).getByRole("option", { name: /New project/ }).click();

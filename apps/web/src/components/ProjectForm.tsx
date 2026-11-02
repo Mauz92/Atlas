@@ -96,7 +96,7 @@ export function ProjectForm({
         </p>
       ) : null}
       <div className="project-form-actions">
-        <button type="submit" disabled={busy}>
+        <button type="submit" className="primary" disabled={busy}>
           {busy ? "Saving…" : submitLabel}
         </button>
         {onCancel ? (

@@ -68,7 +68,7 @@ test("J6: Today is home, today's note is created once, notes start from a templa
   const card = page.getByRole("region", { name: "Daily note" });
   await expect(card).toContainText("No note for today yet.");
   await card.getByRole("button", { name: "Create today's note" }).click();
-  await expect(page.getByText(`daily/${today}.md · revision 1`)).toBeVisible();
+  await expect(page.getByTitle("Revision 1").filter({ hasText: `daily/${today}.md` })).toBeVisible();
   expect(await onDisk(`daily/${today}.md`)).toBe(`# ${today}\n`);
 
   // Write in it and save, then come back through Today: the card previews it as text.
@@ -77,19 +77,19 @@ test("J6: Today is home, today's note is created once, notes start from a templa
   await page.keyboard.press("Control+End");
   await page.keyboard.type("\nJ6 wrote <b>this</b> today\n");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByText(`daily/${today}.md · revision 2`)).toBeVisible();
+  await expect(page.getByTitle("Revision 2").filter({ hasText: `daily/${today}.md` })).toBeVisible();
   await page.goto("/");
   await expect(card.getByText("J6 wrote <b>this</b> today")).toBeVisible();
   await expect(card.locator("b")).toHaveCount(0);
 
   // Opening it again, from the card and from the palette, never rewrites it.
   await card.getByRole("button", { name: "Open today's note" }).click();
-  await expect(page.getByText(`daily/${today}.md · revision 2`)).toBeVisible();
+  await expect(page.getByTitle("Revision 2").filter({ hasText: `daily/${today}.md` })).toBeVisible();
   await page.keyboard.press("Control+k");
   const palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByRole("combobox").fill("open today's");
   await palette.getByRole("option", { name: /Open today's note/ }).click();
-  await expect(page.getByText(`daily/${today}.md · revision 2`)).toBeVisible();
+  await expect(page.getByTitle("Revision 2").filter({ hasText: `daily/${today}.md` })).toBeVisible();
   const saved = await onDisk(`daily/${today}.md`);
   expect(saved).toContain("J6 wrote <b>this</b> today");
   expect(
@@ -111,7 +111,7 @@ test("J6: Today is home, today's note is created once, notes start from a templa
   await picker.selectOption(template.id);
   await page.getByLabel("New note or folder path").fill("j6/Standup");
   await page.getByRole("button", { name: "New from template" }).click();
-  await expect(page.getByText("j6/Standup.md · revision 1")).toBeVisible();
+  await expect(page.getByTitle("Revision 1").filter({ hasText: "j6/Standup.md" })).toBeVisible();
   const expected = `# Standup\n\nDate: ${today}\n\n{{time}} Standup <b>raw</b>\n`;
   expect(await onDisk("j6/Standup.md")).toBe(expected);
 

@@ -6,6 +6,16 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Changed (UX-01): **a calmer, consistent look, and dark mode everywhere.** Atlas now uses one neutral design
+  (grey surfaces, ink text, no blue): one type and spacing scale, quieter buttons (one dark primary button per
+  form; other actions are plain text buttons), visible outlines on fields and checkboxes, and colour only where
+  it means something. Priorities read in sentence case and are coloured only when they need attention
+  (**Urgent** red, **High** amber); tags show as `#tag`. **Theme** in Settings is now **System** (the default,
+  follows your device), Light or Dark, and the sign-in and first-run screens follow it too, without a white
+  flash on load. In Notes the editor and preview are no longer cut off at part of the screen height, the
+  editor's line-number gutter is dark in dark mode, text is limited to a comfortable line length, and the
+  toolbar shows **Saved** / **Unsaved changes** instead of a revision number (hover the file name to see it).
+  Checkboxes in the note preview and the editor now have accessible names. No migration.
 - Added (MU-08): **Settings, keyboard help and a tidier shell.** Settings now has your **account** (change your
   display name; change your password — it asks for the current one, needs at least 12 characters and signs
   you out on your other devices), **theme** (Light/Dark), **reminder timing and notification status**,

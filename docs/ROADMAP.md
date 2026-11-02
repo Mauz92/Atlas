@@ -24,7 +24,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M8 | Notifications and mobile apps | `IN_PROGRESS` | Platform behaviour tested on real devices |
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
-| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `READY` | Worked after MU-08; J1–J7 and the axe sweep keep passing while the UI is rebuilt |
+| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `IN_PROGRESS` | UX-01 `DONE` 2026-11-02, UX-02 next; J1–J7 and the axe sweep keep passing while the UI is rebuilt |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -659,8 +659,8 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 
 | ID | Title | Depends on | Status |
 |---|---|---|---|
-| UX-01 | Design tokens (neutral), base controls, pre-paint theme, quick wins 1, 3, 5, 6, 8 | MU-08 | `READY` |
-| UX-02 | App shell: rail, sectioned sidebar, status bar, mobile bottom nav, vendored icons; Day removed from nav | UX-01 | `BACKLOG` |
+| UX-01 | Design tokens (neutral), base controls, pre-paint theme, quick wins 1, 3, 5, 6, 7, 8, 10 | MU-08 | `DONE` (local PASS 2026-11-02; evidence `ACCEPTANCE.md` UX-01; CI `e2e-real` NOT RUN) |
+| UX-02 | App shell: rail, sectioned sidebar, status bar, mobile bottom nav, vendored icons; Day removed from nav | UX-01 | `READY` |
 | UX-03 | Task row, menus, quick actions (fixes: subtasks shown without parent; Complete shown on completed tasks) | UX-02 | `BACKLOG` |
 | UX-04 | Task detail as property panel with per-field autosave | UX-03 | `BACKLOG` |
 | UX-05 | Notes workspace + note autosave (own tests before Save is removed) | UX-02 | `BACKLOG` |
@@ -682,6 +682,16 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
   axe clean on all swept routes; J1–J7 pass; before/after screenshots.
 - **Tests.** Token contrast unit test; theme store test (System/Light/Dark); existing suites. **Size** M. **Risk**
   low (visual only, touches every page).
+- **Status: `DONE` (2026-11-02).** As built: tokens in `styles.css` (neutral accent `#1f1f23` / `#e7e7ea`; text-3
+  darkened to `#68686f` / `#9898a0` so meta text keeps 4.5:1 on hover and selected rows too); `lib/theme.ts`
+  System/Light/Dark (System stores nothing and leaves `data-theme` off); pre-paint `public/theme-init.js` loaded
+  from `index.html` (same-origin, so the nginx CSP `script-src 'self'` is unchanged); scale check
+  `scripts/check-css-scale.mjs` runs from `npm run lint` (verify.sh is protected, so it is reached through
+  lint); `.pill` replaces the five badge classes (old class names stay as test hooks without styles); one
+  section-header rule; CodeMirror theme from tokens plus `aria-label="Note content"`; preview task checkboxes
+  are named after their item; the notes toolbar shows path plus Saved/Unsaved changes, revision only in the
+  tooltip. Not done here (left to their tasks): round task checkbox (UX-03), daily-note preview through
+  `MarkdownPreview` (UX-05), dates in one format (UX-07), task-detail priority options still lowercase (UX-04).
 
 ### UX-02 plan — App shell
 - **Scope.** `Layout.tsx`: icon rail (Today, Inbox, Tasks, Projects, Notes + Settings), collapsible sectioned
@@ -701,7 +711,7 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 
 ## Immediate Next Tasks
 
-**Next: UX-01 then UX-02 (design system and app shell, ADR-0051), then close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
+**Next: UX-02 (app shell, ADR-0051; UX-01 is `DONE`), then close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
 editing) and `MU-02` (Projects UI), `MU-03` (Tasks page) and `MU-04` (recurrence, subtasks and reminders in the UI) and `MU-05` (command palette, quick switcher and unified search) and `MU-06` (note ↔ task ↔ project linking) and `MU-07` (daily note, templates and Today as home) and `MU-08` (settings and shell polish) are `DONE`; MU itself is not closed (CI run and release re-score outstanding, see the MU exit-criteria evaluation).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 

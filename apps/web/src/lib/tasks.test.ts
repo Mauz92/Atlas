@@ -1,5 +1,5 @@
 import { makeTask } from "../test/tasks";
-import { byDue, groupToday, groupUpcomingByDay } from "./tasks";
+import { byDue, groupToday, groupUpcomingByDay, priorityPillClass, sentenceCase } from "./tasks";
 
 describe("groupToday", () => {
   it("splits overdue from due-today tasks", () => {
@@ -36,5 +36,19 @@ describe("groupUpcomingByDay", () => {
     expect(groups.map((group) => group.key)).toEqual(["2026-10-27", "2026-10-28"]);
     expect(groups[0].tasks.map((task) => task.title)).toEqual(["A"]);
     expect(groups[1].tasks.map((task) => task.title)).toEqual(["B"]);
+  });
+});
+
+describe("priority and status display (UX-01)", () => {
+  it("shows values in sentence case", () => {
+    expect(sentenceCase("high")).toBe("High");
+    expect(sentenceCase("on_hold")).toBe("On hold");
+  });
+
+  it("colours only the priorities that need attention", () => {
+    expect(priorityPillClass("urgent")).toBe("pill pill-danger");
+    expect(priorityPillClass("high")).toBe("pill pill-warning");
+    expect(priorityPillClass("medium")).toBe("pill");
+    expect(priorityPillClass("low")).toBe("pill pill-quiet");
   });
 });

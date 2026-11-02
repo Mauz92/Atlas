@@ -31,7 +31,7 @@ function SyncProvider({
     <li className="sync-provider">
       <header className="sync-provider-head">
         <h2>{providerLabel(provider.provider)}</h2>
-        <span className={`sync-badge sync-badge-${provider.state}`} role="status">
+        <span className={`pill${provider.state === "error" ? " pill-danger" : provider.state === "idle" ? " pill-success" : ""} sync-badge sync-badge-${provider.state}`} role="status">
           {stateLabel(provider.state)}
         </span>
         <button type="button" onClick={onSync} disabled={busy} aria-busy={busy}>

@@ -68,7 +68,7 @@ export function Projects() {
                 {project.name}
               </Link>
               {project.status === "completed" ? (
-                <span className="badge">completed</span>
+                <span className="pill pill-success">Completed</span>
               ) : null}
               <ProjectProgressBar progress={project.progress} />
               <button

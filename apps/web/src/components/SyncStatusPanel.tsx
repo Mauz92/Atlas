@@ -79,7 +79,7 @@ export function SyncStatusPanel({
   return (
     <div className="sync-panel">
       <div className="sync-panel-overall" aria-live="polite" aria-atomic="true">
-        <span className={`sync-panel-badge sync-panel-badge-${overall}`}>
+        <span className={`pill${overall === "error" || overall === "conflicts" ? " pill-danger" : overall === "up-to-date" ? " pill-success" : ""} sync-panel-badge sync-panel-badge-${overall}`}>
           {overallSyncLabel(overall)}
         </span>
         <span className="muted">{overallSyncDescription(overall)}</span>

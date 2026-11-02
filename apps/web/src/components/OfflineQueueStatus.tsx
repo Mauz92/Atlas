@@ -64,7 +64,7 @@ export function OfflineQueueStatus({
       ) : null}
 
       <div className="offline-queue-summary">
-        <span className={`offline-queue-badge offline-queue-badge-${kind}`} role="status">
+        <span className={`pill${kind === "conflict" || kind === "failed" ? " pill-danger" : kind === "all" ? " pill-success" : ""} offline-queue-badge offline-queue-badge-${kind}`} role="status">
           {queueStatusLabel(counts)}
         </span>
         <p className="muted">{queueSummaryText(counts)}</p>

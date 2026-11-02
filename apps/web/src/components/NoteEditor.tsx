@@ -58,6 +58,45 @@ function wikiLinkSource(getNotes: () => readonly NoteSummary[]) {
   };
 }
 
+/**
+ * Editor colours and type from the design tokens (UX-01), so the editor, its gutter and the `[[`
+ * completion popup follow light and dark mode through CSS variables, with no second theme to keep
+ * in sync.
+ */
+const tokenTheme = EditorView.theme({
+  "&": {
+    color: "var(--text)",
+    backgroundColor: "var(--bg)",
+    fontSize: "var(--fs-base)",
+  },
+  "&.cm-focused": { outline: "2px solid var(--accent-text)", outlineOffset: "-1px" },
+  ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.6" },
+  ".cm-content": { caretColor: "var(--text)", maxWidth: "var(--measure)" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--text)" },
+  "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
+    { backgroundColor: "var(--bg-selected)" },
+  ".cm-activeLine": { backgroundColor: "transparent" },
+  ".cm-gutters": {
+    color: "var(--text-3)",
+    backgroundColor: "var(--bg)",
+    borderRight: "1px solid var(--border)",
+  },
+  ".cm-activeLineGutter": { backgroundColor: "var(--bg-hover)", color: "var(--text-2)" },
+  ".cm-tooltip": {
+    color: "var(--text)",
+    backgroundColor: "var(--bg-raised)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--r-md)",
+    boxShadow: "var(--shadow-2)",
+  },
+  ".cm-tooltip-autocomplete > ul > li": { padding: "var(--s-1) var(--s-2)" },
+  ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
+    color: "var(--text)",
+    backgroundColor: "var(--bg-selected)",
+  },
+  ".cm-completionDetail": { color: "var(--text-3)" },
+});
+
 /** Markdown source editor (CodeMirror 6). The document is plain text — what you type is stored. */
 export function NoteEditor({ value, onChange, notes = [], ref }: NoteEditorProps) {
   const host = useRef<HTMLDivElement | null>(null);
@@ -86,6 +125,8 @@ export function NoteEditor({ value, onChange, notes = [], ref }: NoteEditorProps
       doc: "",
       extensions: [
         lineNumbers(),
+        tokenTheme,
+        EditorView.contentAttributes.of({ "aria-label": "Note content" }),
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         markdown(),

@@ -1,13 +1,10 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import { readTheme, subscribeTheme, toggleTheme } from "../lib/theme";
 
+/** Switches to the opposite of the theme shown now (an explicit choice; Settings offers System). */
 export function ThemeToggle() {
   const theme = useSyncExternalStore(subscribeTheme, readTheme);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
 
   return (
     <button

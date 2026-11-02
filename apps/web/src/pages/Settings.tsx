@@ -5,7 +5,12 @@ import { api, fetchExport, instanceApi, type InstanceInfo } from "../api/client"
 import { useAuth } from "../auth/AuthProvider";
 import { LoadError } from "../components/LoadError";
 import { NotificationSettings } from "../components/NotificationSettings";
-import { applyTheme, readTheme, subscribeTheme, type Theme } from "../lib/theme";
+import {
+  applyTheme,
+  readThemePreference,
+  subscribeTheme,
+  THEME_PREFERENCES,
+} from "../lib/theme";
 
 const MIN_PASSWORD = 12;
 
@@ -157,27 +162,29 @@ function AccountSection() {
   );
 }
 
+const THEME_LABELS = { system: "System", light: "Light", dark: "Dark" } as const;
+
 function AppearanceSection() {
-  const theme = useSyncExternalStore(subscribeTheme, readTheme);
+  const preference = useSyncExternalStore(subscribeTheme, readThemePreference);
   return (
     <section className="settings-section" aria-labelledby="settings-appearance">
       <h2 id="settings-appearance">Appearance</h2>
       <fieldset className="settings-radio">
         <legend>Theme</legend>
-        {(["light", "dark"] as Theme[]).map((value) => (
+        {THEME_PREFERENCES.map((value) => (
           <label key={value}>
             <input
               type="radio"
               name="theme"
               value={value}
-              checked={theme === value}
+              checked={preference === value}
               onChange={() => applyTheme(value)}
             />
-            {value === "light" ? "Light" : "Dark"}
+            {THEME_LABELS[value]}
           </label>
         ))}
       </fieldset>
-      <p className="hint">Remembered in this browser only.</p>
+      <p className="hint">System follows your device. Remembered in this browser only.</p>
     </section>
   );
 }

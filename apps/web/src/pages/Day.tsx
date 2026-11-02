@@ -62,13 +62,13 @@ export function Day() {
           <p className="muted">One day at a time, in your local time zone.</p>
         </div>
         <nav className="planning-nav" aria-label="Change day">
-          <button type="button" onClick={() => setSelected(addDays(selected, -1))}>
+          <button type="button" className="ghost" onClick={() => setSelected(addDays(selected, -1))}>
             Previous day
           </button>
-          <button type="button" onClick={() => setSelected(today)} disabled={isToday}>
+          <button type="button" className="ghost" onClick={() => setSelected(today)} disabled={isToday}>
             Today
           </button>
-          <button type="button" onClick={() => setSelected(addDays(selected, 1))}>
+          <button type="button" className="ghost" onClick={() => setSelected(addDays(selected, 1))}>
             Next day
           </button>
         </nav>

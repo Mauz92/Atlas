@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { Project, Task } from "../api/client";
-import { formatDue } from "../lib/tasks";
+import { formatDue, priorityPillClass, sentenceCase } from "../lib/tasks";
 
 interface TaskListProps {
   tasks: Task[];
@@ -57,10 +57,10 @@ export function TaskList({
               <span className="task-title">{task.title}</span>
             )}
             {task.priority !== "none" ? (
-              <span className="badge">{task.priority}</span>
+              <span className={priorityPillClass(task.priority)}>{sentenceCase(task.priority)}</span>
             ) : null}
             {project ? (
-              <span className="badge project-tag">{project.name}</span>
+              <span className="pill project-tag">{project.name}</span>
             ) : null}
             {task.subtasks_total > 0 ? (
               <span className="muted">
@@ -68,7 +68,7 @@ export function TaskList({
               </span>
             ) : null}
             {(task.tags ?? []).map((tag) => (
-              <span key={tag} className="badge tag">
+              <span key={tag} className="task-tag">
                 {tag}
               </span>
             ))}

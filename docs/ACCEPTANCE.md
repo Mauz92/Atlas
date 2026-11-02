@@ -3036,3 +3036,73 @@ a mobile navigation, loading/error consistency and an axe accessibility gate wer
 Limitations: password change ends every other session (no per-device list); the password rate limiter is
 in-process; backup status depends on the API seeing `BACKUP_DIR` and does not re-verify checksums; the theme is
 per browser; email and time zone cannot be changed; UI mutations are online-only (R-22); Chromium only.
+
+## UX — Design system and app shell (ADR-0051)
+
+### UX-01 — Design tokens and base controls
+
+**Result: `DONE` (local); CI job `e2e-real` `NOT RUN` on GitHub Actions.** `styles.css` now starts from the
+audit §3 tokens with the neutral accent chosen in ADR-0051 (ink `#1f1f23` in light, near-white `#e7e7ea` in
+dark); light and dark come from CSS (`prefers-color-scheme` plus `data-theme`), with System/Light/Dark in
+Settings and a pre-paint script. Base controls, one `.pill`, one section-header rule, a tokenised CodeMirror
+theme and the notes toolbar change. No backend change, no migration, no new dependency.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Only scale values in `font-size` / `gap` / `padding` | `PASS` | `apps/web/scripts/check-css-scale.mjs`, run by `npm run lint` (so by `./scripts/verify.sh`) -> `check-css-scale: OK`. The same script run on the previous `styles.css` (`git show 4ca2c41:apps/web/src/styles.css`) reports 195 violations, so it does detect them. `verify.sh` itself is protected and was not edited |
+| Contrast table met in both themes (unit test reads the tokens) | `PASS` | `src/styles.test.ts` (28 tests; also checks that System-dark and explicit-Dark blocks are identical and that dark redefines every light colour token). Table below |
+| Control borders reach 3:1 (WCAG 1.4.11) | `PASS` | `--border-control` 3.20–3.42 (light), 3.11–3.68 (dark) on every field surface; inputs, selects, textareas, checkboxes and radios all use it. Region dividers stay at 1.23/1.24 |
+| Theme store System/Light/Dark | `PASS` | `src/lib/theme.test.ts` (9 tests: System follows and tracks the OS without `data-theme`, explicit choices stored and applied, System clears both, unknown values ignored, toggle, subscription to OS changes, no storage; the pre-paint script applies a stored value and ignores anything else; `index.html` has no inline script). Settings shows three radios; J7 still checks Dark/Light persist |
+| Login and setup follow the OS theme; no light flash | `PASS` | `e2e-real/ux01-theme.spec.ts`: with a dark OS and nothing stored the login page has no `data-theme` and a `rgb(24, 24, 27)` body, switching the OS to light turns it white; with `dark` stored and a light OS, the app entry module is held back and `<html>` already has `data-theme="dark"` and `color-scheme: dark` before React mounts. Production build: `dist/index.html` loads `/theme-init.js` and the CSS `<link>` in `<head>` before any content |
+| Pre-paint script compatible with the production CSP | `PASS` | throwaway check: the built `dist/` served with the exact `Content-Security-Policy` from `apps/web/nginx.conf`, in Chromium: stored dark/light and System-under-dark OS each render the right background and log no CSP violation. nginx itself is not part of the harness (same as before) |
+| axe sweep clean, including the old `/notes` findings | `PASS` | `mu08-a11y-and-layout.spec.ts` now also sweeps `/notes?open=<note>` with a task-list checkbox, in both themes: `.cm-content` has `aria-label="Note content"` (`aria-input-field-name`) and preview checkboxes are named after their item (`label`). No suppressions |
+| No horizontal overflow at 375 / 800 px | `PASS` | same spec (16 routes at both widths); the screenshot run also measured 0 px overflow at 1440/1024/390 on every captured page |
+| J1–J7 and all other real-stack specs | `PASS` | `cd apps/web && npm run test:e2e:real` -> `19 passed` (17 existing + 2 new). Selectors changed only where the visible text changed: priority `high` -> `High` (J1); notes toolbar `path · revision N` -> path with `title="Revision N"` and `Saved` / `Unsaved changes` (J4, J5, J6) |
+| Mocked e2e | `PASS` | `npm run e2e` -> `7 passed` |
+| Repository checks | `PASS` | `./scripts/verify.sh` -> ruff, format, mypy; pytest `1053 passed`; eslint + scale check, `tsc`, vitest `471 passed`; `verification: PASS` |
+| No stray `atlas_e2e_*` databases | `PASS` | after all runs `pg_database` lists only `atlas` and `atlas_test`; harness temp note folders removed; the owner's dev API/worker/Vite were not restarted |
+| Visual review at 1440 / 1024 / 390 × light / dark | `PASS` (manual) | see below |
+| Other browsers, forced colours, 200 % zoom, screen reader | `NOT RUN` | Chromium only |
+
+**Contrast (WCAG 2.x ratio, min–max over the listed backgrounds; asserted by `styles.test.ts`).**
+
+| Foreground on backgrounds | Required | Light | Dark |
+|---|---|---|---|
+| `--text` on bg, bg-sidebar, bg-raised, bg-hover, bg-selected | ≥ 7 | `#1f1f23` 13.44–16.43 | `#e7e7ea` 10.93–15.03 |
+| `--text-2` on the same | ≥ 4.5 | `#52525b` 6.33–7.73 | `#b4b4bc` 6.55–9.00 |
+| `--text-3` (meta, placeholder, disabled) on the same | ≥ 4.5 | `#68686f` 4.52–5.53 | `#9898a0` 4.71–6.48 |
+| `--border-control` on bg, bg-sidebar, bg-raised | ≥ 3 | `#8a8a93` 3.20–3.42 | `#6e6e78` 3.11–3.68 |
+| `--accent-text` (links, focus ring) on all surfaces | ≥ 4.5 | `#1f1f23` 13.44–16.43 | `#e7e7ea` 10.93–15.03 |
+| `--accent` (primary button, checked box) on page surfaces | ≥ 3 | 15.34–16.43 | 12.69–15.03 |
+| `--accent-contrast` on accent / accent-hover | ≥ 4.5 | `#ffffff` 10.44–16.43 | `#18181b` 14.36–17.72 |
+| `--danger` on all surfaces and `--danger-soft` | ≥ 4.5 | `#b42318` 5.38–6.57 | `#ff8a80` 5.91–8.12 |
+| `--warning` on all surfaces and `--warning-soft` | ≥ 4.5 | `#9a5200` 4.80–5.86 | `#f0b45b` 7.31–10.05 |
+| `--success` on all surfaces and `--success-soft` | ≥ 4.5 | `#17723a` 4.90–5.99 | `#5fd38a` 7.18–9.86 |
+
+Differences from the audit table, on purpose: the accent is neutral (ADR-0051); `--text-3` is darker in light
+(`#71717a` -> `#68686f`) and lighter in dark (`#8b8b94` -> `#9898a0`), and `--text-2` dark is `#b4b4bc`, because the
+audit's values fall to 3.95–4.46:1 on hover and selected rows; danger/warning/success are slightly darker in light
+for the same reason.
+
+**Screenshots** (throwaway real stack: own `atlas_e2e_*` database, API and Vite via the harness global setup;
+fictional seed of 3 projects, 21 tasks incl. subtasks, a repeating task, tags and all priorities, 6 notes in
+folders, a template and a daily note; 9 views × 1440/1024/390 × light/dark = 54 PNGs plus a task-detail set, in the
+session scratchpad, not in the repository). What they show compared with the audit's problems:
+- Today / Inbox / Tasks / project page: no solid-colour buttons left except the one primary per form (Sign in,
+  Create account, Save, Create task, New project's submit); Add is quiet until text is entered; Complete,
+  Today/Tomorrow, Rename and the week/day navigation are ghost buttons; Delete is red text. Priority reads
+  `Urgent` (red tint), `High` (amber tint), `Medium` (neutral), `Low` (outlined); tags read `#admin` in muted text.
+  Selected nav and tree rows are a grey fill, not accent.
+- Section labels are 12 px muted sentence case (Overdue, Due today, Saved filters, Links, Backlinks).
+- Notes (open): editor and preview no longer stop at 60 vh; both columns share one height; the gutter is dark in
+  dark mode; the toolbar reads `Projects/Website/Brief.md · Saved`; preview prose 16/26 with the 72 ch cap.
+- Settings: Theme is System / Light / Dark radios with the custom 16 px controls; inputs have visible outlines in
+  both themes; the progress bar uses the accent instead of browser blue.
+- Login and setup: dark under a dark OS (previously always light), with a raised card on the sidebar tone.
+Still visible and left to later tasks: Inbox rows keep six controls (UX-03), the flat 14-item nav and the topbar
+(UX-02), the notes double sidebar and 50/50 split at 1024 px (UX-05), the flattened daily-note excerpt (UX-05),
+ISO dates on the project page (UX-07).
+
+Limitations: the inline `<style>` in `index.html` relies on `style-src 'unsafe-inline'`, which the CSP already
+allows for CodeMirror; in the Vite dev server CSS is injected by script, so dev mode (not production) can still
+paint unstyled for a moment — the browser canvas already follows the theme there; Chromium only.

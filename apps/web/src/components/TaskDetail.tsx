@@ -478,7 +478,7 @@ export function TaskDetail({
         ) : null}
 
         <div className="task-detail-actions">
-          <button type="submit" disabled={busy || !dirty}>
+          <button type="submit" className="primary" disabled={busy || !dirty}>
             {busy ? "Saving…" : "Save"}
           </button>
           <button

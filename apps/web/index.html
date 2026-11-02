@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <title>Atlas</title>
+    <!--
+      Pre-paint theme (UX-01): theme-init.js puts a stored Light/Dark choice on <html data-theme>
+      before first paint. It is a same-origin file, not inline, so CSP script-src 'self' allows it.
+      The inline style (style-src allows 'unsafe-inline') makes the browser's own canvas match that
+      choice until styles.css applies the tokens; with no choice, the meta above follows the OS.
+    -->
+    <script src="/theme-init.js"></script>
+    <style>
+      html[data-theme="light"] { color-scheme: light; }
+      html[data-theme="dark"] { color-scheme: dark; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

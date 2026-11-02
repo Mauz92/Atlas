@@ -55,7 +55,7 @@ export function QuickCapture({
         value={title}
         onChange={(event) => setTitle(event.target.value)}
       />
-      <button type="submit" disabled={!canSubmit}>
+      <button type="submit" className="primary" disabled={!canSubmit}>
         {busy ? "Adding…" : "Add"}
       </button>
       {error ? (

@@ -66,7 +66,7 @@ test("J1: capture on Today, plan it for tomorrow, reload, and see a stale edit c
   await page.reload();
   const row = page.getByRole("listitem").filter({ hasText: title });
   await expect(row).toBeVisible();
-  await expect(row.getByText("high", { exact: true })).toBeVisible();
+  await expect(row.getByText("High", { exact: true })).toBeVisible();
 
   // The saved values persisted on the server.
   await page.getByRole("button", { name: `Open ${title}` }).click();

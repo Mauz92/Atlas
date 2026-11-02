@@ -3,7 +3,7 @@ import type { DragEvent } from "react";
 
 import type { Task } from "../api/client";
 import { STATUS_LABELS, STATUS_ORDER, canMove, type BoardColumn } from "../lib/taskStatus";
-import { formatDue } from "../lib/tasks";
+import { formatDue, priorityPillClass, sentenceCase } from "../lib/tasks";
 
 interface BoardProps {
   /** The columns to render, in order (each carries its allowed move targets). */
@@ -138,7 +138,7 @@ export function Board({
                       {task.priority !== "none" || task.due_at ? (
                         <div className="board-card-meta">
                           {task.priority !== "none" ? (
-                            <span className="badge">{task.priority}</span>
+                            <span className={priorityPillClass(task.priority)}>{sentenceCase(task.priority)}</span>
                           ) : null}
                           {task.due_at ? (
                             <span className="muted">{formatDue(task.due_at, task.time_zone ?? timeZone)}</span>

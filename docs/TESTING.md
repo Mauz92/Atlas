@@ -17,7 +17,7 @@ tested, with what tooling, and how results are reported.
 | Frontend unit/component | Vitest + Testing Library |
 | End-to-end | Playwright |
 | Migrations | Alembic against a clean DB (up and down) |
-| Static analysis | Ruff / mypy (backend), ESLint / tsc (frontend) |
+| Static analysis | Ruff / mypy (backend), ESLint / tsc (frontend), design-scale check (CSS) |
 | Dependency scanning | Automated advisories in CI |
 
 **Running the backend suite locally.** Integration tests need a real PostgreSQL (not SQLite).
@@ -146,6 +146,14 @@ Cover, at minimum:
 - Component behaviour for key flows (capture, edit note, board move).
 - Offline queue replay.
 - Sync status and conflict surfacing.
+- Design system (UX-01): `npm run lint` also runs `apps/web/scripts/check-css-scale.mjs`, which fails when a
+  `font-size`, `gap` or `padding` in `src/styles.css` is not a scale token (`var(--fs-*)`, `var(--s-*)`, `0`,
+  `inherit`; audit §3.2). It reports `file:line: property: value`. `src/styles.test.ts` reads the colour
+  tokens of both themes from the stylesheet and asserts the WCAG ratios (text 4.5:1, body text 7:1, control
+  outlines and the primary button 3:1) and that the System-dark and explicit-Dark blocks are identical, so
+  a token change that breaks contrast fails `npm test`. `src/lib/theme.test.ts` covers System/Light/Dark
+  and the pre-paint script `public/theme-init.js`; `e2e-real/ux01-theme.spec.ts` checks the login screen
+  follows the OS theme and that a stored choice is on `<html>` before the app script has loaded.
 
 ## 5. Calendar Adapter Tests
 

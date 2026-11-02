@@ -120,3 +120,26 @@ export function formatDue(due: string, timeZone?: string): string {
     ...(dateOnly ? {} : { hour: "2-digit", minute: "2-digit" }),
   }).format(new Date(due));
 }
+
+/** Sentence-case display text for a value such as `high` or `on_hold` ("High", "On hold"). */
+export function sentenceCase(value: string): string {
+  const spaced = value.replace(/_/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/**
+ * The pill tone for a priority (UX-01): colour carries meaning only for the two that need
+ * attention; medium is neutral and low is quiet.
+ */
+export function priorityPillClass(priority: string): string {
+  switch (priority) {
+    case "urgent":
+      return "pill pill-danger";
+    case "high":
+      return "pill pill-warning";
+    case "low":
+      return "pill pill-quiet";
+    default:
+      return "pill";
+  }
+}

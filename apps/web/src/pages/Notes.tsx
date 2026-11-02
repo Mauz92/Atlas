@@ -427,12 +427,18 @@ export function Notes() {
           {selected ? (
             <>
               <div className="notes-toolbar">
-                <span className="muted">
-                  {selected.path} · revision {selected.revision}
-                  {dirty ? " · unsaved" : ""}
-                </span>
+                <p className="notes-meta">
+                  {/* The revision is diagnostics, not content: it stays out of the text (UX-01). */}
+                  <span className="note-path" title={`Revision ${selected.revision}`}>
+                    {selected.path}
+                  </span>
+                  <span aria-hidden="true">·</span>
+                  <span className="note-save-state" data-dirty={dirty}>
+                    {dirty ? "Unsaved changes" : "Saved"}
+                  </span>
+                </p>
                 <div className="row">
-                  <button type="button" onClick={() => void save()} disabled={!dirty}>
+                  <button type="button" className="primary" onClick={() => void save()} disabled={!dirty}>
                     Save
                   </button>
                   <button type="button" className="ghost" onClick={startTask}>
@@ -490,7 +496,7 @@ export function Notes() {
                     </p>
                   ) : null}
                   <div className="row">
-                    <button type="submit" disabled={taskBusy}>
+                    <button type="submit" className="primary" disabled={taskBusy}>
                       Create task
                     </button>
                     <button type="button" className="ghost" onClick={() => setTaskTitle(null)}>

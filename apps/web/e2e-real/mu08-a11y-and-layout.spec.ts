@@ -38,16 +38,21 @@ async function seed(page: Page) {
     due_at: `${new Date().toISOString().slice(0, 10)}T09:00:00`,
     time_zone: "UTC",
   });
-  await apiCall(page, "POST", "/api/notes", {
+  // An open note puts the editor and a task-list checkbox on the page (both failed axe before UX-01).
+  const note = await apiCall<{ id: string }>(page, "POST", "/api/notes", {
     path: "a11y/Note.md",
-    content: "# A11y note\n\nSome text with a [link](https://example.com).\n",
+    content: "# A11y note\n\nSome text with a [link](https://example.com).\n\n- [ ] A11y checkbox item\n",
   });
-  return project.id;
+  return { projectId: project.id, noteId: note.id };
 }
 
 async function settle(page: Page) {
   await expect(page.getByRole("main")).toBeVisible();
   await expect(page.getByText(/^Loading/)).toHaveCount(0);
+  if (page.url().includes("/notes?open=")) {
+    await expect(page.getByRole("textbox", { name: "Note content" })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "A11y checkbox item" })).toBeVisible();
+  }
 }
 
 async function violations(page: Page) {
@@ -66,14 +71,14 @@ test("axe finds no violations on the main pages in either theme, and no page ove
   page,
 }) => {
   await ensureOwner(page);
-  const projectId = await seed(page);
+  const { projectId, noteId } = await seed(page);
   // Collect every finding first so one run reports them all.
   const found: Record<string, unknown> = {};
   const check = async (label: string) => {
     const list = await violations(page);
     if (list.length > 0) found[label] = list;
   };
-  const pages = [...PAGES, `/projects/${projectId}`];
+  const pages = [...PAGES, `/projects/${projectId}`, `/notes?open=${noteId}`];
 
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });

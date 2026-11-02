@@ -61,7 +61,7 @@ export function Setup() {
           <span className="hint">At least 12 characters.</span>
         </label>
         {submitError ? <p className="error">{submitError}</p> : null}
-        <button type="submit" disabled={busy}>
+        <button type="submit" className="primary" disabled={busy}>
           {busy ? "Creating…" : "Create account"}
         </button>
       </form>

@@ -28,4 +28,18 @@ describe("MarkdownPreview", () => {
     expect(image?.getAttribute("onerror")).toBeNull();
     expect(container.innerHTML).not.toContain("javascript:");
   });
+
+  it("names each task-list checkbox after its item (axe `label`)", () => {
+    render(<MarkdownPreview content={"- [ ] Buy bulbs\n- [x] Dig beds\n"} />);
+    expect(screen.getByRole("checkbox", { name: "Buy bulbs" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Dig beds" })).toBeChecked();
+  });
+
+  it("keeps sanitising when it post-processes the checkboxes", () => {
+    const { container } = render(
+      <MarkdownPreview content={'- [ ] <img src="x" onerror="window.pwned = true">\n'} />,
+    );
+    expect(container.querySelector("img")?.getAttribute("onerror")).toBeNull();
+    expect(container.innerHTML).not.toContain("pwned");
+  });
 });
