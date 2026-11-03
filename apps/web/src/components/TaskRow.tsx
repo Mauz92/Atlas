@@ -146,6 +146,8 @@ export function TaskMeta(props: TaskMetaProps) {
 export interface RowSelection {
   selected: boolean;
   onToggle: () => void;
+  /** Touch Select mode (UX-11): the round completion box is not rendered, so there is one leading control. */
+  exclusive?: boolean;
 }
 
 interface TaskRowProps<T extends RowTask> {
@@ -292,7 +294,7 @@ export function TaskRow<T extends RowTask>({
           onChange={selection.onToggle}
         />
       ) : null}
-      {actions ? (
+      {actions && !selection?.exclusive ? (
         <input
           type="checkbox"
           className="task-check"

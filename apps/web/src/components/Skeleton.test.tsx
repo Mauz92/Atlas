@@ -13,13 +13,10 @@ describe("Skeleton", () => {
     expect(container.querySelectorAll('.skeleton-row[aria-hidden="true"]')).toHaveLength(4);
   });
 
-  it("draws heading bars for groups and columns for a board", () => {
+  it("draws heading bars for groups", () => {
     const grouped = render(<Skeleton label="Loading today" rows={2} groups={3} />);
     expect(grouped.container.querySelectorAll(".skeleton-group")).toHaveLength(3);
     expect(grouped.container.querySelectorAll(".skeleton-row")).toHaveLength(6);
-    grouped.unmount();
-    const board = render(<Skeleton label="Loading board" kind="board" />);
-    expect(board.container.querySelectorAll(".skeleton-column")).toHaveLength(4);
   });
 });
 

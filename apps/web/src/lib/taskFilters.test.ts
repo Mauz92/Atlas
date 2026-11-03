@@ -105,12 +105,10 @@ describe("saved filters storage", () => {
   });
 });
 
-describe("view (list or board)", () => {
-  it("is written only for the board and read back; anything else is the list", () => {
-    expect(filterToParams({ ...DEFAULT_FILTER, view: "board" }).toString()).toBe("view=board");
-    expect(filterFromParams(new URLSearchParams("view=board")).view).toBe("board");
-    expect(filterFromParams(new URLSearchParams("view=gantt")).view).toBe("list");
-    expect(isFiltered({ ...DEFAULT_FILTER, view: "board" })).toBe(false);
+describe("the retired board view", () => {
+  it("is ignored: an old link or saved view with view=board gives the plain list filter", () => {
+    expect(filterFromParams(new URLSearchParams("view=board&priority=high"))).toEqual({ ...DEFAULT_FILTER, priority: "high" });
+    expect(filterToParams(filterFromParams(new URLSearchParams("view=board"))).toString()).toBe("");
   });
 });
 

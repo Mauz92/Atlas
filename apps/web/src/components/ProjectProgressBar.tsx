@@ -18,7 +18,7 @@ export function ProjectProgressBar({ progress }: { progress: ProjectProgress }) 
       >
         <span className="progress-fill" style={{ width: `${progress.percent}%` }} />
       </span>
-      <span className="muted">
+      <span className="muted progress-text">
         {progress.completed}/{progress.total} done · {progress.percent}%
       </span>
     </span>

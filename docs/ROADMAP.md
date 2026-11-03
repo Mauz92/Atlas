@@ -670,7 +670,7 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 | UX-08 | Settings consolidation, skeletons, empty states | UX-02 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-08; ADR-0058; CI `e2e-real` NOT RUN; not committed) |
 | UX-09 | Readability tokens and the task row / section structure on Inbox, Today, Upcoming, Tasks lists, project list (phone first; evidence `UX_AUDIT.md` "Readability and mobile audit (2026-11)") | UX-08 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-09; ADR-0062; CI `e2e-real` NOT RUN; not committed) |
 | UX-10 | Week agenda layout and navigation, phone capture (FAB + sheet), phone menu as bottom sheet, 16 px inputs, viewport/safe-area | UX-09 | `DONE` (local, 2026-11-03; ADR-0063) |
-| UX-11 | Remaining phone pages: Tasks select mode and filter strip, Board column view, Notes toolbar, Projects cards, palette sheet | UX-10 | `READY` (UX-10 is `DONE`) |
+| UX-11 | Remaining phone pages: Tasks select mode and Filters sheet, project Board column tabs, Notes toolbar, Projects cards, palette sheet; standalone Board removed | UX-10 | `DONE` (local, 2026-11-03; ADR-0064; the UX series UX-01…UX-11 is complete) |
 | AUTH-01 | Account recovery in the UI: recovery code issued at setup/in Settings, "Forgot password?" on the sign-in page, reset without email (CLI `atlas-admin reset-password` exists since 2026-11-03) | UX-02 | `BACKLOG` (needs an ADR and the owner's approval of the recovery design: there is no email service in a self-hosted install, so a one-time recovery code shown once at setup and regenerable in Settings is proposed; reset must revoke all sessions, be rate limited, never log the code, and store only its hash) |
 
 ### UX-01 plan — Design tokens and base controls
@@ -969,9 +969,9 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 - **Problem.** Tasks has two checkboxes per row and a wrapping dashed chip bar; Board is five side-scrolling columns of ~190 px
   (2,404 px tall); the Notes toolbar is crowded and the breadcrumb reads "/…"; Projects rows are three loose lines; palette rows
   are ~28 px. Audit §C.1 findings 8-10.
-- **Scope.** Tasks: square select box only in a "Select" mode (entered from the filter "…" menu), filter chips in one scrollable
-  line (44 px, solid border, active chip tinted), "Select all" 44 px. Board: one column at a time with a tab strip (or snap columns
-  at 85 vw), the key-hint paragraph behind a "?" button on touch. Notes: toolbar shows the note title, one segmented mode control, the
+- **Scope.** Tasks: square select box only in a "Select" mode (entered from the filter "…" menu), filter chips (44 px, solid border,
+  active tinted; built as one "Filters" sheet button, see below), "Select all" 44 px. Project Board: one column at a time with a tab
+  strip, the key-hint paragraph behind a "?" button on touch. Notes: toolbar shows the note title, one segmented mode control, the
   rest in "…". Projects: cards with project dot colour, one-line summary, target date right, 44 px "…". Palette: full-height sheet on
   phone, 44 px rows, no key hints. Settings, Login, Setup: tokens only.
 - **Out of scope.** Backend; drag-and-drop redesign; Notes editor behaviour; new settings.
@@ -983,7 +983,16 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
   Board help button), tests, lint and typecheck pass, `npm run e2e` and `npm run test:e2e:real` pass.
 - **Required tests.** Tasks selection-mode component test; Board column tabs (keyboard: arrows, `[`/`]` still move cards; the move
   announcement is kept); target-size sweep spec; update `tasks-page.spec`, `ux07`.
-- **Status: `READY`** (UX-10 is `DONE`; it provides the sheet pattern, the capture button and the 16 px / 44 px touch rules; the Tasks select boxes (22 px) and the Select-all box (16 px) are still open for this task).
+- **Refinements and scope change made while implementing (2026-11-03, ADR-0064).** (a) Owner scope change: the **standalone Board is
+  removed** (route `/board` redirects to Projects, nav/palette entry and the Tasks `List | Board` switch deleted, `view=board` ignored,
+  dead code and tests deleted); the project page's Board tab is the only board and gets the phone column tabs; a task with no project
+  is on no board (known consequence, R-51). (b) Filter chips are one "Filters" button + sheet on touch/phone (no scroll strip, so no
+  exception to "no inner scroll" is needed). (c) Medium/Low show their word on a phone; the status-bar link is 44 px; phone Inbox and
+  project Tasks show the capture button only. (d) 44 px rules are keyed on `(max-width: 720px)` as well as `(pointer: coarse)`, which
+  Chromium's emulation did not report. (e) Selectors: `/board`, the "Board" nav link, "Go to Board" and the Tasks group "View" are gone; the
+  phone Tasks page has no `Select <title>` until "Select tasks"; specs ux02, ux03, ux07, ux08, mu08, J1 were updated (`TESTING.md`).
+- **Status: `DONE`** (local, 2026-11-03, not committed, CI `e2e-real` not run; evidence `ACCEPTANCE.md` UX-11, ADR-0064, R-51). Not verified on a
+  real phone (keyboard, notch, iOS zoom, TalkBack/VoiceOver). **The UX series (UX-01 ... UX-11) is complete.**
 
 ---
 

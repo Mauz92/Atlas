@@ -2,12 +2,15 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "re
 import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import type { Project, Task, TaskStatus } from "../api/client";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useParentTitles } from "../hooks/useParentTitles";
 import { activeProjects, useProjects } from "../hooks/useProjects";
 import type { TaskActions } from "../hooks/useTaskActions";
+import { PHONE_QUERY, SHEET_QUERY } from "../lib/phone";
 import { isTypingTarget } from "../lib/shortcuts";
 import { STATUS_LABELS, adjacentStatus, canMove, type BoardColumn } from "../lib/taskStatus";
 import { Icon } from "./Icon";
+import { Tabs, panelId, tabId } from "./Tabs";
 import { TaskMenu } from "./TaskMenu";
 import { TaskMeta } from "./TaskRow";
 
@@ -34,9 +37,12 @@ interface BoardProps {
   hideProject?: boolean;
   /** Keep the Archived column behind a "Show archived" toggle (UX-07). */
   archivedToggle?: boolean;
-  /** Shown instead of the first-run hint when `empty` (a filtered board). */
-  emptyMessage?: string;
 }
+
+const HELP =
+  "Drag a task between columns, use “Move to…” in its menu, or press ] and [ on a focused card, to change its status. Only the transitions Atlas allows are offered, and a rejected move is reported here.";
+const TOUCH_HELP =
+  "Pick a column above. Use “Move to…” in a card’s menu to change its status. Only the transitions Atlas allows are offered, and a rejected move is reported here.";
 
 /**
  * A Kanban board whose columns are the task statuses (PRODUCT_SPEC §5.3, ADR-0022).
@@ -60,15 +66,22 @@ export function Board({
   actions,
   hideProject,
   archivedToggle,
-  emptyMessage,
 }: BoardProps) {
+  // Phone (UX-11): one full-width column at a time, chosen from a tab strip with counts.
+  const phone = useMediaQuery(PHONE_QUERY, false);
+  // Touch and phone: the help is behind a "?" button and says nothing about keys.
+  const touch = useMediaQuery(SHEET_QUERY, false);
+  const [activeStatus, setActiveStatus] = useState<TaskStatus>("inbox");
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpId = useId();
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overStatus, setOverStatus] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ task: Task; anchor: HTMLElement } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [notice, setNotice] = useState("");
-  // After a keyboard move the card is re-created in its new column: focus it again there.
-  const refocus = useRef<{ id: string; status: string; until: number } | null>(null);
+  // After a move the card is re-created in its new column: a keyboard move focuses it again there
+  // (`focus`), any move announces it.
+  const refocus = useRef<{ id: string; status: string; until: number; focus: boolean } | null>(null);
   const menuId = useId();
   const { projects } = useProjects();
   const projectById = useMemo(
@@ -95,6 +108,11 @@ export function Board({
     [columns, archivedToggle, showArchived],
   );
   const archivedCount = tasksByStatus.archived?.length ?? 0;
+  // The Archived tab disappears with its toggle: fall back to the first column.
+  const current = visible.some((column) => column.status === activeStatus)
+    ? activeStatus
+    : (visible[0]?.status ?? "inbox");
+  const shownColumns = phone ? visible.filter((column) => column.status === current) : visible;
 
   useLayoutEffect(() => {
     const pending = refocus.current;
@@ -104,9 +122,11 @@ export function Board({
       refocus.current = null;
     } else if (task && task.status === pending.status) {
       refocus.current = null;
-      document
-        .querySelector<HTMLElement>(`[data-task-id="${CSS.escape(pending.id)}"] .board-card-title`)
-        ?.focus();
+      if (pending.focus) {
+        document
+          .querySelector<HTMLElement>(`[data-task-id="${CSS.escape(pending.id)}"] .board-card-title`)
+          ?.focus();
+      }
       setNotice(`Moved ${task.title} to ${labelOf(task.status)}`);
     }
   }, [tasksById]);
@@ -141,8 +161,16 @@ export function Board({
       }`);
       return;
     }
-    refocus.current = { id: task.id, status: target, until: Date.now() + 5000 };
+    refocus.current = { id: task.id, status: target, until: Date.now() + 5000, focus: true };
+    // One column is shown on a phone: follow the card so it keeps focus there.
+    if (phone) setActiveStatus(target);
     onMove(task, target);
+  }
+
+  /** A move chosen in a card's menu: announced once the server has confirmed it. */
+  function moveFromMenu(task: Task, status: TaskStatus) {
+    refocus.current = { id: task.id, status, until: Date.now() + 5000, focus: false };
+    onMove(task, status);
   }
 
   function taskFor(id: string | null): Task | undefined {
@@ -186,39 +214,78 @@ export function Board({
     <div className="board">
       {empty ? (
         <p className="muted board-hint">
-          {emptyMessage ?? "Nothing on the board yet — capture a task and it will appear in Inbox."}
+          Nothing on the board yet — capture a task and it will appear in Inbox.
         </p>
       ) : null}
-      {archivedToggle ? (
+      {archivedToggle || touch ? (
         <div className="board-toolbar">
-          <button
-            type="button"
-            className="ghost"
-            aria-pressed={showArchived}
-            onClick={() => setShowArchived((open) => !open)}
-          >
-            {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
-          </button>
+          {touch ? (
+            <button
+              type="button"
+              className="ghost board-help-button"
+              aria-label="About the board"
+              aria-expanded={helpOpen}
+              aria-controls={helpId}
+              onClick={() => setHelpOpen((open) => !open)}
+            >
+              ?
+            </button>
+          ) : null}
+          {archivedToggle ? (
+            <button
+              type="button"
+              className="ghost"
+              aria-pressed={showArchived}
+              onClick={() => setShowArchived((open) => !open)}
+            >
+              {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
+            </button>
+          ) : null}
         </div>
+      ) : null}
+      {touch ? (
+        helpOpen ? (
+          <p id={helpId} className="muted board-help">
+            {TOUCH_HELP}
+          </p>
+        ) : null
+      ) : (
+        <p className="muted board-help">{HELP}</p>
+      )}
+      {phone ? (
+        <Tabs
+          label="Board columns"
+          className="board-tabs"
+          idPrefix="board"
+          value={current}
+          onChange={setActiveStatus}
+          tabs={visible.map((column) => ({
+            id: column.status,
+            label: column.label,
+            count: (tasksByStatus[column.status] ?? []).length,
+          }))}
+        />
       ) : null}
       <div className="sr-only" aria-live="polite">
         {notice}
       </div>
       <div
         className="board-columns"
-        style={{ "--board-cols": visible.length } as CSSProperties}
+        style={{ "--board-cols": shownColumns.length } as CSSProperties}
       >
-        {visible.map((column) => {
+        {shownColumns.map((column) => {
           const columnTasks = tasksByStatus[column.status] ?? [];
           return (
             <section
               key={column.status}
               className={`board-column${overStatus === column.status ? " drop-target" : ""}`}
-              aria-labelledby={`board-col-${column.status}`}
+              {...(phone
+                ? { role: "tabpanel", id: panelId("board", column.status), "aria-labelledby": tabId("board", column.status) }
+                : { "aria-labelledby": `board-col-${column.status}` })}
               onDragOver={(event) => onDragOver(event, column)}
               onDrop={(event) => onDrop(event, column)}
             >
-              <header className="board-column-header">
+              <header className={`board-column-header${phone ? " sr-only" : ""}`}>
                 <h2 id={`board-col-${column.status}`}>{column.label}</h2>
                 <span className="muted board-count">{columnTasks.length}</span>
               </header>
@@ -294,7 +361,7 @@ export function Board({
           projects={filable}
           timeZone={timeZone}
           variant="board"
-          onMove={(task: Task, status: TaskStatus) => onMove(task, status)}
+          onMove={moveFromMenu}
           onClose={() => setMenu(null)}
         />
       ) : null}

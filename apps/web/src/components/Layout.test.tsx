@@ -133,7 +133,6 @@ describe("Shell navigation", () => {
     ["/week", "Week", "Today"],
     ["/day", "Today", "Today"],
     ["/tasks", "Tasks", "Tasks"],
-    ["/board", "Board", "Tasks"],
     ["/projects", "Projects", "Projects"],
     ["/projects/p-garden", "Garden", "Projects"],
     ["/projects/p-old", "Projects", "Projects"],
@@ -172,7 +171,7 @@ describe("Shell navigation", () => {
     expect(header).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(header);
     expect(header).toHaveAttribute("aria-expanded", "false");
-    expect(within(sidebarNav()).queryByRole("link", { name: "Board" })).toBeNull();
+    expect(within(sidebarNav()).queryByRole("link", { name: "Tasks" })).toBeNull();
     view.unmount();
     await renderAt("/inbox");
     expect(screen.getByRole("button", { name: "Workspace" })).toHaveAttribute("aria-expanded", "false");

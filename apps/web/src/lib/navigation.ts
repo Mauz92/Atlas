@@ -48,7 +48,6 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Workspace",
     items: [
       { to: "/tasks", label: "Tasks", icon: "square-check", group: "tasks", rail: true },
-      { to: "/board", label: "Board", icon: "square-kanban", group: "tasks" },
       { to: "/projects", label: "Projects", icon: "folder-kanban", group: "projects", rail: true },
       { to: "/notes", label: "Notes", icon: "file-text", group: "notes", rail: true },
     ],

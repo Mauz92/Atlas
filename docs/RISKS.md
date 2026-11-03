@@ -230,9 +230,23 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   keyboard but does not make the page behind it inert, so a screen-reader swipe could reach it. `programmatic focus()` on opening the
   sheet may not raise the iOS keyboard. With `resizes-content` the bottom nav and FAB ride above the Android keyboard (less room).
   `container` queries and `:has()` are required (a browser without them shows one or two columns and no page tint). Landscape notch insets are
-  applied to the main column only. The status-bar link ("Synced") is 20 px high on a phone (not part of this task).
+  applied to the main column only. (The 20 px status-bar link was fixed in UX-11, ADR-0064.)
 - **Mitigation:** one capture form and one menu implementation for both presentations; Esc, scrim, Close and Cancel all close; the
   sheet never covers the field in the emulation; reversible CSS/markup.
+- **Status:** Open (accepted; verify on a real phone before release).
+
+### R-51 — The remaining phone pages are verified only with emulation; a few controls are deliberately not 44 px (UX-11, ADR-0064)
+- **Severity/Likelihood:** Low / Medium
+- **Impact:** the Tasks Select mode and Filters sheet, the project Board tab strip, the Notes toolbar, Project cards and the palette
+  sheet are measured in Chromium touch emulation (Playwright `isMobile` + `hasTouch`) at 360 and 390 px, not on a real phone: real taps,
+  the on-screen keyboard over the full-height palette (the `--kb` lift reuses the UX-10 mechanism, unverified on a device),
+  TalkBack/VoiceOver reading order of the tab strip, and Safari/Firefox rendering are `NOT RUN`. Chromium's emulation did not report `pointer: coarse`, so the 44 px rules are keyed on `(max-width: 720px)` as
+  well. Deliberate exceptions to the 44 px rule: a task-list checkbox or link **inside a note's own text** (editor and preview content,
+  like an inline link) and, on a tablet-width window without a coarse pointer, desktop sizes. Removing the standalone Board means a task
+  with no project is on no board (owner decision; use Tasks, Inbox or put the task in a project). The "Select" mode and the "Filters"
+  sheet add one tap to reach a filter or the select boxes on a phone. The Notes preview preference is shared between phone and desktop.
+- **Mitigation:** one component and one set of rules for each presentation (`Menu`, `Tabs`, `QuickCapture` are reused); all changes
+  are CSS/markup; the real-stack sweep `ux11-phone-pages.spec.ts` re-measures targets, scroll and axe.
 - **Status:** Open (accepted; verify on a real phone before release).
 
 ## Low severity
@@ -569,6 +583,7 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 | 2026-10-27 | M9-05 | Security review (threat model vs implementation). R-21 added (push endpoint not scheme/host-constrained; accepted for the single-user model). F1 (SPA missing security headers/CSP) found and fixed in `apps/web/nginx.conf`; R-SEC-1/2/4 re-confirmed, R-SEC-3 resolved. Detail in `docs/SECURITY.md` §"Milestone 9 security review". |
 | 2026-11-01 | Audit | Function audit: R-22 added (backend-heavy, interface-light); ADR-0043 re-prioritises to a usable core. |
 | 2026-11-02 | MU-08 | R-22 progress: Settings, shortcut help, mobile nav and an axe accessibility gate delivered (J7 passes). Sub-risks: password change signs out all other sessions (no per-device session list); the password limiter is in-process; backup status is only as visible as `BACKUP_DIR` is to the API and does not re-verify checksums; **`npm audit --include=dev` reports a moderate `minimatch` advisory (GHSA-g3hv-75wg-m249) in the eslint/typescript-eslint toolchain — present before MU-08, dev-only, not yet fixed (the fix needs a breaking tooling upgrade), so the 2026-10-27 "0 advisories" claim no longer holds**; no user time-zone setting; MU exit needs a CI run and a release re-score. |
+| 2026-11-03 | UX-11 | Remaining phone pages and removal of the standalone Board (ADR-0064): UI-only; R-51 added (emulation only; board-less tasks). |
 | 2026-11-03 | UX-10 | Week agenda, phone capture sheet, menu sheets, 16 px fields and safe areas (ADR-0063): UI-only; R-50 added (emulation only: keyboard, insets, screen readers). |
 | 2026-11-03 | UX-09 | Readability tokens, one row anatomy and section cards (ADR-0062): UI-only; R-49 added (CSS behaviours verified in Chromium only). |
 | 2026-11-03 | UX-08 | Settings sections, skeletons and one empty state (ADR-0058): UI-only; R-27 added (old addresses are redirects; only the open Settings section is mounted). No new network call, dependency, icon or stored data; instance info is now requested only by the two sections that show it. Sign-in and first-run gained a `main` landmark (an axe finding). |

@@ -132,8 +132,8 @@ test("J1: every field can be edited, saved and read back after a reload", async 
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
 
-  // In-progress tasks leave the Inbox; find it on the Board, then reload and read everything back.
-  await page.goto("/board");
+  // In-progress tasks leave the Inbox; find it on the Tasks page, then reload and read everything back.
+  await page.goto("/tasks");
   await page.reload();
   await page.getByRole("button", { name: `Open ${title} v2` }).click();
   await expect(panel.getByLabel("Title")).toHaveValue(`${title} v2`);
@@ -214,8 +214,12 @@ test("J1: on a narrow screen the detail fills the whole viewport (full page)", a
   await ensureOwner(page);
   const title = "Narrow screen (J1)";
   await page.goto("/inbox");
-  await page.getByLabel("Task title").fill(title);
-  await page.getByRole("button", { name: "Add" }).click();
+  // A phone has the capture button and its sheet instead of the inline field (UX-10, UX-11).
+  await page.getByRole("button", { name: "Capture a task" }).click();
+  const sheet = page.getByRole("dialog", { name: "Capture a task" });
+  await sheet.getByLabel("Task title").fill(title);
+  await sheet.getByRole("button", { name: "Add" }).click();
+  await sheet.getByRole("button", { name: "Close" }).click();
   await page.getByRole("button", { name: `Open ${title}` }).click();
   const box = await dialog(page).boundingBox();
   expect(box).not.toBeNull();

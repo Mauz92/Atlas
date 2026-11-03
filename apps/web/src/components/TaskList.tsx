@@ -25,6 +25,8 @@ interface TaskListProps {
     toggle: (task: Task) => void;
     /** Any row selected: the selection boxes stay visible. */
     active: boolean;
+    /** Touch Select mode (UX-11): the select box replaces the round completion box. */
+    exclusive?: boolean;
   };
   /** Shown in place of the list when it is empty; omitted means nothing is rendered. */
   emptyMessage?: string;
@@ -110,6 +112,7 @@ export function TaskList({
               ? {
                   selected: selection.isSelected(task.id),
                   onToggle: () => selection.toggle(task),
+                  exclusive: selection.exclusive,
                 }
               : undefined
           }

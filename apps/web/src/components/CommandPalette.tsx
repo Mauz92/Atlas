@@ -1,11 +1,14 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { notesApi, projectsApi, tasksApi, type Task } from "../api/client";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useProjects } from "../hooks/useProjects";
 import { useUnifiedSearch } from "../hooks/useUnifiedSearch";
 import { PALETTE_PAGES } from "../lib/navigation";
+import { SHEET_QUERY } from "../lib/phone";
 import { rankByQuery } from "../lib/palette";
 import { localDate } from "../lib/taskForm";
 import { readTheme, toggleTheme } from "../lib/theme";
@@ -18,6 +21,8 @@ interface Entry {
   label: string;
   /** Secondary text (a status, a path). */
   hint?: string;
+  /** The hint is a keyboard shortcut: not shown on touch devices, which have no keyboard to press it on. */
+  keys?: boolean;
   /** Creating something never becomes the active entry on its own, so Enter cannot do it by accident. */
   creates?: boolean;
   run: () => Promise<void> | void;
@@ -64,6 +69,9 @@ export function CommandPalette({
   const input = useRef<HTMLInputElement>(null);
   const listboxId = useId();
   const text = query.trim();
+  // Phone and touch (UX-11): a full-height sheet with a Close button, 44px rows and no key hints.
+  const touch = useMediaQuery(SHEET_QUERY, false);
+  const inset = useKeyboardInset();
 
   // Return focus to whatever had it before the palette opened.
   useEffect(() => {
@@ -142,6 +150,7 @@ export function CommandPalette({
         group: "Commands",
         label: "Keyboard shortcuts",
         hint: "?",
+        keys: true,
         run: () => {
           onClose();
           onShowShortcuts();
@@ -164,6 +173,7 @@ export function CommandPalette({
               group: "Commands",
               label: "Toggle sidebar",
               hint: "Ctrl B",
+              keys: true,
               run: () => {
                 onClose();
                 onToggleSidebar();
@@ -327,7 +337,8 @@ export function CommandPalette({
 
   return (
     <div
-      className="palette-backdrop"
+      className={`palette-backdrop${touch ? " is-sheet" : ""}`}
+      style={touch ? ({ "--kb": `${inset}px` } as CSSProperties) : undefined}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onClose();
@@ -342,26 +353,33 @@ export function CommandPalette({
         aria-label="Command palette"
         onKeyDown={onKeyDown}
       >
-        <input
-          ref={input}
-          className="palette-input"
-          type="text"
-          role="combobox"
-          aria-label="Search or run a command"
-          aria-expanded="true"
-          aria-controls={listboxId}
-          aria-autocomplete="list"
-          aria-activedescendant={active ? `${listboxId}-${active.id}` : undefined}
-          placeholder="Search notes, tasks and projects, or type a command…"
-          autoComplete="off"
-          spellCheck={false}
-          maxLength={200}
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setError(null);
-          }}
-        />
+        <div className="palette-bar">
+          <input
+            ref={input}
+            className="palette-input"
+            type="text"
+            role="combobox"
+            aria-label="Search or run a command"
+            aria-expanded="true"
+            aria-controls={listboxId}
+            aria-autocomplete="list"
+            aria-activedescendant={active ? `${listboxId}-${active.id}` : undefined}
+            placeholder="Search notes, tasks and projects, or type a command…"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={200}
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setError(null);
+            }}
+          />
+          {touch ? (
+            <button type="button" className="ghost palette-close" onClick={onClose}>
+              Close
+            </button>
+          ) : null}
+        </div>
         <div role="status" className="sr-only">
           {status}
         </div>
@@ -389,15 +407,19 @@ export function CommandPalette({
                   onClick={() => void run(entry)}
                 >
                   <span>{entry.label}</span>
-                  {entry.hint ? <span className="muted palette-hint">{entry.hint}</span> : null}
+                  {entry.hint && !(touch && entry.keys) ? (
+                    <span className="muted palette-hint">{entry.hint}</span>
+                  ) : null}
                 </div>
               ))}
             </div>
           ))}
         </div>
-        <p className="muted palette-footer">
-          ↑↓ to move · Enter to open · Esc to close
-        </p>
+        {touch ? null : (
+          <p className="muted palette-footer">
+            ↑↓ to move · Enter to open · Esc to close
+          </p>
+        )}
       </div>
     </div>
   );

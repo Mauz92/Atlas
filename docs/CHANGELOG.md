@@ -6,6 +6,15 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Changed (UX-11): **The remaining pages fit a phone, and the standalone Board page is gone.** On a phone, Tasks has one round box per
+  row (the select boxes appear only after **…** → **Select tasks**) and the filter chips are one **Filters** button that opens a sheet;
+  a project's **Board** tab shows one column at a time with a tab strip and counts (the help is behind a **?**); Notes shows the note's
+  name and folder with one **Source | Live | Preview** switch and the rest in **…**; Projects are cards with a colour dot and a one-line
+  summary; the command palette is a full-screen sheet with big rows and a Close button; Medium and Low priority show their word; the
+  "Synced" link is a big target; Inbox shows only the capture button. **Removed:** the **Board** page and the **List | Board** switch on
+  Tasks. Kanban stays in each project's **Board** tab; `/board` now opens **Projects**. A task that has no project is on no board.
+  No data, sync or settings change (ADR-0064).
+
 - Changed (UX-10): **Week fits any screen, and the phone gets a capture button and bottom sheets.** Week is now a set of day cards
   that fill the width (one column on a phone, more on a wider screen), so Saturday and Sunday are never cut off and no text is clipped;
   today's card is highlighted, an empty day is one quiet line, and week navigation is one segmented control with large touch targets.

@@ -168,22 +168,6 @@ describe("Tasks page", () => {
     expect(screen.getByRole("button", { name: /^Due:/ })).toHaveFocus();
   });
 
-  it("switches between List and Board, keeping the filter in the URL", async () => {
-    renderPage("/tasks?priority=high");
-    await screen.findByText("Alpha");
-    expect(screen.queryByRole("heading", { name: "In progress" })).not.toBeInTheDocument();
-    fireEvent.click(within(screen.getByRole("group", { name: "View" })).getByRole("button", { name: "Board" }));
-    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("view=board"));
-    expect(screen.getByTestId("where")).toHaveTextContent("priority=high");
-    expect(screen.getByRole("heading", { name: "In progress" })).toBeInTheDocument();
-    // Archived is behind a toggle.
-    expect(screen.queryByRole("heading", { name: "Archived" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /^Show archived/ }));
-    expect(screen.getByRole("heading", { name: "Archived" })).toBeInTheDocument();
-    // The list query did not run again just for the view.
-    expect(list).toHaveBeenCalledTimes(1);
-  });
-
   it("floats the bulk bar while rows are selected and clears the selection", async () => {
     renderPage();
     await screen.findByText("Alpha");
@@ -205,5 +189,51 @@ describe("reset", () => {
     await choose("Priority", "Urgent");
     await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("priority=urgent"));
     expect(screen.getByTestId("where")).not.toHaveTextContent("q=");
+  });
+
+  describe("on a phone (UX-11)", () => {
+    beforeEach(() => {
+      window.matchMedia = ((query: string) => ({
+        matches: true,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })) as unknown as typeof window.matchMedia;
+    });
+    afterEach(() => {
+      // @ts-expect-error restore the jsdom default (no matchMedia)
+      delete window.matchMedia;
+    });
+
+    it("has no select boxes until Select mode is entered from the filter menu, and Done leaves it", async () => {
+      renderPage("/tasks");
+      await screen.findByText("Alpha");
+      expect(screen.getByLabelText("Complete Alpha")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Select Alpha")).toBeNull();
+      expect(screen.queryByLabelText("Select all")).toBeNull();
+
+      await choose("Filter options", "Select tasks");
+      expect(screen.getByLabelText("Select Alpha")).toBeInTheDocument();
+      // One leading control per row: the square box replaces the round completion box.
+      expect(screen.queryByLabelText("Complete Alpha")).toBeNull();
+      fireEvent.click(screen.getByLabelText("Select all"));
+      expect(screen.getByRole("toolbar", { name: "Bulk actions" })).toHaveTextContent("2 selected");
+
+      fireEvent.click(screen.getByRole("button", { name: "Done selecting" }));
+      expect(screen.queryByLabelText("Select Alpha")).toBeNull();
+      expect(screen.queryByRole("toolbar", { name: "Bulk actions" })).toBeNull();
+      expect(screen.getByLabelText("Complete Alpha")).toBeInTheDocument();
+    });
+
+    it("offers the filters as one sheet-button with a count of the active ones", async () => {
+      renderPage("/tasks?priority=high");
+      await screen.findByText("Alpha");
+      expect(screen.queryByRole("button", { name: /^Priority/ })).toBeNull();
+      await choose("Filters, 1 active", "Status", "Completed");
+      await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("status=completed"));
+      expect(screen.getByRole("button", { name: "Filters, 2 active" })).toBeInTheDocument();
+      await choose("Filters, 2 active", "Reset filters");
+      await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent(/^$/));
+    });
   });
 });

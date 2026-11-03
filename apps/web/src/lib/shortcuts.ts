@@ -38,7 +38,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
-    title: "Board (a card focused)",
+    title: "Project board (a card focused)",
     items: [
       { keys: "]", action: "Move the card to the next column Atlas allows" },
       { keys: "[", action: "Move the card to the previous column Atlas allows" },

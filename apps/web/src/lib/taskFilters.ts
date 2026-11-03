@@ -17,8 +17,6 @@ export const SORT_LABELS: Record<SortKey, string> = {
   title: "Title",
 };
 
-export type TaskViewMode = "list" | "board";
-
 /** The status choices of the Status chip: `[value, label]`. */
 export const STATUS_CHOICES: [string, string][] = [
   ["open", "Open"],
@@ -46,8 +44,6 @@ export interface TaskFilter {
   dueTo: string;
   q: string;
   sort: SortKey;
-  /** List or board (UX-07); it changes how the same tasks are shown, not which are loaded. */
-  view: TaskViewMode;
 }
 
 export const DEFAULT_FILTER: TaskFilter = {
@@ -58,7 +54,6 @@ export const DEFAULT_FILTER: TaskFilter = {
   dueTo: "",
   q: "",
   sort: "urgency",
-  view: "list",
 };
 
 const PARAMS: Record<keyof TaskFilter, string> = {
@@ -69,7 +64,6 @@ const PARAMS: Record<keyof TaskFilter, string> = {
   dueTo: "due_to",
   q: "q",
   sort: "sort",
-  view: "view",
 };
 
 export function filterFromParams(params: URLSearchParams): TaskFilter {
@@ -84,7 +78,6 @@ export function filterFromParams(params: URLSearchParams): TaskFilter {
     dueTo: read("dueTo"),
     q: read("q"),
     sort: sort in SORT_LABELS ? (sort as SortKey) : DEFAULT_FILTER.sort,
-    view: read("view") === "board" ? "board" : "list",
   };
 }
 
@@ -181,7 +174,7 @@ export function chipValues(
 /** True when anything but the default view is set (what "Reset filters" would change). */
 export function isFiltered(filter: TaskFilter): boolean {
   return (Object.keys(DEFAULT_FILTER) as (keyof TaskFilter)[]).some(
-    (key) => key !== "view" && filter[key] !== DEFAULT_FILTER[key],
+    (key) => filter[key] !== DEFAULT_FILTER[key],
   );
 }
 

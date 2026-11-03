@@ -208,7 +208,7 @@ test("the skeleton is axe clean and fits four widths in both themes", async ({ p
       await page.setViewportSize({ width, height: 900 });
       for (const [url, pattern, label] of [
         ["/inbox", /\/api\/tasks(\?|$)/, "Loading inbox"],
-        ["/board", /\/api\/tasks(\?|$)/, "Loading board"],
+        ["/tasks", /\/api\/tasks(\?|$)/, "Loading tasks"],
         ["/projects", /\/api\/projects(\?|$)/, "Loading projects"],
       ] as [string, RegExp, string][]) {
         const release = await hold(page, pattern);

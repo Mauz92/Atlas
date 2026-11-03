@@ -11,6 +11,7 @@ import { ProjectForm } from "../components/ProjectForm";
 import { ProjectProgressBar } from "../components/ProjectProgressBar";
 import { Skeleton } from "../components/Skeleton";
 import { useProjects } from "../hooks/useProjects";
+import { projectHue } from "../lib/projectColor";
 import { formatDay } from "../lib/tasks";
 
 /**
@@ -69,12 +70,15 @@ export function Projects() {
     ];
     return (
       <li key={project.id} className="project-item">
-        <Link to={`/projects/${project.id}`} className="project-name">
-          {project.name}
-        </Link>
-        {project.status === "completed" ? (
-          <span className="pill pill-success">Completed</span>
-        ) : null}
+        <span className="project-head">
+          <span className={`project-dot project-c${projectHue(project.id)}`} aria-hidden="true" />
+          <Link to={`/projects/${project.id}`} className="project-name">
+            {project.name}
+          </Link>
+          {project.status === "completed" ? (
+            <span className="pill pill-success">Completed</span>
+          ) : null}
+        </span>
         {isArchived ? (
           <span className="project-open muted">Archived</span>
         ) : (
@@ -100,7 +104,7 @@ export function Projects() {
   }
 
   return (
-    <section className="page projects-page">
+    <section className="page projects-page tinted-page">
       <h1>Projects</h1>
       <p className="muted">Group tasks and notes toward an outcome.</p>
 

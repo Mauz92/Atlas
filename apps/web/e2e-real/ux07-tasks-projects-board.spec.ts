@@ -9,7 +9,7 @@ import { apiCall, chooseFilter, dateIn, ensureOwner, filterBar, openDueFilter } 
 /**
  * UX-07 — Tasks, Projects and Board polish (docs/ROADMAP.md, UX; ADR-0057). The things only a real
  * browser can measure or drive: the one-row filter bar, keyboard use of the chips, the floating
- * bulk bar, List | Board, the board keys `[` / `]`, the project rows and page (tabs, folded
+ * bulk bar, the project board's keys `[` / `]`, the project rows and page (tabs, folded
  * Completed group), one date format, and no sideways scrolling at four widths in both themes.
  * Real API and a fresh database; screenshots go to $ATLAS_SHOT_DIR when it is set.
  */
@@ -121,17 +121,9 @@ test("filter bar: one row, chips work from the keyboard, URL state, floating bul
   await expect(page.getByLabel("Select UX7 bulk 01")).not.toBeChecked();
 });
 
-test("tasks page board: List | Board toggle, compact cards, [ and ] move the focused card", async ({ page }) => {
+test("project board: compact cards, [ and ] move the focused card, the card menu offers Move to…", async ({ page }) => {
   const { gardenId } = await seed(page);
-  await page.goto("/tasks?q=UX7+dig");
-  await expect.poll(() => rows(page).count()).toBe(1);
-  await page.getByRole("group", { name: "View" }).getByRole("button", { name: "Board" }).click();
-  await expect(page).toHaveURL(/view=board/);
-  await page.reload();
-  await expect(page.getByRole("group", { name: "View" }).getByRole("button", { name: "Board" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await page.goto(`/projects/${gardenId}?tab=board`);
 
   const column = (name: string) => page.getByRole("region", { name, exact: true });
   const open = (name: string) => column(name).getByRole("button", { name: "Open UX7 dig" });
@@ -234,7 +226,6 @@ test("layout: no sideways scrolling at four widths in both themes, and screensho
   if (shots) mkdirSync(shots, { recursive: true });
   const targets: [string, string][] = [
     ["tasks", "/tasks?q=UX7"],
-    ["tasks-board", "/tasks?q=UX7&view=board"],
     ["projects", "/projects"],
     ["project", `/projects/${gardenId}`],
     ["project-board", `/projects/${gardenId}?tab=board`],

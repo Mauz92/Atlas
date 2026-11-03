@@ -1,3 +1,19 @@
+- **UX-11 (remaining phone pages; standalone Board removed) is `DONE` locally (2026-11-03, not committed, CI not run). The UX series UX-01...UX-11 is complete.**
+  ADR-0064, evidence `docs/ACCEPTANCE.md` UX-11 (verify.sh PASS: pytest 4172, vitest 896; real-stack 69 passed incl. 8 new in
+  `e2e-real/ux11-phone-pages.spec.ts`; mocked e2e 7 passed), R-51. Next work is outside the UX series (SYNC-06 and later, see below / `ROADMAP.md`).
+  NOT RUN: real phone (keyboard, notch, iOS zoom), TalkBack/VoiceOver, Safari/Firefox.
+
+## UX-11 conventions to keep
+- **No standalone Board**: `/board` redirects to `/projects`; the project page's Board tab (`components/Board.tsx` + `hooks/useBoard.ts`) is the only board; the
+  Tasks page has no board view and ignores `view=` (`TaskFilter.view` deleted). Tasks with no project are on no board (R-51).
+- Touch/phone split: `PHONE_QUERY` (<= 720 px) for layout swaps (Board one column + `Tabs` with counts, Notes phone toolbar `.notes-header.is-phone`), `SHEET_QUERY`
+  (phone or no hover) for sheets, Select mode, the "Filters" sheet button (`FilterBar` `is-compact`) and the palette sheet. 44 px rules are keyed on
+  `(pointer: coarse), (max-width: 720px)` (Chromium emulation did not report coarse).
+- Select mode (Tasks, touch): `RowSelection.exclusive` hides the round completion box; entered from "Filter options" > "Select tasks"; Done clears.
+- Notes phone: `choosePhoneView` makes Source/Live/Preview exclusive; "Links and details" is the first "Note options" item (helpers `openNoteDetails` handles both).
+- Specs: `e2e-real/ux11-phone-pages.spec.ts` (sweep helper `measure`: checkbox = its label, skips inline links, note-content controls, list-row title buttons).
+
+## UX-10 summary (previous step)
 - **UX-10 (Week agenda, phone capture sheet, menu sheets, 16 px fields, safe areas) is `DONE` locally (2026-11-03, not committed, CI not run).**
   ADR-0063, evidence `docs/ACCEPTANCE.md` UX-10 (verify.sh PASS: pytest 4172, vitest 898; real-stack 61 passed incl. 5 new in
   `e2e-real/ux10-phone.spec.ts`; mocked e2e 7 passed), R-50. **Next UX step: UX-11** (`READY`: Tasks select mode and filter strip, Board column

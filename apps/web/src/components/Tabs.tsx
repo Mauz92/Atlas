@@ -3,6 +3,8 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 export interface TabItem<T extends string> {
   id: T;
   label: string;
+  /** A count shown after the label (the Board's phone strip); the accessible name says "n tasks". */
+  count?: number;
 }
 
 interface TabsProps<T extends string> {
@@ -13,6 +15,7 @@ interface TabsProps<T extends string> {
   onChange: (id: T) => void;
   /** Prefix of the ids tab and panel share (see `tabId` / `panelId`). */
   idPrefix: string;
+  className?: string;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -25,7 +28,7 @@ export const panelId = (prefix: string, id: string) => `${prefix}-panel-${id}`;
  * activation, since switching a panel is instant and has no side effects). The caller renders the
  * `role="tabpanel"` with `id={panelId(...)}` and `aria-labelledby={tabId(...)}`.
  */
-export function Tabs<T extends string>({ label, tabs, value, onChange, idPrefix }: TabsProps<T>) {
+export function Tabs<T extends string>({ label, tabs, value, onChange, idPrefix, className }: TabsProps<T>) {
   function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
     const at = tabs.findIndex((tab) => tab.id === value);
     const next =
@@ -45,7 +48,7 @@ export function Tabs<T extends string>({ label, tabs, value, onChange, idPrefix 
   }
 
   return (
-    <div className="tabs" role="tablist" aria-label={label} onKeyDown={onKeyDown}>
+    <div className={className ? `tabs ${className}` : "tabs"} role="tablist" aria-label={label} onKeyDown={onKeyDown}>
       {tabs.map((tab) => (
         <button
           key={tab.id}
@@ -57,7 +60,14 @@ export function Tabs<T extends string>({ label, tabs, value, onChange, idPrefix 
           tabIndex={tab.id === value ? 0 : -1}
           onClick={() => onChange(tab.id)}
         >
-          {tab.label}
+          <span className="tab-label">{tab.label}</span>
+          {tab.count === undefined ? null : (
+            <span className="tab-count">
+              <span className="sr-only">, </span>
+              {tab.count}
+              <span className="sr-only"> {tab.count === 1 ? "task" : "tasks"}</span>
+            </span>
+          )}
         </button>
       ))}
     </div>

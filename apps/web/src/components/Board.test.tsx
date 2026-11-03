@@ -225,4 +225,76 @@ describe("Board", () => {
     expect(within(card).getByText("High priority")).toHaveClass("sr-only");
     expect(within(card).queryByText("home")).not.toBeInTheDocument();
   });
+
+  it("prints how to use the board, keys included, on desktop", () => {
+    renderBoard([]);
+    expect(screen.getByText(/press \] and \[ on a focused card/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "About the board" })).toBeNull();
+  });
+
+  describe("on a phone (UX-11)", () => {
+    beforeEach(() => {
+      window.matchMedia = ((query: string) => ({
+        matches: true,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })) as unknown as typeof window.matchMedia;
+    });
+    afterEach(() => {
+      // @ts-expect-error restore the jsdom default (no matchMedia)
+      delete window.matchMedia;
+    });
+
+    const tasks = [
+      makeTask({ id: "a", title: "Alpha", status: "inbox" }),
+      makeTask({ id: "b", title: "Beta", status: "next" }),
+      makeTask({ id: "c", title: "Gamma", status: "inbox" }),
+    ];
+
+    it("shows one column at a time, chosen from tabs with counts; arrow keys switch", () => {
+      renderBoard(tasks);
+      const tabs = screen.getAllByRole("tab");
+      expect(tabs.map((tab) => tab.textContent)).toEqual(["Inbox, 2 tasks", "Next, 1 task", "In progress, 0 tasks", "Completed, 0 tasks", "Archived, 0 tasks"]);
+      expect(screen.queryAllByRole("region")).toHaveLength(0);
+      expect(screen.getByRole("tabpanel")).toBeInTheDocument();
+      expect(screen.getByText("Alpha")).toBeInTheDocument();
+      expect(screen.queryByText("Beta")).toBeNull();
+
+      tabs[0].focus();
+      fireEvent.keyDown(tabs[0], { key: "ArrowRight" });
+      expect(screen.getByRole("tab", { name: /^Next/ })).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByText("Beta")).toBeInTheDocument();
+      expect(screen.queryByText("Alpha")).toBeNull();
+      fireEvent.keyDown(screen.getByRole("tab", { name: /^Next/ }), { key: "End" });
+      expect(screen.getByRole("tab", { name: /^Archived/ })).toHaveAttribute("aria-selected", "true");
+    });
+
+    it("keeps ] moving a card and follows it to the new column, announcing the move", () => {
+      const { onMove } = renderBoard(tasks);
+      const card = screen.getByText("Alpha").closest("li") as HTMLElement;
+      fireEvent.keyDown(card, { key: "]" });
+      expect(onMove).toHaveBeenCalledWith(expect.objectContaining({ id: "a" }), "next");
+      expect(screen.getByRole("tab", { name: /^Next/ })).toHaveAttribute("aria-selected", "true");
+    });
+
+    it("puts the Archived column behind its toggle as a fifth tab", () => {
+      render(
+        <Board columns={boardColumns()} tasksByStatus={groupByStatus(tasks)} onMove={() => {}} archivedToggle />,
+      );
+      expect(screen.getAllByRole("tab")).toHaveLength(4);
+      fireEvent.click(screen.getByRole("button", { name: /Show archived/ }));
+      expect(screen.getAllByRole("tab")).toHaveLength(5);
+    });
+
+    it("hides the help behind a ? button", () => {
+      render(<Board columns={boardColumns()} tasksByStatus={groupByStatus(tasks)} onMove={() => {}} />);
+      expect(screen.queryByText(/Pick a column above/)).toBeNull();
+      expect(screen.queryByText(/press \] and \[/)).toBeNull();
+      const button = screen.getByRole("button", { name: "About the board" });
+      fireEvent.click(button);
+      expect(button).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByText(/Pick a column above/)).toBeInTheDocument();
+    });
+  });
 });

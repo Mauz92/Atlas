@@ -5,8 +5,10 @@ import { LoadError } from "../components/LoadError";
 import { QuickCapture } from "../components/QuickCapture";
 import { Skeleton } from "../components/Skeleton";
 import { TaskList } from "../components/TaskList";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 import { useTaskView } from "../hooks/useTaskView";
+import { PHONE_QUERY } from "../lib/phone";
 
 /**
  * Captured tasks that have not been triaged yet (MU-01, J2). Each row is the shared task row
@@ -18,6 +20,8 @@ import { useTaskView } from "../hooks/useTaskView";
 export function Inbox() {
   const { tasks, state, error, timeZone, reload, refresh } = useTaskView("inbox");
   const editor = useTaskEditor({ refresh, timeZone });
+  // Phone (UX-11): the capture button replaces the inline field, as on Today.
+  const phone = useMediaQuery(PHONE_QUERY, false);
 
   async function capture(title: string) {
     await tasksApi.create(title);
@@ -28,7 +32,7 @@ export function Inbox() {
     <section className="page inbox-page tinted-page">
       <h1>Inbox</h1>
       <p className="muted">Captured tasks waiting to be triaged.</p>
-      <QuickCapture onCapture={capture} placeholder="Capture a task…" />
+      {phone ? null : <QuickCapture onCapture={capture} placeholder="Capture a task…" />}
 
       {editor.error ? (
         <p className="error" role="alert">

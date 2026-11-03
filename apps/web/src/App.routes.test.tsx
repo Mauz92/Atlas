@@ -27,7 +27,6 @@ vi.mock("./pages/Today", () => ({ Today: stub("Today") }));
 vi.mock("./pages/Inbox", () => ({ Inbox: stub("Inbox") }));
 vi.mock("./pages/Upcoming", () => ({ Upcoming: stub("Upcoming") }));
 vi.mock("./pages/Week", () => ({ Week: stub("Week") }));
-vi.mock("./pages/Board", () => ({ BoardPage: stub("Board") }));
 vi.mock("./pages/Tasks", () => ({ Tasks: stub("Tasks") }));
 vi.mock("./pages/Projects", () => ({ Projects: stub("Projects") }));
 vi.mock("./pages/ProjectPage", () => ({ ProjectPage: stub("Project") }));
@@ -48,7 +47,8 @@ describe("routes", () => {
     ["/day", "Today", "/"],
     ["/day?date=2026-11-02", "Today", "/"],
     ["/week", "Week", "/week"],
-    ["/board", "Board", "/board"],
+    // The standalone Board is gone (ADR-0064): old links land on Projects.
+    ["/board", "Projects", "/projects"],
     ["/tasks", "Tasks", "/tasks"],
     ["/projects", "Projects", "/projects"],
     ["/projects/abc", "Project", "/projects/abc"],

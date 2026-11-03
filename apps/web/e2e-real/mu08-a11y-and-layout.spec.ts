@@ -16,7 +16,6 @@ const PAGES = [
   "/day",
   "/week",
   "/tasks",
-  "/board",
   "/projects",
   "/notes",
   "/search",
@@ -99,7 +98,6 @@ test("axe finds no violations on the main pages in either theme, and no page ove
   };
   const pages = [
     ...PAGES,
-    "/tasks?view=board",
     `/projects/${projectId}`,
     `/projects/${projectId}?tab=board`,
     `/projects/${projectId}?tab=notes`,

@@ -7,9 +7,9 @@ interface SkeletonProps {
   groups?: number;
   /**
    * `task` mirrors a task row (round box and title), `card` a project row, `line` a plain text
-   * line, `tree` the notes tree and `board` the board's columns.
+   * line, and `tree` the notes tree.
    */
-  kind?: "task" | "card" | "line" | "tree" | "board";
+  kind?: "task" | "card" | "line" | "tree";
 }
 
 /**
@@ -30,23 +30,14 @@ export function Skeleton({ label, rows = 3, groups = 0, kind = "task" }: Skeleto
   return (
     <div className={`skeleton skeleton-${kind}`} role="status" aria-busy="true">
       <span className="sr-only">{label}…</span>
-      {kind === "board"
-        ? Array.from({ length: 4 }, (_, column) => (
-            <div key={column} className="skeleton-column" aria-hidden="true">
+      {groups > 0
+        ? Array.from({ length: groups }, (_, group) => (
+            <div key={group} className="skeleton-group" aria-hidden="true">
               <span className="skeleton-bar skeleton-heading" />
-              {Array.from({ length: 3 - (column % 2) }, (_, card) => (
-                <span key={card} className="skeleton-tile" />
-              ))}
+              {rowList(rows, group)}
             </div>
           ))
-        : groups > 0
-          ? Array.from({ length: groups }, (_, group) => (
-              <div key={group} className="skeleton-group" aria-hidden="true">
-                <span className="skeleton-bar skeleton-heading" />
-                {rowList(rows, group)}
-              </div>
-            ))
-          : rowList(rows)}
+        : rowList(rows)}
     </div>
   );
 }

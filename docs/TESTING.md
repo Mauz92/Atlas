@@ -253,6 +253,20 @@ P0-1/P0-2/P0-3.
   `tasks-page.spec.ts` and J3 were updated for the chips, the "…" menu, the tabs and the row menu;
   `mu08-a11y-and-layout.spec.ts` adds the Tasks board view, the project Board and Notes tabs, and the chip menu,
   Due popover, save-view popover, bulk bar, project row menu and project header menu states.
+- Remaining phone pages and removal of the standalone Board (UX-11, ADR-0064): unit: `pages/Tasks.test.tsx` (phone: no select boxes
+  until "Select tasks", one box per row, Done leaves the mode; the Filters sheet with a count and Reset), `components/Board.test.tsx`
+  (phone: one column per tab, counts in tab names, arrow/End keys, `]` follows the card, Archived as a fifth tab, "?" help; desktop
+  prints the help), `lib/taskFilters.test.ts` (the retired `view=board` is ignored), `App.routes.test.tsx` (`/board` lands on
+  `/projects`), `navigation.test.ts`/`Layout.test.tsx` (no Board entry). jsdom has no `matchMedia`: phone tests stub it to match every
+  query. Real stack: `e2e-real/ux11-phone-pages.spec.ts` (8 tests): Tasks, project board, Projects, Notes (list and open), Settings
+  sections and the palette at 360/390/768/1440 in both themes (no document scroll, no inner scroll and every control >= 44 px at 360/390,
+  axe), the Filters sheet and the palette (full screen, no key hints), Login/Setup, Select mode with bulk complete/move/delete+undo, the
+  Filters sheet filter and reset, Medium/Low words, the project board tab strip with arrows, `]`/`[`, announcement and the menu move,
+  the Notes toolbar, Project cards and one capture control, the 44 px status-bar link (offline), and the removed Board (`/board` redirect,
+  `view=board` ignored, no "Go to Board"). The sweep treats a checkbox/radio inside a label as its label and skips inline text links,
+  note-content controls and list-row title buttons (the row body is the target). Updated specs: ux02 (old URL `/board` -> Projects), ux03
+  (phone board check on the project board), ux07 (the tasks-page board test became the project-board test; `tasks-board` shot removed),
+  ux08 (skeleton check on `/tasks`), mu08 (route list), J1 (find the task on Tasks).
 - Week agenda, phone capture, menu sheets and touch rules (UX-10, ADR-0063): `lib/keyboardInset.test.ts` (pure inset rule),
   `components/CaptureSheet.test.tsx` (phone-only button, modal sheet, focus, inert page, Esc/scrim/Close, Tab trap, one add through the
   page's own function, failed add then retry adds one, double submit ignored, `--kb` follows a fake `visualViewport`),

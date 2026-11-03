@@ -4,7 +4,6 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthProvider";
 import { Layout } from "./components/Layout";
 import { SETTINGS_REDIRECTS } from "./lib/settingsSections";
-import { BoardPage } from "./pages/Board";
 import { Inbox } from "./pages/Inbox";
 import { Login } from "./pages/Login";
 import { ProjectPage } from "./pages/ProjectPage";
@@ -42,7 +41,8 @@ export default function App() {
         {/* Day is no longer a destination (ADR-0051 §2): old links land on Today. */}
         <Route path="/day" element={<Navigate to="/" replace />} />
         <Route path="/week" element={<Week />} />
-        <Route path="/board" element={<BoardPage />} />
+        {/* The standalone Board is gone (ADR-0064): the board lives in each project. Old links land on Projects. */}
+        <Route path="/board" element={<Navigate to="/projects" replace />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:id" element={<ProjectPage />} />

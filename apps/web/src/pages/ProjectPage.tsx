@@ -22,8 +22,10 @@ import { Skeleton } from "../components/Skeleton";
 import { TaskList } from "../components/TaskList";
 import { Tabs, panelId, tabId } from "../components/Tabs";
 import { useBoard } from "../hooks/useBoard";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useProjects } from "../hooks/useProjects";
 import { useTaskEditor } from "../hooks/useTaskEditor";
+import { PHONE_QUERY } from "../lib/phone";
 import { formatDay, sentenceCase } from "../lib/tasks";
 
 type Tab = "tasks" | "board" | "notes";
@@ -47,6 +49,8 @@ export function ProjectPage() {
   const { id = "" } = useParams();
   const { reload: reloadProjects } = useProjects();
   const board = useBoard(id);
+  // Phone (UX-11): the capture button replaces the inline field.
+  const phone = useMediaQuery(PHONE_QUERY, false);
   const [project, setProject] = useState<Project | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notes, setNotes] = useState<NoteSummary[]>([]);
@@ -288,7 +292,7 @@ export function ProjectPage() {
           </>
         ) : (
           <>
-            {tab === "tasks" ? (
+            {tab === "tasks" && !phone ? (
               <QuickCapture placeholder="Add a task to this project…" onCapture={captureToProject} />
             ) : null}
             {board.state === "error" ? (

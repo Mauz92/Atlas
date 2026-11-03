@@ -2967,7 +2967,7 @@ Verdicts: **`PASS`** = the requirement is delivered and demonstrably works under
 | REQ-002 Free to use (qualified by §3.1) | `PASS` | M0/M1 (design) + M9-04 | No paid *application* feature; every runtime dependency is open-source (`DEPENDENCIES.md`). The §3.1 platform costs (iOS Apple Developer Program fee; free FCM/optional relay) are **platform** costs, disclosed, not application licence costs. |
 | REQ-003 Commercial-use rights | `PASS` | M1-10 + M9-04 | Complete dependency/licence inventory (`DEPENDENCIES.md`); all licences permit intended personal + workplace use (MIT/BSD/Apache/LGPL/MPL/CC0; `psycopg` LGPL used unmodified as a library). Standing pre-release action: re-verify identifiers upstream (`DEPENDENCIES.md`). |
 | REQ-004 Markdown notes | `PASS` | **M2** (gate `PASS`) | Notes are real `.md` files, byte-identical on disk, path-traversal-safe, revision-aware with conflict copies; M9-03 exports the genuine note bytes. Tests: `test_notes_api.py`, `test_note_paths.py` (M2 gate). |
-| REQ-005 Task management | `PARTIAL` | **M3** (gate `PASS`) + M4-02 | All required capabilities delivered and integration-tested over HTTP: Inbox/Today/Upcoming (+ Day/Week planning, Board), due dates & priorities (DST-correct), recurrence (RRULE), subtasks, project assignment. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** the function audit showed the owner cannot edit a task, set a due date or priority, delete, or assign a project in the UI (capture is title-only; Complete is the only row action), so the requirement is not satisfied as a user-facing capability. Returns to `PASS` when MU-01…MU-04 journeys J1/J2 pass in a browser against the real API. **Progress 2026-11-02:** J1 and J2 pass (MU-01: edit, date, priority, tags, delete+undo, Inbox triage); the Tasks page (MU-03) passes; recurrence, subtasks and per-task reminders in the UI (MU-04) pass (`mu04-…spec.ts`). Returns to `PASS` with the next full release re-score. |
+| REQ-005 Task management | `PARTIAL` | **M3** (gate `PASS`) + M4-02 | All required capabilities delivered and integration-tested over HTTP: Inbox/Today/Upcoming (+ Day/Week planning, Board), due dates & priorities (DST-correct), recurrence (RRULE), subtasks, project assignment. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** the function audit showed the owner cannot edit a task, set a due date or priority, delete, or assign a project in the UI (capture is title-only; Complete is the only row action), so the requirement is not satisfied as a user-facing capability. Returns to `PASS` when MU-01…MU-04 journeys J1/J2 pass in a browser against the real API. **Progress 2026-11-02:** J1 and J2 pass (MU-01: edit, date, priority, tags, delete+undo, Inbox triage); the Tasks page (MU-03) passes; recurrence, subtasks and per-task reminders in the UI (MU-04) pass (`mu04-…spec.ts`). Returns to `PASS` with the next full release re-score. **2026-11-03 (UX-11, ADR-0064):** the standalone Board page is removed by owner decision; Kanban stays delivered inside projects (project Board tab, `ux07`/`ux11`/J3); tasks with no project are on no board. |
 | REQ-006 Project management | `PARTIAL` | **M4** (gate `PASS`) | Projects, task lists, Kanban board, derived progress (documented formula, ADR-0023) and note↔project links are all implemented and tested. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** there is no way to create or edit a project in the UI (the Projects page is a placeholder), so the Board is empty for a new user. Returns to `PASS` when MU-02 journey J3 passes. **Progress 2026-11-02:** J3 passes (MU-02: create/edit/archive/restore, project page with progress, list, board and linked notes, assignment from the task detail); the Tasks-page project filter/bulk move (MU-03) also passes (journey `tasks-page.spec.ts`). Returns to `PASS` with the next full release re-score. |
 | REQ-007 Google Calendar | `NOT RUN` | — (**M5-03** `BACKLOG`; **M5-00 `BLOCKED`** — AR-001) | Only the foundations exist: encrypted credential store (M5-01), provider-neutral adapter contract (M5-02), event projection + cursors (M5-06), sync-status (M5-08), reconciliation (M5-10). The Google adapter and account-connection UI are **not built**; no provider is contacted. |
 | REQ-008 Microsoft Outlook | `NOT RUN` | — (**M5-04** `BACKLOG`; **M5-00 `BLOCKED`** — AR-001) | As REQ-007: the foundations exist but the Microsoft Graph adapter and connection UI are **not built**. |
@@ -3428,6 +3428,51 @@ and fixed: the search icon overlapped the first letter (the base input padding o
 Limitations: ADR-0057 and R-26 (saved views per browser; the Tasks board shows only filtered tasks; fold and
 archive toggles reset on reload; client copy of the transition table for `[` / `]`).
 
+
+### UX-11 — Remaining phone pages and removal of the standalone Board
+
+**Result: `DONE` (local, 2026-11-03); CI job `e2e-real` `NOT RUN` on GitHub Actions; not committed.** Tasks Select mode and Filters sheet,
+project Board column tabs, Notes toolbar, Projects cards, full-screen palette, 44 px status-bar link, Medium/Low words, single capture
+control on phone Inbox and project Tasks (ADR-0064). Owner scope change folded in: the **standalone Board page and the Tasks List | Board
+view are removed**; `/board` redirects to Projects; Kanban remains in each project's Board tab. UI-only: no backend, schema, package, icon or
+colour-token change (`DEPENDENCIES.md` unchanged).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| No document scroll at 360/390/768/1440; no inner scroll at 360/390 on Tasks, Projects, Notes (list and open), the project Board tab, Settings sections | `PASS` | `ux11` test 1 (13 pages x 4 sizes x 2 themes; inner-scroll scan of every `overflow-x: auto/scroll` box). The Board tab strip is a grid, so no exception was needed; a tablet-width (768) board keeps its scrolling columns and is not judged |
+| Every interactive control >= 44 px at 360/390 over the touched pages (excluding inline text links) | `PASS` | `ux11` test 1 + Filters sheet and palette overlays + Login/Setup (test 2) + Select mode (test 3) + Notes with the details panel open (test 5). A checkbox/radio inside a label counts as its label; excluded by design: list-row title buttons (the row body is the target, ADR-0062), checkboxes/links inside a note's own text (R-51) |
+| Tasks: select boxes only in Select mode entered from "Filter options"; one leading control; Select all >= 44 px | `PASS` | `ux11` test 3 (no `Select <title>` or "Select all" at first; boxes 44x44; no `Complete <title>` while selecting; Done restores); `Tasks.test.tsx` |
+| Bulk actions still work: complete, move, delete + undo | `PASS` | `ux11` test 3 (real API read-back for move and complete; "Deleted 1 task." + Undo); `tasks-page`, `ux07` (desktop) and J-specs pass |
+| Filters sheet (replaces the chip line): filter, count, reset | `PASS` | `ux11` test 3 (Priority > High, "Filters, 1 active", Reset), axe on the open sheet at 360/390/768/1440; `Tasks.test.tsx`. Chip line replaced by a sheet to satisfy "no inner scroll" (ADR-0064 §2) |
+| Project Board: one full-width column, all five reachable by tab (arrows, Home, End), `[`/`]` move and follow, announcement kept, "?" help, Archived toggle | `PASS` | `ux11` test 4; `Board.test.tsx` (phone: tabs with counts, End to Archived, `]` follows the card, help); `ux07` board test (desktop: `[`/`]`, edges, announcement, card menu) |
+| Notes toolbar: name + folder (no "/…"), one Source/Live/Preview control, the rest in "…", tree drill-in kept | `PASS` | `ux11` test 5; `mu08` (phone note axe with Preview and details), `ux05`, `ux06`, J4 unchanged except `openNoteDetails` (phone uses the "…" item) |
+| Projects cards: dot colour, one-line summary, target date at the right, 44 px "…", whole card opens the project | `PASS` | `ux11` test 6 (summary and target on one line, date right of the summary, 44 px menu, click on the card opens the project) |
+| Palette: full-screen sheet, 44 px rows, no key hints, Close | `PASS` | `ux11` test 1 (palette box equals the viewport at 360/390; no "to move" text; targets; axe at four sizes in both themes) |
+| Leftovers: Medium/Low word on phone; status bar link >= 44 px; one capture control on phone Inbox | `PASS` | `ux11` tests 3, 6, 7 (offline bar link >= 44 px and above the bottom nav) |
+| Standalone Board removed; `/board` redirects; `view=board` ignored; no nav or palette entry | `PASS` | `ux11` test 8; `App.routes.test.tsx`, `navigation.test.ts`, `Layout.test.tsx`, `taskFilters.test.ts`; `ux02` old URL `/board` -> Projects |
+| axe WCAG 2.0/2.1 A/AA + best practice clean in both themes at 360/390/768/1440 on Tasks, project Board, Projects, Notes, palette, Settings, Login, Setup | `PASS` | `ux11` tests 1-2 (+ `mu08` sweep, `ux09`, `ux10` unchanged). VoiceOver/TalkBack: `NOT RUN` (R-51) |
+| J1-J7, ux01-ux10, tasks-page, mu04, mu08 and all other real-stack specs | `PASS` | `npm run test:e2e:real`: `69 passed` (61 + 8 in `ux11-phone-pages.spec.ts`). Edited (selector/route changes only): ux02, ux03, ux07, ux08, mu08, J1 and `helpers.ts` (`openNoteDetails`) |
+| Lint (scale), typecheck, unit tests, backend | `PASS` | `./scripts/verify.sh`: ruff, format, mypy, pytest `4172 passed, 14 skipped`; eslint + `check-css-scale: OK`, `tsc`, vitest `896 passed` (78 files; UX-10 recorded 898 in 79 files: new phone tests added, the standalone Board page test file and the Tasks board test deleted); `verification: PASS` |
+| Mocked e2e | `PASS` | `npm run e2e`: `7 passed` |
+| Contrast of any new token | `PASS` (none) | No colour token added; `styles.test.ts` unchanged |
+| Real phone (keyboard, notch, taps), iOS zoom, TalkBack/VoiceOver, Safari/Firefox, 200 % zoom, reduced-motion visual check | `NOT RUN` | Chromium emulation only (R-51); no animation was added |
+| No stray `atlas_e2e_*` databases; owner's stack and `atlas` DB untouched | `PASS` | `pg_database` after teardown: `postgres`, `atlas`, `atlas_test`, templates only. A first full run was stopped when the scope change arrived; its leftover `atlas_e2e_*` database and processes were removed with `db_admin.py drop` |
+
+**REQ-006 (Project management).** Kanban remains delivered **inside projects**: the project page's Board tab (drag, card menu "Move to…",
+`]`/`[`, announcement, Archived toggle; phone column tabs) passes `ux07`, `ux11`, `Board.test.tsx`, `ProjectPage.test.tsx`, J3. The standalone Board
+(`/board`) and the Tasks board view are removed by owner decision; consequence: a task with no project appears on no board.
+
+Selector/route changes: `/board` (route now redirects), the "Board" nav/rail/palette entries, Tasks group "View" (`List | Board`) and the `view` URL
+parameter are gone; phone-only: Tasks has "Filters" instead of the chips and no `Select <title>` / "Select all" until "Select tasks" in "Filter options";
+phone Board columns are tabs named "<Column>, <n> tasks" (`tabpanel`, not `region`); phone Notes has no "Links and details" button (it is the first
+"Note options" item); phone Inbox / project Tasks have no inline "Task title" field (the sheet has it; J1 narrow screen updated).
+
+Deviations: filter chips are a sheet, not a scrollable line (plan note); phone Notes shows name + folder rather than the full breadcrumb path.
+
+**Screenshots** (throwaway stack, scratchpad `ux11/`, not in the repository). Before (UX-10 tree, 390 px light and dark):
+`/tmp/claude-1000/-home-kim-Documents-Atlas/31ff7fb3-5923-481a-b611-5657fde6b6ea/scratchpad/ux11/shots_before/{tasks,board,notes-open,projects,palette}_p390_{light,dark}.png` (`board` is the removed standalone page). After:
+`/tmp/claude-1000/-home-kim-Documents-Atlas/31ff7fb3-5923-481a-b611-5657fde6b6ea/scratchpad/ux11/shots_after/{tasks,project-board,notes-open,projects,palette}_p390_{light,dark}.png` (the project board has no "before" capture; its
+desktop layout is unchanged).
 
 ### UX-10 — Week agenda, phone capture sheet, menu sheets, 16 px fields and safe areas
 

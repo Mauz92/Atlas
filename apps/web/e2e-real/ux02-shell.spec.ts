@@ -16,7 +16,8 @@ const OLD_URLS: [string, string][] = [
   ["/upcoming", "Upcoming"],
   ["/week", "Week"],
   ["/tasks", "Tasks"],
-  ["/board", "Board"],
+  // The standalone Board is gone (ADR-0064): the old URL lands on Projects.
+  ["/board", "Projects"],
   ["/projects", "Projects"],
   // Calendar, Sync and Notifications are Settings sections since UX-08 (the URL redirects).
   ["/calendar", "Settings"],

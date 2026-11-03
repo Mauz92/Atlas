@@ -424,7 +424,7 @@ below is kept as the original question text.
 
 # Readability and mobile audit (2026-11)
 
-Status: **proposal; UX-09 implemented 2026-11-03 (ADR-0062); UX-10 implemented 2026-11-03 (ADR-0063)** (owner feedback 2026-11-03; follow-up to ADR-0051). At the time
+Status: **proposal; UX-09 implemented 2026-11-03 (ADR-0062); UX-10 implemented 2026-11-03 (ADR-0063); UX-11 implemented 2026-11-03 (ADR-0064, standalone Board removed)** (owner feedback 2026-11-03; follow-up to ADR-0051). At the time
 of the audit nothing under `apps/web/src` had been changed. Tasks UX-09…UX-11 are in `ROADMAP.md`. Where this section and §1–§7 above differ
 (for example "colour only for meaning"), this section is newer: the owner now allows colour where it improves
 readability, but it must stay calm and keep the contrast rules of `src/styles.test.ts`.

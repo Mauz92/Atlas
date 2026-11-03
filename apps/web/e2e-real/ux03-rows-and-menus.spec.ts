@@ -142,10 +142,11 @@ test("rows: ≤ 40 px, ≤ 2 persistent controls on Inbox rows, subtasks name th
   await expect(mobile.locator(".task-row")).toHaveCount(9);
   const height = await mobile.evaluate(() => document.documentElement.scrollHeight);
   expect(height).toBeLessThan(1000);
-  // The board's cards carry screen-reader text; it must stay inside the scrolling columns, or a
+  // The project board's cards carry screen-reader text; it must stay inside the column, or a
   // phone widens its layout viewport (found in the UX-03 screenshot review).
-  await mobile.goto("/board");
-  await expect(mobile.getByRole("button", { name: "Open UX3 demo script" })).toBeVisible();
+  await mobile.goto(`/projects/${projectId}?tab=board`);
+  await mobile.getByRole("tab", { name: /^In progress/ }).click();
+  await expect(mobile.getByRole("button", { name: "Open UX3 done in project" })).toBeVisible();
   expect(await mobile.evaluate(() => window.innerWidth)).toBe(390);
   await phone.close();
 });

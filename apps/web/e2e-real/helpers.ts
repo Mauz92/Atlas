@@ -213,6 +213,13 @@ export async function expectNoteSaved(page: Page) {
 /** Make sure the links/details panel is showing (its default depends on the screen width). */
 export async function openNoteDetails(page: Page) {
   const toggle = page.getByRole("button", { name: "Links and details" });
+  // On a phone (UX-11) the toolbar has no details button: it is the first item of "Note options".
+  if ((await toggle.count()) === 0) {
+    await page.getByRole("button", { name: "Note options" }).click();
+    await page.getByRole("menuitem", { name: "Show links and details" }).click();
+    await expect(page.getByRole("region", { name: "Note details" })).toBeVisible();
+    return;
+  }
   if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
   await expect(page.getByRole("region", { name: "Note details" })).toBeVisible();
 }

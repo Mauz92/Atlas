@@ -166,7 +166,8 @@ Detailed model: `DATA_MODEL.md`.
 - Projects have name, description, status, optional dates, tasks, notes, board view and a
   documented progress calculation.
 - Tasks may exist without a project; membership is never forced.
-- Board columns derive from task status.
+- Board columns derive from task status. The board is a project's **Board** tab (there is no standalone board page since ADR-0064; a task
+  with no project is on no board).
 - Progress is **derived, not stored** (see `DATA_MODEL.md` §2.3). The canonical formula is:
   `total` = the project's live (`deleted_at IS NULL`), non-`archived` tasks; `completed` = those
   whose status is `completed`; the reported percentage is `round(completed × 100 / total)` to the

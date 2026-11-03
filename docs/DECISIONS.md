@@ -3190,3 +3190,66 @@ is gone (the count is `aria-hidden` `.section-count`), the three navigation butt
 "Previous week" / "This week" / "Next week", row selectors of ADR-0062. Changed behaviour: on a phone the menus are sheets (Tab
 no longer closes them), phone Today has no inline capture field, Today's empty text no longer says "above".
 Limitations are recorded in R-50 (real keyboard, notch, screen readers, `:has()` and container queries in older browsers).
+
+
+## ADR-0064 — Remaining phone pages, and the standalone Board is removed (UX-11)
+
+**Status:** Accepted (owner feedback 2026-11-03 and an owner scope change during the task: remove the Kanban board as a standalone
+feature, keep it inside projects; UI-only and reversible; supersedes the standalone-Board parts of ADR-0057 §1, §4 and §5 and the
+`/board` route of ADR-0022). **Source:** [`UX_AUDIT.md`](UX_AUDIT.md) "Readability and mobile audit (2026-11)" §C.1 findings 8-10.
+
+**Context.** After UX-09/UX-10 the phone pages Tasks, Board, Notes, Projects and the palette were still desktop layouts: two
+checkboxes per Tasks row and five wrapping dashed chips, five side-scrolling Board columns (2,400 px tall), a crowded Notes toolbar whose
+breadcrumb read "/…", three loose lines per project, ~28 px palette rows, a 20 px status-bar link, Medium/Low shown as a bare flag.
+
+**Decisions.**
+1. **The standalone Board is removed; the project Board stays.** `/board` redirects to `/projects` (old links and bookmarks do not
+   404); "Board" leaves `NAV_SECTIONS` (sidebar, rail, bottom nav) and so the palette's "Go to Board"; the Tasks page loses its
+   `List | Board` switch and board view, and the `view` URL parameter (UX-07) is **ignored** (an old link or saved view with `view=board`
+   shows the list and the parameter is dropped at the next change; `TaskFilter.view`/`TaskViewMode` are deleted). The page
+   `pages/Board.tsx`, its test, the Skeleton `board` kind and the Tasks board branch are deleted as dead code. `components/Board.tsx`,
+   `useBoard` and the state machine stay: the project page's Board tab (Tasks | Board | Notes) is now the only board, with drag,
+   the card menu "Move to…", `]`/`[`, the move announcement and the Archived toggle unchanged. **Known consequence:** a task with no
+   project appears on no board (it is on Inbox, Today, Upcoming, Week and Tasks). REQ-006 ("Kanban boards") stays delivered inside
+   projects (`ACCEPTANCE.md`).
+2. **Tasks (touch and phone: `SHEET_QUERY`).** The square select box exists only in a **Select mode** entered from the filter "…" menu
+   ("Select tasks"); in that mode it replaces the round completion box (one leading control per row; a 44x44 target drawing a 22 px
+   square), "Select all" is a 44 px row with the count and a "Done" button, leaving the mode clears the selection. Desktop is unchanged
+   (boxes on hover/focus). The five filter chips become **one "Filters" button** (44 px, solid border, tinted with a count when any filter
+   differs from the default) that opens the same choices as a sheet (Status, Priority, Project, Sort as submenus; "Due date…" opens the
+   existing Due dialog; "Reset filters" at the end). **Why not one scrollable chip line:** the UX-10/UX-11 acceptance is "no inner
+   horizontal scroll", five chips with chevrons are ~430 px wide, and hiding the rest of a scroll strip is poor discoverability; the
+   sheet needs no new component (`Menu`, `Popover`, `choiceEntries`) and wraps or scrolls nothing. No exception is needed.
+3. **Project Board on a phone (<= 720 px).** One full-width column at a time, chosen from a WAI-ARIA tab strip (`Tabs`, with a count per
+   tab, ← → Home End) of equal-width grid cells with the count above the label (never wraps, never scrolls; "In progress" fits at 360 px
+   with five tabs). Only the active column is rendered (`role="tabpanel"`, its heading is screen-reader text). `]`/`[` move the focused
+   card, the tab **follows** the card so focus and the "Moved X to Y" announcement keep working; a move chosen in the card menu stays
+   on the column (triage in a row) and is announced once the server confirms it. The Archived toggle adds/removes a fifth tab. On touch the
+   help paragraph is behind a "?" button ("About the board") and no longer mentions keys; desktop prints the paragraph as before.
+   A board card's title is its own 44 px target on touch (list rows open from the whole body, ADR-0062).
+4. **Notes (phone).** Toolbar rows: the "show notes list" button, the note's **name** (file name without `.md`) with its folder under it
+   (the old breadcrumb squeezed folder segments to "/…"), the save state, "…"; and one full-width **Source | Live | Preview** segmented
+   control, exclusive on a phone (Preview replaces the editor there, as before). "Links and details" moves into the "…" menu (first item;
+   the Ctrl+Alt+B shortcut is unchanged). The tree/note drill-in is unchanged. Choosing Source/Live on a phone also turns the preview
+   preference off (the preference is shared with desktop). A checkbox or link inside the note's own text (editor, preview) is content,
+   like an inline link, and is not held to 44 px (R-51). Tree rows, tree buttons and their "…" are 44 px on phone/touch.
+5. **Projects (phone)**: a card per project (`--bg-card`, outline, on the tinted page): the project dot (colour from `projectHue`,
+   ADR-0062), the name, a 44 px "…", the progress bar, then one line "done · % · open" with the target date at the right; the whole card
+   opens the project (stretched name link, "…" stays separate). Desktop keeps one row.
+6. **Palette (touch and phone)**: a full-height sheet (`100dvh`, lifted by `--kb`), a visible **Close** button (no Esc on a phone),
+   44 px rows, no key hints (the footer and the "Ctrl B"/"?" hints are not rendered).
+7. **Settings, Login, Setup** only get the shared touch rules: every label around a checkbox or radio is a 44 px target on
+   phone/touch (`label:has(> input)`); no other change was needed (measured).
+8. **Leftovers from UX-10.** Medium and Low priority show their word on a phone (the least noisy of the options: the word is no wider
+   than "Urgent", which already fits, and only one priority appears per row; a tooltip does not exist on touch and an abbreviation would
+   be a second vocabulary). The status bar link is 44 px high on a phone when the bar shows itself (offline, queued, conflicts;
+   `--statusbar: 44px` below 720 px; it is still visually hidden when everything is synced). The phone Inbox and the phone project Tasks
+   tab show the capture button only (no inline field), as Today.
+9. **No new token, icon, package, gesture or backend change.** `prefers-reduced-motion` is unaffected (no animation was added). The
+   "?" button is a text glyph, not an icon.
+
+**Consequences.** Selectors changed: `/board` (route, nav link, palette entry "Go to Board") and the Tasks `List | Board` group "View"
+are gone; the Board's heading/region per column exists on desktop only (on a phone the column is a `tabpanel`, columns are tabs named
+"Inbox, 3 tasks"); the phone Tasks page has no `Select <title>` / "Select all" until "Select tasks" is chosen from "Filter options",
+and "Filters" replaces the chips (`Status`, `Priority`, `Project`, `Due`, `Sort` buttons, desktop unchanged). Kept: every other
+ADR-0062/0063 selector. Limitations are in R-51.

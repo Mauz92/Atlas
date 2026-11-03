@@ -329,6 +329,16 @@ export function Notes() {
     setPreview(!preview);
   }
 
+  /** Phone (UX-11): Source, Live and Preview are one exclusive choice (the preview replaces the editor). */
+  function choosePhoneView(choice: EditorMode | "preview") {
+    if (choice === "preview") {
+      if (!preview) togglePreview();
+      return;
+    }
+    chooseMode(choice);
+    if (preview) togglePreview();
+  }
+
   // --- creating ---------------------------------------------------------------------------------
 
   function beginCreation(
@@ -606,6 +616,18 @@ export function Notes() {
     ? []
     : headerMenu.kind === "options"
       ? [
+          ...(phone
+            ? [
+                {
+                  kind: "item",
+                  id: "details",
+                  label: panelOpen ? "Hide links and details" : "Show links and details",
+                  icon: "panel-right",
+                  onSelect: togglePanel,
+                } satisfies MenuEntry,
+                { kind: "separator", id: "s0" } satisfies MenuEntry,
+              ]
+            : []),
           {
             kind: "item",
             id: "task",
@@ -814,7 +836,7 @@ export function Notes() {
         <div className="notes-main" onKeyDown={onKeyDown}>
           {current ? (
             <>
-              <div className="notes-header">
+              <div className={`notes-header${phone ? " is-phone" : ""}${phone && state === "failed" ? " has-retry" : ""}`}>
                 <button
                   type="button"
                   className="ghost icon-button notes-tree-toggle"
@@ -862,19 +884,32 @@ export function Notes() {
                       className="note-path"
                       title={`Revision ${current.revision}`}
                     >
-                      {segments.map((segment, index) => (
-                        <span
-                          key={index}
-                          className={
-                            index === segments.length - 1
-                              ? "note-leaf"
-                              : undefined
-                          }
-                        >
-                          {index > 0 ? <span aria-hidden="true">/</span> : null}
-                          {segment}
-                        </span>
-                      ))}
+                      {phone ? (
+                        /* Phone (UX-11): the note's name first, its folder under it; the folder
+                           segments used to shrink to "/…" next to the toolbar. */
+                        <>
+                          <span className="note-leaf">{fileBase}</span>
+                          {segments.length > 1 ? (
+                            <span className="note-folder">
+                              {segments.slice(0, -1).join(" / ")}
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        segments.map((segment, index) => (
+                          <span
+                            key={index}
+                            className={
+                              index === segments.length - 1
+                                ? "note-leaf"
+                                : undefined
+                            }
+                          >
+                            {index > 0 ? <span aria-hidden="true">/</span> : null}
+                            {segment}
+                          </span>
+                        ))
+                      )}
                     </span>
                   )}
                 </nav>
@@ -894,53 +929,89 @@ export function Notes() {
                     Retry
                   </button>
                 ) : null}
-                <div className="notes-header-actions">
-                  <div className="mode-switch" role="group" aria-label="Editor mode">
-                    {(["source", "live"] as const).map((choice) => (
-                      <button
-                        key={choice}
-                        type="button"
-                        className="ghost"
-                        aria-pressed={mode === choice}
-                        onClick={() => chooseMode(choice)}
-                      >
-                        {choice === "source" ? "Source" : "Live"}
-                      </button>
-                    ))}
+                {phone ? (
+                  <>
+                    <div className="segmented notes-modes" role="group" aria-label="Editor mode">
+                      {(
+                        [
+                          ["source", "Source"],
+                          ["live", "Live"],
+                          ["preview", "Preview"],
+                        ] as const
+                      ).map(([choice, label]) => (
+                        <button
+                          key={choice}
+                          type="button"
+                          aria-pressed={choice === "preview" ? preview : !preview && mode === choice}
+                          onClick={() => choosePhoneView(choice)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      ref={optionsButton}
+                      type="button"
+                      className="ghost icon-button notes-more"
+                      aria-label="Note options"
+                      aria-haspopup="menu"
+                      aria-expanded={headerMenu?.kind === "options"}
+                      onClick={(event) =>
+                        toggleHeaderMenu(event.currentTarget, "options")
+                      }
+                    >
+                      <Icon name="ellipsis" />
+                    </button>
+                  </>
+                ) : (
+                  <div className="notes-header-actions">
+                    <div className="mode-switch" role="group" aria-label="Editor mode">
+                      {(["source", "live"] as const).map((choice) => (
+                        <button
+                          key={choice}
+                          type="button"
+                          className="ghost"
+                          aria-pressed={mode === choice}
+                          onClick={() => chooseMode(choice)}
+                        >
+                          {choice === "source" ? "Source" : "Live"}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      className="ghost"
+                      aria-pressed={preview}
+                      onClick={togglePreview}
+                    >
+                      Preview
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost icon-button"
+                      aria-label="Links and details"
+                      title="Links and details (Ctrl+Alt+B)"
+                      aria-pressed={panelOpen}
+                      aria-controls="notes-panel"
+                      onClick={togglePanel}
+                    >
+                      <Icon name="panel-right" />
+                    </button>
+                    <button
+                      ref={optionsButton}
+                      type="button"
+                      className="ghost icon-button"
+                      aria-label="Note options"
+                      aria-haspopup="menu"
+                      aria-expanded={headerMenu?.kind === "options"}
+                      onClick={(event) =>
+                        toggleHeaderMenu(event.currentTarget, "options")
+                      }
+                    >
+                      <Icon name="ellipsis" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className="ghost"
-                    aria-pressed={preview}
-                    onClick={togglePreview}
-                  >
-                    Preview
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost icon-button"
-                    aria-label="Links and details"
-                    title="Links and details (Ctrl+Alt+B)"
-                    aria-pressed={panelOpen}
-                    aria-controls="notes-panel"
-                    onClick={togglePanel}
-                  >
-                    <Icon name="panel-right" />
-                  </button>
-                  <button
-                    ref={optionsButton}
-                    type="button"
-                    className="ghost icon-button"
-                    aria-label="Note options"
-                    aria-haspopup="menu"
-                    aria-expanded={headerMenu?.kind === "options"}
-                    onClick={(event) =>
-                      toggleHeaderMenu(event.currentTarget, "options")
-                    }
-                  >
-                    <Icon name="ellipsis" />
-                  </button>
-                </div>
+                )}
               </div>
 
               {snapshot?.restored && state !== "conflict" ? (

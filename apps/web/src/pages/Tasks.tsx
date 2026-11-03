@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { tasksApi, type Task, type TaskStatus } from "../api/client";
-import { Board } from "../components/Board";
+import { tasksApi, type Task } from "../api/client";
 import { BulkBar } from "../components/BulkBar";
 import { CaptureFab } from "../components/CaptureSheet";
 import { EmptyState } from "../components/EmptyState";
@@ -11,6 +10,7 @@ import { LoadError } from "../components/LoadError";
 import { Skeleton } from "../components/Skeleton";
 import { TaskList } from "../components/TaskList";
 import { UndoToast } from "../components/UndoToast";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { activeProjects, useProjects } from "../hooks/useProjects";
 import { useSavedFilters } from "../hooks/useSavedFilters";
 import { useTaskEditor } from "../hooks/useTaskEditor";
@@ -22,10 +22,8 @@ import {
   PAGE_LIMIT,
   type TaskFilter,
 } from "../lib/taskFilters";
+import { SHEET_QUERY } from "../lib/phone";
 import { viewerTimeZone } from "../lib/tasks";
-import { boardColumns, groupByStatus } from "../lib/taskStatus";
-
-const COLUMNS = boardColumns();
 
 /** Run one request per task; one failure does not stop the rest, and each failure is reported verbatim. */
 async function runForEach(
@@ -48,7 +46,7 @@ async function runForEach(
 
 /**
  * All tasks (MU-03, UX-07): the server's filters (status, priority, due range, project, text) in
- * one filter bar, a sort, saved views kept in this browser, a List | Board toggle, and bulk
+ * one filter bar, a sort, saved views kept in this browser, and bulk
  * complete / move / delete with undo in a floating bar. The filter (and the view) lives in the URL,
  * so a view can be linked and survives a reload. Rows open the shared task detail.
  */
@@ -83,6 +81,12 @@ export function Tasks() {
 
   const [text, setText] = useState(filter.q);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Touch and phone (UX-11): the select boxes exist only in "Select" mode, entered from the filter
+  // menu, so a row has one leading control (the round completion box) the rest of the time.
+  const touch = useMediaQuery(SHEET_QUERY, false);
+  const [selectMode, setSelectMode] = useState(false);
+  const selecting = touch && selectMode;
+  const showSelect = !touch || selecting;
   const [busy, setBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [deleted, setDeleted] = useState<Task[]>([]);
@@ -110,7 +114,6 @@ export function Tasks() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
 
-  const tasksByStatus = useMemo(() => groupByStatus(tasks), [tasks]);
   const shown = useMemo(
     () => tasks.filter((task) => selected.has(task.id)),
     [tasks, selected],
@@ -142,6 +145,11 @@ export function Tasks() {
     if (errors.length > 0) setBulkError(errors.join("\n"));
     await refresh();
     setBusy(false);
+  }
+
+  function endSelectMode() {
+    setSelectMode(false);
+    setSelected(new Set());
   }
 
   const completable = shown.filter(
@@ -176,6 +184,7 @@ export function Tasks() {
         onSaveView={(name) => views.save(name, params.toString())}
         onApplyView={(entry) => navigate(new URLSearchParams(entry.query))}
         onRemoveView={views.remove}
+        onSelectMode={touch && !selecting ? () => setSelectMode(true) : undefined}
       />
       {views.error ? <p className="error">{views.error}</p> : null}
 
@@ -192,10 +201,11 @@ export function Tasks() {
       ) : (
         <>
           <div className="task-count">
-            {filter.view === "list" ? (
+            {showSelect ? (
               <label>
                 <input
                   type="checkbox"
+                  className="task-select select-all"
                   checked={allSelected}
                   disabled={tasks.length === 0}
                   onChange={() =>
@@ -209,8 +219,15 @@ export function Tasks() {
             ) : (
               <span />
             )}
-            <span className="muted" aria-live="polite">
-              {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+            <span className="task-count-end">
+              <span className="muted" aria-live="polite">
+                {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+              </span>
+              {selecting ? (
+                <button type="button" className="ghost" aria-label="Done selecting" onClick={endSelectMode}>
+                  Done
+                </button>
+              ) : null}
             </span>
           </div>
           {truncated ? (
@@ -219,22 +236,7 @@ export function Tasks() {
               the rest.
             </p>
           ) : null}
-          {filter.view === "board" ? (
-            <Board
-              columns={COLUMNS}
-              tasksByStatus={tasksByStatus}
-              timeZone={timeZone}
-              onMove={(task, status) =>
-                void editor.actions.setStatus(task, status as TaskStatus)
-              }
-              onOpen={editor.open}
-              movingId={[...editor.actions.busy][0] ?? null}
-              empty={tasks.length === 0}
-              emptyMessage={emptyText}
-              actions={editor.actions}
-              archivedToggle
-            />
-          ) : tasks.length === 0 ? (
+          {tasks.length === 0 ? (
             <EmptyState icon="square-check" action={emptyAction}>
               {emptyText}
             </EmptyState>
@@ -247,18 +249,24 @@ export function Tasks() {
                 actions={editor.actions}
                 filable={editor.projects}
                 onOpen={editor.open}
-                selection={{
-                  isSelected: (id) => selected.has(id),
-                  toggle: (task) => toggle(task.id),
-                  active: selected.size > 0,
-                }}
+                selection={
+                  showSelect
+                    ? {
+                        isSelected: (id) => selected.has(id),
+                        toggle: (task) => toggle(task.id),
+                        active: selected.size > 0,
+                        // In touch Select mode the square box replaces the round completion box.
+                        exclusive: touch,
+                      }
+                    : undefined
+                }
               />
             </div>
           )}
         </>
       )}
 
-      {shown.length > 0 && filter.view === "list" ? (
+      {shown.length > 0 && showSelect ? (
         <BulkBar
           count={shown.length}
           busy={busy}

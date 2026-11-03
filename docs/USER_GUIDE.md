@@ -24,7 +24,7 @@ Atlas is being built milestone by milestone. This table is the honest state of e
 | Markdown notes (create, autosaving editor, preview, rename, move, delete, tags, wiki links, search) | **Available** | Real `.md` files on disk — see [`MARKDOWN_STORAGE.md`](MARKDOWN_STORAGE.md). `[[` suggests notes; **Today's note** and templates (§4). |
 | Tasks — capture, edit, Today, Inbox, Upcoming, the **Tasks** page with filters | **Available** | Open any task to edit title, dates, priority, tags, repeat, subtasks, reminder and linked notes; delete with undo. |
 | Planning — Upcoming and Week views | **Available** | Later days and week-by-week work, in your local time zone. (The separate Day view was removed from navigation in UX-02; `/day` opens Today.) |
-| Kanban board (move a task between statuses) | **Available** | **Board**, the Tasks page's Board view and each project's Board tab; drag, the card menu or **]** / **[**. |
+| Kanban board (move a task between statuses) | **Available** | Each project's **Board** tab (there is no separate Board page: a task with no project is on no board); drag, the card menu or **]** / **[**. |
 | Projects and derived progress | **Available** | **Projects** page: create, edit, archive; each project has progress, tasks, a board and linked notes. |
 | Search | **Available** | **Ctrl+K** finds notes, tasks and projects and runs commands; the **Search** page shows the same results. |
 | Offline edits and cross-device sync | **Available** | **Settings → Sync** shows the queue, conflicts and a manual "Sync now". Edits made in the task and project screens need a connection. |
@@ -77,7 +77,7 @@ The window has four parts (UX-02):
 - **Rail** (far left): icons for **Today**, **Inbox**, **Tasks**, **Projects**, **Notes** and, at the bottom,
   **Settings**. The icon of the area you are in is highlighted.
 - **Sidebar**: **Search** (opens the palette, Ctrl/⌘ K), then the sections **Planning** (Today, Inbox,
-  Upcoming, Week), **Workspace** (Tasks, Board, Projects with your active projects, Notes) and **More**
+  Upcoming, Week), **Workspace** (Tasks, Projects with your active projects, Notes) and **More**
   (Search page and Settings; collapsed until you open it). Select a section
   heading to fold it; Atlas remembers this in the browser. **Ctrl/⌘ B** hides or shows the whole sidebar.
   Your name, the theme button and **Sign out** are at the bottom.
@@ -96,8 +96,7 @@ The window has four parts (UX-02):
 | **Upcoming** | `/upcoming` | Tasks for later days, grouped by the day they are due. |
 | *(Day)* | `/day` | Removed from navigation (ADR-0051); the address now opens **Today**. |
 | **Week** | `/week` | The current week (Monday first), day by day. |
-| **Tasks** | `/tasks` | Every task: a filter bar (search, Status, Priority, Project, Due, Sort), a List \| Board switch, saved views and bulk actions. |
-| **Board** | `/board` | Kanban board; drag a card, use its **…** menu, or press **]** / **[** on it to change status. |
+| **Tasks** | `/tasks` | Every task: a filter bar (search, Status, Priority, Project, Due, Sort), saved views and bulk actions. |
 | **Projects** | `/projects` | Your projects (progress, open tasks, target date) and each project's page (Tasks, Board, Notes tabs). |
 | **Notes** | `/notes` | The Markdown notebook (editor, preview, tree, search). |
 | **Search** | `/search` | Search notes, tasks and projects. |
@@ -268,20 +267,34 @@ One bar holds the filters: a **Search** box and the chips **Status**, **Priority
 such as *Next 7 days*). A chip shows its value once it differs from the default; **Reset filters** clears all of
 them. The address of the page is the view, so you can bookmark or share it. In the **…** menu at the end of the
 bar, **Save this view…** keeps the current filters under a name in this browser, and **Saved views** applies or
-removes one. **List | Board** switches between rows and columns for the same tasks.
+removes one.
+
+**On a phone** the chips are one **Filters** button (it shows how many filters are set) that opens the same
+choices as a sheet; **Reset filters** is in it. The select boxes are hidden until you choose **…** →
+**Select tasks**: then each row has one box instead of the round completion box, **Select all** and **Done**
+appear, and **Done** leaves the mode. A Medium or Low priority shows its word on a phone.
 
 Tick the square box in front of tasks (or press **x**) to select them: a bar floats at the bottom with
 **Complete selected**, **Move to project…**, **Delete selected** (with **Undo**) and **Clear selection**.
 
 ### The board
 
-On **Board** (also on the Tasks page and on a project's **Board** tab), the columns are the task statuses; the
+On a project's **Board** tab (there is no separate Board page since UX-11; an old `/board` link opens **Projects**,
+and a task with no project is on no board), the columns are the task statuses; the
 **Archived** column is hidden until you choose **Show archived**. Move a task by **dragging** its card to another
 column, with **…** on the card → **Move to…**, or, with the card focused, with **]** (next column) and **[**
 (previous column), which skip moves Atlas does not allow; the card keeps keyboard focus. The same **…** menu also
 schedules, sets the priority, files to a project and deletes. Only transitions Atlas
 allows are offered; a move the server rejects is reported on the page and the card is **not** moved.
-Business rule and rationale: `ROADMAP.md` M4-03 (ADR-0022).
+On a phone the board shows **one column at a time**: choose it from the tab strip (each tab shows its count), **…** →
+**Move to…** moves a card, and **?** explains the board. Business rule and rationale: `ROADMAP.md` M4-03 (ADR-0022), ADR-0064.
+
+### On a phone: Notes and the palette
+
+In **Notes** the toolbar shows the note's name and folder, its save state, one **Source | Live | Preview**
+switch and **…** (links and details, task from selection, rename, delete); **Show notes list** goes back to the
+tree. The command palette (the search button in the header) fills the screen, has a **Close** button and no
+keyboard hints.
 
 ### What you cannot do from the UI yet
 
@@ -300,7 +313,8 @@ date and a **…** menu (**Open project**, **Archive project** / **Restore proje
 behind **Show archived**. A project's page has its name, status, progress and dates at the top, a **…** menu
 (**Edit project**, **Archive** / **Restore**) and three tabs: **Tasks** (open tasks, with finished ones folded
 into **Completed (n)** and **Archived (n)**), **Board** and **Notes** (linked notes). Active projects are also listed under
-**Projects** in the sidebar. A task is filed in a project from its task panel (or from the Inbox's *File
+**Projects** in the sidebar. On a phone each project is a card (colour dot, progress bar, a one-line summary and
+the target date; tap the card to open it). A task is filed in a project from its task panel (or from the Inbox's *File
 to…*); a note is linked to a project from the note. **Week** shows a short **Projects** summary
 with each project's progress.
 
@@ -408,7 +422,7 @@ audit.
 | A conflict is listed on **Sync** | Resolve it with **Keep mine** or **Take server** (§7). |
 | Notifications say *Unavailable* | The server has no VAPID keys; ask your operator (§8, [`OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md)). |
 | Notifications say *Blocked* | Re-enable Atlas in your browser's site/notification settings, then reload. |
-| A task move is rejected on **Board** | That status change is not allowed by Atlas; the card stays put and the reason is shown. |
+| A task move is rejected on a project's **Board** | That status change is not allowed by Atlas; the card stays put and the reason is shown. |
 | **Calendar** shows "never synced" | No account is connected; calendar accounts are not available yet (§9). |
 | An edit is stuck pending on **Sync** | You may be offline; select **Sync now** when the connection returns. |
 
