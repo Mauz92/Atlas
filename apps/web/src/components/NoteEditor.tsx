@@ -7,12 +7,19 @@ import {
   type CompletionResult,
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { markdown } from "@codemirror/lang-markdown";
-import { EditorState, Transaction } from "@codemirror/state";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { Compartment, EditorState, type Extension, Transaction } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 
 import type { NoteSummary } from "../api/client";
-import { wikiCompletions } from "../lib/noteLinks";
+import {
+  documentText,
+  lineBreakOf,
+  liveExtensions,
+  refreshLive,
+} from "../lib/livePreview";
+import { resolveWikiLink, wikiCompletions } from "../lib/noteLinks";
+import type { EditorMode } from "../lib/notesPrefs";
 
 export interface NoteEditorHandle {
   /** The selected text, or the line the cursor is on when nothing is selected. */
@@ -28,6 +35,10 @@ interface NoteEditorProps {
   notes?: readonly NoteSummary[];
   /** Put the cursor in the editor when it is created (a note was just made). */
   autoFocus?: boolean;
+  /** Source shows the Markdown as typed; Live hides the syntax on lines without the cursor (UX-06). */
+  mode?: EditorMode;
+  /** A `[[link]]` to a note was activated in Live mode. */
+  onOpenNote?: (id: string) => void;
   ref?: Ref<NoteEditorHandle>;
 }
 
@@ -114,13 +125,34 @@ const tokenTheme = EditorView.theme({
 });
 
 /** Markdown source editor (CodeMirror 6). The document is plain text — what you type is stored. */
-export function NoteEditor({ value, onChange, notes = [], autoFocus = false, ref }: NoteEditorProps) {
+export function NoteEditor({
+  value,
+  onChange,
+  notes = [],
+  autoFocus = false,
+  mode = "source",
+  onOpenNote,
+  ref,
+}: NoteEditorProps) {
   const host = useRef<HTMLDivElement | null>(null);
   const view = useRef<EditorView | null>(null);
   const changeHandler = useRef(onChange);
   changeHandler.current = onChange;
   const notesRef = useRef(notes);
   notesRef.current = notes;
+  const openNoteHandler = useRef(onOpenNote);
+  openNoteHandler.current = onOpenNote;
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  const liveSlot = useRef(new Compartment());
+  const live = useRef<Extension | null>(null);
+  live.current ??= liveExtensions({
+    resolveWiki: (raw) => {
+      const { id, target } = resolveWikiLink(notesRef.current, raw);
+      return { id, target };
+    },
+    openNote: (id) => openNoteHandler.current?.(id),
+  });
 
   // The editor is created once with the text it is mounted with; later changes arrive via `value`.
   const initial = useRef(value);
@@ -137,28 +169,39 @@ export function NoteEditor({ value, onChange, notes = [], autoFocus = false, ref
     },
   }));
 
-  useEffect(() => {
-    if (!host.current) {
-      return;
-    }
-    const state = EditorState.create({
-      doc: initial.current,
+  /**
+   * The editor state for a text. The line separator is the note's own (CRLF if it has any), so the
+   * text that is saved is byte for byte the text that was loaded (AGENTS.md section 8). Live
+   * preview sits in a compartment: switching mode reconfigures it without touching the document,
+   * the selection or the undo history.
+   */
+  function createState(doc: string): EditorState {
+    return EditorState.create({
+      doc,
       extensions: [
+        EditorState.lineSeparator.of(lineBreakOf(doc)),
         tokenTheme,
         EditorView.contentAttributes.of({ "aria-label": "Note content" }),
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
-        markdown(),
+        markdown({ base: markdownLanguage }),
         autocompletion({ override: [wikiLinkSource(() => notesRef.current)], icons: false }),
         EditorView.lineWrapping,
+        liveSlot.current.of(modeRef.current === "live" ? (live.current as Extension) : []),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
-            changeHandler.current(update.state.doc.toString());
+            changeHandler.current(documentText(update.state));
           }
         }),
       ],
     });
-    const instance = new EditorView({ state, parent: host.current });
+  }
+
+  useEffect(() => {
+    if (!host.current) {
+      return;
+    }
+    const instance = new EditorView({ state: createState(initial.current), parent: host.current });
     view.current = instance;
     if (autoFocus) {
       instance.focus();
@@ -176,15 +219,36 @@ export function NoteEditor({ value, onChange, notes = [], autoFocus = false, ref
     if (!instance) {
       return;
     }
-    const current = instance.state.doc.toString();
-    if (current !== value) {
-      // Not part of the undo history: Ctrl+Z must never step back into another note's text.
-      instance.dispatch({
-        changes: { from: 0, to: current.length, insert: value },
-        annotations: Transaction.addToHistory.of(false),
-      });
+    const current = documentText(instance.state);
+    if (current === value) {
+      return;
     }
+    if (lineBreakOf(value) !== instance.state.lineBreak) {
+      // A different line ending cannot be reconfigured in place; this is an outside replacement
+      // (reload of the server version), which is not undoable either.
+      instance.setState(createState(value));
+      return;
+    }
+    // Not part of the undo history: Ctrl+Z must never step back into another note's text.
+    instance.dispatch({
+      changes: { from: 0, to: instance.state.doc.length, insert: value },
+      annotations: Transaction.addToHistory.of(false),
+    });
   }, [value]);
+
+  useEffect(() => {
+    view.current?.dispatch({
+      effects: liveSlot.current.reconfigure(mode === "live" ? (live.current as Extension) : []),
+    });
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode === "live") {
+      view.current?.dispatch({ effects: refreshLive.of(null) });
+    }
+    // Only the list of notes matters here: `[[links]]` are resolved against it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notes]);
 
   return <div className="editor-host" data-testid="note-editor" ref={host} />;
 }

@@ -34,7 +34,7 @@ as reported by the package metadata; verify against the upstream project before 
 | react-router-dom | Client routing | MIT | |
 | vite | Build tool / dev server | MIT | |
 | typescript | Type checking | Apache-2.0 | |
-| codemirror (+ @codemirror/*) | Markdown source editor; `@codemirror/autocomplete` for `[[` note completion (MU-06, ADR-0048; was already a transitive dependency) | MIT | Lazy-loaded on the notes route |
+| codemirror (+ @codemirror/*) | Markdown source editor; `@codemirror/autocomplete` for `[[` note completion (MU-06, ADR-0048; was already a transitive dependency) | MIT | Lazy-loaded on the notes route; `@codemirror/language` (`syntaxTree`) for Live preview (UX-06, ADR-0056): already installed as a dependency of `@codemirror/lang-markdown`, now declared directly in `package.json` at the installed version (no new code, no new package in the lockfile) |
 | marked | Markdown → HTML rendering | MIT | |
 | dompurify | HTML sanitisation of rendered notes | MPL-2.0 OR Apache-2.0 | Untrusted content (SECURITY T3/T6) |
 

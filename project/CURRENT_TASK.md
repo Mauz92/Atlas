@@ -1,17 +1,35 @@
 # Current Task
 
-- Task ID: none in progress. Next: UX-06 (live preview, `READY`) or UX-07 (Tasks/Projects/Board polish, `READY`).
-- Last completed: UX-05 (`DONE`, 2026-11-03, local verification; not committed): notes autosave (no Save button)
-  and the Notes workspace. Decisions: ADR-0054. Evidence: `docs/ACCEPTANCE.md` UX-05.
-- Before that: UX-04 (autosaving task panel, ADR-0053), UX-03 (d34450d), UX-02 (00e00c5), UX-01 (d39c522),
-  MU-08 (b921945). CI `e2e-real` NOT RUN.
+- Task ID: none in progress. Next: UX-07 (Tasks/Projects/Board polish, `READY`).
+- Last completed: UX-06 (`DONE`, 2026-11-03, local verification; not committed): Live preview editor mode and
+  Live as the default. Decisions: ADR-0056. Evidence: `docs/ACCEPTANCE.md` UX-06 (verify.sh PASS, pytest 1053,
+  vitest 776, real-stack 42 passed, mocked e2e 7 passed). Before that UX-05 (ADR-0054), UX-04, UX-03, UX-02,
+  UX-01, MU-08. CI `e2e-real` NOT RUN.
 - Milestone: UX — Design system and app shell (docs/ROADMAP.md "UX" section, ADR-0051, evidence in docs/UX_AUDIT.md)
 
 ## Goal (next)
-UX-06: live preview mode for notes (Live becomes the default only once round-trip tests pass; Source stays
-available). Reuse the UX-05 engine untouched: the editor only calls `session.change(text)`; whatever the Live
-mode produces must serialise back to exactly the Markdown the user typed (the real-stack byte test in
-`e2e-real/ux05-notes.spec.ts` is the guard). Or UX-07 (Tasks, Projects and Board polish).
+UX-07 (Tasks, Projects and Board polish, `READY`), then UX-08 (settings, skeletons, empty states). Separately the
+owner may close MU (CI run + release re-score) or resume calendar work. Open backend item found in UX-06: R-24
+(the server reads notes with universal newlines, so CRLF becomes LF and the first save of such a note conflicts).
+
+## UX-06 conventions to keep
+- Live preview is `lib/livePreview.ts`: decorations only (a ViewPlugin building line/mark/replace decorations
+  from the Lezer tree, plus regex for `[[wiki]]` and `#tags` outside code/URLs/HTML/front matter). It must never
+  write the document; the only transactions it creates are the checkbox toggle and Ctrl/⌘ Enter on a task line,
+  both ordinary changes that reach `session.change(text)` via `NoteEditor`'s update listener. Never put note text
+  into an attribute or build HTML from it (the corpus test in `livePreview.test.ts` scans the DOM for this).
+- `NoteEditor` takes `mode` (`source|live`) and `onOpenNote`; Live lives in a `Compartment` (mode change keeps
+  document, selection, undo). The editor state uses the note's own line ending (`lineBreakOf`) and is serialised
+  with `documentText(state)`, never `doc.toString()`. `refreshLive` re-resolves `[[links]]` when notes load.
+- Mode preference: `atlas-notes-mode` (`readEditorMode`/`writeEditorMode`, `DEFAULT_EDITOR_MODE = "live"`).
+  Header group `Editor mode` with buttons `Source` and `Live` (`aria-pressed`); `Preview` is the unchanged
+  rendered split. Specs that type into the editor now run in Live: a line without the cursor shows rendered text
+  (`See: j4/seed-list`), so assert raw Markdown only while the cursor is on that line, or via the file/API.
+- Rendered-line clicks: a `[[link]]` opens on a plain click (Ctrl/⌘ click on the cursor line); web links need
+  Ctrl/⌘ and `http`/`https`/`mailto` (`safeExternalUrl`). Checkbox widgets are `tabindex=-1` and named after the
+  item; in Live the editor holds a checkbox of its own, so select the Preview's inside `markdown-preview`.
+- Helpers: `e2e-real/ux06-live-preview.spec.ts` has `chooseMode`; unit helper `mount()` in `livePreview.test.ts`
+  (jsdom needs `Range.getClientRects` stubs).
 
 ## UX-05 conventions to keep
 - Notes save through `lib/noteAutosave.ts` (`NoteAutosave` per note, `NoteSessions` registry). It is
@@ -98,7 +116,7 @@ mode produces must serialise back to exactly the Markdown the user typed (the re
 3. Optional: fix the pre-existing dev-only `minimatch` advisory (`npm audit --include=dev`, RISKS.md).
 
 ## Recommended next task
-UX-06 (live preview) or UX-07. Separately the owner may still close MU (items 1-2 above) or resume calendar
+UX-07 (UX-06 is done). Separately the owner may still close MU (items 1-2 above) or resume calendar
 with M5-00 (blocked on real Google/Microsoft accounts, AR-001).
 
 ## Notes for the next session

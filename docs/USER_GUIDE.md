@@ -124,6 +124,21 @@ away on this page to leave room (**Ctrl/⌘ B** or the rail's button still opens
 **Open a note** — select a file in the tree. Turn on **Preview** in the note header to see the rendered note
 beside the editor; `[[links]]` to other notes are clickable there.
 
+**Source and Live** — the **Source | Live** switch in the note header chooses how the editor shows the text; Atlas
+remembers it in this browser and starts in **Live**. **Source** shows the Markdown exactly as typed. **Live**
+hides the Markdown marks on every line except the one your cursor is on (or the lines you have selected), so
+headings look like headings, `**bold**` looks bold, and `- [ ]` lines are checkboxes. It is only a display: the
+file holds the same text in both modes, undo works across a switch, and your cursor stays where it was.
+- Click a checkbox to tick it (the text changes from `[ ]` to `[x]`), or press **Ctrl/⌘ Enter** on the line.
+- Click a `[[wiki link]]` to open that note (**Ctrl/⌘ click** when the line is the one you are editing). A link to
+  a note that does not exist yet is dashed and does nothing.
+- A web link (`[words](https://…)`) opens in a new tab with **Ctrl/⌘ click** (or **Ctrl/⌘ Enter** inside it). Only
+  `http`, `https` and `mailto` addresses open; anything else (such as `javascript:`) is ignored.
+- Images are not loaded in either mode (Atlas never fetches a URL a note contains); HTML in a note is shown as
+  text, not run. Tables and ordered-list numbers appear as the Markdown you wrote.
+- Press **Ctrl/⌘ Enter** to tick or open from the keyboard; checkboxes are not tab stops so Tab does not step
+  through a long list.
+
 **Create a note or folder** — the icons above the tree are **New note**, **New folder**, **New from template**
 and **Today's note**. A name box appears in the tree in the folder you have open (select a folder to choose
 another): type a name such as `Ideas` (or a path such as `Inbox/Ideas`; the `.md` ending is optional) and press

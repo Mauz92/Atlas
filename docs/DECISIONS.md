@@ -2628,3 +2628,72 @@ passed.
   online-only assumptions beyond R-22. UX-06/UX-07 are unaffected. Security: local database and note folder are
   not encrypted by Atlas (the OS disk encryption protects them); the server session/token for sync is stored in
   the OS keystore, never in plain files (to be designed in `SECURITY.md` with the sync protocol).
+
+## ADR-0056 — Live preview: a third editor mode made of CodeMirror decorations only; Live is the default (UX-06)
+
+**Status:** Accepted (2026-11-03, implements ADR-0051 §5 and `UX_AUDIT.md` D-2; UI-only, no backend or schema
+change). The gate in ADR-0051 §5 ("Live becomes the default once its round-trip tests pass") was met before
+the default was changed; evidence in `ACCEPTANCE.md` UX-06.
+
+**Context.** The note editor was Source only (CodeMirror 6 showing the Markdown as typed) with an optional
+rendered split (**Preview**). Obsidian-style live preview hides the syntax on lines the cursor is not on. The
+risk is data integrity (AGENTS.md §8): a view that edits the document, or an editor that normalises it, would
+change files that must stay ordinary Markdown.
+
+**Decisions.**
+1. **Decorations only.** `apps/web/src/lib/livePreview.ts` is a CodeMirror extension that *only decorates*:
+   line classes, mark classes, empty `Decoration.replace` (hides a mark) and three small replace widgets
+   (bullet, rule, checkbox). It never builds HTML from note text (widgets are made with DOM calls from
+   constants; the one note-derived widget value, the checkbox's accessible name, is set with `setAttribute`),
+   never inserts, and never writes the document. The only two ways it produces a transaction are explicit
+   user actions: ticking a task checkbox (replaces the one character between `[` and `]`) and
+   **Ctrl/⌘ Enter** on a task line. Both are ordinary, undoable transactions that reach
+   `session.change(text)` through the editor's existing update listener (ADR-0054); the save engine is
+   untouched.
+2. **Three views, two switches.** The note header has a **Source | Live** group (`role="group"`
+   *Editor mode*, buttons with `aria-pressed`, names `Source` and `Live`) and the existing **Preview** toggle
+   (rendered split) is unchanged. Live and Preview combine. The mode is remembered per browser
+   (`atlas-notes-mode`, `lib/notesPrefs.ts`); with nothing stored the default is **Live** (set after the
+   round-trip tests passed; before that the default constant was `source`).
+3. **Reconfigured, not recreated.** Live sits in a CodeMirror `Compartment` inside the one editor per note.
+   Switching mode reconfigures that compartment, so the document, the selection, the focus and the undo
+   history are exactly as they were.
+4. **What is hidden, and when.** On lines that hold a cursor or part of a selection, and only while the editor
+   has focus, nothing is hidden (marks are dimmed). Every other line hides: `#` heading marks, `*`/`_`/`~~`/
+   backtick marks, `[`/`](url)` of a link (label underlined), `[[` `]]` and the target of an aliased wiki link,
+   `>` quote marks, `-`/`*`/`+` bullets (shown as a bullet), `[ ]`/`[x]` (shown as a checkbox), `---` rules
+   (shown as a line) and backslash escapes. Headings are scaled with the type tokens, code fences/tables/front
+   matter are mono blocks, `#tags` are chips. Inside code, HTML, URLs and front matter nothing is interpreted.
+   The cursor is always on a line whose marks are visible, so no character is ever unreachable by keyboard:
+   arrow keys move into a line and reveal its syntax. Tables, images and HTML are shown as text (images are not loaded: no
+   request is made for a URL a note contains).
+5. **Untrusted content (AGENTS.md §8, SECURITY T3/T6).** No `<a>`, `<img src>`, `<script>`, `<iframe>`, `style`
+   or event-handler attribute is ever created; links are styled spans and no URL is copied into an attribute
+   (a note-derived `title` is a fixed string). A link opens only on **Ctrl/⌘ click** (or Ctrl/⌘ Enter in it)
+   and only if the URL parses with scheme `http`, `https` or `mailto` (`safeExternalUrl`; `javascript:`,
+   `data:`, `vbscript:`, `file:`, `blob:`, relative and unparsable are refused), in a new tab with
+   `noopener,noreferrer`. A `[[wiki link]]` to an existing note opens on a plain click when its line is
+   rendered, and on Ctrl/⌘ click otherwise; an unresolved one does nothing.
+6. **Line endings are the note's own.** The editor now sets `EditorState.lineSeparator` to `\r\n` when the text
+   has any CRLF, else `\n`, and serialises with `state.lineBreak`. Before, CodeMirror's default separators
+   turned CRLF, a lone `\r` or U+2028 into `\n` on the first keystroke, silently changing the file. A text with
+   a different line ending arriving from outside (reload of the server version) rebuilds the editor state
+   (not undoable, like any outside replacement).
+7. **Markdown dialect.** `markdown({ base: markdownLanguage })` (GFM: strikethrough, tables, task lists) instead
+   of plain CommonMark, so the syntax tree knows them. It changes highlighting/tree only; the list-continuation
+   key bindings (`markdownKeymap`) were already on and are unchanged.
+8. **Dependencies.** No new code. `@codemirror/language` (`syntaxTree`) was already installed as a dependency of
+   `@codemirror/lang-markdown`; it is now declared in `package.json` because it is imported directly (same
+   version, lockfile gains the explicit root entry). No Lucide shape is added.
+9. **Keyboard and screen readers.** The editor remains one `role="textbox"` named *Note content* in both modes.
+   Checkbox widgets are `tabindex="-1"` (a long list would otherwise trap Tab) and carry the item text as
+   their name; **Ctrl/⌘ Enter** ticks the task or opens the link at the cursor, so nothing is mouse-only.
+
+**Consequences / limitations.** Hiding is per line, not per element (Obsidian reveals only the element under the
+cursor). Nested lists show no hanging indent for wrapped lines; ordered-list numbers, tables and images stay as
+text; hidden marks make a line's width differ between rendered and source (the line reflows when the cursor
+enters it). Dragging a selection
+that starts on a rendered wiki link opens the note instead (the press is taken as a click). The server reads
+files with Python universal newlines, so a CRLF note arrives as LF and saves back as LF (R-24); the editor-side
+CRLF fidelity is proven at unit level only. Rollback: set `DEFAULT_EDITOR_MODE` back to `"source"`, or remove
+the extension from the compartment; nothing is stored differently.

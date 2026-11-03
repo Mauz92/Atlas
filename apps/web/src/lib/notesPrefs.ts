@@ -4,6 +4,7 @@
  */
 const PANEL_KEY = "atlas-notes-panel";
 const PREVIEW_KEY = "atlas-notes-preview";
+const MODE_KEY = "atlas-notes-mode";
 
 function read(key: string): string | null {
   try {
@@ -37,4 +38,19 @@ export function readPreview(): boolean {
 
 export function writePreview(on: boolean) {
   write(PREVIEW_KEY, on ? "on" : "off");
+}
+
+/** Source shows the Markdown as typed; Live hides the syntax on lines without the cursor (UX-06). */
+export type EditorMode = "source" | "live";
+
+/** The mode a note opens in when the person has not chosen one (ADR-0051 section 5, ADR-0056). */
+export const DEFAULT_EDITOR_MODE: EditorMode = "live";
+
+export function readEditorMode(): EditorMode {
+  const value = read(MODE_KEY);
+  return value === "source" || value === "live" ? value : DEFAULT_EDITOR_MODE;
+}
+
+export function writeEditorMode(mode: EditorMode) {
+  write(MODE_KEY, mode);
 }

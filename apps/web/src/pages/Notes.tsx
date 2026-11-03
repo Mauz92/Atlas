@@ -28,8 +28,11 @@ import { taskTitleFromText } from "../lib/noteLinks";
 import { templatesOf } from "../lib/dailyNote";
 import { buildTree } from "../lib/noteTree";
 import {
+  type EditorMode,
+  readEditorMode,
   readPanelOpen,
   readPreview,
+  writeEditorMode,
   writePanelOpen,
   writePreview,
 } from "../lib/notesPrefs";
@@ -90,6 +93,7 @@ export function Notes() {
   const [phonePanel, setPhonePanel] = useState(false);
   const panelOpen = phone ? phonePanel : (panelChoice ?? wideEnoughForPanel);
   const [preview, setPreview] = useState(readPreview);
+  const [mode, setMode] = useState<EditorMode>(readEditorMode);
   // A note just created opens with the cursor in it.
   const [focusId, setFocusId] = useState<string | null>(null);
 
@@ -311,6 +315,11 @@ export function Notes() {
     }
     writePanelOpen(next);
     setPanelChoice(next);
+  }
+
+  function chooseMode(next: EditorMode) {
+    writeEditorMode(next);
+    setMode(next);
   }
 
   function togglePreview() {
@@ -879,6 +888,19 @@ export function Notes() {
                   </button>
                 ) : null}
                 <div className="notes-header-actions">
+                  <div className="mode-switch" role="group" aria-label="Editor mode">
+                    {(["source", "live"] as const).map((choice) => (
+                      <button
+                        key={choice}
+                        type="button"
+                        className="ghost"
+                        aria-pressed={mode === choice}
+                        onClick={() => chooseMode(choice)}
+                      >
+                        {choice === "source" ? "Source" : "Live"}
+                      </button>
+                    ))}
+                  </div>
                   <button
                     type="button"
                     className="ghost"
@@ -1008,6 +1030,8 @@ export function Notes() {
                   value={snapshot?.content ?? ""}
                   onChange={(text) => session?.change(text)}
                   notes={notes}
+                  mode={mode}
+                  onOpenNote={(id) => void openNote(id)}
                 />
                 {preview ? (
                   <MarkdownPreview

@@ -160,6 +160,32 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   editing one note conflict through the normal revision check), a draft store for tasks (UX-04 limitation).
 - **Status:** Open (accepted for a single-user, self-hosted instance).
 
+### R-24 — The server normalises CRLF to LF when it reads a note (found in UX-06)
+- **Severity/Likelihood:** Medium / Low (needs notes written with Windows line endings)
+- **Impact:** `NoteStorage.read` uses `Path.read_text`, which applies universal newlines, so the API serves a
+  CRLF file with `\n`. The index hash is of the normalised text, so a CRLF note created through the API, or
+  edited by a Windows editor, shows **Conflict** on the first autosave (the hash of what was written differs
+  from the hash of what is read), and saving converts the file to LF. This is true in Source and Live alike
+  (UX-06 only made the editor itself faithful: `lib/livePreview.ts` `lineBreakOf`/`documentText`, unit-tested).
+  AGENTS.md §8 ("change a note's content format only with an explicit migration").
+- **Mitigation / next step:** backend fix, out of scope for UX-06 (no backend changes): read with
+  `newline=""` in `NoteStorage.read`, hash the bytes as written, add a CRLF round-trip test. Until then the
+  real-stack CRLF byte test is `BLOCKED` (documented in `ACCEPTANCE.md` UX-06).
+- **Status:** Open.
+
+### R-25 — Live preview is a display layer over untrusted text (UX-06, ADR-0056)
+- **Severity/Likelihood:** Medium / Low
+- **Impact:** a flaw in the decoration code could let note text become DOM (XSS), open an unsafe URL, load a
+  remote image, or change the document by itself.
+- **Mitigation:** the extension creates no HTML from note text; the only elements it builds are three constant
+  widgets and an `<input type=checkbox>`; no URL reaches an attribute; links open only for `http`, `https`,
+  `mailto` (`safeExternalUrl`, 16 cases) and only on Ctrl/⌘; the corpus test asserts for 19 hostile/tricky
+  texts that the editor DOM holds no `script`, `iframe`, `a`, `img[src]`, `style`, event-handler attribute or
+  `javascript:` value, and a real-stack spec runs a note with `<img onerror>`, `<script>`, `javascript:` links
+  and a tracker image. **Not done:** fuzzing the Lezer tree against arbitrary Markdown; per-element (rather
+  than per-line) revealing; IME composition inside a rendered line was not tested with a real IME.
+- **Status:** Open (accepted; re-test whenever the decoration set or CodeMirror major version changes).
+
 ## Low severity
 
 ### R-18 — PostgreSQL full-text search limits at scale
@@ -237,6 +263,7 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 | 2026-10-27 | M9-05 | Security review (threat model vs implementation). R-21 added (push endpoint not scheme/host-constrained; accepted for the single-user model). F1 (SPA missing security headers/CSP) found and fixed in `apps/web/nginx.conf`; R-SEC-1/2/4 re-confirmed, R-SEC-3 resolved. Detail in `docs/SECURITY.md` §"Milestone 9 security review". |
 | 2026-11-01 | Audit | Function audit: R-22 added (backend-heavy, interface-light); ADR-0043 re-prioritises to a usable core. |
 | 2026-11-02 | MU-08 | R-22 progress: Settings, shortcut help, mobile nav and an axe accessibility gate delivered (J7 passes). Sub-risks: password change signs out all other sessions (no per-device session list); the password limiter is in-process; backup status is only as visible as `BACKUP_DIR` is to the API and does not re-verify checksums; **`npm audit --include=dev` reports a moderate `minimatch` advisory (GHSA-g3hv-75wg-m249) in the eslint/typescript-eslint toolchain — present before MU-08, dev-only, not yet fixed (the fix needs a breaking tooling upgrade), so the 2026-10-27 "0 advisories" claim no longer holds**; no user time-zone setting; MU exit needs a CI run and a release re-score. |
+| 2026-11-03 | UX-06 | Live preview (ADR-0056): R-25 added (decorations over untrusted text; mitigated by a decorations-only design, a scheme allow-list and a corpus + real-stack DOM check). R-24 added: the server normalises CRLF to LF on read, a pre-existing defect found while testing line-ending round trips (not fixed: no backend changes in UX-06). |
 | 2026-11-03 | UX-05 | Notes autosave (ADR-0054): the Save button is gone, so data integrity rests on the save engine; mitigated by a framework-free engine with 27 unit tests (one request at a time, revision chaining, 409 never overwrites, unknown outcome re-read, offline, draft restore) and real-stack specs that check the file bytes, an offline reload and an external edit. New R-23 (drafts in localStorage, request volume). Limitations: delete uses a native confirm; conflicts are copy-or-reload only (no merge); a note edited by another program needs the on-demand reconcile the conflict path now triggers. |
 | 2026-11-03 | UX-04 | Task detail autosave (ADR-0053): per-field saves raise request volume and make ordering a data-integrity concern; mitigated by one serialised send loop per task, revision chaining, idempotency-key reuse on unknown outcomes, conflict = no overwrite, rejected text kept, and leaving with unsaved edits asks first (unit + real-stack tests). Remaining: unsaved task edits do not survive a reload while offline or a crash (no local draft store for tasks); mutations stay online-only (R-22). |
 | 2026-11-02 | MU-07 | R-22 progress: Today as home, daily note and templates delivered (J6 passes). Sub-risks: "today" is the browser's zone until a user zone setting exists (MU-08); `write_new` needs hard links on the notes filesystem (fails loudly, never overwrites); a renamed daily note is not found again; template text is untrusted and only two placeholders are substituted (no scripting). |

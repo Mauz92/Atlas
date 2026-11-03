@@ -6,6 +6,19 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (UX-06): **Live editing mode for notes.** The note header has a new **Source | Live** switch next to
+  **Preview**. In **Live**, Markdown is shown the way it reads while you keep typing in the same text: headings
+  are large, `**bold**`, `*italic*`, `~~strikethrough~~` and `` `code` `` lose their marks, links show only their
+  words, `- [ ]` / `- [x]` lines become checkboxes you can click, `[[wiki links]]` become links (click to open
+  the note), `#tags` are highlighted, and code blocks, quotes, lists and rules are styled. The line your cursor
+  is on (or the lines you select) always shows its Markdown, so you can edit anything. **Source** is still
+  there and shows the plain Markdown. Live is the default; Atlas remembers your choice in this browser. The
+  file on disk is exactly what you typed in either mode: Live only changes how the text is displayed (ticking a
+  checkbox changes the one character in the brackets, and Ctrl/⌘ Z undoes it). Links to the web open only with
+  Ctrl/⌘ click and only for `http`, `https` and `mailto` addresses; **Ctrl/⌘ Enter** opens the link or ticks
+  the task at the cursor. Also fixed: a note with Windows (CRLF) line endings no longer has them changed to
+  `\n` by the editor on the first keystroke (the server still reads such files with `\n`, see `RISKS.md` R-24).
+
 - Changed (UX-05): **notes save by themselves and the Notes page is a workspace.** There is no **Save** button
   and no "Discard unsaved changes?" question any more: a note saves about a second after you stop typing, and
   when you switch notes, create, rename, delete, open today's note, leave the page or sign out (Ctrl/⌘ S saves

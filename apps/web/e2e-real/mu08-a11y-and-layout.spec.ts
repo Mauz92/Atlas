@@ -58,7 +58,10 @@ async function settle(page: Page) {
     const preview = page.getByRole("button", { name: "Preview", exact: true });
     if ((await preview.getAttribute("aria-pressed")) !== "true") await preview.click();
     await openNoteDetails(page);
-    await expect(page.getByRole("checkbox", { name: "A11y checkbox item" })).toBeVisible();
+    // In Live mode the editor holds a checkbox of its own (UX-06): this one is the preview's.
+    await expect(
+      page.getByTestId("markdown-preview").getByRole("checkbox", { name: "A11y checkbox item" }),
+    ).toBeVisible();
     if ((page.viewportSize()?.width ?? 0) > 720) {
       await expect(page.getByRole("textbox", { name: "Note content" })).toBeVisible();
     }
@@ -96,9 +99,18 @@ test("axe finds no violations on the main pages in either theme, and no page ove
     await page.emulateMedia({ colorScheme: theme });
     await page.evaluate((value) => localStorage.setItem("atlas-theme", value), theme);
     for (const path of pages) {
-      await page.goto(path);
-      await settle(page);
-      await check(`${path} (${theme})`);
+      // The note is checked in both editor modes (UX-06): Source and Live render different DOM.
+      const modes = path.startsWith("/notes?open=") ? (["source", "live"] as const) : ([null] as const);
+      for (const mode of modes) {
+        if (mode) await page.evaluate((value) => localStorage.setItem("atlas-notes-mode", value), mode);
+        await page.goto(path);
+        await settle(page);
+        if (mode === "live") {
+          await expect(page.locator(".cm-live-wikilink").first()).toBeVisible();
+          await expect(page.locator(".cm-live-checkbox")).toHaveCount(1);
+        }
+        await check(`${path} (${mode ? `${mode}, ` : ""}${theme})`);
+      }
     }
   }
 

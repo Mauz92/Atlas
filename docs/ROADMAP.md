@@ -24,7 +24,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M8 | Notifications and mobile apps | `IN_PROGRESS` | Platform behaviour tested on real devices |
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
-| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `IN_PROGRESS` | UX-01, UX-02 and UX-03 `DONE` 2026-11-02, UX-04 and UX-05 `DONE` 2026-11-03; next UX-06 (live preview, `READY`) or UX-07 (`READY`); J1–J7 and the axe sweep keep passing while the UI is rebuilt |
+| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `IN_PROGRESS` | UX-01, UX-02 and UX-03 `DONE` 2026-11-02, UX-04, UX-05 and UX-06 `DONE` 2026-11-03; next UX-07 (`READY`); J1–J7 and the axe sweep keep passing while the UI is rebuilt |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -664,7 +664,7 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 | UX-03 | Task row, menus, quick actions (fixes: subtasks shown without parent; Complete shown on completed tasks) | UX-02 | `DONE` (local PASS 2026-11-02; evidence `ACCEPTANCE.md` UX-03; ADR-0052; CI `e2e-real` NOT RUN; not committed) |
 | UX-04 | Task detail as property panel with per-field autosave | UX-03 | `DONE` |
 | UX-05 | Notes workspace + note autosave (own tests before Save is removed) | UX-02 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-05; ADR-0054; CI `e2e-real` NOT RUN; not committed) |
-| UX-06 | Live preview mode; Live becomes default once round-trip tests pass | UX-05 | `READY` |
+| UX-06 | Live preview mode; Live becomes default once round-trip tests pass | UX-05 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-06; ADR-0056; CI `e2e-real` NOT RUN; not committed) |
 | UX-07 | Tasks, Projects and Board polish | UX-03 | `READY` |
 | UX-08 | Settings consolidation, skeletons, empty states | UX-02 | `BACKLOG` |
 
@@ -807,11 +807,25 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
   by another program is invisible to the revision check until indexed). Left for UX-06: live preview. Limitations in
   ADR-0054 and `RISKS.md` R-23.
 
+### UX-06 — Live preview (done)
+- **Scope.** Obsidian-style live preview as a third editor view made only of CodeMirror decorations
+  (`lib/livePreview.ts`, ADR-0056): headings at scale, bold/italic/strikethrough/inline code, links, quotes,
+  lists, task checkboxes (a click or Ctrl/⌘ Enter edits the text through the normal change path), fenced
+  code, rules, `[[wiki links]]` (click opens the note) and `#tags`, hidden on every line without the cursor or a
+  selection. **Source | Live** switch in the note header (names `Source`, `Live`; **Preview** unchanged and
+  combinable), remembered as `atlas-notes-mode`. Line endings of a note are kept (`EditorState.lineSeparator`).
+- **Status: `DONE` (2026-11-03).** Order of work: the decorations, the corpus round-trip tests and the real-stack
+  specs existed and passed with the default still `source`; only then `DEFAULT_EDITOR_MODE` became `"live"`,
+  and the whole real-stack suite (including J4, J6, ux05 and the axe sweep) was run with Live as the default.
+  No backend, schema or new npm package (`@codemirror/language` declared directly: it was already installed).
+  Known limitation found: the server normalises CRLF to LF on read (R-24), so the real-stack CRLF byte test is
+  `BLOCKED` (unit-level proof only). Other limits in ADR-0056 and R-25.
+
 ---
 
 ## Immediate Next Tasks
 
-**Next: UX-06 (live preview mode) or UX-07 (`READY`; UX-01…UX-05 are `DONE`), then close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
+**Next: UX-07 (`READY`; UX-01…UX-06 are `DONE`), then close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
 editing) and `MU-02` (Projects UI), `MU-03` (Tasks page) and `MU-04` (recurrence, subtasks and reminders in the UI) and `MU-05` (command palette, quick switcher and unified search) and `MU-06` (note ↔ task ↔ project linking) and `MU-07` (daily note, templates and Today as home) and `MU-08` (settings and shell polish) are `DONE`; MU itself is not closed (CI run and release re-score outstanding, see the MU exit-criteria evaluation).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 

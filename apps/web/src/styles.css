@@ -1434,6 +1434,25 @@ button.statusbar-item:hover {
   gap: var(--s-1);
 }
 
+.mode-switch {
+  display: flex;
+  gap: 0;
+  padding: var(--s-1);
+  background: var(--bg-hover);
+  border-radius: var(--r-md);
+}
+
+.mode-switch button {
+  height: var(--control-sm);
+  min-height: 0;
+  padding: 0 var(--s-2);
+}
+
+.mode-switch button[aria-pressed="true"] {
+  background: var(--bg);
+  box-shadow: var(--shadow-1);
+}
+
 .notes-header-actions button[aria-pressed="true"] {
   background: var(--bg-selected);
 }

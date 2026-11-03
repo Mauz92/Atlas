@@ -72,7 +72,8 @@ test("J4: [[ autocomplete, task from a line, project and backlinks, rename and u
   const linkedTasks = page.getByRole("list", { name: "Linked tasks" });
   await expect(linkedTasks.getByRole("button", { name: "J4 buy bulbs" })).toBeVisible();
   await expect(page.getByRole("list", { name: "Linked projects" })).toBeVisible();
-  await expect(editor).toContainText("See: [[j4/seed-list]]");
+  // The cursor left the line, so Live mode shows the link rendered; the text itself is checked below.
+  await expect(editor).toContainText("See: j4/seed-list");
   const created = (await tasksMatching()).tasks;
   expect(created).toHaveLength(1);
   const taskDetail = await apiCall<{ project_id: string }>(page, "GET", `/api/tasks/${created[0].id}`);

@@ -3347,3 +3347,48 @@ editor's starting document and later replacements are not undoable.
 
 Limitations: see ADR-0054 and R-23 (drafts in `localStorage`, delete uses a native `confirm`, conflicts are
 copy-or-reload with no merge, tree shows note titles, structural operations online-only R-22).
+
+### UX-06 — Live preview
+
+**Result: `DONE` (local, 2026-11-03); CI job `e2e-real` `NOT RUN` on GitHub Actions; not committed.** A third
+editor view, **Live**, made only of CodeMirror decorations (`lib/livePreview.ts`, ADR-0056); **Source** stays,
+**Preview** (rendered split) is unchanged. Live is the default for a browser with no stored choice
+(`DEFAULT_EDITOR_MODE`, ADR-0051 §5); it was switched on only after the corpus round-trip tests and the
+real-stack Live specs passed, and then the whole real-stack suite was run with Live as the default. No backend,
+schema or new npm package (`@codemirror/language` declared directly, already installed); no Lucide shape added.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Markdown on disk stays byte-identical; decorations never write the document | `PASS` | `livePreview.test.ts` corpus (19 texts × 3): load, type, replace selection, select-all, undo/redo, undo-everything give the same text as Source after every step, and selection/focus changes never change the text; `ux06-live-preview.spec.ts` "typing in Live mode…" (`Buffer.compare` of the file with original + typed UTF-8: `ünï ✓ 日本語 𝄞 😀`, markup, trailing spaces) |
+| Lines without the cursor/selection hide syntax; headings, bold/italic/code/strike, links, quotes, lists, rules, fenced code, `#tags` rendered | `PASS` | `livePreview.test.ts` "rendering" and "source lines show their Markdown when the editor has focus" (no focus → all rendered; cursor line and every selected line raw); `ux06` "the line with the cursor shows its Markdown" (mouse, ArrowUp, End, typing on a revealed line); screenshots |
+| Task checkbox toggles through the normal change path | `PASS` | `livePreview.test.ts` (tick → text `[x]`, undo/redo), `NoteEditor.test.tsx` (click → `onChange("- [x] one…")`), `ux06` "ticking a checkbox…" (click → saved → file text `- [x] first`, second box untick, reload keeps state, Ctrl/⌘ Enter toggles, Source shows `[ ]`/`[x]`) |
+| `[[wiki links]]` clickable (alias shown as label; unknown ones inert) | `PASS` | `livePreview.test.ts`, `NoteEditor.test.tsx`, `ux06` "a [[wiki link]] opens its note…" (click opens `ux06/Target note.md`, unresolved click does nothing, the source file unchanged) |
+| No HTML execution, no unsafe URL handling | `PASS` | corpus DOM scan (no `script/iframe/a/img[src]/style/svg`, no `on*` attribute, no `javascript:`/`vbscript:`/`data:text/html` attribute value) for all 19 texts, before and after edits; `safeExternalUrl` 16 cases; `ux06` "note text cannot run anything…" (`<img onerror>`, `<script>`, `<a href=javascript:>`, tracker image: no `window.__pwned`, no request to the tracker host, Ctrl+click opens only `https://example.com/`, file unchanged) |
+| Mode switching keeps cursor, content and undo; preference remembered | `PASS` | `NoteEditor.test.tsx` (compartment: same `EditorView`, same selection, undo still reaches earlier typing), `notesPrefs.test.ts`, `ux06` (type `AAA`, Source, `BBB`, Live, `CCC` → contiguous in the file; reload keeps the mode; default Live with nothing stored) |
+| Conflict flow works in Live | `PASS` | `ux06` "a file edited on disk while typing in Live mode is a conflict…" (`conflict` + "Nothing was overwritten", file stays the other program's, *Reload server version* works) |
+| Keyboard: editor stays a textbox; hidden syntax never makes content unreachable | `PASS` | `NoteEditor.test.tsx` (`role=textbox`, name *Note content* in both modes), checkbox widgets `tabindex=-1` and named after the item, Ctrl/⌘ Enter ticks/opens; `ux06` (ArrowUp/End/typing through revealed lines). Not tested with a screen reader |
+| axe clean in Source and Live, light and dark | `PASS` | `mu08-a11y-and-layout.spec.ts` (note with a link, a resolved and an unresolved `[[link]]` and a task in both modes × both themes, plus the existing note states) |
+| Names stable; old specs adjusted only where rendering legitimately changed | `PASS` | `Preview`, `Links and details`, `Note content` unchanged; new group `Editor mode` with `Source`/`Live`. J4: after focus leaves the line the link is shown rendered (`See: j4/seed-list`). mu08: the Preview's checkbox is selected inside `markdown-preview`, since Live has its own |
+| CRLF note kept byte for byte end to end | `BLOCKED` | The editor keeps CRLF (`livePreview.test.ts`, `NoteEditor.test.tsx`), but the server reads files with universal newlines (R-24), so a CRLF file arrives as LF and the first save reports Conflict in Source and Live alike. Needs a backend fix (out of scope) |
+| Repository checks | `PASS` | `./scripts/verify.sh` → ruff, ruff format, mypy (114 files), pytest `1053 passed`; eslint + CSS scale check, `tsc`, vitest `776 passed` (71 files; UX-05 recorded 670: UX-06 added 105 in three new files, 1 further test not attributed); `verification: PASS` |
+| Real-stack suite with Live as the default | `PASS` | `npm run test:e2e:real` → `42 passed` (34 + 8 new in `ux06-live-preview.spec.ts`). A first full run with the default switched found two spec problems (J4's raw `[[…]]` assertion after the cursor left the line; a UX-06 text locator that matched a tree row), both fixed in the specs, then re-run |
+| Mocked e2e | `PASS` | `npm run e2e` → `7 passed` |
+| No stray `atlas_e2e_*` databases; owner's stack untouched | `PASS` | `pg_database`: `atlas`, `atlas_test`, `postgres`, templates only; the owner's `atlas` database and the running dev stack were not used |
+| Other browsers, real phone, screen reader, IME composition in a rendered line, 200 % zoom, very large notes (performance), fuzzing | `NOT RUN` | Chromium (desktop + 390 px emulation) only |
+
+**Screenshots** (throwaway stack, fictional orchard note, scratchpad `ux06/`, not in the repository):
+`desktop-light-source.png`, `desktop-light-live.png`, `desktop-dark-source.png`, `desktop-dark-live.png`,
+`phone-390-source.png`, `phone-390-live.png`, `desktop-light-live-cursor-line.png`. Reviewed and fixed: the Live
+body used the monospace face (the base theme's selector won; now `&.cm-live .cm-scroller`), a done task showed a
+stray line-through dash before its checkbox (strike now covers the text only).
+
+**Found and fixed during verification:** (1) CodeMirror's default separators turned CRLF, a lone `\r` and U+2028
+into `\n` on the first keystroke, silently changing the file (now `lineSeparator` is the note's own; the sync
+effect also used the wrong length for CRLF); (2) a zero-width "skip" range made every `[[link]]` that
+the Markdown parser read as a shortcut reference invisible to the wiki-link scan; (3) a note-derived `title`
+attribute on unresolved links put raw link text (possibly `javascript:`) into the DOM — now a fixed string
+(caught by the corpus DOM scan).
+
+Limitations: ADR-0056 and R-24, R-25 (per-line revealing, no hanging indent in wrapped list items, tables/images
+as text, a press-and-drag that starts on a rendered `[[link]]` opens the note).
+

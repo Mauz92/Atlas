@@ -210,6 +210,25 @@ Cover, at minimum:
   at 1440/1024/720/390 px. Helpers in `e2e-real/helpers.ts`: `expectNoteSaved`, `noteSaveState`,
   `openNoteDetails`, `noteMenu`, `noteEditor`, `noteFileBytes`, `writeNoteFile`. J4, J6 and the axe sweep
   were updated for the new controls (selectors changed only where the UI legitimately changed).
+- Live preview (UX-06, ADR-0056): `src/lib/livePreview.test.ts` (95 tests). The corpus (19 texts: nested lists,
+  code fences with markup, indented code, tables, HTML blocks, CRLF, trailing whitespace, unicode/emoji, wiki
+  links with aliases, front matter, setext/rules, links and images, unsafe links, escapes, quotes, empty and
+  blank-only notes, no trailing newline) is loaded in Live mode and run through typing, replacing a selection,
+  select-all, undo and redo; the document text after every step must equal the Source-mode result and the
+  loaded text must come back after undoing everything; the rendered DOM must hold no `script`, `iframe`, `a`,
+  `img[src]`, `style`, `svg`, event-handler attribute or `javascript:` value; moving the cursor/focus must never
+  change the text. Also: `safeExternalUrl` (16 cases), line-ending helpers, front matter, each decoration,
+  focus-dependent revealing, checkbox toggle (undo/redo), Ctrl/⌘ click rules, Mod-Enter.
+  `src/components/NoteEditor.test.tsx` (7: mode switching keeps document, selection and undo history; checkbox →
+  `onChange`; wiki-link click; links re-resolved when the notes arrive; CRLF byte-for-byte in both modes; outside
+  replacement), `src/lib/notesPrefs.test.ts` (3: per-browser mode preference, default, blocked storage).
+  `e2e-real/ux06-live-preview.spec.ts` (8, real stack): default Live and remembered choice, typing → exact UTF-8
+  bytes and cursor kept across Source↔Live, checkbox toggle persisted and reloaded, wiki-link click opens the
+  target, cursor-line revealing by mouse and keyboard, a hostile note (`<img onerror>`, `<script>`,
+  `javascript:` links, tracker image: nothing runs, no request, only https opens), 409 conflict flow in Live,
+  front matter/tabs/trailing spaces byte for byte. `mu08-a11y-and-layout.spec.ts` now runs axe on the note in
+  Source and in Live, light and dark; J4 and the Preview checkbox selector were adjusted for Live's rendering
+  (the `[[link]]` is shown rendered when the cursor is elsewhere).
 
 ## 5. Calendar Adapter Tests
 
