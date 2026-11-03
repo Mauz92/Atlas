@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     Uuid,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR
@@ -53,6 +54,38 @@ class NoteIndex(Base, TimestampMixin):
         ),
         Index("ix_notes_search_vector", "search_vector", postgresql_using="gin"),
     )
+
+
+class NoteRevision(Base):
+    """One retained revision of a note (SYNC-04, ADR-0059 D5): the base of a three-way merge.
+
+    The row holds metadata only; the bytes live in a file under
+    ``<notes-root>/.atlas/history/<note_id>/<content_hash>.md`` (content addressed, so a revision
+    that did not change the text - a move, a delete - shares the file of its neighbour). A row
+    whose file is missing or fails its hash is simply *unavailable*: nothing is merged on a guess.
+    """
+
+    __tablename__ = "note_revisions"
+
+    note_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("notes.id", ondelete="CASCADE"), primary_key=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, primary_key=True)
+    #: denormalised so a history read is scoped to the caller without a join
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    #: the note's path at this revision (lets a move be recognised as later-wins)
+    path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    #: what produced the revision: create | write | merge | move | delete | revive | external
+    reason: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_note_revisions_created_at", "created_at"),)
 
 
 class NoteLink(Base, TimestampMixin):

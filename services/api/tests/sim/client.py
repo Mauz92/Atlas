@@ -28,7 +28,7 @@ from typing import Any
 from .engine import EventQueue, Network, Req, Resp
 from .model import FLAG, LABEL
 
-_PLURAL = {"task": "tasks", "project": "projects"}
+_PLURAL = {"task": "tasks", "project": "projects", "note": "notes"}
 
 
 @dataclass
@@ -67,6 +67,11 @@ class Op:
     attempts: int = (
         0  # how many times this operation has been sent (volatile in spirit; used by a planted bug)
     )
+    #: notes (SYNC-04): the hash of the text the edit was made from (fixed at the first send)
+    base_hash: str | None = None
+    #: notes: marker lines this op put into the text / took out of it (set when the op is frozen)
+    markers: frozenset[str] = frozenset()
+    removed: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -75,6 +80,8 @@ class Local:
     fields: dict[str, Any]
     revision: int | None  # None for a tombstone: the API gives no revision for deleted entities
     deleted: bool = False
+    #: notes: the hash of the text the server last reported for this copy
+    chash: str | None = None
 
 
 @dataclass
@@ -90,6 +97,10 @@ class Durable:
     #: some past moment (a replay after a lost response returns the *original* result), so each is
     #: read again at the next pull and the mirror is corrected from that, not from the ack
     refetch: dict[str, str] = field(default_factory=dict)
+    #: notes: the text being edited locally, with the base it derives from:
+    #: id -> (working text, base revision, base hash, base text). Pinned at the first edit, so a
+    #: pull that moves the server copy forward does not change what a later save is based on.
+    working: dict[str, tuple[str, int, str, str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -129,6 +140,8 @@ class Recorder:
     refusals: list[tuple[str, Op, int, str | None]] = field(default_factory=list)
     #: protocol v1: clients that stopped on 426
     halts: list[str] = field(default_factory=list)
+    #: notes: every ``conflict_copy`` a client was told about, with the op whose text it holds
+    conflict_copies: list[tuple[str, Op, dict[str, Any]]] = field(default_factory=list)
 
 
 class SimClient:
@@ -285,6 +298,8 @@ class SimClient:
             self.job = PullJob(since=self.durable.cursor)
             self.pull_changed = False
             self._job_step()
+        elif self._background():
+            return
         elif self.durable.queue:
             self._push()
 
@@ -317,8 +332,16 @@ class SimClient:
             "feed": self._on_feed,
             "get": self._on_get,
             "list": self._on_list,
+            **self._extra_handlers(),
         }
         handler[inflight.kind](resp, inflight.detail)
+
+    def _extra_handlers(self) -> dict[str, Any]:
+        return {}
+
+    def _background(self) -> bool:
+        """A hook for requests that are neither a pull nor a push (note hydration); True if sent."""
+        return False
 
     # --- push -------------------------------------------------------------------------------
 
@@ -401,6 +424,12 @@ class SimClient:
             if server_id in d.mirror:
                 d.mirror[server_id] = Local(op.kind, d.mirror[server_id].fields, None, True)
                 self.rec.observations.append((self.cid, server_id, "deleted"))
+                # A 204 is as historical as any 2xx (SYNC_PROTOCOL.md 8.1): a replay after a lost
+                # reply can arrive after another device revived the entity (edit wins) and this
+                # client already pulled that. The tombstone is the user's intent; the next pull
+                # reads the entity again and corrects it (found by the notes simulation, seed 109).
+                if not self._trusts_acks:  # (the planted bug skips the re-read, as for creates)
+                    d.refetch[server_id] = op.kind
         elif self._trusts_acks:
             self._apply_entity(body)
         else:
@@ -432,6 +461,8 @@ class SimClient:
 
     @staticmethod
     def _fields(kind: str, body: dict[str, Any]) -> dict[str, Any]:
+        if kind == "note":
+            return {"path": body.get("path"), "content": body.get("content")}
         return {
             LABEL[kind]: body.get(LABEL[kind]),
             "description": body.get("description"),

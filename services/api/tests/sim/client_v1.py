@@ -25,9 +25,17 @@ from typing import Any
 from .client import Local, Op, PullJob, SimClient
 from .engine import Req, Resp
 from .model import FLAG, FLAG_VALUES, LABEL
+from .model_notes import sha
 
-_PLURAL = {"task": "tasks", "project": "projects"}
-_EXPECTED_REFUSALS = {"conflict", "edit_wins"}
+_PLURAL = {"task": "tasks", "project": "projects", "note": "notes"}
+_EXPECTED_REFUSALS = {"conflict", "edit_wins", "path_exists", "note_deleted"}
+#: a small pool, so creates and moves collide (also by letter case)
+_NOTE_PATHS = ("a.md", "A.md", "b.md", "dir/a.md", "dir/A.md", "dir/b.md", "c d.md")
+
+
+def markers(text: str) -> frozenset[str]:
+    """The simulation writes unique ``m:...`` lines; they identify what an edit added or removed."""
+    return frozenset(line for line in text.split("\n") if line.startswith("m:"))
 
 
 class SyncSimClient(SimClient):
@@ -43,7 +51,38 @@ class SyncSimClient(SimClient):
     # --- lifecycle --------------------------------------------------------------------------
 
     def idle(self) -> bool:
-        return self.halted or super().idle()
+        return self.halted or (super().idle() and self._unhydrated() is None)
+
+    # --- note content (the feed carries a note's metadata only) -------------------------------
+
+    def _unhydrated(self) -> str | None:
+        wanted = sorted(
+            i
+            for i, e in self.durable.mirror.items()
+            if e.kind == "note" and not e.deleted and e.fields.get("content") is None
+        )
+        return wanted[0] if wanted else None
+
+    def _extra_handlers(self) -> dict[str, Any]:
+        return {"hydrate": self._on_hydrate}
+
+    def _background(self) -> bool:
+        note_id = self._unhydrated()
+        if note_id is None or self.halted:
+            return False
+        self._send("hydrate", Req("GET", f"/api/notes/{note_id}"), detail=note_id)
+        return True
+
+    def _on_hydrate(self, resp: Resp, note_id: str) -> None:
+        if resp.status == 200:
+            self._apply_entity(resp.body, "note")
+        elif resp.status == 404:
+            local = self.durable.mirror.get(note_id)
+            if local is not None and not local.deleted:
+                self.durable.mirror[note_id] = Local("note", local.fields, None, True)
+                self.rec.observations.append((self.cid, note_id, "deleted"))
+        else:
+            self._failed()
 
     def tick(self) -> None:
         if self.halted:
@@ -87,12 +126,15 @@ class SyncSimClient(SimClient):
         rng, d = self.rng, self.durable
         d.counter += 1
         op_id = f"{self.cid}-{d.counter}"
+        if "note" in kinds and rng.random() < (1.0 if kinds == ("note",) else 0.4):
+            self._note_action(op_id)
+            return
         roll = rng.random()
         targets = self._targets()
         deleted_tasks = [i for i, e in d.mirror.items() if e.deleted and e.kind == "task"]
         op: Op | None = None
         if roll < 0.30 or not targets:
-            kind = rng.choice(kinds)
+            kind = rng.choice([k for k in kinds if k != "note"] or kinds)
             fields: dict[str, Any] = {LABEL[kind]: f"{kind}:{op_id}", "description": None}
             if rng.random() < 0.4:
                 fields[FLAG[kind]] = rng.choice(FLAG_VALUES[kind])
@@ -101,6 +143,9 @@ class SyncSimClient(SimClient):
         elif roll < 0.76:
             target = rng.choice(targets)
             kind = self._kind_of(target)
+            if kind == "note":
+                self._note_edit_or_move(target, op_id, move=False)
+                return
             changed: dict[str, Any] = {}
             if rng.random() < 0.5:
                 changed[LABEL[kind]] = f"{kind}:{op_id}"
@@ -127,6 +172,99 @@ class SyncSimClient(SimClient):
             d.queue.sort(key=lambda o: o.ts)
         self.log(f"enqueue {op.action} {op.kind} {op.target} {op.fields} base={op.base}")
 
+    # --- note actions -------------------------------------------------------------------------
+
+    def _pending_create(self, target: str) -> Op | None:
+        return next(
+            (o for o in self.durable.queue if o.action == "create" and o.target == target), None
+        )
+
+    def _note_create(self, op_id: str) -> None:
+        rng, d = self.rng, self.durable
+        count = rng.randint(10, 25)
+        lines = [f"m:{self.cid}-{d.counter}.{k}" for k in range(count)]
+        text = "\n".join(lines) + ("\n" if rng.random() < 0.7 else "")
+        fields = {"path": rng.choice(_NOTE_PATHS), "content": text}
+        op = Op(
+            op_id, "note", "create", self._new_key(), fields, False, self._new_key(), self.clock()
+        )
+        op.markers = markers(text)
+        d.queue.append(op)
+        self.log(f"enqueue create note {op.target} {fields['path']}")
+
+    def _edited(self, text: str) -> str:
+        """One user edit of ``text``: insert, replace or delete a line (unique marker lines)."""
+        rng, d = self.rng, self.durable
+        d.counter += 1
+        marker = f"m:{self.cid}-{d.counter}"
+        final_newline = text.endswith("\n")
+        body = text.split("\n")[: -1 if final_newline else None] if text else []
+        roll = rng.random()
+        if roll < 0.7 or not body:
+            body.insert(rng.randint(0, len(body)), marker)
+        elif roll < 0.85:
+            body[rng.randrange(len(body))] = marker
+        else:
+            del body[rng.randrange(len(body))]
+        return "\n".join(body) + ("\n" if final_newline and body else "")
+
+    def _note_action(self, op_id: str) -> None:
+        """One user action on notes: mostly edits, some moves and deletes, creates while few."""
+        rng, d = self.rng, self.durable
+        notes = [t for t in self._targets() if self._kind_of(t) == "note"]
+        roll = rng.random()
+        if not notes or (len(notes) < 4 and roll < 0.25) or roll < 0.04:
+            self._note_create(op_id)
+        elif roll < 0.78:
+            self._note_edit_or_move(rng.choice(notes), op_id, move=False)
+        elif roll < 0.94:
+            self._note_edit_or_move(rng.choice(notes), op_id, move=True)
+        else:
+            target = rng.choice(notes)
+            op = Op(op_id, "note", "delete", target, {}, False, self._new_key(), self.clock())
+            op.base, op.base_fixed = self._base_for(target), True
+            d.queue.append(op)
+            self.log(f"enqueue delete note {target} base={op.base}")
+
+    def _note_edit_or_move(self, target: str, op_id: str, *, move: bool) -> None:
+        rng, d = self.rng, self.durable
+        pending = self._pending_create(target)
+        if pending is not None:
+            if pending.attempts:  # in flight: its text is fixed
+                return
+            if move:
+                pending.fields["path"] = rng.choice(_NOTE_PATHS)
+            else:
+                pending.fields["content"] = self._edited(pending.fields["content"])
+                pending.markers = markers(pending.fields["content"])
+            self.log(f"edit pending create {target}")
+            return
+        local = d.mirror.get(target)
+        if local is None or local.deleted or local.revision is None:
+            return
+        if move:
+            op = Op(op_id, "note", "move", target, {"path": rng.choice(_NOTE_PATHS)}, True,
+                    self._new_key(), self.clock())  # fmt: skip
+            op.base, op.base_fixed = local.revision, True
+            d.queue.append(op)
+            self.log(f"enqueue move {target} -> {op.fields['path']} base={op.base}")
+            return
+        queued = next((o for o in d.queue if o.action == "put" and o.target == target), None)
+        if queued is not None:
+            if queued.attempts:  # sent: the text is frozen until it is answered
+                return
+            text, base_rev, base_hash, base_text = d.working[target]
+            d.working[target] = (self._edited(text), base_rev, base_hash, base_text)
+            self.log(f"edit queued save of {target}")
+            return
+        content = local.fields.get("content")
+        if content is None or local.chash is None:
+            return  # not downloaded yet: nothing to edit
+        d.working[target] = (self._edited(content), local.revision, local.chash, content)
+        op = Op(op_id, "note", "put", target, {}, True, self._new_key(), self.clock())
+        d.queue.append(op)
+        self.log(f"enqueue edit of {target} based on revision {local.revision}")
+
     # --- push -------------------------------------------------------------------------------
 
     def _resolve(self, op: Op) -> str | None:
@@ -143,7 +281,22 @@ class SyncSimClient(SimClient):
             "X-Sim-Op": op.op_id,
         }
         plural = _PLURAL[op.kind]
-        if op.action == "create":
+        if op.kind == "note" and op.action == "put":
+            if not op.base_fixed and op.target not in d.working:
+                d.queue.remove(op)  # nothing to save any more
+                return
+            if not op.base_fixed:
+                text, base_rev, base_hash, base_text = d.working[op.target]
+                op.fields = {"content": text}
+                op.base, op.base_hash, op.base_fixed = base_rev, base_hash, True
+                op.markers = markers(text) - markers(base_text)
+                op.removed = markers(base_text) - markers(text)
+            body = {**op.fields, "base_revision": op.base, "base_hash": op.base_hash}
+            req = Req("PUT", f"/api/notes/{op.target}", body=body, headers=headers)
+        elif op.kind == "note" and op.action == "move":
+            body = {**op.fields, "base_revision": op.base}
+            req = Req("POST", f"/api/notes/{op.target}/move", body=body, headers=headers)
+        elif op.action == "create":
             req = Req(
                 "POST", f"/api/{plural}", body={"id": op.target, **op.fields}, headers=headers
             )
@@ -178,6 +331,69 @@ class SyncSimClient(SimClient):
         self.rec.drops.append((self.cid, op, resp.status))
         self.rec.refusals.append((self.cid, op, resp.status, code))
         d.queue.remove(op)
+        if op.kind == "note" and op.action == "put":
+            # The edit was not applied; on a conflict its text is in the copy the server saved.
+            d.working.pop(op.target, None)
+            copy = resp.body.get("conflict_copy") if isinstance(resp.body, dict) else None
+            if copy is not None:
+                self.rec.conflict_copies.append((self.cid, op, copy))
+            self.pull_changed = True
+
+    def _ack(self, op: Op, resp: Resp) -> None:
+        super()._ack(op, resp)
+        if op.kind == "note" and op.action == "put":
+            self.durable.working.pop(op.target, None)
+            if isinstance(resp.body, dict) and resp.body.get("conflict_copy"):
+                raise AssertionError("a conflict is never a 2xx")
+
+    def _apply_ack(self, body: dict[str, Any], kind: str) -> None:
+        if kind != "note":
+            super()._apply_ack(body, kind)
+            return
+        d = self.durable
+        entity_id = body["id"]
+        local = d.mirror.get(entity_id)
+        if local is None:
+            fields = {"path": body["path"], "content": body.get("content")}
+            d.mirror[entity_id] = Local(
+                "note", fields, body["revision"], False, body.get("content_hash")
+            )
+            self.rec.observations.append((self.cid, entity_id, "live"))
+        elif not local.deleted:
+            self._apply_entity(body, kind)
+        d.refetch[entity_id] = kind
+
+    def _apply_entity(self, body: dict[str, Any], kind: str | None = None) -> bool:
+        d = self.durable
+        kind = kind or d.mirror[body["id"]].kind
+        if kind != "note":
+            return super()._apply_entity(body, kind)
+        local = d.mirror.get(body["id"])
+        revision = body["revision"]
+        if (
+            local is not None
+            and not local.deleted
+            and local.revision is not None
+            and revision < local.revision
+            and not self.bugs.apply_stale_revisions
+        ):
+            return False
+        chash = body.get("content_hash")
+        content = body.get("content")
+        if content is None and local is not None and not local.deleted and local.chash == chash:
+            content = local.fields.get("content")  # the feed carries metadata only
+        if content is not None and chash is not None and sha(content) != chash:
+            raise AssertionError(f"note {body['id']}: body and hash disagree")
+        fresh = Local("note", {"path": body["path"], "content": content}, revision, False, chash)
+        changed = (
+            local is None
+            or local.deleted
+            or local.revision != revision
+            or local.fields != fresh.fields
+        )
+        d.mirror[body["id"]] = fresh
+        self.rec.observations.append((self.cid, body["id"], "live"))
+        return changed
 
     # --- pull -------------------------------------------------------------------------------
 
@@ -189,7 +405,7 @@ class SyncSimClient(SimClient):
                 "since": job.since,
                 "limit": 4,
                 "include": "data",
-                "types": "task,project",
+                "types": "task,project,note",
             }
             if job.shadow is not None and job.since > 0:
                 params["snapshot"] = True  # a continuation of the snapshot walk (never below floor)

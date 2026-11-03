@@ -42,6 +42,15 @@ class Settings(BaseSettings):
     notes_root: str = "./data/notes"
     # How often the worker reconciles the note index with the filesystem.
     notes_reconcile_seconds: int = 300
+    # Note history (SYNC-04, ADR-0059 D5): the base of a three-way merge. A note keeps its newest
+    # ``note_history_keep_revisions`` revisions and every revision younger than
+    # ``note_history_keep_days``, but never more than ``note_history_max_revisions`` revisions or
+    # ``note_history_max_bytes`` of distinct content (the newest revisions are always kept). A
+    # base that has been pruned is not merged on a guess: the write becomes a conflict copy.
+    note_history_keep_revisions: int = 20
+    note_history_keep_days: int = 90
+    note_history_max_revisions: int = 200
+    note_history_max_bytes: int = 64 * 1024 * 1024
     # How often (seconds) the worker scans every connected calendar and re-syncs it from its stored
     # cursor, recovering any change a lost/never-received provider notification did not deliver
     # (M5-10). Notifications are hints, never a complete change log (AGENTS.md §10).
@@ -133,6 +142,10 @@ class Settings(BaseSettings):
     @field_validator(
         "change_retention_days",
         "change_purge_interval_seconds",
+        "note_history_keep_revisions",
+        "note_history_keep_days",
+        "note_history_max_revisions",
+        "note_history_max_bytes",
         "reminder_scan_seconds",
         "backup_retain",
         "backup_interval_seconds",

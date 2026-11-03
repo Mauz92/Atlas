@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import tempfile
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -21,6 +23,8 @@ NOTE_SUFFIX = ".md"
 MAX_NOTE_BYTES = 5 * 1024 * 1024
 RESERVED_DIR = ".atlas"
 _TRASH_DIR = "trash"
+HISTORY_DIR = "history"
+_DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 _TMP_PREFIX = ".atlas-tmp-"
 
 
@@ -212,6 +216,65 @@ class NotesStorage:
         destination = trash_dir / PurePosixPath(normalized).name
         os.replace(src, destination)
         return self.relative(destination)
+
+    # --- history (SYNC-04) ----------------------------------------------
+    #
+    # Retained revisions of a note live in ``<root>/.atlas/history/<note_id>/<sha256>.md``: the
+    # name is the hash of the bytes, so a file is its own integrity check and a revision whose text
+    # did not change (a move, a delete) shares its neighbour's file. The reserved directory is
+    # invisible to listings and reconcile and is part of every backup (the archive walks the root).
+
+    def _history_dir(self, note_id: uuid.UUID) -> Path:
+        return self.absolute(f"{RESERVED_DIR}/{HISTORY_DIR}/{note_id}", allow_reserved=True)
+
+    def _history_file(self, note_id: uuid.UUID, digest: str) -> Path:
+        if not _DIGEST_RE.fullmatch(digest):
+            raise UnsafePathError("not a content hash")
+        return self._history_dir(note_id) / f"{digest}{NOTE_SUFFIX}"
+
+    def history_has(self, note_id: uuid.UUID, digest: str) -> bool:
+        return self._history_file(note_id, digest).is_file()
+
+    def history_write(self, note_id: uuid.UUID, content: str) -> str:
+        """Store ``content`` as a history file (atomically, once per text); returns its hash."""
+        digest = content_hash(content)
+        path = self._history_file(note_id, digest)
+        encoded = content.encode("utf-8")
+        if len(encoded) > MAX_NOTE_BYTES:
+            raise NoteTooLargeError(f"history entry exceeds {MAX_NOTE_BYTES} bytes")
+        if not (path.is_file() and path.stat().st_size == len(encoded)):
+            self._atomic_write(path, content)
+        return digest
+
+    def history_read(self, note_id: uuid.UUID, digest: str) -> str | None:
+        """The stored text for ``digest``, or ``None`` if it is missing, unreadable or its bytes no
+        longer hash to the name (a damaged file is never used as a merge base)."""
+        path = self._history_file(note_id, digest)
+        try:
+            if not path.is_file() or path.stat().st_size > MAX_NOTE_BYTES:
+                return None
+            content = path.read_bytes().decode("utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+        return content if content_hash(content) == digest else None
+
+    def history_hashes(self, note_id: uuid.UUID) -> set[str]:
+        directory = self._history_dir(note_id)
+        if not directory.is_dir():
+            return set()
+        return {
+            entry.stem
+            for entry in directory.iterdir()
+            if entry.suffix == NOTE_SUFFIX and _DIGEST_RE.fullmatch(entry.stem)
+        }
+
+    def history_delete(self, note_id: uuid.UUID, digest: str) -> None:
+        self._history_file(note_id, digest).unlink(missing_ok=True)
+
+    def history_remove_if_empty(self, note_id: uuid.UUID) -> None:
+        directory = self._history_dir(note_id)
+        if directory.is_dir() and not any(directory.iterdir()):
+            directory.rmdir()
 
     # --- folders --------------------------------------------------------
 

@@ -16,6 +16,8 @@ from ..idempotency import IdempotencyConflictError, IdempotencyStore, fingerprin
 from ..models import NoteIndex
 from ..notes import (
     NoteConflictError,
+    NoteDeletedError,
+    NoteEditWinsError,
     NoteIdExistsError,
     NoteNotFoundError,
     NotePathConflictError,
@@ -23,8 +25,13 @@ from ..notes import (
     NotesService,
     NotesStorage,
     NoteTooLargeError,
+    NoteWrite,
+    NoteWriteConflictError,
+    PortablePathError,
     TemplateError,
     UnsafePathError,
+    check_portable,
+    normalize_note_path,
 )
 from ..projects import (
     ZERO_PROGRESS,
@@ -43,20 +50,25 @@ from .schemas import (
     FolderCreateRequest,
     FolderRenameRequest,
     NoteConflictCopyRequest,
+    NoteCopyOut,
     NoteCreateRequest,
     NoteDetailOut,
     NoteFromTemplateRequest,
+    NoteHistoryEntryOut,
+    NoteHistoryOut,
     NoteLinkOut,
     NoteListOut,
     NoteMoveRequest,
     NoteProjectOut,
+    NoteRevisionOut,
     NoteSummaryOut,
+    NoteSyncResult,
     NoteTaskOut,
     NoteUpdateRequest,
     ProjectListOut,
     ReconcileOut,
+    SyncConflictOut,
     SyncResolutionOut,
-    SyncResult,
     TaskCreateRequest,
     TaskOut,
 )
@@ -107,6 +119,21 @@ def _translate(exc: Exception, sync: bool = False) -> NoReturn:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="A note or folder already exists there"
         ) from exc
+    if isinstance(exc, NoteEditWinsError):
+        raise SyncError(
+            409,
+            "edit_wins",
+            "the note was edited after the revision this delete was based on; it is kept",
+            current_revision=exc.note.revision,
+            entity=_summary(exc.note).model_dump(mode="json"),
+            resolution=[SyncResolutionOut(rule="edit_wins_over_delete").model_dump(mode="json")],
+        ) from exc
+    if isinstance(exc, NoteDeletedError):
+        raise SyncError(
+            409, "note_deleted", "the note was deleted; renaming it does not bring it back"
+        ) from exc
+    if isinstance(exc, PortablePathError):
+        raise SyncError(422, "invalid_path", exc.detail, reason=exc.reason) from exc
     if isinstance(exc, IdempotencyConflictError):
         if sync:
             raise SyncError(
@@ -137,11 +164,15 @@ async def _begin_sync_write(
     key: str | None,
     operation: str,
     request_payload: dict[str, Any],
+    service: NotesService | None = None,
 ) -> JSONResponse | None:
     """Sync-mode preamble shared by the note writes: key required, unknown fields refused, the
-    key reserved. Returns the stored response of a replay (a summary: note bodies are not stored,
-    they can be 5 MiB), else ``None``. Outside sync mode notes keep their historical behaviour:
-    no key support at all."""
+    key reserved. Returns the stored response of a replay, else ``None``. The record holds a
+    summary (a body can be 5 MiB and keys live 90 days); when ``service`` is given the replay of
+    a 2xx adds the note's ``content`` as of the revision the original answer reported, read from
+    the note history, so a client that lost the response can still replace its file. If that
+    revision has been pruned the replay has no ``content`` and the client reads the note.
+    Outside sync mode notes keep their historical behaviour: no key support at all."""
     if not sync:
         return None
     require_key(sync, key)
@@ -154,12 +185,74 @@ async def _begin_sync_write(
         _translate(exc, sync)
     if stored is None:
         return None
-    return JSONResponse(
-        status_code=stored.status_code, content=stored.body, headers=REPLAYED_HEADER
+    body = stored.body
+    if service is not None and 200 <= stored.status_code < 300 and "content_hash" in body:
+        try:
+            text = await service.history.content(
+                uuid.UUID(body["id"]), body["revision"], expect_hash=body["content_hash"]
+            )
+        except (KeyError, ValueError):
+            text = None
+        if text is not None:
+            body = {**body, "content": text}
+    return JSONResponse(status_code=stored.status_code, content=body, headers=REPLAYED_HEADER)
+
+
+def _copy_out(note: NoteIndex) -> NoteCopyOut:
+    return NoteCopyOut(
+        id=note.id, path=note.path, revision=note.revision, content_hash=note.content_hash
     )
 
 
-def _stored_summary(note: NoteIndex, result: SyncResult) -> dict[str, Any]:
+def _sync_result(write: NoteWrite) -> NoteSyncResult:
+    return NoteSyncResult(
+        revision=write.note.revision,
+        merged=write.merged,
+        resolution=[
+            SyncResolutionOut(rule=item.rule, detail=item.detail, kept_revision=item.kept_revision)
+            for item in write.resolutions
+        ],
+    )
+
+
+def _check_portable_path(path: str) -> None:
+    """Sync mode only: refuse a path that is unusable on Windows or Android (``422``)."""
+    try:
+        check_portable(normalize_note_path(path))
+    except (UnsafePathError, PortablePathError) as exc:
+        _translate(exc, True)
+
+
+async def _conflict_response(
+    conflict: NoteWriteConflictError,
+    store: IdempotencyStore,
+    session: Any,
+    key: str,
+) -> JSONResponse:
+    """The ``409 conflict`` of a write that could not be merged. The conflict copy is a stored
+    side effect, so the transaction is committed and the answer recorded under the key: a retry
+    replays this response instead of saving a second copy."""
+    body = {
+        "error": "conflict",
+        "detail": "the note changed on the server and the edits overlap; nothing was overwritten "
+        "and the incoming text was saved as a conflict copy",
+        "reason": conflict.reason,
+        "current_revision": conflict.note.revision,
+        "current_hash": conflict.note.content_hash,
+        "conflicts": [
+            SyncConflictOut(
+                field="content", reason="text_conflict", server_revision=conflict.note.revision
+            ).model_dump(mode="json")
+        ],
+        "conflict_copy": _copy_out(conflict.copy).model_dump(mode="json"),
+        "resolution": [],
+    }
+    await store.remember(key, status_code=409, body=body)
+    await session.commit()
+    return JSONResponse(status_code=409, content=body)
+
+
+def _stored_summary(note: NoteIndex, result: NoteSyncResult) -> dict[str, Any]:
     """What a note write stores for replay: the summary and the sync block, never the content."""
     return {**_summary(note).model_dump(mode="json"), "sync": result.model_dump(mode="json")}
 
@@ -261,12 +354,12 @@ async def create_note(
     """
     store = IdempotencyStore(session, user.id)
     body = payload.model_dump(mode="json")
+    service = NotesService(session, user.id, storage)
     replay = await _begin_sync_write(
-        sync, request, NoteCreateRequest, store, idempotency_key, "note.create", body
+        sync, request, NoteCreateRequest, store, idempotency_key, "note.create", body, service
     )
     if replay is not None:
         return replay
-    service = NotesService(session, user.id, storage)
     replayed = False
     try:
         note = (
@@ -277,6 +370,8 @@ async def create_note(
         replayed = note is not None
         requested: str | None = None
         if note is None:
+            if sync:
+                _check_portable_path(payload.path)
             created = await service.create_with_info(
                 payload.path, payload.content, client_id=payload.id, on_collision_rename=sync
             )
@@ -285,7 +380,7 @@ async def create_note(
     except Exception as exc:
         _translate(exc, sync)
     if sync:
-        result = SyncResult(revision=note.revision)
+        result = NoteSyncResult(revision=note.revision)
         if requested is not None:
             result.resolution.append(
                 SyncResolutionOut(
@@ -349,6 +444,52 @@ async def get_note(
         return await _detail(service, await service.get(note_id))
     except Exception as exc:
         _translate(exc)
+
+
+@router.get("/{note_id}/history", response_model=NoteHistoryOut)
+async def note_history(
+    note_id: uuid.UUID, user: CurrentUser, session: DbSession, storage: StorageDep
+) -> NoteHistoryOut:
+    """The retained revisions of one of the caller's notes, newest first (deleted notes too: this
+    is how the last text of a deleted note is recovered). `available` is false once the text of a
+    revision has been pruned (last 20 revisions plus 90 days, bounded by size)."""
+    service = NotesService(session, user.id, storage)
+    try:
+        await service.get_any(note_id)
+    except Exception as exc:
+        _translate(exc)
+    entries = await service.history.list(note_id)
+    return NoteHistoryOut(revisions=[NoteHistoryEntryOut(**asdict(item)) for item in entries])
+
+
+@router.get("/{note_id}/history/{revision}", response_model=NoteRevisionOut)
+async def note_revision(
+    note_id: uuid.UUID,
+    revision: int,
+    user: CurrentUser,
+    session: DbSession,
+    storage: StorageDep,
+) -> NoteRevisionOut:
+    """The text of one retained revision (`404` when it was never kept or has been pruned)."""
+    service = NotesService(session, user.id, storage)
+    try:
+        await service.get_any(note_id)
+    except Exception as exc:
+        _translate(exc)
+    entry = await service.history.entry(note_id, revision)
+    text = await service.history.content(note_id, revision)
+    if entry is None or text is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return NoteRevisionOut(
+        revision=entry.revision,
+        content_hash=entry.content_hash,
+        size_bytes=entry.size_bytes,
+        path=entry.path,
+        reason=entry.reason,
+        created_at=entry.created_at,
+        available=True,
+        content=text,
+    )
 
 
 @router.get("/{note_id}/projects", response_model=ProjectListOut)
@@ -432,25 +573,49 @@ async def update_note(
     sync: SyncMode,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=200)] = None,
 ) -> Any:
+    """Save the note's text.
+
+    **Sync mode** (`Atlas-Sync: 1`) requires `Idempotency-Key` and `base_hash` (the hash of the
+    text the edit was made from). A stale `base_revision` is merged three-way against the retained
+    base text: non-overlapping edits merge silently (`sync.merged`, the response carries the merged
+    `content`); overlapping or uncertain edits answer `409 conflict` with a `conflict_copy` - the
+    note is never overwritten and the incoming text is never lost. Editing a deleted note
+    revives it (`edit_wins_over_delete`). A replay returns the stored result with its `content`.
+    """
+    if sync:
+        require_key(sync, idempotency_key)
+        if payload.base_hash is None:
+            raise SyncError(422, "base_hash_required", "sync-mode note writes require base_hash")
     store = IdempotencyStore(session, user.id)
     body = {"note_id": str(note_id), **payload.model_dump(mode="json")}
+    service = NotesService(session, user.id, storage)
     replay = await _begin_sync_write(
-        sync, request, NoteUpdateRequest, store, idempotency_key, "note.update", body
+        sync, request, NoteUpdateRequest, store, idempotency_key, "note.update", body, service
     )
     if replay is not None:
         return replay
-    service = NotesService(session, user.id, storage)
+    if not sync:
+        try:
+            note = await service.update(note_id, payload.content, payload.base_revision)
+            detail = await _detail(service, note)
+        except Exception as exc:
+            _translate(exc, sync)
+        await session.commit()
+        return detail
+    assert idempotency_key is not None and payload.base_hash is not None
     try:
-        note = await service.update(note_id, payload.content, payload.base_revision)
-        detail = await _detail(service, note)
+        write = await service.update_sync(
+            note_id, payload.content, payload.base_revision, payload.base_hash
+        )
+        detail = await _detail(service, write.note)
+    except NoteWriteConflictError as conflict:
+        return await _conflict_response(conflict, store, session, idempotency_key)
     except Exception as exc:
         _translate(exc, sync)
-    if sync:
-        detail.sync = SyncResult(revision=note.revision)
-        assert idempotency_key is not None
-        await store.remember(
-            idempotency_key, status_code=200, body=_stored_summary(note, detail.sync)
-        )
+    detail.sync = _sync_result(write)
+    await store.remember(
+        idempotency_key, status_code=200, body=_stored_summary(write.note, detail.sync)
+    )
     await session.commit()
     return detail
 
@@ -485,27 +650,39 @@ async def move_note(
     sync: SyncMode,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=200)] = None,
 ) -> Any:
+    """Rename or move a note. **Sync mode:** independent of content (a stale `base_revision` does
+    not refuse a move; a move that overrides another device's is `path_later_wins`), the target
+    must be portable (`422 invalid_path`) and free (`409 path_exists`, case and Unicode
+    normalisation included), and a deleted note is `409 note_deleted`."""
     if sync:
         require_base(sync, payload.base_revision)
     store = IdempotencyStore(session, user.id)
     body = {"note_id": str(note_id), **payload.model_dump(mode="json")}
+    service = NotesService(session, user.id, storage)
     replay = await _begin_sync_write(
-        sync, request, NoteMoveRequest, store, idempotency_key, "note.move", body
+        sync, request, NoteMoveRequest, store, idempotency_key, "note.move", body, service
     )
     if replay is not None:
         return replay
-    service = NotesService(session, user.id, storage)
+    if not sync:
+        try:
+            note = await service.rename(note_id, payload.path)
+            detail = await _detail(service, note)
+        except Exception as exc:
+            _translate(exc, sync)
+        await session.commit()
+        return detail
+    assert idempotency_key is not None and payload.base_revision is not None
     try:
-        note = await service.rename(note_id, payload.path)
-        detail = await _detail(service, note)
+        _check_portable_path(payload.path)
+        write = await service.rename_sync(note_id, payload.path, payload.base_revision)
+        detail = await _detail(service, write.note)
     except Exception as exc:
         _translate(exc, sync)
-    if sync:
-        detail.sync = SyncResult(revision=note.revision)
-        assert idempotency_key is not None
-        await store.remember(
-            idempotency_key, status_code=200, body=_stored_summary(note, detail.sync)
-        )
+    detail.sync = _sync_result(write)
+    await store.remember(
+        idempotency_key, status_code=200, body=_stored_summary(write.note, detail.sync)
+    )
     await session.commit()
     return detail
 
@@ -521,7 +698,13 @@ async def delete_note(
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=200)] = None,
     base_revision: Annotated[
         int | None,
-        Query(ge=0, description="Sync mode (required). Edit-wins for notes arrives with SYNC-04."),
+        Query(
+            ge=0,
+            description=(
+                "Sync mode (required). A delete based on an older revision than the note's is "
+                "refused: `409 edit_wins` (the edit wins over the delete)."
+            ),
+        ),
     ] = None,
 ) -> Response:
     if sync:
@@ -534,7 +717,14 @@ async def delete_note(
         return Response(status_code=replay.status_code, headers=REPLAYED_HEADER)
     service = NotesService(session, user.id, storage)
     try:
-        await service.delete(note_id)
+        if sync:
+            assert base_revision is not None
+            await service.delete_sync(note_id, base_revision)
+        else:
+            await service.delete(note_id)
+    except NoteEditWinsError as exc:
+        await session.commit()  # an unindexed external edit may have been recorded on the way
+        _translate(exc, sync)
     except Exception as exc:
         _translate(exc, sync)
     if sync:

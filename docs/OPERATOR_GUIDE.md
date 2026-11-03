@@ -115,6 +115,8 @@ on its next write ([`SECURITY.md`](SECURITY.md) R-SEC-3).
 | `NOTES_RECONCILE_SECONDS` | How often the worker re-scans the notes root (default `300`). |
 | `CHANGE_RETENTION_DAYS` | How far back the per-user change feed keeps deletion history (default `30`); a device older than this is told to full-resync. **It never purges your task/project/note rows.** |
 | `CHANGE_PURGE_INTERVAL_SECONDS` | How often the purge job runs (default `3600`). |
+| `NOTE_HISTORY_KEEP_REVISIONS` / `NOTE_HISTORY_KEEP_DAYS` | Note history for sync clients (SYNC-04): a note keeps its newest N revisions (default `20`) and everything younger than D days (default `90`). The text lives in `<notes root>/.atlas/history` and is in every backup; it keeps the text of overwritten and **deleted** notes for that long. |
+| `NOTE_HISTORY_MAX_REVISIONS` / `NOTE_HISTORY_MAX_BYTES` | Hard bounds per note on top of the above (defaults `200` revisions, `67108864` bytes of distinct text); the newest N revisions are always kept. A merge base that was pruned makes a stale save a conflict copy, never a guess. |
 | `BACKUP_DIR` / `BACKUP_RETAIN` | Where backup sets go and how many to keep (defaults `/data/atlas/backups`, `7`). |
 | `BACKUP_INTERVAL_SECONDS` | How often the worker produces a backup (default `86400` = daily). |
 | `BACKUP_PG_DUMP_BINARY` / `BACKUP_PG_DUMP_CONTAINER` | `pg_dump` location: a local client, or a container name to run it inside with `docker exec`. |

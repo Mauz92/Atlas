@@ -72,6 +72,21 @@ test("typing saves by itself: one request at a time, exact UTF-8 bytes on disk, 
   expect(Buffer.compare(await noteFileBytes("ux05/typing.md"), expected)).toBe(0);
   expect((await get(page, note.id)).content).toBe(`# Typing\n${typed}`);
 
+  // SYNC-04: every autosave is also a retained revision (the base a sync client's stale save is
+  // merged against), and the newest one is exactly the text on disk.
+  const history = await apiCall<{ revisions: { revision: number }[] }>(
+    page,
+    "GET",
+    `/api/notes/${note.id}/history`,
+  );
+  expect(history.revisions.length).toBeGreaterThanOrEqual(2);
+  const newest = await apiCall<{ content: string }>(
+    page,
+    "GET",
+    `/api/notes/${note.id}/history/${history.revisions[0].revision}`,
+  );
+  expect(newest.content).toBe(`# Typing\n${typed}`);
+
   await page.reload();
   await expect(noteEditor(page)).toContainText("second line");
   await expectNoteSaved(page);

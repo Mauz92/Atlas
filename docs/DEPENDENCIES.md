@@ -38,6 +38,18 @@ as reported by the package metadata; verify against the upstream project before 
 | marked | Markdown → HTML rendering | MIT | |
 | dompurify | HTML sanitisation of rendered notes | MPL-2.0 OR Apache-2.0 | Untrusted content (SECURITY T3/T6) |
 
+## Considered and not adopted
+
+| Package | Purpose considered | Licence / maintenance (package metadata, checked 2026-11-03) | Decision |
+|---|---|---|---|
+| merge3 1.0.0 (Breezy) | three-way text merge for note sync (SYNC-04) | GPL-2.0-or-later; active (release 2026-10-25) | Rejected: copyleft is incompatible with the intended distribution (AGENTS.md 14) |
+| diff-match-patch 20241021 | character-level diff/patch | Apache-2.0; last release 2024-10 | Rejected for merging: its patch application is fuzzy by design; a merge must be exact or refused |
+| three-merge 0.1.1 | merge of two strings against a base | MIT; last release 2020-07 (unmaintained) | Rejected: stale, a wrapper over diff-match-patch |
+| `git merge-file` | three-way file merge | GPL-2.0, external binary | Rejected: not in the API image; subprocess per request |
+
+The note merge (`atlas/notes/merge.py`, ADR-0060) is therefore an in-repo implementation on the Python standard library
+(`difflib`, PSF licence), with property tests; no dependency was added for SYNC-04.
+
 ## Vendored assets (no package)
 
 | Asset | Where | Licence | Notes |

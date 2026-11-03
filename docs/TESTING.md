@@ -325,8 +325,9 @@ Report the actual command and a concise evidence line for release gates. Never i
 
 ## 10. Sync Testing (local-first clients; ADR-0055, ADR-0059, `SYNC_PROTOCOL.md`)
 
-Status: **layers A, B and C exist for the task/project/feed API since SYNC-02 and for protocol v1 (tasks, projects, note identity)
-since SYNC-03 (2026-11-03)**; the note, resolution-log, device and client scenarios of 10.3 and layers D/E do not exist yet. Sync bugs are ordering and failure bugs, so the main
+Status: **layers A, B and C exist for the task/project/feed API since SYNC-02, for protocol v1 (tasks, projects, note identity)
+since SYNC-03 and for note content (history, merge, conflict copies, edit-wins, moves, portable paths) since SYNC-04 (2026-11-03)**;
+the resolution-log, device and client scenarios of 10.3 and layers D/E do not exist yet. Sync bugs are ordering and failure bugs, so the main
 evidence is a deterministic simulation, not example-based tests.
 
 ### 10.0 What exists (SYNC-02) and how to run it
@@ -394,6 +395,40 @@ rose above its first page; fixed by `snapshot=true`, R-38) and **seed 681** (a r
 entity whose delete the client's cursor had already passed because the snapshot omits tombstones; a client rule, R-40, plus the
 `cursor_safety` check now excuses entities queued for re-read). Not yet simulated: notes, links, subtasks/project membership as
 fields, server restore as a random action, `epoch` mismatch, token revocation (SYNC-04/06/08).
+
+#### 10.0b Notes (SYNC-04)
+
+Files: `model_notes.py` (the model server's note rules, sharing the entity table, feed and idempotency store; imports the production
+`merge3`, which is established by the property tests, so the simulation tests the protocol around it), `client_v1.py` (the model
+client edits a note as a *working copy pinned to its base* `(text, revision, hash, base text)`, coalesces edits into an unsent save,
+freezes the save at its first send, downloads note content in a separate "hydrate" request because the feed carries metadata only,
+and re-reads after every acknowledgement including a delete), `test_sim_notes.py`, `test_sim_notes_conformance.py`. Every line a
+simulated user writes is a unique marker (`m:<client>-<n>`), so what an edit added or removed is exact.
+New invariants (`runner.py`): `no_silent_overwrite` (model ground truth: a merged/revived/fast-forward write drops no line of the
+server's text that the client had not removed from its base), `no_acknowledged_note_loss` (every line an acknowledged save added is
+in some note - live, a conflict copy, or the last text of a deleted note read through the history endpoint - unless an acknowledged
+save removed it; also per response), `conflict_copy_has_losing_text` (the copy named in a `409` has the hash of the sent text and,
+read through `GET .../history/1`, exactly that text), `unique_paths`/`portable_paths` (no two live notes differ only by case or
+normalisation; every live path passes the portable check), `edit_wins` for note deletes, and the adapted `no_duplicates` (creates +
+reported conflict copies = notes on the server), `unexpected_rejection` (only `conflict`, `edit_wins`, `path_exists`,
+`note_deleted` for the matching action) and `revision_identifies_state`.
+
+| Command | Effect |
+|---|---|
+| `pytest services/api/tests/sim/test_sim_notes.py` | default: 100 + 100 model seeds, +40 late joiner/purge, +40 clock independence, outcome coverage check, 10 planted defects, 3 real-API seeds |
+| `ATLAS_SIM_SEEDS=1000 ATLAS_SIM_STEPS=300 ... -k "not planted and not real_api"` | note model soak |
+| `ATLAS_SIM_REAL_SEEDS=20 ... -k real_api` | real-API note soak (per-test notes folder; 20 seeds take about 35 s) |
+| `pytest services/api/tests/sim/test_sim_notes_conformance.py` | 6 traces (create/replay, merge/conflict/replay, CRLF and final newline, edit-wins/revive, reused path, move/collisions/portable) replayed on model and real API; 6 model defects must make the comparison fail |
+
+Layer A (integration, real PostgreSQL + real files): `tests/integration/test_note_sync_merge.py` (55 tests: exact bytes on disk after
+a merge, a conflict copy, a revive, CRLF, Unicode, front matter; replay with content; concurrency of saves from one base; cross-user
+isolation; every portable-path rule), `test_note_history.py` (retention, pruning job, shared files, damaged files, backups),
+`test_note_revisions_migration.py`; unit: `tests/unit/test_note_merge.py` (examples and seeded properties, 1500+ cases).
+
+What the note simulation found: **seed 109 at 700 steps** (a replayed delete acknowledgement tombstoned an entity another device
+had revived; a client rule for tasks and projects too, fixed in the model client, R-40). Not yet simulated: history pruning mid-run
+(the model keeps 200 revisions; pruned bases are covered by integration tests), unindexed external edits, folder renames, server
+restore with notes.
 
 ### 10.1 Layers
 

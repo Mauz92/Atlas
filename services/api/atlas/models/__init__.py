@@ -7,7 +7,7 @@ from .credential import CredentialProvider, ProviderCredential
 from .idempotency import IdempotencyKey
 from .instance import InstanceMeta
 from .job import Job, JobStatus
-from .note import NoteIndex, NoteLink, NoteTag, Tag
+from .note import NoteIndex, NoteLink, NoteRevision, NoteTag, Tag
 from .notification import NotificationDevice, PushChannel
 from .project import NoteProject, Project, ProjectStatus
 from .reminder import (
@@ -33,6 +33,7 @@ __all__ = [
     "NoteIndex",
     "NoteLink",
     "NoteProject",
+    "NoteRevision",
     "NoteTag",
     "NotificationDevice",
     "Project",

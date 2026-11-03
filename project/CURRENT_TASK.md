@@ -1,5 +1,34 @@
 # Current Task
 
+- Task ID: none in progress. **SYNC-01 … SYNC-04 are `DONE` locally (2026-11-03, not committed, CI not run).**
+  **SYNC-04 (note history, three-way merge, move/delete/revive, portable paths) delivered in seven verified sub-steps**
+  (`docs/ROADMAP.md` SYNC-04, evidence `docs/ACCEPTANCE.md` SYNC-04, decisions ADR-0060): 04a history (`note_revisions` + content-addressed
+  files in `.atlas/history`, recorded by every revision bump, retention 20 / 90 days / 200 / 64 MiB, hourly prune, history endpoints),
+  04b `atlas/notes/merge.py` (in-repo diff3, property-tested; library evaluation in `DEPENDENCIES.md`), 04c sync `PUT` with `base_hash`,
+  merge, server-saved conflict copies answered `409 conflict`, replay with content, 04d edit-wins/revive/move rules, 04e portable paths
+  (`atlas/notes/portable.py`), 04f note simulation (model + real + conformance + 10 planted defects), 04g docs/openapi/e2e. One new migration
+  (`e7a3c5b1d9f2`, reversible); **it was not applied to the owner's `atlas` database** (tested only on `atlas_test`): the owner's next
+  `atlas-migrate`/stack start applies it, and the SYNC-03 migrations before it if not yet applied. The `web` image still needs a rebuild
+  for the 11m nginx limit.
+- **What the work found (read `RISKS.md` R-40, R-44, R-45):** a replayed *delete* acknowledgement can tombstone an entity another device
+  revived (sim seed 109 at 700 steps; client rule for SYNC-08, model client fixed for every kind); a lone surrogate in a JSON string was a
+  `500` (fixed for all requests); history keeps overwritten and deleted text up to 90 days (documented privacy trade-off, R-44).
+- **Next (smallest logical step): SYNC-05 (resolution log, feed entity, undo)** - its row shape is the response-only `sync.resolution`
+  (rules now include `note_merged`, `path_later_wins`, `path_collision`, `edit_wins_over_delete`; note content is never copied into the log).
+  Then SYNC-06 (devices; meets AUTH-01 at the revoke function). SYNC-07 (Tauri spike, Linux first) is independent. Not built:
+  `reminder_policy`/`preferences` feed entities (owner decision on reminder sync timing), `ETag`/`If-None-Match` on note reads.
+- Interfaces SYNC-05/06/08 must honour: a note `PUT` in sync mode needs `base_hash`; the client keeps the text it based an edit on only as
+  `(revision, hash)` - the server holds the base; `409 conflict` carries `conflict_copy` (the loser is already saved, do not create another);
+  a `2xx` replay may carry `content` (from history) or not (pruned: read the note); `Atlas-Epoch` check and `field_revisions` rules
+  as in the SYNC-03 notes below; any new note write path must call `NoteHistory.record` in the same transaction as the revision bump
+  (`NotesService`, reconciler) or a stale client cannot be merged against that revision.
+- Commands: `./scripts/verify.sh`; sim soaks in `docs/TESTING.md` 10.0/10.0a/10.0b (`ATLAS_SIM_SEEDS`, `ATLAS_SIM_REAL_SEEDS`,
+  `ATLAS_SIM_STEPS`, `ATLAS_SIM_SEED`); `cd apps/web && npm run test:e2e:real`.
+
+---
+
+## Earlier state (SYNC-03 finished, SYNC-04 not started)
+
 - Task ID: none in progress. **SYNC-01, SYNC-02 and SYNC-03 are `DONE` locally (2026-11-03, not committed, CI not run).**
   **SYNC-03 (protocol v1 server) delivered in seven verified sub-steps** (`docs/ROADMAP.md` SYNC-03, evidence
   `docs/ACCEPTANCE.md` SYNC-03): 03a `field_revisions` (+ backfill), 03b `Atlas-Sync`/`426`/instance `sync` block/`epoch`/

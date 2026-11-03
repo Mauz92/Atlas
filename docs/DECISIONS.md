@@ -2954,3 +2954,64 @@ the 5 MiB body; (d) `DELETE` carries `base_revision` as a query parameter. The i
 
 **Not decided here (spike / later):** the Tauri verdict and Electron fallback (SYNC-07, criteria in `ROADMAP.md`),
 the merge library, the batch endpoint, pairing flow, Android background-sync mechanism.
+
+## ADR-0060 — Note history, three-way merge and conflict responses (SYNC-04)
+
+**Status:** ACCEPTED as the implementation of ADR-0059 D3, D5, D6 and D10 for notes (2026-11-03, local, not committed, CI not run).
+Nothing below changes an owner decision; it records the choices the implementation had to make where the protocol text left room.
+Contract: `SYNC_PROTOCOL.md` 6.3, 11; storage rules: `MARKDOWN_STORAGE.md` 4a; evidence: `ACCEPTANCE.md` SYNC-04.
+
+**1. History is a table of metadata plus content-addressed files.** `note_revisions` (migration `e7a3c5b1d9f2`, reversible, metadata
+only) holds one row per retained revision; the text is `.atlas/history/<note_id>/<sha256>.md`. Deviation from the sketch in
+`SYNC_PROTOCOL.md` (`<revision>.md`): content addressing makes a move or delete (a revision bump without a text change) free
+instead of copying up to 5 MiB, makes a file its own integrity check (a damaged file is never used as a base), and makes pruning a
+set difference. Every write path records its revision in the same transaction (create, write, merge, move, folder rename, delete,
+revive, reconcile), **in every mode**, so a sync client can be merged against a revision the web app produced. The text of the
+*new* revision is stored at write time (not the superseded text at the next bump), because an external edit overwrites the old bytes
+before Atlas can copy them. A note that predates the migration is recorded lazily by the first write that finds its current
+revision unrecorded and the file's hash equal to the index hash; older revisions are unavailable (a stale client conflicts).
+Retention: newest 20 always, older ones for 90 days, never more than 200 revisions or 64 MiB of distinct text per note (autosave
+clients create a revision per save, so "everything within 90 days" alone would be unbounded); deleted notes' history goes 90 days
+after the delete. Pruned on every record and by the existing hourly purge job. *Cost:* up to about twice the note bytes for a
+rarely edited note, bounded per note; *privacy:* overwritten and deleted text survives up to 90 days inside the backed-up notes
+root (SECURITY.md 12, R-44).
+
+**2. The merge is in-repo, on `difflib`, and conservative.** Evaluated (AGENTS.md 14, checked 2026-11-03 against the package
+metadata): `merge3` 1.0.0 (Breezy; `GPL-2.0-or-later`, copyleft: unacceptable for the intended distribution), `diff-match-patch`
+20241021 (Apache-2.0, last release 2024-10; character based and its patching is fuzzy by design, the opposite of "never a guess"),
+`three-merge` 0.1.1 (MIT, last release 2020-07, a wrapper over diff-match-patch), `git merge-file` (an external binary the API
+image does not contain). No dependency is added (`DEPENDENCIES.md`). `merge3(base, theirs, ours)` is clean only when every region
+between the lines both sides kept is changed by one side, or identically by both; touching edits conflict. Exact bytes: lines keep
+their own terminator, the final newline is merged separately, nothing is re-terminated. Front matter: the result's block must be
+byte-identical to one side's (the protocol sketch also allowed "parses as YAML"; that needs a YAML parser the project does not
+have, and the stricter rule can only produce more conflict copies, never a wrong merge). Inputs beyond 200 000 lines or 4 000 000
+diff cells are not merged. Properties tested with seeded random cases: identities, symmetry, idempotence, exact union of disjoint
+edits, "right or refused" under duplicate lines, no line lost or resurrected.
+
+**3. The server saves the conflict copy and answers `409 conflict`.** The sketch had the client create the copy after a `409`. A
+server-side copy cannot be lost when the client dies between the `409` and its next request, needs no second request, and makes
+the retry story exact: the copy is a stored side effect, so the answer is recorded under the idempotency key (the one `409` that
+is) and a retry replays it. The incoming text is the one saved (the note keeps the server's text: "overlapping changes never
+overwrite"); `reason` says why (`overlap`, `base_unavailable`, `front_matter`, `too_large`). The web app keeps its own flow
+(`POST /api/notes/{id}/conflict`, ADR-0054).
+
+**4. Edit versus delete, rename versus delete.** As ADR-0059 D6: a stale delete is `409 edit_wins`; any newer revision counts as
+"edited" (a rename too: simpler, conservative, recoverable). An edit of a deleted note revives it, merged into its last text; an
+overlap revives with the last text plus a conflict copy. A **rename of a deleted note is `409 note_deleted`**: a rename carries no
+content worth saving, and resurrecting a note because of a rename would undo a deliberate delete for nothing (ADR-0059 is silent;
+reversible later). A move on a stale base is allowed and, when another device moved the note meanwhile, logged `path_later_wins`.
+
+**5. Replay returns content from history.** The idempotency record keeps the summary (a body can be 5 MiB, keys live 90 days);
+the replay adds `content` from the history entry of the revision the first answer reported, verified against its hash, and omits it
+when that revision was pruned. No second copy of the text is stored anywhere.
+
+**6. Portable paths in sync mode only**, so the web app and existing notes are unchanged: `422 invalid_path` for Windows-reserved
+names, forbidden characters, trailing dot/space, over-long names/paths; case and Unicode-normalisation collisions count as taken.
+
+**7. Two small hardening changes found on the way** (all modes): a JSON string with a lone surrogate was a `500` (the validation
+error echoed it and could not be encoded) and is now a normal `422`; note text containing NUL is a `422` (PostgreSQL cannot index it).
+
+**Consequences.** One migration, one table, one directory; a permanent storage cost and a 90-day memory of deleted text; more
+conflict copies than a smarter merge would give (touching edits, two front-matter edits); no new dependency. Rollback: downgrade the
+migration (files stay, inert); sync mode is opt-in. **Not decided here:** the merge UX (SYNC-11), the resolution log (SYNC-05),
+whether the web app opts into sync mode.

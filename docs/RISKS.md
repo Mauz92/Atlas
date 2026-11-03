@@ -282,9 +282,13 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   simulation invariants "no acknowledged loss" and "no resurrection"; client deletes go to a trash folder; ADR-0059 D4–D7.
 - **SYNC-03 (2026-11-03):** task/project field merge, edit-wins and the structured text conflict are implemented and covered by
   `test_sync_writes.py`, the model/real conformance traces and the v1 simulation (`no_silent_text_loss`, `edit_wins`,
-  `unexpected_rejection`, with a planted defect for each). **Still open:** note content merge/history (SYNC-04), persisted
-  resolution log and undo (SYNC-05: today `sync.resolution` exists only in the response, see R-41).
-- **Owner milestone:** SYNC. **Status:** Mitigating (tasks/projects); Open (notes).
+  `unexpected_rejection`, with a planted defect for each).
+- **SYNC-04 (2026-11-03):** note history, the three-way merge, server-side conflict copies, edit-wins/revive and the move rules are
+  implemented (ADR-0060) and covered by property tests of the merge, 55 integration tests with exact-byte assertions, note
+  conformance traces and the note simulation (`no_silent_overwrite`, `no_acknowledged_note_loss`, `conflict_copy_has_losing_text`,
+  `unique_paths`, `edit_wins`, each with a planted defect). **Still open:** persisted resolution log and undo (SYNC-05: today
+  `sync.resolution` exists only in the response, see R-41); real-device and real-client evidence (SYNC-08/09).
+- **Owner milestone:** SYNC. **Status:** Mitigating.
 
 ### R-29 — Clock skew and clock jumps
 - **Severity/Likelihood:** Medium / High (laptops sleep, phones change zone)
@@ -390,7 +394,10 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   then install the replayed create body as live state.
 - **Mitigation:** the rule of `SYNC_PROTOCOL.md` 8.1 (a 2xx body is historical; the acknowledged entity is read again at the next
   pull) plus remembering a tombstone for ids never held. Encoded in the simulation client; `sync-core` must implement both.
-  **Status:** Mitigating (client work).
+  **Found again by the note simulation (seed 109, 700 steps, SYNC-04):** the same applies to a *delete* acknowledgement (a `204`
+  replayed after another device revived the entity by an edit and this client already pulled that): the tombstone is the user's
+  intent but the entity must be queued for a re-read, or the client keeps a deleted copy of a live entity. The model client does
+  that now for every kind. **Status:** Mitigating (client work).
 
 ### R-41 - Automatic resolutions exist only in the response until SYNC-05
 - **Severity/Likelihood:** Medium / Medium
@@ -399,13 +406,36 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   "changed on another device", and the overwritten value is gone from the server once the idempotency key expires.
 - **Mitigation:** SYNC-05 (next); the wire shape is already final. **Status:** Open (by plan).
 
-### R-42 - Note writes in sync mode are only idempotent, not yet merge- or delete-safe
+### R-42 - Note writes in sync mode were only idempotent, not merge- or delete-safe
 - **Severity/Likelihood:** Medium / Medium
 - **Description:** SYNC-03 gave notes client ids, the live-path index, collision renaming and keys, but a stale note `DELETE` still
-  wins, a `PUT` of a deleted note is still `404`, and a stale `PUT` is a plain `409 stale` (the ADR-0054 keep-mine flow), so a sync
-  client must not rely on rule 4 or merge for notes until SYNC-04. A replayed note write returns the summary, not the content.
-- **Mitigation:** SYNC-04 (history, three-way merge, revive, move/delete rules); the sync-mode requirements (`base_revision` on
-  delete/move, rejected `base_hash`) keep the contract forward-compatible. **Status:** Open (by plan).
+  won, a `PUT` of a deleted note was `404`, a stale `PUT` was a plain `409 stale`, and a replayed note write returned the summary
+  without the content.
+- **Mitigation / outcome:** fixed by SYNC-04 (2026-11-03): history, three-way merge, server-side conflict copies, stale `DELETE` is
+  `409 edit_wins`, a `PUT` of a deleted note revives it, replay returns the content from history, move rules and portable paths.
+  Residual limits are R-44 (history retention) and R-45 (conflict volume). **Status:** Closed (server side; clients are SYNC-08/09).
+
+### R-44 - Note history keeps overwritten and deleted text, and uses disk
+- **Severity/Likelihood:** Medium / High (certain by design)
+- **Description:** to merge, the server keeps the text of recent revisions (`.atlas/history`): the newest 20 plus 90 days, bounded
+  per note (200 revisions, 64 MiB of distinct text), the history of a deleted note for 90 days after the delete. So a note the user
+  deletes or rewrites is still on the server (and in every backup) for that long, up to roughly twice the note bytes for a rarely
+  edited note, and the privacy expectation "deleted means gone" does not hold for 90 days. History also grows disk use with
+  edit volume (autosave makes a revision per save, hence the bounds).
+- **Mitigation:** documented where an operator looks (`OPERATOR_GUIDE.md`, `.env.example`, `SECURITY.md` 12); the windows are
+  settings; pruning on write and in the hourly job (tested); a pruned base degrades to a conflict copy, never a wrong merge. To
+  remove a note completely the operator removes its directory under `.atlas/history` and the note from backups. No UI surfaces it
+  yet (SYNC-11 / Settings could show history size). **Status:** Accepted, documented.
+
+### R-45 - The merge is conservative: more conflict copies than a smarter merge would make
+- **Severity/Likelihood:** Low / High
+- **Description:** edits that touch (adjacent lines), two edits to different front-matter keys, a stale base that was pruned, a
+  pre-migration base, or a note that changed line endings wholesale are conflicts, so the user sees `name (conflict ...).md` files
+  in situations where a human would merge easily. Each is safe (nothing is lost) but noisy; the simulation (4 clients, 10-25 line notes,
+  edit positions uniformly random, 100 seeds) produced about 3.4 conflict copies per clean merge: a pessimistic workload, since
+  real edits cluster less than uniform random positions in short notes.
+- **Mitigation:** none needed for safety; quality improvements (word-level merge inside a conflicting line, YAML-aware front-matter
+  merge) are optional later work and need their own property tests; the resolve UI is SYNC-11. **Status:** Accepted.
 
 ### R-43 - Idempotency table growth and the purge scan
 - **Severity/Likelihood:** Low / Medium
@@ -492,4 +522,5 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 | 2026-11-03 | SYNC-03 | R-37 mitigated (row lock before the revision check on tasks, projects, notes; lock order documented; tests). R-34 fixed in the shipped nginx config with a static and a live-container test; JSON-escaping worst case recorded. Reconcile now removes a note exactly like `NotesService.delete` (project links dropped and announced). New findings, all fixed: reconcile-vs-edit lock order, task-into-deleted-project race, `FOR UPDATE` vs foreign-key deadlock, nginx 6m too small for escaped notes (now 11m). Harness: model-sim seed 482 was a missing client rule (an acknowledgement, possibly a replay, is a historical snapshot), not a server flaw; fixed in the model client, protocol rule recorded in `SYNC_PROTOCOL.md` section 8.1. |
 | 2026-11-03 | SYNC-02 | R-37 added: concurrent PATCHes with one `base_revision` both succeed (lost update). Also learned: a retried request must be byte-identical including `base_revision`, because the server fingerprints the whole body; a client that re-reads the base revision on retry gets `409` on its own key. The production `fullResync` hook is still not supplied (model client implements it by listing). |
 | 2026-11-03 | SYNC-01 | R-34 verified as a real defect (shipped nginx rejects bodies above 1 MiB with `413`; fix proposed, not applied). R-32 ordering proven by a concurrency test. R-30: server side of `cursor_ahead` delivered. New finding: `NotesReconciler` tombstones a removed note but, unlike `NotesService.delete`, does not drop its `note_projects` rows or announce the link removal (pre-existing; recorded in `ROADMAP.md` SYNC-03 scope, not changed in SYNC-01). |
+| 2026-11-03 | SYNC-04 (note history and merge) | R-42 closed (server side); R-28 and R-40 updated (the note simulation found that a replayed *delete* acknowledgement needs the same re-read rule as a create, seed 109); R-44 (history keeps overwritten and deleted text; disk) and R-45 (conservative merge, conflict-copy volume) added. |
 | 2026-11-03 | SYNC-03 (protocol v1) | R-38 (snapshot walk vs floor, sim seed 29) found and closed; R-39 (restore regrowth, `epoch`), R-40 (late ack vs tombstone, sim seed 681), R-41 (resolutions response-only until SYNC-05), R-42 (notes not merge/delete-safe until SYNC-04), R-43 (idempotency purge scan) added. R-28, R-29, R-30, R-31 moved to Mitigating (server side). |

@@ -61,6 +61,16 @@ the path), `title`,
 > Authoritative content is the `.md` file. `content_hash`/`revision` detect stale writes and
 > external edits. See `MARKDOWN_STORAGE.md`.
 
+**NoteRevision** (`note_revisions`, SYNC-04, migration `e7a3c5b1d9f2`) — owner: PostgreSQL (metadata); text owner: the history files
+`note_id` + `revision` (primary key; FK to `notes` `ON DELETE CASCADE`), `user_id` (FK, denormalised so a read is scoped without a join),
+`content_hash` (SHA-256 of the revision's UTF-8 text), `size_bytes`, `path` (the note's path at that revision), `reason`
+(`create` | `write` | `merge` | `move` | `delete` | `revive` | `external` | `legacy`), `created_at`.
+One row per retained revision of every note, written in the same transaction as the revision bump (create, write, merge, move,
+folder rename, delete, revive, external edit found by reconcile); the text is
+`<notes-root>/.atlas/history/<note_id>/<content_hash>.md`, shared by revisions with the same text. Retention and pruning:
+`SYNC_PROTOCOL.md` 6.3, `MARKDOWN_STORAGE.md` 4a. A row whose file is missing, damaged or pruned is *unavailable*: it is listed
+but never used as a merge base. Rolling the migration back drops the table and leaves the files (inert).
+
 **NoteLink** — owner: PostgreSQL (derived index)
 `id`, `source_note_id`, `target_path`, `target_note_id` (nullable, unresolved if null),
 `link_text`, `created_at`.
@@ -327,10 +337,10 @@ User 1─* NotificationDevice
 
 ## 7. Open Items
 
-- **Local-first sync additions (PROPOSED, not implemented):** `field_revisions` on tasks and projects, `revision` on
-  reminder policies and preferences, `sync_resolutions`, `devices`, note history files, a partial unique index on live
-  note paths, tombstone-only change-log retention. Shapes and rules: [`SYNC_PROTOCOL.md`](SYNC_PROTOCOL.md);
-  decisions: ADR-0059.
+- **Local-first sync additions:** done - `field_revisions` on tasks and projects (SYNC-03), the partial unique index on live note
+  paths (SYNC-03), tombstone-only change-log retention (SYNC-03), `note_revisions` plus the history files (SYNC-04). Still to
+  come: `revision` on reminder policies and preferences, `sync_resolutions` (SYNC-05), `devices` (SYNC-06). Shapes and rules:
+  [`SYNC_PROTOCOL.md`](SYNC_PROTOCOL.md); decisions: ADR-0059, ADR-0060.
 
 - Board column model vs. task status mapping to be finalised in M4.
 - `external_id` task-provider mapping deferred until external task providers are in scope.

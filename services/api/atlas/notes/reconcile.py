@@ -74,17 +74,20 @@ class NotesReconciler:
                 self.session.add(note)
                 await self.session.flush()
                 await self.service.reindex_note(note, file)
+                await self.service.history.record(note, file.content, reason="external")
                 announce.append((note, ChangeOperation.UPSERT))
                 summary.added += 1
             elif note.deleted_at is not None:
                 note.deleted_at = None
                 note.revision += 1
                 await self.service.reindex_note(note, file)
+                await self.service.history.record(note, file.content, reason="external")
                 announce.append((note, ChangeOperation.UPSERT))
                 summary.added += 1
             elif note.content_hash != file.content_hash and await self._still_differs(note, file):
                 note.revision += 1
                 await self.service.reindex_note(note, file)
+                await self.service.history.record(note, file.content, reason="external")
                 announce.append((note, ChangeOperation.UPSERT))
                 summary.updated += 1
             else:

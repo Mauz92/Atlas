@@ -25,7 +25,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
 | **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `DONE` (local PASS; CI `e2e-real` NOT RUN) | UX-01…UX-03 `DONE` 2026-11-02, UX-04…UX-08 `DONE` 2026-11-03; J1–J7 and the axe sweep pass on the finished UI. The separate `AUTH-01` row (account recovery) stays `BACKLOG` and is not part of this exit |
-| **SYNC** | **Local-first sync** (ADR-0055, ADR-0059 ACCEPTED, `SYNC_PROTOCOL.md`) | `IN_PROGRESS` (SYNC-01, SYNC-02, SYNC-03 `DONE` locally 2026-11-03: server protocol v1 for tasks, projects and note identity; next SYNC-04 note history/merge, SYNC-05 resolution log, SYNC-06 devices) | Worked **first** (owner priority order). Server protocol + deterministic multi-client simulation pass before any native-shell task; Tauri spike verdict before SYNC-09/10 |
+| **SYNC** | **Local-first sync** (ADR-0055, ADR-0059 ACCEPTED, `SYNC_PROTOCOL.md`) | `IN_PROGRESS` (SYNC-01…SYNC-04 `DONE` locally 2026-11-03: server protocol v1 for tasks, projects and notes incl. history/merge; next SYNC-05 resolution log, SYNC-06 devices) | Worked **first** (owner priority order). Server protocol + deterministic multi-client simulation pass before any native-shell task; Tauri spike verdict before SYNC-09/10 |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -902,7 +902,7 @@ none is `DONE` until its tests ran. WIP limit: one task at a time except the spi
 | SYNC-01 | Feed correctness fixes (no protocol change) | — | `DONE` (2026-11-03) |
 | SYNC-02 | Simulation harness: model server, fault transport, invariants, conformance vs real server | — (uses current API) | `DONE` (2026-11-03) |
 | SYNC-03 | Protocol v1 server: client ids, sync mode, field merge, `include=data`/`types`/snapshot/retention, versioning | SYNC-01, SYNC-02, ADR-0059 D1–D4, D6, D9, D11–D12 | `DONE` (2026-11-03, local, 7 sub-steps 03a-03g all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-03). Notes: identity/create/idempotency only, content semantics are SYNC-04 |
-| SYNC-04 | Note history and three-way merge, move/delete/revive rules, portable paths | SYNC-03, ADR-0059 D3, D5, D10 | `BACKLOG` (ADR-0059 accepted) |
+| SYNC-04 | Note history and three-way merge, move/delete/revive rules, portable paths | SYNC-03, ADR-0059 D3, D5, D10 | `DONE` (2026-11-03, local, 7 sub-steps 04a-04g all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-04; ADR-0060) |
 | SYNC-05 | Resolution log, feed entity and undo | SYNC-03, ADR-0059 D7 | `BACKLOG` (ADR-0059 accepted) |
 | SYNC-06 | Device credentials: table, bearer auth, rotation, revoke, Settings → Devices | SYNC-03, ADR-0059 D8; AUTH-01 consumes the revoke function | `BACKLOG` (ADR-0059 accepted) |
 | SYNC-07 | Tauri 2 spike (Linux, Windows, Android) and Electron-fallback decision | — (hardware: Windows machine, Android device) | `READY` for Linux; Windows/Android `BLOCKED` on hardware |
@@ -1008,9 +1008,42 @@ paths (SYNC-04); `sync_resolutions` table, feed entity and undo (SYNC-05); devic
 token_revoked` (SYNC-06); `reminder_policy`/`preferences` feed entities (not scheduled: no owner decision on timing; tracked in
 `SYNC_PROTOCOL.md` section 3 as [NEW]).
 `GET /api/tasks/changes` is marked `deprecated` in OpenAPI and its docstring (frozen; the web engine still uses it, removal waits for SYNC-08).
-- **SYNC-04** also: nginx/compose body limit for 5 MiB notes verified; merge library licence/maintenance check recorded in
-  `DEPENDENCIES.md`; history included in backup and export sets (ADR-0041/0042 amended).
+- **SYNC-04** also: nginx/compose body limit for 5 MiB notes verified (SYNC-03 pre-work); merge library licence/maintenance check recorded in
+  `DEPENDENCIES.md` (done); history is included in the backup set because the archive walks the notes root; the *export* set
+  carries current notes only (history is operational data, `ACCEPTANCE.md` SYNC-04).
 - **SYNC-06** also: Settings → Devices; rate limit keyed by device; token never in logs/OpenAPI examples; revocation tested.
+
+### SYNC-04 — Note history, three-way merge, move/delete/revive rules, portable paths (`DONE` locally 2026-11-03)
+
+Contract: `SYNC_PROTOCOL.md` 6.3 and 11; decisions: ADR-0060; storage: `MARKDOWN_STORAGE.md` 4a. **Problem.** After SYNC-03 a stale note
+`PUT` was a plain `409`, a stale `DELETE` won, a `PUT` of a deleted note was `404`, a replay returned no content and paths were
+unchecked for Windows/Android (R-42). **Plan as executed: ordered, independently verified sub-steps** (one uncommitted tree; targeted
+suites after each step, full `verify.sh` at the end):
+
+| Step | Content | Migration | Status |
+|---|---|---|---|
+| 04a | Note history: `note_revisions` table, content-addressed files `.atlas/history/<note_id>/<hash>.md`, recorded by **every** revision bump in every mode (create, write, move, folder rename, delete, revive, reconcile), lazy recording of legacy notes, retention (20 / 90 days / 200 revisions / 64 MiB), pruning on write and in the hourly purge job, `GET .../history[/{revision}]`, covered by backups | `e7a3c5b1d9f2` (reversible; tested up/down and with a populated notes table) | `DONE` |
+| 04b | Merge: `atlas/notes/merge.py` (line-based diff3 on `difflib`, final newline merged separately, front-matter and size guards); library/licence evaluation recorded in `DEPENDENCIES.md` (no dependency added); property tests (identities, symmetry, idempotence, union of disjoint edits, "right or refused" under duplicate lines) | none | `DONE` |
+| 04c | Sync `PUT`: `base_hash` required, merge against the retained and hash-verified base, conflict copies saved by the server and answered `409 conflict` (stored under the key so a retry replays), external-edit adoption under the row lock, replay returns the content from history, NUL/surrogate hardening | none | `DONE` |
+| 04d | Delete/revive/move: stale `DELETE` ⇒ `409 edit_wins`, delete of a deleted note `204`, `PUT` of a deleted note revives (merged into its last text, `name (2).md` if the path was reused), move independent of content with `path_later_wins`, `path_exists` by case/normalisation, `note_deleted` | none | `DONE` |
+| 04e | Portable paths in sync mode: `atlas/notes/portable.py` (reserved names, forbidden characters, trailing dot/space, 240 chars / 255 bytes, case + NFC collisions), conflict-copy names shortened | none | `DONE` |
+| 04f | Simulation: `model_notes.py`, note-aware `SyncSimClient` (working copy pinned to its base, hydration, coalescing), invariants `no_silent_overwrite`, `no_acknowledged_note_loss`, `conflict_copy_has_losing_text`, `unique_paths`/`portable_paths`, edit-wins for notes; 10 planted defects; 6 conformance traces model vs real; real-API runs on a per-test notes folder | none | `DONE` |
+| 04g | Docs, `openapi.json`/`schema.d.ts`, `.env.example`/compose/operator guide for `NOTE_HISTORY_*`, mocked and real-stack e2e | none | `DONE` |
+
+**Acceptance (all verified, see `ACCEPTANCE.md`):** non-overlapping edits merge silently and keep CRLF/LF/final newline/UTF-8/front matter
+byte for byte; overlapping or uncertain edits never overwrite and are saved whole as a conflict copy named in the `409`; a pruned,
+damaged or mismatching base is a conflict, never a guess; no acknowledged note write is lost (simulation, model and real API);
+stale delete refused / edit revives; path collisions renumber, invalid paths are refused, case/normalisation collisions are
+collisions; replay of a merged save returns the same content; history is user-scoped, bounded, pruned and in backups; non-sync
+behaviour and the web app's autosave/conflict-copy flow are unchanged (existing suites green, only the SYNC-03 note tests were
+adjusted for the `base_hash` contract).
+
+**Deviations from the sketch, all in ADR-0060:** content-addressed history files; the server (not the client) saves the conflict copy;
+front matter must be byte-identical to one side (no YAML parser); a rename of a deleted note is refused; `ETag`/`If-None-Match` not built.
+**Found by the work:** a lone surrogate in a JSON string was a `500` (fixed, all modes); a replayed *delete* acknowledgement can
+tombstone an entity another device revived (R-40, client rule, model client fixed). **Not in SYNC-04:** resolution log and undo
+(SYNC-05; `note_merged`, `edit_wins_over_delete`, `path_*` are response-only like the others), device credentials (SYNC-06),
+clients (SYNC-08/09), conflict UI (SYNC-11), word-level merge or YAML-aware front-matter merge (R-45).
 
 ### SYNC-07 plan — Tauri 2 spike (throwaway code, in a scratch directory, not in the repo tree)
 Versions looked up on 2026-11-03 (GitHub releases API): `tauri` 2.12.5 (2026-10-21), `tauri-cli` 2.12.4, plugin `sql` 2.6.0
@@ -1047,6 +1080,44 @@ Windows) is rejected: two shells double the platform bugs.
 (two OS versions if possible), and for S8 a device with an aggressive vendor battery manager.
 
 ---
+
+## Path to personal use and to native clients (owner request 2026-11-03)
+
+**Where we are (verified locally, CI never run).** The web app covers notes (Markdown files, autosave, live preview,
+history), tasks, projects, board, search, reminders, settings, backups and export for ONE owner on ONE server.
+Not built or not verified: calendars (REQ-007/008/009 `NOT RUN`, M5-00 blocked on real accounts), offline use in
+the UI (R-22: mutations are online-only), real push delivery (REQ-011), the sync *clients* (only the server side,
+SYNC-01…04, exists), account recovery in the UI (AUTH-01), HTTPS (operator-provided), and every check on a real
+second device. `RELEASE.md` still labels the release "not production-ready"; that label is accurate for calendars
+and devices, not for the notes/tasks core.
+
+**Phase 0 — Personal alpha (web, own server).** Usable for your own notes and tasks once these hold:
+P0-1 build the current Compose images and smoke-test the stack on the current code (not re-run since the UX work;
+the `web` image also needs the 11m nginx rebuild); P0-2 HTTPS (Tailscale serve or a reverse proxy; needed for
+service workers, push and install-as-app); P0-3 scheduled backups on, one restore drill on the real data;
+P0-4 run `e2e-real` on GitHub Actions once (needs `master` pushed; owner's decision) and re-score REQ-005/006;
+P0-5 AUTH-01 (recovery) or keep the `atlas-admin` CLI; P0-6 a two-week dogfood log of defects. Limits to accept:
+no calendars, online only, one user.
+
+**Phase 1 — Finish the sync server.** SYNC-05 (resolution log + undo), SYNC-06 (device credentials; AUTH-01 shares
+the revoke function), SYNC-07 (Tauri 2 spike on Linux first; Windows and Android need your hardware).
+**Phase 2 — Shared client core.** SYNC-08 `packages/sync-core` (TS, framework-free: queue, pull/apply, rebase,
+backoff, conflict states) tested by the SYNC-02 simulation against the real server; the web app keeps working.
+**Phase 3 — Desktop (Linux + Windows).** SYNC-09: Tauri shell around the existing UI, SQLite store, a notes
+folder of real `.md` files with scan-on-start/focus, OS keystore for the device token, device sign-in, per-user
+Windows install (no admin), signed auto-update. Costs/limits: Windows code signing is a paid certificate (an
+unsigned installer triggers SmartScreen warnings; optional for personal use); Linux AppImage/deb needs no signing.
+**Phase 4 — Android.** SYNC-10: Tauri 2 Android, or the installable web app if the spike fails (A-09); local
+reminders on-device, FCM push (M8-04, free) for server-driven alerts, sideloaded APK for personal use (Play Store
+has a one-time developer fee); notes live in app-private storage unless the spike proves a shared folder works.
+**Phase 5 — Conflict UI and release gate.** SYNC-11 (text-conflict resolver, "changed on another device" undo,
+devices list), SYNC-12 (real-device matrix, restore with devices attached).
+**Parallel / after:** calendars (M5-00 → M5-03/04/05/07, then M6) need real Google and Microsoft accounts;
+the Python version decision (A-07); iOS is out of scope.
+
+**Order (owner priority Sync → Auth → Calendar → Core, 2026-11-03):** Phase 1 → AUTH-01 → Phase 2 → Phases 3–4 with
+Calendar interleaved when accounts are available → Phase 0 items P0-4 and P0-1 early because every later step
+depends on CI and the Compose stack being green.
 
 ## Immediate Next Tasks
 

@@ -1,9 +1,9 @@
 # Atlas — Local-first Sync Protocol
 
-**Status:** design ACCEPTED (ADR-0059, 2026-11-03). **Server protocol v1 is implemented by SYNC-03 (2026-11-03, local, not
-committed, CI not run)** except the parts marked **[PLANNED]** below, which belong to SYNC-04 (note history/merge/edit-wins for
-notes), SYNC-05 (resolution log, undo), SYNC-06 (device credentials) and SYNC-08 (clients). The table "Implementation status"
-says, section by section, what is behaviour today and what is still a target; everything else in this file is the contract.
+**Status:** design ACCEPTED (ADR-0059, 2026-11-03). **Server protocol v1 is implemented by SYNC-03 and SYNC-04 (2026-11-03, local,
+not committed, CI not run)** except the parts marked **[PLANNED]** below, which belong to SYNC-05 (resolution log, undo), SYNC-06
+(device credentials) and SYNC-08 (clients). The table "Implementation status" says, section by section, what is behaviour today
+and what is still a target; everything else in this file is the contract.
 **Scope:** how a local-first client (Tauri desktop, Tauri Android; ADR-0055) and the existing web app keep
 tasks, projects, notes and their links converged with the self-hosted server. Calendar-provider sync is
 `CALENDAR_SYNC.md`; note file rules are `MARKDOWN_STORAGE.md`; entity fields are `DATA_MODEL.md`.
@@ -12,15 +12,16 @@ Legend: **[EXISTS]** verified by reading code/tests on 2026-11-03; **[GAP]** nee
 wrong at the time of the analysis (§2 is a historical baseline); **[NEW]** specified; **[DONE]** implemented and tested by
 SYNC-03; **[PLANNED]** specified, owned by a later task; **[UNVERIFIED]** not checked.
 
-### Implementation status (SYNC-03, 2026-11-03)
+### Implementation status (SYNC-03 and SYNC-04, 2026-11-03)
 
 | Section | Status | Notes |
 |---|---|---|
 | §4 feed: `include=data`, `types=`, snapshot at `since=0`, `head`/`floor`, `resync_reason` | **[DONE]** | plus the `snapshot=true` continuation parameter (§4.3a, found by the simulation) |
 | §5 retention (upserts kept, tombstones 90 days, floor) and idempotency-key TTL | **[DONE]** | `CHANGE_RETENTION_DAYS` default 90, minimum 30; keys expire with the tombstones |
-| §6.1 sync mode: header, required key/base, unknown fields `422`, client ids, `sync` block, `Idempotency-Replayed` | **[DONE]** for tasks, projects, notes | notes: summary replay, see §6.3 |
+| §6.1 sync mode: header, required key/base, unknown fields `422`, client ids, `sync` block, `Idempotency-Replayed` | **[DONE]** for tasks, projects, notes | notes: replay returns the summary plus the content from history, see §6.3 |
 | §6.2 task/project field merge, edit-wins on `DELETE`, revive on `PATCH` | **[DONE]** | resolutions are returned in the response only; storage and undo are SYNC-05 |
-| §6.3 note create (client id, collision rename), idempotent note writes | **[DONE]** | `base_hash`, three-way merge, history, stale-delete `edit_wins`, revive on `PUT`, move rules, portable paths: **[PLANNED]** SYNC-04 |
+| §6.3 note create (client id, collision rename), idempotent note writes | **[DONE]** SYNC-03 | |
+| §6.3 note history, `base_hash`, three-way merge, conflict copies, stale-delete `edit_wins`, revive on `PUT`, move rules, portable paths, replay with content, `GET .../history` | **[DONE]** SYNC-04 | ADR-0060; `resolution` objects are response-only until SYNC-05 (R-41); `ETag`/`If-None-Match` on `GET /api/notes/{id}` is **not** implemented (not needed by any client yet) |
 | §6.4 links, §6.5 ordering | unchanged | |
 | §7 resync and restore: server side (`below_floor`, `cursor_ahead`, snapshot, `epoch`, `atlas-admin record-restore`) | **[DONE]** | client behaviour (7.3 shadow walk, 7.4 confirmation, 7.5 storm control) is modelled by the simulation client, **[PLANNED]** in `sync-core` (SYNC-08); per-device rate limits need device ids (SYNC-06) |
 | §8 errors | **[DONE]** for the codes in §8.1 reachable without devices | `401 token_revoked`, `403 forbidden_scope`, `429` per device: SYNC-06 |
@@ -174,8 +175,7 @@ snapshot/retention changes of §4/§5). In sync mode:
 
 ### 6.1 Common
 
-- `Idempotency-Key: <uuid>` is **required** on every write (add the missing support to note create / update /
-  move / delete). Same key + same body ⇒ the stored response is replayed (`Idempotency-Replayed: true`). Same
+- `Idempotency-Key: <uuid>` is **required** on every write (note create / update / move / delete included, SYNC-03c). Same key + same body ⇒ the stored response is replayed (`Idempotency-Replayed: true`). Same
   key + different body ⇒ `409 idempotency_mismatch` (a client bug; do not retry). Keys are retained for at least
   the tombstone retention (job to add; today none expires).
 - `base_revision` is **required** on update / delete / move (today optional ⇒ blind overwrite).
@@ -189,7 +189,8 @@ snapshot/retention changes of §4/§5). In sync mode:
 - Errors use `{error: <code>, detail, current_revision?, conflicts?, entity?, resolution?}`. Codes in §8. Implemented codes:
   `idempotency_key_required`, `base_revision_required`, `unknown_fields` (`fields`), `idempotency_mismatch`, `id_exists`,
   `stale` (also: a base from the future), `conflict`, `edit_wins`, `not_found`, `path_exists`, `sync_version_unsupported`,
-  `epoch_mismatch`. Validation errors other than the above keep the framework's `422`/`400` bodies.
+  `epoch_mismatch`; notes (SYNC-04): `base_hash_required`, `invalid_path` (`reason`), `note_deleted`, and `conflict` with
+  `reason` and `conflict_copy` (below). Validation errors other than the above keep the framework's `422`/`400` bodies.
 - `DELETE` carries its base as the query parameter `base_revision` (it has no body). `Idempotency-Replayed: true` marks a replay.
 - Creates also accept `id` outside sync mode (additive; the web app does not send it). Replay by id is recognised only for an
   *untouched* entity (revision 1, live, equal fields): once edited, the original result cannot be reconstructed and the id is
@@ -239,49 +240,77 @@ simulation scenario, not assumed.
 
 ### 6.3 Notes
 
-**SYNC-03 delivered** the identity and create rules, idempotent note writes and the live-path index; everything about content
-(`base_hash`, merge, history), stale-delete `edit_wins`, revive-on-`PUT`, move rules and portable paths is **[PLANNED]** SYNC-04.
-In sync mode today: a note write needs an `Idempotency-Key`; `PUT`/`move`/`DELETE` need `base_revision` (not yet checked for
-move/delete); unknown body fields are `422` (so `base_hash` is not accepted until SYNC-04 adds it); a path taken by a live note
-becomes `name (2).md` on create with a `path_collision` entry in `sync.resolution`; a create with a client `id` is always a new
-row (the partial unique index `uq_notes_user_id_path_live`, D3, lets it share a path with a tombstone), while a create without
-one still revives a tombstone at that path under its old id (task links come back). The idempotency record of a note write holds
-the note **summary and `sync` block, not the content** (a body can be 5 MiB and keys live 90 days): a replay returns that
-summary with `Idempotency-Replayed: true`, which is a historical snapshot like every 2xx body (§8.1).
+**SYNC-03** delivered identity, create, idempotent writes and the live-path index; **SYNC-04** delivers content: history,
+`base_hash`, the three-way merge, conflict copies, edit-wins, revive, move rules, portable paths and replay with content. In sync
+mode a note write needs an `Idempotency-Key`; `PUT` needs `base_revision` **and** `base_hash` (`422 base_hash_required`);
+`move`/`DELETE` need `base_revision`; unknown body fields are `422`. A path taken by a live note (or differing from one only by
+case or Unicode normalisation) becomes `name (2).md` on create with a `path_collision` entry in `sync.resolution`. A create with a
+client `id` is always a new row (the partial unique index `uq_notes_user_id_path_live`, D3, lets it share a path with a
+tombstone), while a create without one still revives a tombstone at that path under its old id (task links come back).
 
 Identity: the note `id` (client-generated allowed) is the identity; `path` is a mutable simple field.
 
-| Operation | Endpoint (existing) | Sync-mode additions |
+| Operation | Endpoint (existing) | Sync-mode behaviour |
 |---|---|---|
-| Create | `POST /api/notes` `{path, content, id?}` | `id`; path already taken by a live note ⇒ server picks `name (2).md` and logs `path_collision` (response carries the final path; the client renames its local file) |
-| Content update | `PUT /api/notes/{id}` `{content, base_revision, base_hash}` | `base_hash` required; merge below |
-| Move / rename | `POST /api/notes/{id}/move` `{path, base_revision}` | independent of content (a stale revision does not reject a move); target taken ⇒ `409 path_exists`; two devices moving the same note ⇒ later wins, logged |
-| Delete | `DELETE /api/notes/{id}` | `base_revision` required; stale ⇒ `409 edit_wins` (rule 4); the file is moved to `.atlas/trash` as today |
-| Edit of a deleted note | `PUT` | revive: the content is restored at its old path (or `name (2).md` if taken), logged `edit_wins_over_delete` |
-| Read | `GET /api/notes/{id}` | unchanged; `ETag: "<content_hash>"` and `If-None-Match` added so a client with the same hash gets `304` |
-| History | `GET /api/notes/{id}/history`, `GET /api/notes/{id}/history/{revision}` | [NEW] list and read retained revisions (also serves undo and users) |
+| Create | `POST /api/notes` `{path, content, id?}` | `id`; path taken ⇒ `name (2).md` + `path_collision`; path not portable ⇒ `422 invalid_path` |
+| Content update | `PUT /api/notes/{id}` `{content, base_revision, base_hash}` | merge below; response = the note with the resulting `content`, `sync.merged` |
+| Move / rename | `POST /api/notes/{id}/move` `{path, base_revision}` | independent of content (a stale revision does not reject a move; a base from the future is `409 stale`); target taken (case and normalisation included) ⇒ `409 path_exists`; another device already moved it ⇒ later wins, `path_later_wins`; a deleted note ⇒ `409 note_deleted` (a rename alone does not bring a note back) |
+| Delete | `DELETE /api/notes/{id}?base_revision=` | stale ⇒ `409 edit_wins` with the live note's summary (rule 4); deleting a deleted note is `204`; the file moves to `.atlas/trash` as always |
+| Edit of a deleted note | `PUT` | revive (rule 4): the text is merged into the note's last text, restored at its old path (`name (2).md` + `path_collision` if taken), `edit_wins_over_delete` |
+| Read | `GET /api/notes/{id}` | unchanged |
+| History | `GET /api/notes/{id}/history`, `GET /api/notes/{id}/history/{revision}` | list (newest first, `available`) and read retained revisions; deleted notes included (recovery); another user's note is `404` |
 
-**Three-way merge** (`PUT` in sync mode, when `base_revision != revision`):
+**Three-way merge** (`PUT` in sync mode), under the note's row lock, so two saves from one base are strictly ordered:
 
-1. The server looks up the retained content for `base_revision` and checks `sha256 == base_hash`. Missing or
-   mismatching ⇒ no merge is attempted: `409 conflict (reason=base_unavailable)`, the client sends the conflict
-   copy path (as ADR-0054 today). Never merged on a guess.
-2. `merge3(base, theirs=server_current, ours=incoming)`, line-based. A clean merge ⇒ write atomically, new
-   revision, response `{merged: true, content, revision, resolution}`; the merged text is returned so the client
-   replaces its file. The *pre-merge* current content is retained in history (recoverable). Any overlap ⇒ `409
-   conflict (reason=overlap)` with `{server_revision, server_hash}`; client keeps its text and creates the
-   conflict copy (`POST /notes/{id}/conflict`) — today's behaviour.
-3. Safety checks before accepting a clean merge: result is valid UTF-8, ≤ `MAX_NOTE_BYTES`, front matter (if
-   any in either side) still parses as YAML or is byte-identical to one side; otherwise treated as overlap.
-   Merge algorithm/library is chosen in SYNC-04 after a licence and behaviour check (`git merge-file` as an
-   external tool, a maintained diff3 library, or a documented in-repo implementation); **not yet chosen**.
-4. History: last 20 revisions **and** everything newer than 90 days, stored as files under
-   `<notes-root>/.atlas/history/<note_id>/<revision>.md` (UTF-8 bytes, hash in an index row), written in the same
-   operation as the revision bump. Pruned by a job. History is covered by backups (extend ADR-0041 scope).
+1. A note deleted earlier is revived first (below). A `base_revision` above the note's is `409 stale`.
+2. An edit made on the server's file system and not yet reconciled is taken as a revision now (it is what reconcile would do), so
+   the merge sees it and history holds it.
+3. `base_revision == revision`: `base_hash` must be the note's hash, else `conflict (base_unavailable)`. Same text ⇒ no-op, no
+   revision bump; otherwise an ordinary write.
+4. `base_revision < revision`: the retained text of `base_revision` is read from history and its hash **must equal `base_hash`**;
+   a base that is not retained, damaged or different ⇒ `conflict (base_unavailable)`. Never merged on a guess.
+   - client text equals the base (nothing changed) ⇒ `200`, no bump, `sync.merged` iff the current text differs from what the
+     client holds;
+   - `merge3(base, current, incoming)` (`MARKDOWN_STORAGE.md` section 4a) clean and different from the current text ⇒ written as
+     the next revision (reason `merge`), `200`, `sync.merged = true` iff the result differs from the incoming text,
+     `sync.resolution = [{rule: note_merged, kept_revision}]`; clean and equal to the current text ⇒ `200`, no bump;
+   - not clean (overlap, front matter that would be assembled from two sides, too large) ⇒ **conflict**.
+5. **Conflict** (`409`, `error: conflict`): *nothing is applied to the note*; the **incoming text is saved as a conflict copy**
+   `<name> (conflict YYYY-MM-DD HHMMSS).md` beside it (a new note, announced on the feed like any create) and the body says so:
+   `{error, detail, reason: overlap|base_unavailable|front_matter|too_large, current_revision, current_hash, conflicts:
+   [{field: "content", reason: "text_conflict", server_revision}], conflict_copy: {id, path, revision, content_hash}}`. The copy is
+   a side effect, so the answer is stored under the idempotency key: a retry replays the same `409` and the same copy, never a
+   second one. The client keeps no local state for that edit except the pointer to the copy; the note shows the server's text and
+   the copy is the resolve action (SYNC-11). *This replaces the earlier sketch in which the client created the copy with
+   `POST /notes/{id}/conflict`; that endpoint stays for the web app (ADR-0054).*
+6. **Revive** (the note is deleted): the text it returns with is `merge3(base, last text, incoming)` when the base is the last text
+   or retained and the merge is clean; incoming text alone when the base *is* the last text; **overlap** ⇒ the note returns with its
+   last text and the incoming text becomes a conflict copy (`409 conflict`, the note is live again: edit wins over delete). A note
+   deleted before history existed has no retained last text (its text is in `.atlas/trash`): nothing live is overwritten, so the
+   client's text is taken. Always `resolution: edit_wins_over_delete` (+ `note_merged`, + `path_collision`).
+7. Safety checks of a clean merge: valid UTF-8 (the request is rejected earlier: `422` for a lone surrogate or NUL), at most
+   `MAX_NOTE_BYTES`, and **the front-matter block of the result is byte-identical to one of the two sides'** (stricter than "parses
+   as YAML": no YAML dependency, and two sides editing different front-matter keys conflict). Line endings and the final newline
+   are preserved exactly (`MARKDOWN_STORAGE.md` 4a).
 
-Reconcile (external edit on the server filesystem) records a feed change for every revision bump (SYNC-01) and
-retains the pre-edit content in history when the previous file bytes are known (they are not if the file was
-changed before the first reconcile; then there is no base and a stale client conflicts).
+**Replay** (same `Idempotency-Key`, same body): the stored record is the note's summary and the `sync` block, never the text (a
+body can be 5 MiB and keys live 90 days). The replay adds the note's **`content` as of the revision the first answer reported**,
+read from history and verified against the recorded hash, so a client that lost the response of a merged save can still replace
+its file. If that revision has been pruned the replay has no `content` (the client reads the note). A replayed conflict returns
+the stored `409`. As for every 2xx, a replay is a historical snapshot (§8.1).
+
+**History** (ADR-0059 D5, ADR-0060): every revision of every note, in every mode, is recorded in `note_revisions` (hash, size, path
+at that revision, reason) in the same transaction as the bump; its text is a file
+`<notes-root>/.atlas/history/<note_id>/<sha256>.md` (content addressed: a move or delete shares the file of the text it did not
+change; a file that no longer hashes to its name is never used). Retention per note: the newest 20 revisions always; older ones
+while younger than 90 days, bounded by 200 revisions and 64 MiB of distinct text; whole history of a note deleted for more than 90
+days is removed. Pruned on write and by the hourly purge job. A note that predates history is recorded when its next write finds
+its current revision unrecorded and the file's hash equals the index hash. History is inside the notes root, hence in every backup
+(ADR-0041); **it keeps the text of overwritten and deleted notes for up to 90 days** (SECURITY.md).
+
+Reconcile (external edit on the server filesystem) records a feed change and a history revision (reason `external`) for every
+revision bump. The bytes *before* the edit are in history if that revision had been recorded; a file changed before its first
+recording has no retained pre-edit text, so a stale client conflicts instead of merging.
 
 ### 6.4 Links
 
@@ -333,7 +362,8 @@ action, and at most one resync is in flight per device; the server rate-limits s
 | 401 `unauthenticated` / `token_revoked` | credential invalid | stop; keep queue; ask to sign in again (never retry blindly) |
 | 403 `forbidden_scope` | token cannot do this | permanent for the op |
 | 404 `not_found` | unknown id (tombstoned entities are not 404, §6.2) | permanent |
-| 409 `stale` / `conflict` / `edit_wins` / `path_exists` / `id_exists` | structured, never overwritten | resolve per §6; do not blind-retry |
+| 409 `stale` / `conflict` / `edit_wins` / `path_exists` / `note_deleted` / `id_exists` | structured, never overwritten (`conflict` on a note: the incoming text is saved in `conflict_copy`) | resolve per §6; do not blind-retry |
+| 422 `invalid_path` (`reason`: `reserved_name`, `forbidden_character`, `trailing_dot_or_space`, `too_long`, `name_too_long`), `base_hash_required` | the request cannot be honoured as sent | permanent for the op; keep the user's text, rename |
 | 409 `idempotency_mismatch` | key reused with another body | permanent, report a bug |
 | 413 `too_large` | body > limit | permanent; mark item "too large to sync" |
 | 422 | validation | permanent; keep the user's text, show the server message |
@@ -429,9 +459,13 @@ normal pull).
   server: `content_hash`).
 - Rename detection: a missing file plus a new file with the same hash in one scan ⇒ `move`; otherwise delete +
   create. Ambiguous duplicates ⇒ create.
-- Portable paths: sync mode rejects (server) and the client skips (local) paths that are invalid on Windows
-  (reserved names, `<>:"|?*`, trailing dot/space, > 240 chars) or that differ only by case/Unicode normalisation
-  from another note.
+- Portable paths [DONE on the server, SYNC-04]: sync mode rejects (`422 invalid_path`) a create or move to a path with a Windows
+  reserved device name in any segment (`CON`, `PRN`, `AUX`, `NUL`, `COM0-9`/`LPT0-9` also with `¹²³`, `CONIN$`, `CONOUT$`, with or
+  without an extension), a character of `<>:"|?*` or a control character, a segment ending in a dot or space, a segment longer
+  than 255 UTF-8 bytes, or a path longer than 240 characters; and treats a path that differs from another live note's only by
+  case or Unicode normalisation (NFC + casefold) as taken. The client skips local paths of that kind (SYNC-09). Rules live in
+  `atlas/notes/portable.py` and apply **only in sync mode**; notes that already exist keep their paths (a revive restores the old
+  path as it was), and a conflict copy's name is shortened to fit.
 - Client writes are atomic (temp + rename) and recorded so the watcher ignores them. A file changed locally
   while a server merge result arrives is re-checked by hash before overwrite; if it changed again it becomes a
   new local edit based on the merge result.
@@ -448,6 +482,6 @@ of a run with and without skew (identical), and a planted "order by client time"
 
 ## 12. Open items (not decided by this document)
 
-Merge algorithm/library; history retention numbers; whether the batch endpoint is ever needed; pairing-code
+Whether the batch endpoint is ever needed; pairing-code
 flow; Android notes storage location (D10); calendar projection on devices; whether the web app opts into
 sync mode to benefit from field merge; the restore notice UX (D12). All are tracked in ADR-0059 or the SYNC tasks.

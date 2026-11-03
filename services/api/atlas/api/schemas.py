@@ -203,12 +203,25 @@ class SyncResult(BaseModel):
 # --- Notes ---------------------------------------------------------------
 
 
+def _valid_note_text(value: str) -> str:
+    """Note text is UTF-8: a lone surrogate cannot be encoded and NUL cannot be indexed."""
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ValueError("note text must be valid UTF-8 (no lone surrogates)") from exc
+    if "\x00" in value:
+        raise ValueError("note text must not contain NUL characters")
+    return value
+
+
 class NoteCreateRequest(BaseModel):
     id: uuid.UUID | None = Field(
         default=None, description="Optional client-generated id (UUID); see task creation."
     )
     path: str = Field(min_length=1, max_length=1024)
     content: str = Field(default="", max_length=5 * 1024 * 1024)
+
+    _content_is_text = field_validator("content")(_valid_note_text)
 
 
 class DailyNoteRequest(BaseModel):
@@ -226,10 +239,23 @@ class NoteFromTemplateRequest(BaseModel):
 class NoteUpdateRequest(BaseModel):
     content: str = Field(max_length=5 * 1024 * 1024)
     base_revision: int = Field(ge=0)
+    base_hash: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+        description=(
+            "Sync mode (required): the `content_hash` of the text the edit was made from. The "
+            "server merges against that text when `base_revision` is no longer current; ignored "
+            "outside sync mode."
+        ),
+    )
+
+    _content_is_text = field_validator("content")(_valid_note_text)
 
 
 class NoteConflictCopyRequest(BaseModel):
     content: str = Field(max_length=5 * 1024 * 1024)
+
+    _content_is_text = field_validator("content")(_valid_note_text)
 
 
 class NoteMoveRequest(BaseModel):
@@ -285,6 +311,44 @@ class NoteProjectOut(BaseModel):
     status: ProjectStatus
 
 
+class NoteCopyOut(BaseModel):
+    """The conflict copy the server saved for a write it could not merge (sync mode)."""
+
+    id: uuid.UUID
+    path: str
+    revision: int
+    content_hash: str
+
+
+class NoteSyncResult(SyncResult):
+    """The `sync` block of a sync-mode note write.
+
+    ``merged`` is true when the `content` returned differs from the text the client sent (the
+    server combined it with other edits, or the client's edits were already there): the client must
+    replace its file with the returned content and take `revision` / `content_hash` as its new base.
+    """
+
+    merged: bool = False
+
+
+class NoteHistoryEntryOut(BaseModel):
+    revision: int
+    content_hash: str
+    size_bytes: int
+    path: str
+    reason: str
+    created_at: datetime
+    available: bool = Field(description="False once the text of this revision has been pruned.")
+
+
+class NoteHistoryOut(BaseModel):
+    revisions: list[NoteHistoryEntryOut]
+
+
+class NoteRevisionOut(NoteHistoryEntryOut):
+    content: str
+
+
 class NoteDetailOut(NoteSummaryOut):
     content: str
     tags: list[str]
@@ -294,7 +358,7 @@ class NoteDetailOut(NoteSummaryOut):
     #: Tasks and projects that link to this note: the non-note part of its backlinks (MU-06).
     tasks: list[NoteTaskOut]
     projects: list[NoteProjectOut]
-    sync: SyncResult | None = None
+    sync: NoteSyncResult | None = None
 
 
 class TaskNotesOut(BaseModel):

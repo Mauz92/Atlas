@@ -40,13 +40,16 @@ class RealServer:
         return int(response.body["next_since"])
 
     async def all_entity_ids(self) -> list[str]:
-        """Every task and project id the (single-user) test database holds, live or deleted."""
+        """Every task, project and note id the (single-user) test database holds, even deleted."""
         from sqlalchemy import text
 
         from atlas.db import session_scope
 
         async with session_scope() as session:
             rows = await session.execute(
-                text("SELECT id::text FROM tasks UNION ALL SELECT id::text FROM projects")
+                text(
+                    "SELECT id::text FROM tasks UNION ALL SELECT id::text FROM projects"
+                    " UNION ALL SELECT id::text FROM notes"
+                )
             )
             return [row[0] for row in rows]

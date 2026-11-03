@@ -6,6 +6,20 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (SYNC-04): **Notes now merge instead of conflicting, for the coming desktop and Android apps.** Apps that send
+  `Atlas-Sync: 1` can save a note they edited offline from an older version: edits in different parts merge silently
+  (line endings, the final newline and the front matter are kept exactly); edits that touch never overwrite anything, the
+  losing text is saved whole as a `name (conflict ...).md` beside the note. An edit of a note deleted elsewhere brings it back,
+  a stale delete is refused, and names that cannot exist on Windows or Android (`CON.md`, `a:b.md`, trailing dots, names that differ
+  only by letter case) are refused or renumbered. The web app is unchanged.
+- Added (SYNC-04): **Note history.** The server keeps the text of the last 20 revisions of every note, plus everything from the
+  last 90 days (bounded in size), under `<notes root>/.atlas/history`; it is in every backup. `GET /api/notes/{id}/history` lists
+  it and `.../history/{revision}` reads one revision, including those of a deleted note. Settings: `NOTE_HISTORY_KEEP_REVISIONS`,
+  `NOTE_HISTORY_KEEP_DAYS`, `NOTE_HISTORY_MAX_REVISIONS`, `NOTE_HISTORY_MAX_BYTES`. Note that overwritten and deleted text is
+  therefore kept up to 90 days.
+- Fixed (SYNC-04): a request carrying a lone surrogate in a JSON string (for example a note) was answered `500`; it is now `422`.
+  Note text containing a NUL character is now `422` (it could never be indexed).
+
 - Added (SYNC-03): **The server now speaks sync protocol v1 for the coming desktop and Android apps.** Nothing changes for the
   web app. Apps that send `Atlas-Sync: 1` get: ids they choose themselves (a retry never duplicates), field-by-field merging of
   edits made on two devices (a title on one and a due date on the other both survive; the same text changed on both is reported as

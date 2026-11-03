@@ -264,11 +264,63 @@ export interface paths {
         };
         /** Get Note */
         get: operations["get_note_api_notes__note_id__get"];
-        /** Update Note */
+        /**
+         * Update Note
+         * @description Save the note's text.
+         *
+         *     **Sync mode** (`Atlas-Sync: 1`) requires `Idempotency-Key` and `base_hash` (the hash of the
+         *     text the edit was made from). A stale `base_revision` is merged three-way against the retained
+         *     base text: non-overlapping edits merge silently (`sync.merged`, the response carries the merged
+         *     `content`); overlapping or uncertain edits answer `409 conflict` with a `conflict_copy` - the
+         *     note is never overwritten and the incoming text is never lost. Editing a deleted note
+         *     revives it (`edit_wins_over_delete`). A replay returns the stored result with its `content`.
+         */
         put: operations["update_note_api_notes__note_id__put"];
         post?: never;
         /** Delete Note */
         delete: operations["delete_note_api_notes__note_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notes/{note_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Note History
+         * @description The retained revisions of one of the caller's notes, newest first (deleted notes too: this
+         *     is how the last text of a deleted note is recovered). `available` is false once the text of a
+         *     revision has been pruned (last 20 revisions plus 90 days, bounded by size).
+         */
+        get: operations["note_history_api_notes__note_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notes/{note_id}/history/{revision}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Note Revision
+         * @description The text of one retained revision (`404` when it was never kept or has been pruned).
+         */
+        get: operations["note_revision_api_notes__note_id__history__revision__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -350,7 +402,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Move Note */
+        /**
+         * Move Note
+         * @description Rename or move a note. **Sync mode:** independent of content (a stale `base_revision` does
+         *     not refuse a move; a move that overrides another device's is `path_later_wins`), the target
+         *     must be portable (`422 invalid_path`) and free (`409 path_exists`, case and Unicode
+         *     normalisation included), and a deleted note is `409 note_deleted`.
+         */
         post: operations["move_note_api_notes__note_id__move_post"];
         delete?: never;
         options?: never;
@@ -1545,7 +1603,7 @@ export interface components {
             tasks: components["schemas"]["NoteTaskOut"][];
             /** Projects */
             projects: components["schemas"]["NoteProjectOut"][];
-            sync?: components["schemas"]["SyncResult"] | null;
+            sync?: components["schemas"]["NoteSyncResult"] | null;
         };
         /** NoteFromTemplateRequest */
         NoteFromTemplateRequest: {
@@ -1558,6 +1616,34 @@ export interface components {
             template_id: string;
             /** Date */
             date?: string | null;
+        };
+        /** NoteHistoryEntryOut */
+        NoteHistoryEntryOut: {
+            /** Revision */
+            revision: number;
+            /** Content Hash */
+            content_hash: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Path */
+            path: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Available
+             * @description False once the text of this revision has been pruned.
+             */
+            available: boolean;
+        };
+        /** NoteHistoryOut */
+        NoteHistoryOut: {
+            /** Revisions */
+            revisions: components["schemas"]["NoteHistoryEntryOut"][];
         };
         /** NoteLinkOut */
         NoteLinkOut: {
@@ -1596,6 +1682,31 @@ export interface components {
             /** Name */
             name: string;
             status: components["schemas"]["ProjectStatus"];
+        };
+        /** NoteRevisionOut */
+        NoteRevisionOut: {
+            /** Revision */
+            revision: number;
+            /** Content Hash */
+            content_hash: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Path */
+            path: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Available
+             * @description False once the text of this revision has been pruned.
+             */
+            available: boolean;
+            /** Content */
+            content: string;
         };
         /** NoteSummaryOut */
         NoteSummaryOut: {
@@ -1649,6 +1760,27 @@ export interface components {
             size_bytes: number;
         };
         /**
+         * NoteSyncResult
+         * @description The `sync` block of a sync-mode note write.
+         *
+         *     ``merged`` is true when the `content` returned differs from the text the client sent (the
+         *     server combined it with other edits, or the client's edits were already there): the client must
+         *     replace its file with the returned content and take `revision` / `content_hash` as its new base.
+         */
+        NoteSyncResult: {
+            /** Revision */
+            revision: number;
+            /** Resolution */
+            resolution?: components["schemas"]["SyncResolutionOut"][];
+            /** Conflicts */
+            conflicts?: components["schemas"]["SyncConflictOut"][];
+            /**
+             * Merged
+             * @default false
+             */
+            merged: boolean;
+        };
+        /**
          * NoteTaskOut
          * @description A task linked to a note (MU-06): enough to list and open it, nothing more.
          */
@@ -1673,6 +1805,11 @@ export interface components {
             content: string;
             /** Base Revision */
             base_revision: number;
+            /**
+             * Base Hash
+             * @description Sync mode (required): the `content_hash` of the text the edit was made from. The server merges against that text when `base_revision` is no longer current; ignored outside sync mode.
+             */
+            base_hash?: string | null;
         };
         /** PasswordChange */
         PasswordChange: {
@@ -3216,7 +3353,7 @@ export interface operations {
     delete_note_api_notes__note_id__delete: {
         parameters: {
             query?: {
-                /** @description Sync mode (required). Edit-wins for notes arrives with SYNC-04. */
+                /** @description Sync mode (required). A delete based on an older revision than the note's is refused: `409 edit_wins` (the edit wins over the delete). */
                 base_revision?: number | null;
             };
             header?: {
@@ -3235,6 +3372,69 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    note_history_api_notes__note_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteHistoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    note_revision_api_notes__note_id__history__revision__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                note_id: string;
+                revision: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteRevisionOut"];
+                };
             };
             /** @description Validation Error */
             422: {

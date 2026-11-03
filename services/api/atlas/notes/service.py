@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 
@@ -27,11 +27,15 @@ from ..changes import (
     note_project_link_id,
 )
 from ..models import NoteIndex, NoteLink, NoteProject, NoteTag, Tag
+from .history import NoteHistory
 from .markdown import parse
+from .merge import merge3
+from .portable import MAX_PATH_CHARS, fold
 from .storage import (
     NOTE_SUFFIX,
     NoteFile,
     NotesStorage,
+    NoteTooLargeError,
     content_hash,
     normalize_note_path,
     normalize_rel_path,
@@ -75,6 +79,49 @@ class NoteConflictError(RuntimeError):
         self.current_hash = current_hash
 
 
+class NoteEditWinsError(RuntimeError):
+    """Sync mode: a delete based on an older revision than the note's is refused (rule 4)."""
+
+    def __init__(self, note: NoteIndex) -> None:
+        super().__init__("the note was edited after the revision this delete was based on")
+        self.note = note
+
+
+class NoteDeletedError(RuntimeError):
+    """Sync mode: a move of a deleted note; a rename alone does not bring a note back."""
+
+
+class NoteWriteConflictError(RuntimeError):
+    """Sync mode: the write could not be merged. Nothing was applied to the note; the incoming
+    text was saved as ``copy`` so it is never lost. The caller must commit (the copy is a side
+    effect) and answer ``409 conflict`` with the copy's identity."""
+
+    def __init__(self, reason: str, note: NoteIndex, copy: NoteIndex) -> None:
+        super().__init__(f"the note could not be merged ({reason})")
+        self.reason = reason
+        self.note = note
+        self.copy = copy
+
+
+@dataclass(frozen=True)
+class NoteResolution:
+    """An automatic resolution made by a sync-mode note write (``SYNC_PROTOCOL.md`` section 9)."""
+
+    rule: str
+    detail: str | None = None
+    kept_revision: int | None = None
+
+
+@dataclass
+class NoteWrite:
+    """Result of a sync-mode note write. ``merged`` means the text now on the server differs
+    from what the client sent (the client must replace its file with the returned content)."""
+
+    note: NoteIndex
+    merged: bool = False
+    resolutions: list[NoteResolution] = field(default_factory=list)
+
+
 @dataclass(frozen=True)
 class NoteSummary:
     id: uuid.UUID
@@ -101,6 +148,7 @@ class NotesService:
         self.session = session
         self.user_id = user_id
         self.storage = storage
+        self.history = NoteHistory(session, user_id, storage)
 
     # --- queries --------------------------------------------------------
 
@@ -116,6 +164,16 @@ class NotesService:
             NoteIndex.user_id == self.user_id,
             NoteIndex.deleted_at.is_(None),
         )
+        if for_update:
+            stmt = stmt.with_for_update(key_share=True).execution_options(populate_existing=True)
+        note = await self.session.scalar(stmt)
+        if note is None:
+            raise NoteNotFoundError(str(note_id))
+        return note
+
+    async def get_any(self, note_id: uuid.UUID, *, for_update: bool = False) -> NoteIndex:
+        """The caller's note, live **or deleted** (sync mode: an edit of a tombstone revives it)."""
+        stmt = select(NoteIndex).where(NoteIndex.id == note_id, NoteIndex.user_id == self.user_id)
         if for_update:
             stmt = stmt.with_for_update(key_share=True).execution_options(populate_existing=True)
         note = await self.session.scalar(stmt)
@@ -257,9 +315,9 @@ class NotesService:
         """
         normalized = normalize_note_path(path)
         requested: str | None = None
-        if on_collision_rename and await self._path_taken(normalized):
+        if on_collision_rename and await self._path_taken(normalized, fold_case=True):
             requested = normalized
-            normalized = await self._free_path(normalized)
+            normalized = await self._free_path(normalized, fold_case=True)
         if self.storage.exists(normalized):
             raise NotePathConflictError(normalized)
         rows = list(
@@ -299,20 +357,38 @@ class NotesService:
             if client_id is None:
                 raise
             raise NoteIdExistsError(str(client_id)) from exc
+        await self.history.record(note, content, reason="revive" if existing else "create")
         await self._record_change(note.id, ChangeOperation.UPSERT)
         return NoteCreated(note, requested_path=requested)
 
-    async def _path_taken(self, normalized: str) -> bool:
+    async def _path_taken(
+        self, normalized: str, *, fold_case: bool = False, exclude: uuid.UUID | None = None
+    ) -> bool:
+        """Is ``normalized`` a file on disk or a live note's path? With ``fold_case`` (sync mode,
+        ``portable.py``) a path that differs from a live note's only by case or Unicode
+        normalisation counts as taken. ``exclude`` is the note being moved (it never collides
+        with itself)."""
         if self.storage.exists(normalized):
             return True
-        return await self.get_by_path(normalized) is not None
+        live = await self.get_by_path(normalized)
+        if live is not None and live.id != exclude:
+            return True
+        if not fold_case:
+            return False
+        wanted = fold(normalized)
+        rows = await self.session.execute(
+            select(NoteIndex.id, NoteIndex.path).where(
+                NoteIndex.user_id == self.user_id, NoteIndex.deleted_at.is_(None)
+            )
+        )
+        return any(row_id != exclude and fold(path) == wanted for row_id, path in rows)
 
-    async def _free_path(self, normalized: str) -> str:
+    async def _free_path(self, normalized: str, *, fold_case: bool = False) -> str:
         """``name (2).md``, ``name (3).md`` ... the first path neither on disk nor live."""
         stem = normalized[: -len(NOTE_SUFFIX)]
         for number in range(2, 1000):
             candidate = f"{stem} ({number}){NOTE_SUFFIX}"
-            if not await self._path_taken(candidate):
+            if not await self._path_taken(candidate, fold_case=fold_case):
                 return candidate
         raise NotePathConflictError(normalized)
 
@@ -375,6 +451,7 @@ class NotesService:
         await self._apply(existing, file)
         await self._relink_unresolved()
         await self.session.flush()
+        await self.history.record(existing, file.content, reason="external")
         await self._record_change(existing.id, ChangeOperation.UPSERT)
         return existing
 
@@ -388,29 +465,215 @@ class NotesService:
             raise NoteConflictError(note.revision, current.content_hash)
         if current.content == content:
             return note
+        await self.history.ensure_current(note, current)
+        return await self._write_revision(note, content, reason="write")
+
+    async def _write_revision(self, note: NoteIndex, content: str, *, reason: str) -> NoteIndex:
+        """Write ``content`` as the note's next revision: file, index, history and feed row."""
         file = self.storage.write(note.path, content)
         note.revision += 1
         await self._apply(note, file)
         await self.session.flush()
+        await self.history.record(note, content, reason=reason)
         await self._record_change(note.id, ChangeOperation.UPSERT)
         return note
 
-    async def conflict_copy(self, note_id: uuid.UUID, content: str) -> NoteIndex:
-        """Preserve a conflicting version beside the note instead of overwriting it."""
+    # --- sync-mode writes (SYNC-04; SYNC_PROTOCOL.md 6.3) ----------------------------------
+
+    async def update_sync(
+        self, note_id: uuid.UUID, content: str, base_revision: int, base_hash: str
+    ) -> NoteWrite:
+        """A content write from a sync client: ``content`` was edited from the text with
+        ``base_hash`` at ``base_revision``.
+
+        * the base is the current revision: an ordinary write;
+        * the base is older: the retained base text is looked up, verified against ``base_hash`` and
+          three-way merged with the current text. Non-overlapping edits merge; anything uncertain
+          (overlap, a base that is no longer retained, front matter from two sides) raises
+          :class:`NoteWriteConflictError` after saving the incoming text as a conflict copy - the
+          note itself is never overwritten and nothing is lost;
+        * the note is deleted: the edit wins (rule 4) and the note comes back, merged the same way
+          against its last text.
+        """
+        note = await self.get_any(note_id, for_update=True)
+        if base_revision > note.revision:
+            raise NoteConflictError(note.revision, note.content_hash)
+        if note.deleted_at is not None:
+            return await self._revive(note, content, base_revision, base_hash)
+
+        current = self.storage.read(note.path)
+        await self.history.ensure_current(note, current)
+        if current.content_hash != note.content_hash:
+            # An edit made on the server's file system that the scan has not indexed yet is a
+            # revision like any other (reconcile would record it): take it now, so the merge
+            # below sees it and the history holds it.
+            note.revision += 1
+            await self.reindex_note(note, current)
+            await self.history.record(note, current.content, reason="external")
+            await self._record_change(note.id, ChangeOperation.UPSERT)
+        elif base_revision == note.revision:
+            if base_hash != note.content_hash:
+                raise await self._conflict(note, content, "base_unavailable")
+            if content == current.content:
+                return NoteWrite(note)
+            return NoteWrite(await self._write_revision(note, content, reason="write"))
+
+        base_text = await self.history.content(note.id, base_revision, expect_hash=base_hash)
+        if base_text is None:
+            raise await self._conflict(note, content, "base_unavailable")
+        if content == base_text:
+            # The client changed nothing; whatever the server holds now is what it should show.
+            return NoteWrite(note, merged=current.content != content)
+        merged = merge3(base_text, current.content, content)
+        if merged.text is None:
+            raise await self._conflict(note, content, merged.reason or "overlap")
+        resolution = NoteResolution("note_merged", kept_revision=note.revision)
+        if merged.text == current.content:
+            # Everything the client did is already there (or it removed nothing the server has).
+            return NoteWrite(note, merged=content != merged.text, resolutions=[resolution])
+        note = await self._write_revision(note, merged.text, reason="merge")
+        return NoteWrite(note, merged=merged.text != content, resolutions=[resolution])
+
+    async def _conflict(self, note: NoteIndex, content: str, reason: str) -> NoteWriteConflictError:
+        copy = await self.conflict_copy(note.id, content, portable=True)
+        return NoteWriteConflictError(reason, note, copy)
+
+    async def _revive(
+        self, note: NoteIndex, content: str, base_revision: int, base_hash: str
+    ) -> NoteWrite:
+        """An edit of a deleted note brings it back (ADR-0055 rule 4, ADR-0059 D6).
+
+        The text it returns with is the client's edit merged into the note's last text when that is
+        retained. If the merge is not clean, the note returns with its last text and the client's
+        text is saved beside it as a conflict copy. A note deleted before history existed has no
+        retained last text: nothing live is overwritten, so the client's text is taken (its
+        earlier text is still in ``.atlas/trash``).
+        """
+        resolutions = [NoteResolution("edit_wins_over_delete")]
+        last = await self.history.content(note.id, note.revision, expect_hash=note.content_hash)
+        text, copy_of = content, None
+        if last is not None and base_hash != note.content_hash:
+            base_text = await self.history.content(note.id, base_revision, expect_hash=base_hash)
+            merged = merge3(base_text, last, content) if base_text is not None else None
+            if merged is not None and merged.text is not None:
+                text = merged.text
+                resolutions.append(NoteResolution("note_merged", kept_revision=note.revision))
+            else:
+                text, copy_of = last, content
+        path = note.path
+        if await self._path_taken(path, fold_case=True):
+            path = await self._free_path(path, fold_case=True)
+            resolutions.append(
+                NoteResolution("path_collision", detail=f"{note.path} was taken; restored {path}")
+            )
+        try:
+            file = self.storage.write_new(path, text)
+        except FileExistsError as exc:
+            raise NotePathConflictError(path) from exc
+        note.path = path
+        note.deleted_at = None
+        note.revision += 1
+        try:
+            await self._apply(note, file)
+            await self._relink_unresolved()
+            await self.session.flush()
+        except IntegrityError as exc:  # a live note took the path since the check
+            with suppress(OSError):
+                self.storage.delete(path)
+            raise NotePathConflictError(path) from exc
+        await self.history.record(note, text, reason="revive")
+        await self._record_change(note.id, ChangeOperation.UPSERT)
+        if copy_of is not None:
+            raise await self._conflict(note, copy_of, "overlap")
+        return NoteWrite(note, merged=text != content, resolutions=resolutions)
+
+    async def delete_sync(self, note_id: uuid.UUID, base_revision: int) -> bool:
+        """Sync-mode delete. A delete based on a revision older than the note's is refused
+        (:class:`NoteEditWinsError`): the edit wins, losing a deletion is recoverable and losing an
+        edit is not. Deleting a note that is already deleted succeeds. Returns whether a delete
+        happened."""
+        note = await self.get_any(note_id, for_update=True)
+        if note.deleted_at is not None:
+            return False
+        if base_revision > note.revision:
+            raise NoteConflictError(note.revision, note.content_hash)
+        current = self.storage.read(note.path)
+        if current.content_hash != note.content_hash:
+            # an unindexed edit on the server is an edit after any client's base: record it, refuse
+            note.revision += 1
+            await self.reindex_note(note, current)
+            await self.history.record(note, current.content, reason="external")
+            await self._record_change(note.id, ChangeOperation.UPSERT)
+        if base_revision < note.revision:
+            raise NoteEditWinsError(note)
+        await self._remove(note)
+        return True
+
+    async def rename_sync(self, note_id: uuid.UUID, new_path: str, base_revision: int) -> NoteWrite:
+        """Sync-mode move. A move is independent of content, so a stale base is fine; the target
+        must be free (``NotePathConflictError``, case and Unicode normalisation included); a note
+        another device already moved elsewhere is moved again (the later move wins, logged); a
+        deleted note is not revived by a rename (:class:`NoteDeletedError`)."""
+        note = await self.get_any(note_id, for_update=True)
+        if note.deleted_at is not None:
+            raise NoteDeletedError(str(note_id))
+        if base_revision > note.revision:
+            raise NoteConflictError(note.revision, note.content_hash)
+        normalized = normalize_note_path(new_path)
+        resolutions: list[NoteResolution] = []
+        if base_revision < note.revision and normalized != note.path:
+            entry = await self.history.entry(note.id, base_revision)
+            if entry is not None and entry.path != note.path:
+                resolutions.append(
+                    NoteResolution(
+                        "path_later_wins",
+                        detail=f"was moved to {note.path} elsewhere; now {normalized}",
+                        kept_revision=note.revision + 1,
+                    )
+                )
+        if normalized == note.path:
+            return NoteWrite(note, resolutions=resolutions)
+        if await self._path_taken(normalized, fold_case=True, exclude=note.id):
+            raise NotePathConflictError(normalized)
+        try:
+            return NoteWrite(await self.rename(note.id, normalized), resolutions=resolutions)
+        except IntegrityError as exc:
+            raise NotePathConflictError(normalized) from exc
+
+    async def conflict_copy(
+        self, note_id: uuid.UUID, content: str, *, portable: bool = False
+    ) -> NoteIndex:
+        """Preserve a conflicting version beside the note instead of overwriting it.
+
+        ``portable`` (sync mode) shortens the name when it would exceed the portable path length
+        (``portable.py``): a conflict copy must never be refused for its name.
+        """
         note = await self.get(note_id)
         stamp = datetime.now(UTC).strftime("%Y-%m-%d %H%M%S")
         stem = PurePosixPath(note.path).stem
         parent = str(PurePosixPath(note.path).parent)
         prefix = "" if parent == "." else f"{parent}/"
-        candidate = f"{prefix}{stem} (conflict {stamp}).md"
-        suffix = 2
-        while self.storage.exists(candidate):
-            candidate = f"{prefix}{stem} (conflict {stamp} {suffix}).md"
+        suffix = 1
+        while True:
+            tag = f" (conflict {stamp})" if suffix == 1 else f" (conflict {stamp} {suffix})"
+            room = MAX_PATH_CHARS - len(prefix) - len(tag) - len(NOTE_SUFFIX)
+            name = stem[: max(1, room)] if portable else stem
+            candidate = f"{prefix}{name}{tag}{NOTE_SUFFIX}"
+            if not self.storage.exists(candidate) and await self.get_by_path(candidate) is None:
+                break
             suffix += 1
         return await self.create(candidate, content)
 
     async def delete(self, note_id: uuid.UUID) -> None:
         note = await self.get(note_id, for_update=True)
+        await self._remove(note)
+
+    async def _remove(self, note: NoteIndex) -> None:
+        """Move the file to the trash and tombstone the row; the last text is kept in history so
+        a later edit of the deleted note (sync mode) can be merged against it."""
+        # an unreadable file has no text to keep; the delete itself still proceeds
+        with suppress(NoteTooLargeError, UnicodeDecodeError):
+            await self.history.ensure_current(note, self.storage.read(note.path))
         self.storage.delete(note.path)
         project_ids = await self.tombstone_index(note)
         await self.announce_removal(note, project_ids)
@@ -439,6 +702,7 @@ class NotesService:
         )
         await self.session.execute(delete(NoteProject).where(NoteProject.note_id == note.id))
         await self.session.flush()
+        await self.history.record(note, None, reason="delete")
         return project_ids
 
     async def announce_removal(self, note: NoteIndex, project_ids: Sequence[uuid.UUID]) -> None:
@@ -472,6 +736,7 @@ class NotesService:
         await self._apply(note, file)
         await self._relink_unresolved()
         await self.session.flush()
+        await self.history.record(note, file.content, reason="move")
         await self._record_change(note.id, ChangeOperation.UPSERT)
         return note
 
@@ -506,6 +771,10 @@ class NotesService:
             if note_id is not None:
                 moved_ids.append(note_id)
         await self.session.flush()
+        for note_id in moved_ids:
+            moved = await self.session.get(NoteIndex, note_id, populate_existing=True)
+            if moved is not None:
+                await self.history.record(moved, None, reason="move")
         # Every note whose path changed is an ordinary metadata update on the change feed (M7-01).
         await ChangeRecorder(self.session, self.user_id).record_many(
             (ChangeEntityType.NOTE, entity_id_for(note_id), ChangeOperation.UPSERT)

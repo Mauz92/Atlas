@@ -50,6 +50,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await dispose_engine()
 
 
+def _is_unencodable(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return True
+    return False
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
@@ -109,6 +119,15 @@ def create_app() -> FastAPI:
         if request.url.path.startswith(_CREDENTIAL_PATH_PREFIXES):
             errors = [
                 {key: value for key, value in error.items() if key != "input"} for error in errors
+            ]
+        else:
+            # A JSON string with a lone surrogate (``"\\ud800"``) is rejected by validation but
+            # cannot be encoded back to UTF-8: echoing it would turn the 422 into a 500.
+            errors = [
+                {key: value for key, value in error.items() if key != "input"}
+                if _is_unencodable(error.get("input"))
+                else error
+                for error in errors
             ]
         return JSONResponse(
             status_code=422,

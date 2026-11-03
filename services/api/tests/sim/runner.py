@@ -11,10 +11,14 @@ import random
 from dataclasses import dataclass, field
 from typing import Any
 
+from atlas.notes.portable import check_portable, fold
+from atlas.notes.storage import normalize_note_path
+
 from .client import ClientBugs, Recorder, SimClient
 from .client_v1 import SyncSimClient
 from .engine import EventQueue, Network, Req, ServerPort, SimConfig, SimFailure
 from .model import FLAG, LABEL, ModelServer
+from .model_notes import sha
 
 _PLURAL = {"task": "tasks", "project": "projects"}
 
@@ -249,6 +253,18 @@ async def server_truth(world: World) -> dict[str, tuple[str, dict[str, Any], int
                 },
                 row["revision"],
             )
+    resp = await world.server.handle(Req("GET", "/api/notes"))
+    if resp.status != 200:
+        raise world.fail("harness", f"listing notes returned {resp.status}")
+    for row in resp.body["notes"]:
+        detail = await world.server.handle(Req("GET", f"/api/notes/{row['id']}"))
+        if detail.status != 200:
+            raise world.fail("harness", f"reading note {row['id']} returned {detail.status}")
+        truth[row["id"]] = (
+            "note",
+            {"path": detail.body["path"], "content": detail.body["content"]},
+            detail.body["revision"],
+        )
     return truth
 
 
@@ -281,6 +297,9 @@ async def _check_invariants(world: World) -> None:
                 )
     # 2. what the server acknowledged was applied: the response shows exactly what was sent
     for cid, op, status, body in rec.acks:
+        if op.kind == "note":
+            _check_note_ack(world, cid, op, status, body)
+            continue
         if op.action in ("create", "patch") and isinstance(body, dict):
             sync = body.get("sync") if world.cfg.sync else None
             held_back = {c["field"] for c in sync["conflicts"]} if sync else set()
@@ -295,6 +314,16 @@ async def _check_invariants(world: World) -> None:
     # 3. revision identifies state: no two different states share one (entity, revision)
     seen_states: dict[tuple[str, int], dict[str, Any]] = {}
     for _cid, op, _status, body in rec.acks:
+        if op.kind == "note" and isinstance(body, dict) and "content_hash" in body:
+            note_state = {"path": body["path"], "hash": body["content_hash"]}
+            note_previous = seen_states.setdefault((body["id"], body["revision"]), note_state)
+            if note_previous != note_state:
+                raise world.fail(
+                    "revision_identifies_state",
+                    f"note {body['id']} revision {body['revision']} was acknowledged with two "
+                    f"states: {note_previous} and {note_state}",
+                )
+            continue
         if isinstance(body, dict) and "id" in body and op.action != "delete":
             fields = {
                 LABEL[op.kind]: body.get(LABEL[op.kind]),
@@ -311,13 +340,14 @@ async def _check_invariants(world: World) -> None:
                 )
     # 4. no duplicates on retry
     creates = {op.op_id for _c, op, _s, _b in rec.acks if op.action == "create"}
+    copies = {copy["id"] for _c, _o, copy in rec.conflict_copies}
     announced = set(await world.server.all_entity_ids())
-    if announced is not None and len(announced) != len(creates):
+    if announced is not None and len(announced) != len(creates) + len(copies):
         raise world.fail(
             "no_duplicates",
-            f"{len(creates)} creates were acknowledged but the server holds "
-            f"{len(announced)} entities "
-            f"(a retried create made a second entity)",
+            f"{len(creates)} creates were acknowledged and {len(copies)} conflict copies were "
+            f"reported, but the server holds {len(announced)} entities "
+            f"(a retried create or conflict made a second entity)",
         )
     # 5. no resurrection (real server: from acknowledgements; model: from the full history)
     deleted_acked = {
@@ -331,7 +361,9 @@ async def _check_invariants(world: World) -> None:
         _server_id(world, op) for _c, op, _s, _b in rec.acks if op.action == "restore"
     }
     edited_acked = {
-        _server_id(world, op) for _c, op, _s, _b in rec.acks if op.action in ("patch", "restore")
+        _server_id(world, op)
+        for _c, op, _s, _b in rec.acks
+        if op.action in ("patch", "restore", "put")
     }
     for entity_id in deleted_acked:
         if world.cfg.sync and entity_id in edited_acked:
@@ -344,6 +376,7 @@ async def _check_invariants(world: World) -> None:
             )
     if world.cfg.sync:
         _check_sync_world(world)
+        await _check_notes(world, truth)
     model = world.model
     if model is not None:
         _check_model_history(world, model)
@@ -358,14 +391,19 @@ def _check_sync_world(world: World) -> None:
     for cid, op, status, code in rec.refusals:
         if op.action == "restore" and status == 404:
             continue  # nothing to restore: another device's edit already brought the task back
-        if code not in ("conflict", "edit_wins"):
+        expected = {
+            "conflict": ("patch", "put"),
+            "edit_wins": ("delete",),
+            "path_exists": ("move",),
+            "note_deleted": ("move",),
+        }
+        if code not in expected or op.action not in expected[code]:
             raise world.fail(
                 "unexpected_rejection",
                 f"{cid} was refused {op.action} {op.op_id} with {status} {code!r}: only a text "
-                "conflict and a stale delete (edit wins) are expected",
+                "conflict, a stale delete (edit wins) and, for notes, a taken path or a move of a "
+                "deleted note are expected",
             )
-        if code == "conflict" and op.action != "patch":
-            raise world.fail("unexpected_rejection", f"{op.op_id}: conflict on {op.action}")
     # a client speaking an unsupported protocol stops at the first 426 and writes nothing
     for client in world.clients:
         if client.cid != "old":
@@ -417,6 +455,7 @@ def _check_model_history(world: World, model: ModelServer) -> None:
             state[event.entity_id] = "deleted"
     if world.cfg.sync:
         _check_model_sync_history(world, model)
+        _check_model_note_history(world, model)
     for cid, op, status, _body in world.rec.acks:
         if world.cfg.sync and op.action != "create" and applied.get(op.op_id, 0) <= 1:
             continue  # a merged patch may be a no-op (equal values), a repeated delete a no-op
@@ -484,3 +523,124 @@ def _check_model_sync_history(world: World, model: ModelServer) -> None:
                 f"{event.op_id} deleted {event.entity_id} on base {event.base} although it was "
                 f"edited up to revision {event.revision_before}",
             )
+
+
+# --- notes (SYNC-04) -----------------------------------------------------------------------
+
+
+def _check_note_ack(world: World, cid: str, op: Any, status: int, body: Any) -> None:
+    """What the server acknowledged for a note is what the client sent (a create), or contains
+    everything the client's edit added (a save, which the server may have merged)."""
+    if not isinstance(body, dict):
+        return
+    if op.action == "create" and "content" in body and body["content"] != op.fields["content"]:
+        raise world.fail(
+            "no_acknowledged_loss",
+            f"{cid} was acknowledged for creating {op.op_id} but the response holds other text",
+        )
+    if op.action == "put" and body.get("content") is not None:
+        present = set(body["content"].split("\n"))
+        missing = sorted(op.markers - present)
+        if missing:
+            raise world.fail(
+                "no_acknowledged_loss",
+                f"{cid} was acknowledged ({status}) for save {op.op_id} but the text the server "
+                f"returned lacks {missing}",
+            )
+
+
+async def _check_notes(world: World, truth: dict[str, tuple[str, dict[str, Any], int]]) -> None:
+    """Invariants over the final state of the notes (TESTING.md section 10.2)."""
+    rec, server = world.rec, world.server
+    # a conflict copy holds exactly the text that lost, and exists on the server
+    for cid, op, copy in rec.conflict_copies:
+        want = op.fields["content"]
+        if copy["content_hash"] != sha(want):
+            raise world.fail(
+                "conflict_copy_has_losing_text",
+                f"{cid}: the copy {copy['id']} of {op.op_id} reports another hash",
+            )
+        first = await server.handle(Req("GET", f"/api/notes/{copy['id']}/history/1"))
+        if first.status != 200 or first.body["content"] != want:
+            raise world.fail(
+                "conflict_copy_has_losing_text",
+                f"{cid}: the conflict copy {copy['id']} of {op.op_id} does not hold the text "
+                f"that lost (status {first.status})",
+            )
+    # paths: unique even by case or Unicode normalisation, and portable
+    seen: dict[str, str] = {}
+    for note_id, (kind, fields, _revision) in truth.items():
+        if kind != "note":
+            continue
+        path = fields["path"]
+        try:
+            check_portable(normalize_note_path(path))
+        except Exception as exc:
+            raise world.fail(
+                "portable_paths", f"live note {note_id} has path {path!r}: {exc}"
+            ) from exc
+        other = seen.setdefault(fold(path), note_id)
+        if other != note_id:
+            raise world.fail(
+                "unique_paths",
+                f"notes {other} and {note_id} have paths that differ only by case or "
+                f"normalisation: {path!r}",
+            )
+    # nothing an acknowledged save added has disappeared, unless a later acknowledged save took
+    # the line out on purpose; the last text of a deleted note still counts (it is in history)
+    universe: set[str] = set()
+    for note_id in await server.all_entity_ids():
+        if note_id in truth:
+            if truth[note_id][0] == "note":
+                universe |= set(truth[note_id][1]["content"].split("\n"))
+            continue
+        listing = await server.handle(Req("GET", f"/api/notes/{note_id}/history"))
+        if listing.status != 200 or not listing.body["revisions"]:
+            continue  # a task or project
+        newest = max(row["revision"] for row in listing.body["revisions"])
+        last = await server.handle(Req("GET", f"/api/notes/{note_id}/history/{newest}"))
+        if last.status == 200:
+            universe |= set(last.body["content"].split("\n"))
+    added: set[str] = set()
+    removed: set[str] = set()
+    for _cid, op, _status, _body in rec.acks:
+        if op.kind == "note" and op.action in ("create", "put"):
+            added |= op.markers
+            removed |= op.removed
+    for _cid, op, _copy in rec.conflict_copies:
+        added |= op.markers  # they live in the copy
+    lost = sorted(added - universe - removed)
+    if lost:
+        raise world.fail(
+            "no_acknowledged_note_loss",
+            f"lines added by acknowledged saves are in no note and were removed by no save: {lost}",
+        )
+
+
+def _check_model_note_history(world: World, model: ModelServer) -> None:
+    """Merge safety from the model's ground truth: a save never drops a line it did not remove."""
+    for event in model.history:
+        if event.kind != "note" or event.event not in ("write", "merge", "revive"):
+            continue
+        ex = event.extra
+        theirs, ours, after = ex.get("theirs") or "", ex["ours"], ex["after"]
+        base = ex.get("base_text")
+        base = theirs if base is None else base
+        dropped = markers_of(theirs) - markers_of(after) - (markers_of(base) - markers_of(ours))
+        if dropped:
+            raise world.fail(
+                "no_silent_overwrite",
+                f"{event.op_id} ({event.event}) removed lines {sorted(dropped)} of "
+                f"{event.entity_id} that it had not removed from its base",
+            )
+        if not ex.get("copy"):
+            lost = markers_of(ours) - markers_of(base) - markers_of(after)
+            if lost:
+                raise world.fail(
+                    "no_acknowledged_note_loss",
+                    f"{event.op_id} ({event.event}) dropped its own additions {sorted(lost)}",
+                )
+
+
+def markers_of(text: str) -> frozenset[str]:
+    return frozenset(line for line in text.split("\n") if line.startswith("m:"))

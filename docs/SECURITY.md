@@ -271,7 +271,7 @@ proxied `/api`/`/health` responses keep the API's own headers (scoping intact). 
 
 See `ACCEPTANCE.md` (M9-05) for the exact commands and results.
 
-## 12. Sync clients and device credentials (ADR-0059 D8; protocol server SYNC-03 implemented, device credentials SYNC-06 not)
+## 12. Sync clients and device credentials (ADR-0059 D8; protocol server SYNC-03 and note merge SYNC-04 implemented, device credentials SYNC-06 not)
 
 Applies when local-first desktop/Android clients exist (ADR-0055). Design: `SYNC_PROTOCOL.md` §10.
 
@@ -296,6 +296,25 @@ revealed to authenticated callers (the check runs after authentication; an unaut
 and no epoch). New attack surface reviewed: `Atlas-Sync`/`Atlas-Epoch` headers are parsed with a strict ASCII-digit rule and a
 length bound; `types=` is validated against a closed vocabulary (`422` otherwise); `include=data` reads are batched `IN` queries
 bound to the user id. Limits unchanged: 200 items per data page; no per-device rate limit until SYNC-06.
+
+**Verified by SYNC-04 (notes, 2026-11-03)** - new surface: the note history (a directory of copies of note text), the merge, the
+conflict copy and the path rules.
+- *Cross-user exposure:* a history row carries `user_id` and every read filters on it; a note id of another user is `404` for
+  `GET .../history`, `GET .../history/{revision}`, `PUT`, merge and revive (`test_history_never_crosses_users`); a history file is
+  addressed by the note's own id and the hash of its bytes, never by a client-supplied path (`history_*` validate the hash with a
+  strict 64-hex rule, `UnsafePathError` otherwise; the directory is inside the notes root and `absolute()` still resolves
+  symlinks and rejects escapes). A damaged or swapped file is never used (hash checked on read; tested).
+- *Retention of deleted text (privacy):* deleting or overwriting a note no longer removes its text from the server at once: the
+  last 20 revisions and 90 days of history stay in `.atlas/history`, in every backup, until pruned. This is the price of
+  recoverable merges and edit-wins; it is documented to the operator (`OPERATOR_GUIDE.md`, `.env.example`), bounded
+  (`NOTE_HISTORY_*`), and an operator who needs a note gone must also remove its history directory (R-44).
+- *Untrusted content:* the merge treats note text as opaque lines (no parsing but a front-matter block comparison, no
+  evaluation); size and time are bounded (5 MiB, 200 000 lines, 4 000 000 diff cells, then "not merged"). Lone surrogates and NUL
+  are rejected at the schema (a lone surrogate used to turn the validation error itself into a `500`).
+- *Paths:* sync mode refuses Windows-reserved names, forbidden characters, trailing dots/spaces, over-long names and case or
+  normalisation collisions; `.atlas` stays rejected by the path validator; the server-chosen names (`name (2).md`, conflict copies)
+  are derived from the validated path and shortened, never from other client input.
+- *Logs:* the new code logs no note text or path (it logs nothing per write; the purge logs a count).
 
 Open: keystore mechanism per platform (spike), HTTPS-only enforcement and the tailnet dev override, rate limiting behind a proxy
 (R-SEC-1 keys on IP; device limits key on device id).

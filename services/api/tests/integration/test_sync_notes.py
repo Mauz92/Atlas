@@ -1,8 +1,8 @@
 """Sync-mode note creates and writes: client ids, live-path uniqueness, collisions (SYNC-03c).
 
-Note history, three-way merge and edit-wins for notes are SYNC-04; here a sync-mode note write
-needs an idempotency key and (for update/delete/move) a base revision, and a create may carry a
-client id.
+A sync-mode note write needs an idempotency key and (for update/delete/move) a base revision (and
+for update a base hash), and a create may carry a client id. Note history, the three-way merge,
+edit-wins and the move rules (SYNC-04) are in ``test_note_sync_merge.py``.
 """
 
 from __future__ import annotations
@@ -45,12 +45,12 @@ async def test_a_client_id_is_used_and_replays(c: AsyncClient) -> None:
     assert len((await c.get("/api/notes")).json()["notes"]) == 1
 
 
-async def test_the_same_key_replays_a_summary_without_the_content(c: AsyncClient) -> None:
+async def test_the_same_key_replays_the_result_with_its_content(c: AsyncClient) -> None:
     key = str(uuid.uuid4())
     a = await c.post("/api/notes", json={"path": "k.md", "content": "body"}, headers=h(c, key))
     b = await c.post("/api/notes", json={"path": "k.md", "content": "body"}, headers=h(c, key))
     assert b.status_code == 201 and b.headers["Idempotency-Replayed"] == "true"
-    assert b.json()["id"] == a.json()["id"] and "content" not in b.json()
+    assert b.json()["id"] == a.json()["id"] and b.json()["content"] == "body"
     mismatch = await c.post("/api/notes", json={"path": "k.md", "content": "x"}, headers=h(c, key))
     assert mismatch.status_code == 409 and mismatch.json()["error"] == "idempotency_mismatch"
     assert len((await c.get("/api/notes")).json()["notes"]) == 1
@@ -111,16 +111,22 @@ async def test_sync_mode_note_writes_need_a_key_and_a_base(c: AsyncClient) -> No
     note = (await create(c, "w.md", "x")).json()
     headers = {"Atlas-Sync": "1", **csrf_headers(c)}
     r = await c.put(
-        f"/api/notes/{note['id']}", json={"content": "y", "base_revision": 1}, headers=headers
+        f"/api/notes/{note['id']}",
+        json={"content": "y", "base_revision": 1, "base_hash": note["content_hash"]},
+        headers=headers,
     )
     assert r.status_code == 422 and r.json()["error"] == "idempotency_key_required"
+    r = await c.put(
+        f"/api/notes/{note['id']}", json={"content": "y", "base_revision": 1}, headers=h(c)
+    )
+    assert r.status_code == 422 and r.json()["error"] == "base_hash_required"
     r = await c.post(f"/api/notes/{note['id']}/move", json={"path": "z.md"}, headers=h(c))
     assert r.status_code == 422 and r.json()["error"] == "base_revision_required"
     r = await c.delete(f"/api/notes/{note['id']}", headers=h(c))
     assert r.status_code == 422 and r.json()["error"] == "base_revision_required"
     r = await c.put(
         f"/api/notes/{note['id']}",
-        json={"content": "y", "base_revision": 1, "nope": 1},
+        json={"content": "y", "base_revision": 1, "base_hash": note["content_hash"], "nope": 1},
         headers=h(c),
     )
     assert r.status_code == 422 and r.json()["error"] == "unknown_fields"
@@ -129,14 +135,19 @@ async def test_sync_mode_note_writes_need_a_key_and_a_base(c: AsyncClient) -> No
 async def test_a_retried_note_update_applies_once(c: AsyncClient) -> None:
     note = (await create(c, "u.md", "x")).json()
     key = str(uuid.uuid4())
-    body = {"content": "y", "base_revision": 1}
+    body = {"content": "y", "base_revision": 1, "base_hash": note["content_hash"]}
     a = await c.put(f"/api/notes/{note['id']}", json=body, headers=h(c, key))
     b = await c.put(f"/api/notes/{note['id']}", json=body, headers=h(c, key))
     assert a.status_code == b.status_code == 200
     assert b.headers["Idempotency-Replayed"] == "true" and b.json()["revision"] == 2
     assert (await c.get(f"/api/notes/{note['id']}")).json()["revision"] == 2
-    stale = await c.put(f"/api/notes/{note['id']}", json=body, headers=h(c))
-    assert stale.status_code == 409 and stale.json()["error"] == "stale"
+    # the same edit again under a new key: its base is stale, but the text is already there
+    again = await c.put(f"/api/notes/{note['id']}", json=body, headers=h(c))
+    assert again.status_code == 200 and again.json()["revision"] == 2
+    future = await c.put(
+        f"/api/notes/{note['id']}", json={**body, "base_revision": 9}, headers=h(c)
+    )
+    assert future.status_code == 409 and future.json()["error"] == "stale"
 
 
 async def test_note_writes_without_sync_mode_ignore_keys_as_before(

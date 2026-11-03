@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .engine import Req, Resp
+from .model_notes import ModelNotes
 
 #: label field per kind (task ``title``, project ``name``); both also have ``description``.
 LABEL = {"task": "title", "project": "name"}
@@ -68,6 +69,19 @@ class ServerBugs:
     snapshot_skips_entity: bool = False
     #: the server accepts any ``Atlas-Sync`` value instead of answering ``426``
     accepts_any_protocol: bool = False
+    # --- notes (SYNC-04) ---
+    #: a stale note save replaces the note with the incoming text (last write wins, no merge)
+    notes_overwrite_on_stale: bool = False
+    #: a "merged" save is acknowledged with the server's text: the client's edit is not in it
+    notes_merge_drops_ours: bool = False
+    #: every 4th fast-forward note save is acknowledged but not applied
+    notes_drop_acknowledged_write: bool = False
+    #: two notes may take paths that differ only by case or Unicode normalisation
+    notes_ignore_path_collisions: bool = False
+    #: the conflict copy keeps only the first half of the losing text
+    notes_conflict_copy_truncated: bool = False
+    #: the answer to a conflict is not stored under the key: a retry saves a second copy
+    notes_conflict_not_stored: bool = False
 
 
 @dataclass
@@ -79,6 +93,8 @@ class Entity:
     deleted: bool = False
     last_client_time: int = -(10**18)
     field_revs: dict[str, int] = field(default_factory=dict)
+    #: notes: revision -> (content, path, reason), the retained history
+    history: dict[int, tuple[str, str, str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -93,6 +109,8 @@ class HistoryEvent:
     base: int | None = None
     revision_before: int | None = None
     writes: tuple[tuple[str, int, bool], ...] = ()
+    #: notes: the texts involved (``theirs``, ``ours``, ``base_text``, ``after``)
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -116,6 +134,7 @@ class ModelServer:
         self._next_id = 0
         self._mutations = 0
         self._patches = 0
+        self.notes = ModelNotes(self)
 
     # --- ServerPort -------------------------------------------------------------------------
 
@@ -132,6 +151,8 @@ class ModelServer:
         parts = [p for p in req.path.split("/") if p]  # api, <plural>, [id], [restore]
         if parts[:2] == ["api", "changes"] and req.method == "GET":
             return self._changes(req)
+        if len(parts) >= 2 and parts[0] == "api" and parts[1] == "notes":
+            return self.notes.handle(req, bool(sync), parts[2:])
         if len(parts) < 2 or parts[0] != "api" or parts[1] not in _KIND_OF:
             return Resp(404, {"detail": "Not Found"})
         kind = _KIND_OF[parts[1]]
@@ -544,7 +565,11 @@ class ModelServer:
                 "operation": r.operation,
                 "cursor": r.seq,
             }
-            if include == "data":
+            if include == "data" and r.kind == "note":
+                entity = self.entities[r.entity_id]
+                item["revision"] = entity.revision
+                item["data"] = self.notes.feed_data(entity)
+            elif include == "data":
                 entity = self.entities[r.entity_id]
                 item["revision"] = entity.revision
                 item["data"] = {
@@ -580,6 +605,7 @@ class ModelServer:
         for name in ("entities", "feed", "idem", "history"):
             setattr(clone, name, copy.deepcopy(getattr(self, name)))
         clone.head_seq, clone.floor = self.head_seq, self.floor
+        clone.notes._copies = self.notes._copies
         clone._next_id, clone._mutations, clone._patches = (
             self._next_id,
             self._mutations,
