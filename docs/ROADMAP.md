@@ -24,7 +24,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M8 | Notifications and mobile apps | `IN_PROGRESS` | Platform behaviour tested on real devices |
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
-| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `IN_PROGRESS` | UX-01, UX-02 and UX-03 `DONE` 2026-11-02, UX-04, UX-05 and UX-06 `DONE` 2026-11-03; next UX-07 (`READY`); J1–J7 and the axe sweep keep passing while the UI is rebuilt |
+| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `IN_PROGRESS` | UX-01, UX-02 and UX-03 `DONE` 2026-11-02, UX-04, UX-05, UX-06 and UX-07 `DONE` 2026-11-03; next UX-08 (`BACKLOG`); J1–J7 and the axe sweep keep passing while the UI is rebuilt |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -665,8 +665,9 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 | UX-04 | Task detail as property panel with per-field autosave | UX-03 | `DONE` |
 | UX-05 | Notes workspace + note autosave (own tests before Save is removed) | UX-02 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-05; ADR-0054; CI `e2e-real` NOT RUN; not committed) |
 | UX-06 | Live preview mode; Live becomes default once round-trip tests pass | UX-05 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-06; ADR-0056; CI `e2e-real` NOT RUN; not committed) |
-| UX-07 | Tasks, Projects and Board polish | UX-03 | `READY` |
+| UX-07 | Tasks, Projects and Board polish | UX-03 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-07; ADR-0057; CI `e2e-real` NOT RUN; not committed) |
 | UX-08 | Settings consolidation, skeletons, empty states | UX-02 | `BACKLOG` |
+| AUTH-01 | Account recovery in the UI: recovery code issued at setup/in Settings, "Forgot password?" on the sign-in page, reset without email (CLI `atlas-admin reset-password` exists since 2026-11-03) | UX-02 | `BACKLOG` (needs an ADR and the owner's approval of the recovery design: there is no email service in a self-hosted install, so a one-time recovery code shown once at setup and regenerable in Settings is proposed; reset must revoke all sessions, be rate limited, never log the code, and store only its hash) |
 
 ### UX-01 plan — Design tokens and base controls
 - **Scope.** Replace `:root` in `apps/web/src/styles.css` with the audit §3 tokens, using a neutral accent
@@ -821,11 +822,41 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
   Known limitation found: the server normalises CRLF to LF on read (R-24), so the real-stack CRLF byte test is
   `BLOCKED` (unit-level proof only). Other limits in ADR-0056 and R-25.
 
+### UX-07 plan — Tasks, Projects and Board polish
+- **Scope.** (1) Tasks page: the stacked form becomes one **filter bar** (search field, chips Status / Priority /
+  Project / Due / Sort that open the shared `Menu` or, for the Due range, a small popover; a List | Board segmented
+  toggle; "Reset filters" when anything is set; a "…" menu with *Save this view…*, *Saved views* and *Remove saved
+  view*). URL state stays exactly ADR-0045 (`view=board` is the only new, additive parameter). Bulk selection keeps
+  the square boxes and `x`, and the bulk bar now floats (sticky above the status bar). Board mode of the Tasks page
+  renders the filtered tasks. (2) Projects: rows with name, status pill, tokenised progress bar, open count, target
+  date and a "…" menu (Open, Archive/Restore); archived projects behind a *Show archived (n)* toggle. (3) Project page:
+  header (name, status pill, progress, dates, "…" menu with Edit/Archive/Restore) and tabs **Tasks | Board | Notes**
+  (URL `?tab=`); completed (and archived) tasks fold into *Completed (n)* / *Archived (n)* groups. (4) Board: compact
+  cards (title, project dot, due, priority flag), "Move to…" in the card menu **plus keys `[` / `]`** (previous / next
+  allowed column, focus follows the card, polite announcement), the Archived column behind a toggle. (5) One date
+  format (`formatDay`, no ISO dates shown). Business rules (`adjacentStatus`, due presets, chip labels) are pure
+  functions in `lib/`, covered by unit tests; every write is the existing revision-checked, idempotent call.
+- **Out of scope.** Backend/schema changes, new npm packages, drag-and-drop redesign, project delete, server-side
+  sort, a sidebar section for saved views (they live in the filter bar's "…" menu; the sidebar stays
+  `NAV_SECTIONS`-only), Settings/skeleton work (UX-08).
+- **Acceptance.** Tasks filter UI is one row at 1440 px; every filter works by keyboard and survives a reload via the
+  URL; saved views save/apply/remove; the bulk bar floats and works (complete, move, delete + undo); Board/List
+  toggle on Tasks; project page tabs, header and *Completed (n)* group; board `[`/`]` move the focused card to the
+  adjacent allowed column and keep focus; Archived column hidden by default; no ISO date visible; board at 1440 px
+  with seeded data <= 1,200 px tall; no horizontal page scroll at 1440/1024/720/390 in light and dark; axe clean (mu08
+  incl. new states); J1-J7, ux02-ux06 and tasks-page pass with selectors changed only where labels legitimately
+  changed; `./scripts/verify.sh`, `npm run test:e2e:real`, `npm run e2e` pass.
+- **Status: `DONE` (2026-11-03).** As built (ADR-0057): `FilterBar`, `BulkBar`, `MenuButton`, `Popover`, `Tabs`,
+  `FoldGroup`, `useSavedFilters`; `Board` gained `archivedToggle`, `[` / `]` and compact cards; `Projects`,
+  `ProjectPage`, `Tasks` rewritten on them; pure rules in `lib/taskFilters.ts`, `lib/taskStatus.ts`
+  (`adjacentStatus`), `lib/tasks.ts` (`formatDay`). Saved views stayed in the filter bar's "…" menu (the sidebar
+  is `NAV_SECTIONS` only). Evidence: `ACCEPTANCE.md` UX-07. Limitations in ADR-0057 and R-26.
+
 ---
 
 ## Immediate Next Tasks
 
-**Next: UX-07 (`READY`; UX-01…UX-06 are `DONE`), then close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
+**Next: UX-08 (`BACKLOG`, settings/skeletons/empty states; UX-01…UX-07 are `DONE`) or close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
 editing) and `MU-02` (Projects UI), `MU-03` (Tasks page) and `MU-04` (recurrence, subtasks and reminders in the UI) and `MU-05` (command palette, quick switcher and unified search) and `MU-06` (note ↔ task ↔ project linking) and `MU-07` (daily note, templates and Today as home) and `MU-08` (settings and shell polish) are `DONE`; MU itself is not closed (CI run and release re-score outstanding, see the MU exit-criteria evaluation).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 

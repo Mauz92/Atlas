@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
-import { apiCall, dateIn, ensureOwner } from "./helpers";
+import { apiCall, chooseFilter, dateIn, ensureOwner, filterBar, openDueFilter } from "./helpers";
 
 /**
  * MU-03 — the Tasks page (docs/ROADMAP.md, MU): find tasks with the server's filters, sort them,
@@ -42,40 +42,49 @@ test("tasks page: filter, sort, URL state and saved filters", async ({ page }) =
   await expect.poll(() => titlesOf(page)).toEqual(["TPA taxes", "TPA rent", "TPA laundry"]);
 
   // Sort is part of the URL.
-  await page.getByLabel("Sort by").selectOption("due");
+  await chooseFilter(page, "Sort", "Due date");
   await expect(page).toHaveURL(/sort=due/);
   await expect.poll(() => titlesOf(page)).toEqual(["TPA rent", "TPA taxes", "TPA laundry"]);
 
   // Priority, then project, then a due range; each narrows the list and survives a reload.
-  await page.getByLabel("Priority", { exact: true }).selectOption("high");
+  await chooseFilter(page, "Priority", "High");
   await expect.poll(() => titlesOf(page)).toEqual(["TPA rent"]);
   await page.reload();
-  await expect(page.getByLabel("Priority", { exact: true })).toHaveValue("high");
+  await expect(filterBar(page).getByRole("button", { name: "Priority: High" })).toBeVisible();
   await expect.poll(() => titlesOf(page)).toEqual(["TPA rent"]);
 
-  await page.getByLabel("Priority", { exact: true }).selectOption("");
-  await page.getByLabel("Due to").fill(dateIn(ZONE, 5));
+  await chooseFilter(page, "Priority", "Any priority");
+  const due = await openDueFilter(page);
+  await due.getByLabel("Due to").fill(dateIn(ZONE, 5));
   await expect.poll(() => titlesOf(page)).toEqual(["TPA rent"]);
-  await page.getByLabel("Due to").fill("");
-  await page.getByLabel("Project", { exact: true }).selectOption({ label: "TPA Home" });
+  await due.getByLabel("Due to").fill("");
+  await page.keyboard.press("Escape");
+  await expect(due).toBeHidden();
+  await chooseFilter(page, "Project", "TPA Home");
   await expect.poll(() => titlesOf(page)).toEqual(["TPA rent"]);
 
   // An inverted range is rejected by the server and its message is shown as is.
-  await page.getByLabel("Project", { exact: true }).selectOption("");
-  await page.getByLabel("Due from").fill(dateIn(ZONE, 8));
-  await page.getByLabel("Due to").fill(dateIn(ZONE, 3));
+  await chooseFilter(page, "Project", "Any project");
+  const range = await openDueFilter(page);
+  await range.getByLabel("Due from").fill(dateIn(ZONE, 8));
+  await range.getByLabel("Due to").fill(dateIn(ZONE, 3));
   await expect(page.getByRole("alert")).toContainText("due range is inverted");
+  await page.keyboard.press("Escape");
 
-  // Save a view, leave, and come back through the shortcut; it persists across a reload.
+  // Save a view from the bar's menu, leave, and come back through it; it persists across a reload.
   await page.getByRole("button", { name: "Reset filters" }).click();
-  await page.getByLabel("Priority", { exact: true }).selectOption("urgent");
+  await chooseFilter(page, "Priority", "Urgent");
+  await page.getByRole("button", { name: "Filter options" }).click();
+  await page.getByRole("menuitem", { name: "Save this view…" }).click();
   await page.getByLabel("Saved filter name").fill("TPA urgent");
   await page.getByRole("button", { name: "Save this view" }).click();
   await page.goto("/tasks");
   await page.reload();
-  await page.getByRole("link", { name: "TPA urgent" }).click();
+  await page.getByRole("button", { name: "Filter options" }).click();
+  await page.getByRole("menuitem", { name: "Saved views" }).click();
+  await page.getByRole("menuitem", { name: "TPA urgent" }).click();
   await expect(page).toHaveURL(/priority=urgent/);
-  await expect(page.getByLabel("Priority", { exact: true })).toHaveValue("urgent");
+  await expect(filterBar(page).getByRole("button", { name: "Priority: Urgent" })).toBeVisible();
   await expect.poll(async () => (await titlesOf(page)).includes("TPA taxes")).toBe(true);
 });
 
@@ -94,7 +103,8 @@ test("tasks page: keyboard selection, bulk move, complete, delete and undo", asy
 
   // Move the whole selection to a project; the rows then name it.
   await page.getByLabel("Select all").check();
-  await page.getByLabel("Move selected to project").selectOption({ label: "TPB Target" });
+  await page.getByRole("button", { name: "Move to project…" }).click();
+  await page.getByRole("menuitem", { name: "TPB Target" }).click();
   await expect(rows(page).locator(".project-tag")).toHaveText(["TPB Target", "TPB Target", "TPB Target"]);
 
   // Complete two of them: they leave the default "open" list and show under Completed.
@@ -103,7 +113,7 @@ test("tasks page: keyboard selection, bulk move, complete, delete and undo", asy
   await page.getByLabel("Select TPB laundry").check();
   await page.getByRole("button", { name: "Complete selected" }).click();
   await expect.poll(() => titlesOf(page)).toEqual(["TPB taxes"]);
-  await page.getByLabel("Status", { exact: true }).selectOption("completed");
+  await chooseFilter(page, "Status", "Completed");
   await expect.poll(() => titlesOf(page)).toHaveLength(2);
 
   // Delete both, then undo: they come back.

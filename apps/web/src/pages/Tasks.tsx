@@ -1,37 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
-import { tasksApi, type Task, type TaskPriority } from "../api/client";
+import { tasksApi, type Task, type TaskStatus } from "../api/client";
+import { Board } from "../components/Board";
+import { BulkBar } from "../components/BulkBar";
+import { FilterBar } from "../components/FilterBar";
 import { LoadError } from "../components/LoadError";
 import { TaskList } from "../components/TaskList";
 import { UndoToast } from "../components/UndoToast";
 import { activeProjects, useProjects } from "../hooks/useProjects";
+import { useSavedFilters } from "../hooks/useSavedFilters";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 import { useTaskQuery } from "../hooks/useTaskQuery";
-import { PRIORITIES } from "../lib/taskForm";
 import {
   filterFromParams,
   filterToParams,
-  loadSavedFilters,
-  MAX_SAVED_FILTERS,
   PAGE_LIMIT,
-  SORT_LABELS,
-  storeSavedFilters,
-  type SavedFilter,
-  type SortKey,
   type TaskFilter,
 } from "../lib/taskFilters";
 import { viewerTimeZone } from "../lib/tasks";
+import { boardColumns, groupByStatus } from "../lib/taskStatus";
 
-const STATUS_CHOICES: [string, string][] = [
-  ["open", "Open"],
-  ["all", "All statuses"],
-  ["inbox", "Inbox"],
-  ["next", "Next"],
-  ["in_progress", "In progress"],
-  ["completed", "Completed"],
-  ["archived", "Archived"],
-];
+const COLUMNS = boardColumns();
 
 /** Run one request per task; one failure does not stop the rest, and each failure is reported verbatim. */
 async function runForEach(
@@ -53,9 +43,10 @@ async function runForEach(
 }
 
 /**
- * All tasks (MU-03): the server's filters (status, priority, due range, project, text), a sort,
- * saved filters kept in this browser, and bulk complete / move / delete with undo. The filter lives
- * in the URL, so a view can be linked and survives a reload. Rows open the shared task detail.
+ * All tasks (MU-03, UX-07): the server's filters (status, priority, due range, project, text) in
+ * one filter bar, a sort, saved views kept in this browser, a List | Board toggle, and bulk
+ * complete / move / delete with undo in a floating bar. The filter (and the view) lives in the URL,
+ * so a view can be linked and survives a reload. Rows open the shared task detail.
  */
 export function Tasks() {
   const [params, setParams] = useSearchParams();
@@ -85,9 +76,7 @@ export function Tasks() {
   const [busy, setBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [deleted, setDeleted] = useState<Task[]>([]);
-  const [saved, setSaved] = useState<SavedFilter[]>(loadSavedFilters);
-  const [saveName, setSaveName] = useState("");
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const views = useSavedFilters();
 
   // Navigation renders asynchronously, so two quick changes (or a change right after Reset) must
   // build on the URL they just wrote, not on the last committed render.
@@ -110,6 +99,7 @@ export function Tasks() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
 
+  const tasksByStatus = useMemo(() => groupByStatus(tasks), [tasks]);
   const shown = useMemo(
     () => tasks.filter((task) => selected.has(task.id)),
     [tasks, selected],
@@ -153,237 +143,25 @@ export function Tasks() {
     await bulk(restore, (task) => tasksApi.restore(task.id), "Could not undo");
   }
 
-  function saveFilter() {
-    const name = saveName.trim();
-    if (!name) return;
-    if (saved.length >= MAX_SAVED_FILTERS) {
-      setSaveError(`You can keep at most ${MAX_SAVED_FILTERS} saved filters.`);
-      return;
-    }
-    const next = [
-      ...saved,
-      { id: crypto.randomUUID(), name, query: params.toString() },
-    ];
-    setSaved(next);
-    setSaveName("");
-    setSaveError(
-      storeSavedFilters(next)
-        ? null
-        : "This browser would not store it; the filter is kept until you leave the page.",
-    );
-  }
-
-  function removeSaved(id: string) {
-    const next = saved.filter((entry) => entry.id !== id);
-    setSaved(next);
-    storeSavedFilters(next);
-  }
-
   const shownError = bulkError ?? editor.error;
 
   return (
     <section className="page tasks-page">
       <h1>Tasks</h1>
-      <p className="muted">
-        Every task, filtered and sorted. The address of this page is the view.
-      </p>
 
-      <div className="task-filters" role="search" aria-label="Task filters">
-        <label>
-          Search
-          <input
-            aria-label="Search"
-            type="search"
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder="Title or description"
-          />
-        </label>
-        <label>
-          Status
-          <select
-            aria-label="Status"
-            value={filter.status}
-            onChange={(event) => change({ status: event.target.value })}
-          >
-            {STATUS_CHOICES.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Priority
-          <select
-            aria-label="Priority"
-            value={filter.priority}
-            onChange={(event) => change({ priority: event.target.value })}
-          >
-            <option value="">Any</option>
-            {PRIORITIES.map((priority: TaskPriority) => (
-              <option key={priority} value={priority}>
-                {priority}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Project
-          <select
-            aria-label="Project"
-            value={filter.project}
-            onChange={(event) => change({ project: event.target.value })}
-          >
-            <option value="">Any</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Due from
-          <input
-            aria-label="Due from"
-            type="date"
-            value={filter.dueFrom}
-            onChange={(event) => change({ dueFrom: event.target.value })}
-          />
-        </label>
-        <label>
-          Due to
-          <input
-            aria-label="Due to"
-            type="date"
-            value={filter.dueTo}
-            onChange={(event) => change({ dueTo: event.target.value })}
-          />
-        </label>
-        <label>
-          Sort by
-          <select
-            aria-label="Sort by"
-            value={filter.sort}
-            onChange={(event) => change({ sort: event.target.value as SortKey })}
-          >
-            {Object.entries(SORT_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          className="ghost"
-          onClick={() => navigate(new URLSearchParams())}
-        >
-          Reset filters
-        </button>
-      </div>
-
-      <div className="saved-filters">
-        <h2>Saved filters</h2>
-        {saved.length > 0 ? (
-          <ul aria-label="Saved filters">
-            {saved.map((entry) => (
-              <li key={entry.id}>
-                <Link to={`/tasks${entry.query ? `?${entry.query}` : ""}`}>
-                  {entry.name}
-                </Link>
-                <button
-                  type="button"
-                  className="ghost"
-                  aria-label={`Remove saved filter ${entry.name}`}
-                  onClick={() => removeSaved(entry.id)}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted">None yet.</p>
-        )}
-        <form
-          className="save-filter"
-          onSubmit={(event) => {
-            event.preventDefault();
-            saveFilter();
-          }}
-        >
-          <input
-            aria-label="Saved filter name"
-            value={saveName}
-            maxLength={60}
-            placeholder="Name this view"
-            onChange={(event) => setSaveName(event.target.value)}
-          />
-          <button type="submit" disabled={!saveName.trim()}>
-            Save this view
-          </button>
-        </form>
-        {saveError ? <p className="error">{saveError}</p> : null}
-      </div>
-
-      {shown.length > 0 ? (
-        <div className="bulk-bar" role="toolbar" aria-label="Bulk actions">
-          <span>{shown.length} selected</span>
-          <button
-            type="button"
-            disabled={busy || completable.length === 0}
-            onClick={() =>
-              void bulk(
-                completable,
-                (task) => tasksApi.complete(task),
-                "Could not complete the task",
-              )
-            }
-          >
-            Complete selected
-          </button>
-          <select
-            aria-label="Move selected to project"
-            value=""
-            disabled={busy}
-            onChange={(event) => {
-              const value = event.target.value;
-              if (!value) return;
-              const projectId = value === "none" ? null : value;
-              void bulk(
-                shown,
-                (task) => tasksApi.update(task, { project_id: projectId }),
-                "Could not move the task",
-              );
-            }}
-          >
-            <option value="">Move to project…</option>
-            <option value="none">No project</option>
-            {activeProjects(projects).map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className="danger"
-            disabled={busy}
-            onClick={() =>
-              void bulk(
-                shown,
-                (task) => tasksApi.remove(task),
-                "Could not delete the task",
-                (done) => setDeleted(done),
-              )
-            }
-          >
-            Delete selected
-          </button>
-        </div>
-      ) : null}
+      <FilterBar
+        filter={filter}
+        text={text}
+        onText={setText}
+        projects={projects}
+        onChange={change}
+        onReset={() => navigate(new URLSearchParams())}
+        saved={views.saved}
+        onSaveView={(name) => views.save(name, params.toString())}
+        onApplyView={(entry) => navigate(new URLSearchParams(entry.query))}
+        onRemoveView={views.remove}
+      />
+      {views.error ? <p className="error">{views.error}</p> : null}
 
       {shownError ? (
         <p className="error bulk-error" role="alert">
@@ -398,19 +176,23 @@ export function Tasks() {
       ) : (
         <>
           <div className="task-count">
-            <label>
-              <input
-                type="checkbox"
-                checked={allSelected}
-                disabled={tasks.length === 0}
-                onChange={() =>
-                  setSelected(
-                    allSelected ? new Set() : new Set(tasks.map((t) => t.id)),
-                  )
-                }
-              />
-              Select all
-            </label>
+            {filter.view === "list" ? (
+              <label>
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  disabled={tasks.length === 0}
+                  onChange={() =>
+                    setSelected(
+                      allSelected ? new Set() : new Set(tasks.map((t) => t.id)),
+                    )
+                  }
+                />
+                Select all
+              </label>
+            ) : (
+              <span />
+            )}
             <span className="muted" aria-live="polite">
               {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
             </span>
@@ -421,22 +203,71 @@ export function Tasks() {
               the rest.
             </p>
           ) : null}
-          <TaskList
-            tasks={tasks}
-            timeZone={timeZone}
-            projects={projectsById}
-            actions={editor.actions}
-            filable={editor.projects}
-            onOpen={editor.open}
-            emptyMessage="No tasks match these filters."
-            selection={{
-              isSelected: (id) => selected.has(id),
-              toggle: (task) => toggle(task.id),
-              active: selected.size > 0,
-            }}
-          />
+          {filter.view === "board" ? (
+            <Board
+              columns={COLUMNS}
+              tasksByStatus={tasksByStatus}
+              timeZone={timeZone}
+              onMove={(task, status) =>
+                void editor.actions.setStatus(task, status as TaskStatus)
+              }
+              onOpen={editor.open}
+              movingId={[...editor.actions.busy][0] ?? null}
+              empty={tasks.length === 0}
+              emptyMessage="No tasks match these filters."
+              actions={editor.actions}
+              archivedToggle
+            />
+          ) : (
+            <TaskList
+              tasks={tasks}
+              timeZone={timeZone}
+              projects={projectsById}
+              actions={editor.actions}
+              filable={editor.projects}
+              onOpen={editor.open}
+              emptyMessage="No tasks match these filters."
+              selection={{
+                isSelected: (id) => selected.has(id),
+                toggle: (task) => toggle(task.id),
+                active: selected.size > 0,
+              }}
+            />
+          )}
         </>
       )}
+
+      {shown.length > 0 && filter.view === "list" ? (
+        <BulkBar
+          count={shown.length}
+          busy={busy}
+          canComplete={completable.length > 0}
+          projects={activeProjects(projects)}
+          onComplete={() =>
+            void bulk(
+              completable,
+              (task) => tasksApi.complete(task),
+              "Could not complete the task",
+            )
+          }
+          onMove={(projectId) =>
+            void bulk(
+              shown,
+              (task) => tasksApi.update(task, { project_id: projectId }),
+              "Could not move the task",
+            )
+          }
+          onDelete={() =>
+            void bulk(
+              shown,
+              (task) => tasksApi.remove(task),
+              "Could not delete the task",
+              (done) => setDeleted(done),
+            )
+          }
+          onClear={() => setSelected(new Set())}
+        />
+      ) : null}
 
       {deleted.length > 0 ? (
         <UndoToast

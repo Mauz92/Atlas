@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
 
 import type { Task } from "../api/client";
 import { boardColumns, groupByStatus } from "../lib/taskStatus";
@@ -31,6 +32,7 @@ function renderBoard(tasks: Task[], onMove = vi.fn(), empty = false) {
       columns={boardColumns()}
       tasksByStatus={groupByStatus(tasks)}
       onMove={onMove}
+      onOpen={() => {}}
       empty={empty}
     />,
   );
@@ -135,5 +137,92 @@ describe("Board", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Open Alpha" }));
     expect(onOpen).toHaveBeenCalledWith(task);
+  });
+
+  describe("keyboard moves with [ and ]", () => {
+    it("moves the focused card to the next allowed column and back", () => {
+      const { onMove } = renderBoard([makeTask({ id: "a", title: "Alpha", status: "next" })]);
+      const title = screen.getByRole("button", { name: "Open Alpha" });
+      title.focus();
+      fireEvent.keyDown(title, { key: "]" });
+      expect(onMove).toHaveBeenLastCalledWith(expect.objectContaining({ id: "a" }), "in_progress");
+      fireEvent.keyDown(title, { key: "[" });
+      expect(onMove).toHaveBeenLastCalledWith(expect.objectContaining({ id: "a" }), "inbox");
+    });
+
+    it("skips forbidden columns and says so at an edge", () => {
+      const { onMove } = renderBoard([
+        makeTask({ id: "c", title: "Gamma", status: "completed" }),
+        makeTask({ id: "i", title: "Iota", status: "inbox" }),
+      ]);
+      const gamma = screen.getByRole("button", { name: "Open Gamma" });
+      fireEvent.keyDown(gamma, { key: "[" });
+      expect(onMove).toHaveBeenLastCalledWith(expect.objectContaining({ id: "c" }), "in_progress");
+      const iota = screen.getByRole("button", { name: "Open Iota" });
+      onMove.mockClear();
+      fireEvent.keyDown(iota, { key: "[" });
+      expect(onMove).not.toHaveBeenCalled();
+      expect(screen.getByText("Iota cannot move left from Inbox")).toBeInTheDocument();
+    });
+
+    it("keeps focus on the card after it lands in another column, and announces it", () => {
+      function Host() {
+        const [tasks, setTasks] = useState([makeTask({ id: "a", title: "Alpha", status: "inbox" })]);
+        return (
+          <Board
+            columns={boardColumns()}
+            tasksByStatus={groupByStatus(tasks)}
+            onOpen={() => {}}
+            onMove={(task, status) =>
+              setTasks((current) =>
+                current.map((t) => (t.id === task.id ? { ...t, status: status as Task["status"] } : t)),
+              )
+            }
+          />
+        );
+      }
+      render(<Host />);
+      const title = screen.getByRole("button", { name: "Open Alpha" });
+      title.focus();
+      fireEvent.keyDown(title, { key: "]" });
+      expect(within(column("Next")).getByRole("button", { name: "Open Alpha" })).toHaveFocus();
+      expect(screen.getByText("Moved Alpha to Next")).toBeInTheDocument();
+    });
+
+    it("ignores the keys while typing and with modifiers", () => {
+      const { onMove } = renderBoard([makeTask({ id: "a", title: "Alpha", status: "next" })]);
+      const title = screen.getByRole("button", { name: "Open Alpha" });
+      fireEvent.keyDown(title, { key: "]", ctrlKey: true });
+      expect(onMove).not.toHaveBeenCalled();
+    });
+  });
+
+  it("keeps Archived behind a toggle when asked, and counts what is hidden", () => {
+    render(
+      <Board
+        columns={boardColumns()}
+        tasksByStatus={groupByStatus([
+          makeTask({ id: "z", title: "Zed", status: "archived" }),
+          makeTask({ id: "a", title: "Alpha", status: "inbox" }),
+        ])}
+        onMove={vi.fn()}
+        archivedToggle
+      />,
+    );
+    expect(screen.getAllByRole("heading")).toHaveLength(4);
+    expect(screen.queryByText("Zed")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show archived (1)" }));
+    expect(screen.getAllByRole("heading")).toHaveLength(5);
+    expect(screen.getByText("Zed")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hide archived" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows compact cards: the priority is an icon with a screen-reader name, tags are left out", () => {
+    renderBoard([
+      makeTask({ id: "a", title: "Alpha", status: "next", priority: "high", tags: ["home"] }),
+    ]);
+    const card = screen.getByText("Alpha").closest("li") as HTMLElement;
+    expect(within(card).getByText("High priority")).toHaveClass("sr-only");
+    expect(within(card).queryByText("home")).not.toBeInTheDocument();
   });
 });

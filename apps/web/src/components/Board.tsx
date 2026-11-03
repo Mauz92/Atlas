@@ -1,14 +1,17 @@
-import { useId, useMemo, useState } from "react";
-import type { DragEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import type { Project, Task, TaskStatus } from "../api/client";
 import { useParentTitles } from "../hooks/useParentTitles";
 import { activeProjects, useProjects } from "../hooks/useProjects";
 import type { TaskActions } from "../hooks/useTaskActions";
-import { canMove, type BoardColumn } from "../lib/taskStatus";
+import { isTypingTarget } from "../lib/shortcuts";
+import { STATUS_LABELS, adjacentStatus, canMove, type BoardColumn } from "../lib/taskStatus";
 import { Icon } from "./Icon";
 import { TaskMenu } from "./TaskMenu";
 import { TaskMeta } from "./TaskRow";
+
+const labelOf = (status: string) => STATUS_LABELS[status as TaskStatus] ?? status;
 
 interface BoardProps {
   /** The columns to render, in order (each carries its allowed move targets). */
@@ -29,6 +32,10 @@ interface BoardProps {
   actions?: TaskActions;
   /** Leave the project out of the card meta (a project's own board). */
   hideProject?: boolean;
+  /** Keep the Archived column behind a "Show archived" toggle (UX-07). */
+  archivedToggle?: boolean;
+  /** Shown instead of the first-run hint when `empty` (a filtered board). */
+  emptyMessage?: string;
 }
 
 /**
@@ -38,6 +45,9 @@ interface BoardProps {
  * another column with native HTML5 drag-and-drop, and each compact card (UX-03) has a "…" menu
  * whose "Move to…" offers the same moves to keyboard and touch users. Both paths offer only the
  * transitions the server allows; the server re-validates every move regardless.
+ *
+ * Keyboard (UX-07): with focus on a card, `]` moves it to the next column the state machine allows
+ * and `[` to the previous one; focus follows the card and the move is announced politely.
  */
 export function Board({
   columns,
@@ -49,10 +59,16 @@ export function Board({
   empty,
   actions,
   hideProject,
+  archivedToggle,
+  emptyMessage,
 }: BoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overStatus, setOverStatus] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ task: Task; anchor: HTMLElement } | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [notice, setNotice] = useState("");
+  // After a keyboard move the card is re-created in its new column: focus it again there.
+  const refocus = useRef<{ id: string; status: string; until: number } | null>(null);
   const menuId = useId();
   const { projects } = useProjects();
   const projectById = useMemo(
@@ -73,6 +89,61 @@ export function Board({
 
   const allTasks = useMemo(() => [...tasksById.values()], [tasksById]);
   const parents = useParentTitles(allTasks);
+
+  const visible = useMemo(
+    () => (archivedToggle && !showArchived ? columns.filter((c) => c.status !== "archived") : columns),
+    [columns, archivedToggle, showArchived],
+  );
+  const archivedCount = tasksByStatus.archived?.length ?? 0;
+
+  useLayoutEffect(() => {
+    const pending = refocus.current;
+    if (!pending) return;
+    const task = tasksById.get(pending.id);
+    if (Date.now() > pending.until) {
+      refocus.current = null;
+    } else if (task && task.status === pending.status) {
+      refocus.current = null;
+      document
+        .querySelector<HTMLElement>(`[data-task-id="${CSS.escape(pending.id)}"] .board-card-title`)
+        ?.focus();
+      setNotice(`Moved ${task.title} to ${labelOf(task.status)}`);
+    }
+  }, [tasksById]);
+
+  // The notice is for a screen reader; clear it so the same move announces again later.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  function onCardKeyDown(event: ReactKeyboardEvent<HTMLLIElement>, task: Task) {
+    if (
+      event.defaultPrevented ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
+      (event.key !== "[" && event.key !== "]") ||
+      isTypingTarget(event.target)
+    ) {
+      return;
+    }
+    event.preventDefault();
+    const target = adjacentStatus(
+      task.status,
+      event.key === "]" ? 1 : -1,
+      visible.map((column) => column.status),
+    );
+    if (!target) {
+      setNotice(`${task.title} cannot move ${event.key === "]" ? "right" : "left"} from ${
+        labelOf(task.status)
+      }`);
+      return;
+    }
+    refocus.current = { id: task.id, status: target, until: Date.now() + 5000 };
+    onMove(task, target);
+  }
 
   function taskFor(id: string | null): Task | undefined {
     return id ? tasksById.get(id) : undefined;
@@ -115,11 +186,29 @@ export function Board({
     <div className="board">
       {empty ? (
         <p className="muted board-hint">
-          Nothing on the board yet — capture a task and it will appear in Inbox.
+          {emptyMessage ?? "Nothing on the board yet — capture a task and it will appear in Inbox."}
         </p>
       ) : null}
-      <div className="board-columns">
-        {columns.map((column) => {
+      {archivedToggle ? (
+        <div className="board-toolbar">
+          <button
+            type="button"
+            className="ghost"
+            aria-pressed={showArchived}
+            onClick={() => setShowArchived((open) => !open)}
+          >
+            {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
+          </button>
+        </div>
+      ) : null}
+      <div className="sr-only" aria-live="polite">
+        {notice}
+      </div>
+      <div
+        className="board-columns"
+        style={{ "--board-cols": visible.length } as CSSProperties}
+      >
+        {visible.map((column) => {
           const columnTasks = tasksByStatus[column.status] ?? [];
           return (
             <section
@@ -147,6 +236,7 @@ export function Board({
                       draggable
                       onDragStart={(event) => onDragStart(event, task)}
                       onDragEnd={onDragEnd}
+                      onKeyDown={(event) => onCardKeyDown(event, task)}
                     >
                       <div className="board-card-head">
                         {onOpen ? (
@@ -181,6 +271,7 @@ export function Board({
                       <TaskMeta
                         task={task}
                         timeZone={timeZone}
+                        compact
                         project={
                           task.project_id && !hideProject ? projectById.get(task.project_id) : undefined
                         }

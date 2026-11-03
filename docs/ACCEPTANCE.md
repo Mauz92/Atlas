@@ -3392,3 +3392,39 @@ attribute on unresolved links put raw link text (possibly `javascript:`) into th
 Limitations: ADR-0056 and R-24, R-25 (per-line revealing, no hanging indent in wrapped list items, tables/images
 as text, a press-and-drag that starts on a rendered `[[link]]` opens the note).
 
+### UX-07 — Tasks, Projects and Board polish
+
+**Result: `DONE` (local, 2026-11-03); CI job `e2e-real` `NOT RUN` on GitHub Actions; not committed.** Filter bar,
+floating bulk bar and List | Board on the Tasks page; project rows with a tokenised progress bar and a "…" menu;
+a project header with tabs (Tasks | Board | Notes) and folded Completed / Archived groups; compact board cards with
+`[` / `]` and Archived behind a toggle; one date format (ADR-0057). No backend, schema, dependency or icon change.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Tasks filter UI is one row at 1440 px | `PASS` | `ux07` "filter bar…": bar height <= 48 px and every control on one row (measured) |
+| Every filter works by keyboard and survives a reload via the URL (ADR-0045 unchanged; `view=board` additive) | `PASS` | `ux07` (focus chip, Enter, ↓, Enter -> `status=all`, focus back on the chip; Esc from the Due popover returns focus); `tasks-page.spec` (sort, priority, project, due range, inverted-range server message, reload keeps `Priority: High`); `Tasks.test.tsx`; `taskFilters.test.ts` |
+| Saved views: save, apply, remove; persist across reload | `PASS` | `tasks-page.spec` (Filter options -> Save this view… -> reload -> Saved views -> apply); `Tasks.test.tsx` (localStorage contents, removal) |
+| Bulk selection with a floating bar (complete, move, delete + undo, clear) | `PASS` | `ux07` (bar `toBeInViewport` at top, bottom and mid scroll of a 25-row list; Clear selection); `tasks-page.spec` (select all, move to project via the menu, complete, delete, Undo); `Tasks.test.tsx` (per-task failure report kept) |
+| List \| Board toggle on Tasks | `PASS` | `ux07` "tasks page board" (URL `view=board`, survives reload); `Tasks.test.tsx` (no extra list request) |
+| Board: compact cards, Archived behind a toggle, `[` / `]` move the focused card and keep focus, card menu "Move to…" kept | `PASS` | `ux07` (`]` -> In progress with focus and stored status, `[` back, Inbox edge announces, `]` returns); `Board.test.tsx` (7 new); `taskStatus.test.ts` `adjacentStatus` |
+| Project page: header (name, status pill, progress, dates, "…"), tabs Tasks / Board / Notes, Completed (n) group | `PASS` | `ux07` "projects…" (tabs from the keyboard, `?tab=` in the URL, folded groups open on click); J3 (tab, Notes tab, Project options -> Edit / Archive, row menu -> Restore); `ProjectPage.test.tsx` |
+| Projects: rows with progress, open count, target date; Archive in the menu; archived behind a toggle | `PASS` | `ux07` (no visible Archive button; archive and restore through the row menu); `Projects.test.tsx` |
+| No ISO date visible; one date format | `PASS` | `ux07` (`main` text of Projects and the project page has no `YYYY-MM-DD`); `tasks.test.ts` `formatDay`; unit checks on project dates |
+| Project board at 1440 px with seeded data <= 1,200 px tall | `PASS` | `ux07` (document `scrollHeight` of `/projects/<id>?tab=board` with five tasks) |
+| No horizontal page scroll at 1440 / 1024 / 720 / 390 px, light and dark | `PASS` | `ux07` "layout" (5 views x 4 widths x 2 themes; the phone board scrolls inside its columns); `mu08` at 375 and 800 px for the new routes |
+| axe clean incl. the new states, light and dark | `PASS` | `mu08`: `/tasks?view=board`, project Board and Notes tabs in both themes, plus chip menu, Due popover, save-view popover, bulk bar, project row menu, project header menu. axe found one real issue on the first run (`label-content-name-mismatch`: the bulk bar's project button had an `aria-label` that did not contain its visible text); fixed by naming the button by its text |
+| J1-J7, ux02-ux06, tasks-page keep passing with selectors changed only where labels legitimately changed | `PASS` | Changed: tasks-page (chips, "…" menu, bulk menu), J3 (tab, Notes tab, Project options, row menu), ux03 (a project's completed row is inside the folded group). Names kept: `Select <title>`, `Select all`, `Complete selected`, `Delete selected`, `Reset filters`, `Saved filter name`, `Search`, `Due from`, `Due to`, `Actions for <title>`, `Move to…`, `In progress` region |
+| Tokens only; icons via `Icon.tsx`; no new package | `PASS` | `npm run lint` (CSS scale check `OK`); no Lucide shape added (`DEPENDENCIES.md` unchanged) |
+| Repository checks | `PASS` | `./scripts/verify.sh` -> ruff, ruff format, mypy (115 files), pytest `1061 passed`; eslint + CSS scale check, `tsc`, vitest `798 passed` (71 files; UX-06 recorded 776) ; `verification: PASS` |
+| Real-stack suite | `PASS` | `npm run test:e2e:real` -> `46 passed` (42 + 4 in `ux07-tasks-projects-board.spec.ts`). First full run: 44 passed, 2 failed (mu08 axe finding above; ux03 looked for a row in a project whose only task is now folded) - both fixed, then re-run in full |
+| Mocked e2e | `PASS` | `npm run e2e` -> `7 passed` |
+| No stray `atlas_e2e_*` databases; owner's stack untouched | `PASS` | `pg_database`: `postgres`, `atlas`, `atlas_test`, templates only; `atlas` and the dev stack were not used |
+| Other browsers, real phone, screen reader (tabs, live announcements, popovers), 200 % zoom, drag and drop on touch | `NOT RUN` | Chromium (desktop + 390 px emulation) only |
+
+**Screenshots** (throwaway stack, fictional orchard data, scratchpad `shots/`, not in the repository), at 1440 and
+390 px, light and dark: `tasks-*`, `tasks-board-*`, `projects-*`, `project-*`, `project-board-*` (20 files). Reviewed
+and fixed: the search icon overlapped the first letter (the base input padding out-ranked the bar's rule).
+
+Limitations: ADR-0057 and R-26 (saved views per browser; the Tasks board shows only filtered tasks; fold and
+archive toggles reset on reload; client copy of the transition table for `[` / `]`).
+

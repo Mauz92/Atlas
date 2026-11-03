@@ -1,6 +1,12 @@
 import { makeTask } from "../test/tasks";
+import { formatDay } from "./tasks";
 import {
   DEFAULT_FILTER,
+  chipValues,
+  dueLabel,
+  dueRangeFor,
+  duePresetOf,
+  isFiltered,
   filterFromParams,
   filterToParams,
   listOptionsFor,
@@ -96,5 +102,70 @@ describe("saved filters storage", () => {
     });
     expect(loadSavedFilters()).toEqual([]);
     expect(storeSavedFilters([])).toBe(false);
+  });
+});
+
+describe("view (list or board)", () => {
+  it("is written only for the board and read back; anything else is the list", () => {
+    expect(filterToParams({ ...DEFAULT_FILTER, view: "board" }).toString()).toBe("view=board");
+    expect(filterFromParams(new URLSearchParams("view=board")).view).toBe("board");
+    expect(filterFromParams(new URLSearchParams("view=gantt")).view).toBe("list");
+    expect(isFiltered({ ...DEFAULT_FILTER, view: "board" })).toBe(false);
+  });
+});
+
+describe("due presets", () => {
+  // Wednesday 4 November 2026, local noon.
+  const now = new Date(2026, 10, 4, 12);
+
+  it("computes inclusive local ranges", () => {
+    expect(dueRangeFor("any", now)).toEqual({ dueFrom: "", dueTo: "" });
+    expect(dueRangeFor("overdue", now)).toEqual({ dueFrom: "", dueTo: "2026-11-03" });
+    expect(dueRangeFor("today", now)).toEqual({ dueFrom: "2026-11-04", dueTo: "2026-11-04" });
+    expect(dueRangeFor("week", now)).toEqual({ dueFrom: "2026-11-04", dueTo: "2026-11-10" });
+  });
+
+  it("crosses month and year ends", () => {
+    expect(dueRangeFor("week", new Date(2026, 11, 29))).toEqual({
+      dueFrom: "2026-12-29",
+      dueTo: "2027-01-04",
+    });
+  });
+
+  it("recognises a preset and labels any other range with formatted dates", () => {
+    expect(duePresetOf(dueRangeFor("week", now), now)).toBe("week");
+    expect(duePresetOf({ dueFrom: "2026-11-01", dueTo: "" }, now)).toBe("custom");
+    expect(dueLabel({ dueFrom: "", dueTo: "" }, now)).toBe("");
+    expect(dueLabel(dueRangeFor("today", now), now)).toBe("Today");
+    const range = dueLabel({ dueFrom: "2026-11-01", dueTo: "2026-11-30" }, now);
+    expect(range).toBe(`${formatDay("2026-11-01", now)} – ${formatDay("2026-11-30", now)}`);
+    expect(range).not.toContain("2026-");
+    expect(dueLabel({ dueFrom: "2026-11-01", dueTo: "" }, now)).toMatch(/^From /);
+    expect(dueLabel({ dueFrom: "", dueTo: "2026-11-30" }, now)).toMatch(/^Until /);
+  });
+});
+
+describe("chips", () => {
+  it("shows values for set filters and nothing for unset ones", () => {
+    const values = chipValues(
+      { ...DEFAULT_FILTER, priority: "high", project: "p1", sort: "due" },
+      (id) => (id === "p1" ? "Home" : undefined),
+    );
+    expect(values).toEqual({
+      status: "Open",
+      priority: "High",
+      project: "Home",
+      due: "",
+      sort: "Due date",
+    });
+    expect(chipValues({ ...DEFAULT_FILTER, project: "gone" }, () => undefined).project).toBe(
+      "Unknown project",
+    );
+  });
+
+  it("reports whether anything but the default view is set", () => {
+    expect(isFiltered(DEFAULT_FILTER)).toBe(false);
+    expect(isFiltered({ ...DEFAULT_FILTER, q: "x" })).toBe(true);
+    expect(isFiltered({ ...DEFAULT_FILTER, sort: "title" })).toBe(true);
   });
 });

@@ -107,6 +107,8 @@ test("rows: ≤ 40 px, ≤ 2 persistent controls on Inbox rows, subtasks name th
   const heights: Record<string, number> = {};
   for (const path of ["/", "/inbox", "/upcoming", "/tasks", `/projects/${projectId}`]) {
     await page.goto(path);
+    // UX-07: a project's finished tasks are folded; open the group so its row is measured too.
+    if (path.startsWith("/projects/")) await page.getByRole("button", { name: /^Completed \(/ }).click();
     await expect(page.locator(".task-row").first()).toBeVisible();
     const tallest = Math.max(
       ...(await page.locator(".task-row").evaluateAll((rows) => rows.map((r) => r.getBoundingClientRect().height))),
@@ -117,6 +119,7 @@ test("rows: ≤ 40 px, ≤ 2 persistent controls on Inbox rows, subtasks name th
 
   // Project page fix: a completed task shows a checked checkbox (no "Complete" button) and reopens.
   await page.goto(`/projects/${projectId}`);
+  await page.getByRole("button", { name: /^Completed \(/ }).click();
   const box = page.getByRole("checkbox", { name: "Complete UX3 done in project" });
   await expect(box).toBeChecked();
   await expect(page.getByRole("button", { name: /^Complete / })).toHaveCount(0);

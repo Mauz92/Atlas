@@ -50,6 +50,26 @@ export function canMove(from: string, to: string): boolean {
   return isStatus(to) && allowedTargets(from).includes(to);
 }
 
+/**
+ * The column a keyboard move goes to (`]` = 1, `[` = -1, UX-07): the nearest column in that
+ * direction the state machine allows from `from`, skipping forbidden ones (for example Archived never
+ * steps straight to Completed). `null` at the edge.
+ * `visible` limits the search to the columns on screen (the Archived column can be hidden).
+ */
+export function adjacentStatus(
+  from: string,
+  delta: 1 | -1,
+  visible: readonly TaskStatus[] = STATUS_ORDER,
+): TaskStatus | null {
+  const at = STATUS_ORDER.indexOf(from as TaskStatus);
+  if (at < 0) return null;
+  for (let i = at + delta; i >= 0 && i < STATUS_ORDER.length; i += delta) {
+    const candidate = STATUS_ORDER[i];
+    if (visible.includes(candidate) && canMove(from, candidate)) return candidate;
+  }
+  return null;
+}
+
 export interface BoardColumn {
   status: TaskStatus;
   label: string;

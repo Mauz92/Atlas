@@ -29,7 +29,8 @@ export function useTaskQuery(filter: TaskFilter): TaskQuery {
   const [truncated, setTruncated] = useState(false);
   const latest = useRef(0);
   // The filter is a fresh object each render; key the effect on its content.
-  const key = JSON.stringify(filter);
+  // The list/board choice does not change what is loaded.
+  const key = JSON.stringify({ ...filter, view: "list" });
   const current = useMemo(() => JSON.parse(key) as TaskFilter, [key]);
 
   const load = useCallback(async () => {

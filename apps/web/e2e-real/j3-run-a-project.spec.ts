@@ -53,31 +53,37 @@ test("J3: create a project, run its tasks on the list and board, link a note, ar
 
   // The board: move a task with its card menu ("Move to…"), and it survives a reload.
   const inProgress = page.getByRole("region", { name: "In progress" });
-  await page.getByRole("button", { name: "Board", exact: true }).click();
+  await page.getByRole("tab", { name: "Board", exact: true }).click();
   await page.getByRole("button", { name: "Actions for J3 dig holes" }).click();
   await page.getByRole("menuitem", { name: "Move to…" }).click();
   await page.getByRole("menuitemradio", { name: "In progress" }).click();
   await expect(inProgress.getByRole("button", { name: "Open J3 dig holes" })).toBeVisible();
   await page.reload();
-  await page.getByRole("button", { name: "Board", exact: true }).click();
+  // UX-07: the tab is part of the URL, so the board is still showing after a reload.
+  await expect(page.getByRole("tab", { name: "Board", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(inProgress.getByRole("button", { name: "Open J3 dig holes" })).toBeVisible();
 
-  // Linked notes persist.
+  // Linked notes persist (they live on the Notes tab).
+  await page.getByRole("tab", { name: "Notes", exact: true }).click();
   await page.getByLabel("Link a note").selectOption({ label: "j3/orchard-plan.md" });
   await expect(page.getByRole("button", { name: "Unlink j3/orchard-plan.md" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: "Unlink j3/orchard-plan.md" })).toBeVisible();
 
   // Edit, archive (leaves the sidebar), restore (returns).
-  await page.getByRole("button", { name: "Edit project" }).click();
+  await page.getByRole("button", { name: "Project options" }).click();
+  await page.getByRole("menuitem", { name: "Edit project" }).click();
   await page.getByLabel("Project name").fill("J3 Orchard 2");
   await page.getByRole("button", { name: "Save project" }).click();
   await expect(page.getByRole("heading", { name: "J3 Orchard 2" })).toBeVisible();
-  await page.getByRole("button", { name: "Archive project" }).click();
+  await page.getByRole("button", { name: "Project options" }).click();
+  await page.getByRole("menuitem", { name: "Archive project" }).click();
   await expect(sidebar.getByRole("link", { name: "J3 Orchard 2" })).toBeHidden();
   await page.goto("/projects");
+  await page.getByRole("button", { name: /^Show archived/ }).click();
   await expect(page.getByRole("heading", { name: "Archived" })).toBeVisible();
-  await page.getByRole("button", { name: "Restore J3 Orchard 2" }).click();
+  await page.getByRole("button", { name: "Actions for J3 Orchard 2" }).click();
+  await page.getByRole("menuitem", { name: "Restore project" }).click();
   await expect(sidebar.getByRole("link", { name: "J3 Orchard 2" })).toBeVisible();
   await expect(page.getByText("1/3 done · 33%")).toBeVisible();
 });

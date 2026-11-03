@@ -21,6 +21,8 @@ interface TaskMetaProps {
   parentTitle?: string;
   /** Show the status as text (search results, which mix every status). */
   showStatus?: boolean;
+  /** Board cards (UX-07): project dot, due and a priority flag only. */
+  compact?: boolean;
 }
 
 /**
@@ -28,7 +30,7 @@ interface TaskMetaProps {
  * overdue, the shared `formatDue` format), priority flag, subtask progress, tags. Shared by list
  * rows and board cards.
  */
-export function TaskMeta({ task, timeZone, project, parentTitle, showStatus }: TaskMetaProps) {
+export function TaskMeta({ task, timeZone, project, parentTitle, showStatus, compact }: TaskMetaProps) {
   const total = task.subtasks_total ?? 0;
   const parts = [
     parentTitle ? (
@@ -59,17 +61,17 @@ export function TaskMeta({ task, timeZone, project, parentTitle, showStatus }: T
     task.priority !== "none" ? (
       <span key="priority" className={`task-priority priority-${task.priority}`}>
         <Icon name="flag" size={12} />
-        {sentenceCase(task.priority)}
+        {compact ? <span className="sr-only">{sentenceCase(task.priority)} priority</span> : sentenceCase(task.priority)}
       </span>
     ) : null,
-    total > 0 ? (
+    total > 0 && !compact ? (
       <span key="subtasks" className="task-subtasks">
         <Icon name="list-checks" size={12} />
         {task.subtasks_done ?? 0}/{total}
         <span className="sr-only"> subtasks</span>
       </span>
     ) : null,
-    ...(task.tags ?? []).map((tag) => (
+    ...(compact ? [] : task.tags ?? []).map((tag) => (
       <span key={`tag-${tag}`} className="task-tag">
         {tag}
       </span>

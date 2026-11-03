@@ -121,6 +121,24 @@ export function formatDue(due: string, timeZone?: string): string {
   }).format(new Date(due));
 }
 
+/**
+ * The one date format of the app (UX-07): weekday, month and day in the viewer's locale
+ * ("Wed, Nov 4"), with the year only when it is not the current year. `date` is a calendar day
+ * (`YYYY-MM-DD`, as project dates and the due filter are); an unparseable value is shown as is.
+ */
+export function formatDay(date: string, now: Date = new Date()): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return date;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  return new Intl.DateTimeFormat(undefined, {
+    timeZone: "UTC",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(year === now.getFullYear() ? {} : { year: "numeric" }),
+  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+}
+
 /** Sentence-case display text for a value such as `high` or `on_hold` ("High", "On hold"). */
 export function sentenceCase(value: string): string {
   const spaced = value.replace(/_/g, " ");

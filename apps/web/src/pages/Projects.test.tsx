@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import { projectsApi } from "../api/client";
 import { ProjectsProvider } from "../hooks/useProjects";
+import { choose } from "../test/menu";
 import { makeProject } from "../test/tasks";
 import { Projects } from "./Projects";
 
@@ -37,19 +38,28 @@ beforeEach(() => {
 });
 
 describe("Projects", () => {
-  it("lists live projects with derived progress, and archived ones separately", async () => {
+  it("lists live projects with progress, open count and target date; archived ones sit behind a toggle", async () => {
+    listMock.mockResolvedValue({
+      projects: [{ ...home, target_date: "2031-03-04" }, old],
+    });
     renderPage();
     expect(await screen.findByRole("link", { name: "Home" })).toHaveAttribute(
       "href",
       "/projects/p1",
     );
     expect(screen.getByText("1/4 done · 25%")).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Archived" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Restore Old" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Progress 25%" })).toHaveAttribute("aria-valuenow", "25");
+    expect(screen.getByText("3 open")).toBeInTheDocument();
+    // One date format, never the raw ISO date.
+    expect(screen.getByText(/^Target .*Mar.*2031/)).toBeInTheDocument();
+    expect(screen.queryByText(/2031-03-04/)).not.toBeInTheDocument();
+    // Archive is not a visible button on the row.
+    expect(screen.queryByRole("button", { name: /^Archive/ })).not.toBeInTheDocument();
+
+    expect(screen.queryByRole("link", { name: "Old" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show archived (1)" }));
+    expect(screen.getByRole("heading", { name: "Archived" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Old" })).toBeInTheDocument();
   });
 
   it("creates a project and reloads the list; a server error is shown verbatim", async () => {
@@ -71,14 +81,15 @@ describe("Projects", () => {
     await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
   });
 
-  it("archives and restores through a status update", async () => {
+  it("archives from the row menu and restores an archived project", async () => {
     updateMock.mockResolvedValue(home);
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Archive Home" }));
+    await choose("Actions for Home", "Archive project");
     await waitFor(() =>
       expect(updateMock).toHaveBeenCalledWith(home, { status: "archived" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Restore Old" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Show archived/ }));
+    await choose("Actions for Old", "Restore project");
     await waitFor(() =>
       expect(updateMock).toHaveBeenCalledWith(old, { status: "active" }),
     );

@@ -186,6 +186,18 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   than per-line) revealing; IME composition inside a rendered line was not tested with a real IME.
 - **Status:** Open (accepted; re-test whenever the decoration set or CodeMirror major version changes).
 
+### R-26 — Board key moves rely on a client copy of the status table and on re-focusing a re-created card (UX-07, ADR-0057)
+- **Severity/Likelihood:** Low / Low
+- **Impact:** `[` / `]` use `adjacentStatus` over the client copy of the server's transition table
+  (`lib/taskStatus.ts`); if the server table changes and the copy does not, the key proposes a move the server
+  rejects (reported on the page, the card does not move; no data is changed). After a move the card is a new DOM
+  node, so keyboard focus is restored by an effect keyed on the new status; a missed restore leaves focus on
+  `body`, an annoyance for keyboard users, not data loss.
+- **Mitigation:** the server re-validates every move; unit tests pin `adjacentStatus` against the same table the
+  existing board tests use; a real-stack spec drives `]` / `[` and asserts focus and the stored status. The
+  re-focus expires after 5 s so a failed move never steals focus later.
+- **Status:** Open (accepted; revisit when the transition table gains a server endpoint).
+
 ## Low severity
 
 ### R-18 — PostgreSQL full-text search limits at scale
@@ -263,6 +275,7 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 | 2026-10-27 | M9-05 | Security review (threat model vs implementation). R-21 added (push endpoint not scheme/host-constrained; accepted for the single-user model). F1 (SPA missing security headers/CSP) found and fixed in `apps/web/nginx.conf`; R-SEC-1/2/4 re-confirmed, R-SEC-3 resolved. Detail in `docs/SECURITY.md` §"Milestone 9 security review". |
 | 2026-11-01 | Audit | Function audit: R-22 added (backend-heavy, interface-light); ADR-0043 re-prioritises to a usable core. |
 | 2026-11-02 | MU-08 | R-22 progress: Settings, shortcut help, mobile nav and an axe accessibility gate delivered (J7 passes). Sub-risks: password change signs out all other sessions (no per-device session list); the password limiter is in-process; backup status is only as visible as `BACKUP_DIR` is to the API and does not re-verify checksums; **`npm audit --include=dev` reports a moderate `minimatch` advisory (GHSA-g3hv-75wg-m249) in the eslint/typescript-eslint toolchain — present before MU-08, dev-only, not yet fixed (the fix needs a breaking tooling upgrade), so the 2026-10-27 "0 advisories" claim no longer holds**; no user time-zone setting; MU exit needs a CI run and a release re-score. |
+| 2026-11-03 | UX-07 | Tasks/Projects/Board polish (ADR-0057): UI-only; R-26 added (board key moves depend on a client copy of the transition table and on re-focusing a re-created card; the server re-validates). Saved views stay per-browser `localStorage` (no cross-device sharing); the Tasks board shows only the filtered tasks. No new security surface: no new network calls, dependencies or stored data. |
 | 2026-11-03 | UX-06 | Live preview (ADR-0056): R-25 added (decorations over untrusted text; mitigated by a decorations-only design, a scheme allow-list and a corpus + real-stack DOM check). R-24 added: the server normalises CRLF to LF on read, a pre-existing defect found while testing line-ending round trips (not fixed: no backend changes in UX-06). |
 | 2026-11-03 | UX-05 | Notes autosave (ADR-0054): the Save button is gone, so data integrity rests on the save engine; mitigated by a framework-free engine with 27 unit tests (one request at a time, revision chaining, 409 never overwrites, unknown outcome re-read, offline, draft restore) and real-stack specs that check the file bytes, an offline reload and an external edit. New R-23 (drafts in localStorage, request volume). Limitations: delete uses a native confirm; conflicts are copy-or-reload only (no merge); a note edited by another program needs the on-demand reconcile the conflict path now triggers. |
 | 2026-11-03 | UX-04 | Task detail autosave (ADR-0053): per-field saves raise request volume and make ordering a data-integrity concern; mitigated by one serialised send loop per task, revision chaining, idempotency-key reuse on unknown outcomes, conflict = no overwrite, rejected text kept, and leaving with unsaved edits asks first (unit + real-stack tests). Remaining: unsaved task edits do not survive a reload while offline or a crash (no local draft store for tasks); mutations stay online-only (R-22). |

@@ -229,6 +229,24 @@ Cover, at minimum:
   front matter/tabs/trailing spaces byte for byte. `mu08-a11y-and-layout.spec.ts` now runs axe on the note in
   Source and in Live, light and dark; J4 and the Preview checkbox selector were adjusted for Live's rendering
   (the `[[link]]` is shown rendered when the cursor is elsewhere).
+- Tasks, Projects and Board (UX-07, ADR-0057): pure rules are unit-tested: `src/lib/taskFilters.test.ts` (the
+  additive `view` URL parameter, due presets across month/year ends, preset detection, chip labels, `isFiltered`),
+  `taskStatus.test.ts` (`adjacentStatus`: neighbours, skipping forbidden columns, edges, hidden Archived),
+  `tasks.test.ts` (`formatDay`: no zone shift, year only when not current, unparseable text kept).
+  `src/pages/Tasks.test.tsx` (chips with values, the Due popover, List|Board in the URL without a reload,
+  saved views from the "…" menu, floating bulk bar and *Clear selection*, bulk complete/move/delete/undo),
+  `Projects.test.tsx` (progress bar role, open count, target date format, archive only in the row menu, archived
+  behind a toggle), `ProjectPage.test.tsx` (header, tabs and arrow keys, folded Completed/Archived groups,
+  link/unlink on the Notes tab), `components/Board.test.tsx` (`[`/`]`, edges, focus after the move, announcement,
+  modifiers, archive toggle, compact cards). Test helpers: `src/test/menu.ts` (`choose`). Real stack:
+  `e2e-real/ux07-tasks-projects-board.spec.ts` (4): one-row filter bar at 1440 px, chips from the keyboard, URL
+  state, floating bulk bar kept in view while scrolling, List|Board, `]`/`[` with focus and stored status,
+  project rows, the archive menu, no ISO date text, tabs from the keyboard, folded groups, project board
+  <= 1,200 px tall, and no horizontal scroll at 1440/1024/720/390 px in both themes (screenshots to
+  `$ATLAS_SHOT_DIR`). Helpers in `e2e-real/helpers.ts`: `filterBar`, `chooseFilter`, `openDueFilter`.
+  `tasks-page.spec.ts` and J3 were updated for the chips, the "…" menu, the tabs and the row menu;
+  `mu08-a11y-and-layout.spec.ts` adds the Tasks board view, the project Board and Notes tabs, and the chip menu,
+  Due popover, save-view popover, bulk bar, project row menu and project header menu states.
 
 ## 5. Calendar Adapter Tests
 

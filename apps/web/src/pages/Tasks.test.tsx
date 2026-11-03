@@ -3,6 +3,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 
 import { tasksApi } from "../api/client";
 import { ProjectsProvider } from "../hooks/useProjects";
+import { choose } from "../test/menu";
 import { makeProject, makeTask } from "../test/tasks";
 import { Tasks } from "./Tasks";
 
@@ -58,7 +59,7 @@ describe("Tasks page", () => {
         dueFrom: new Date("2026-11-01T00:00:00").toISOString(),
       }),
     );
-    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "completed" } });
+    await choose("Status: Open", "Completed");
     await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("status=completed"));
     expect(screen.getByTestId("where")).toHaveTextContent("priority=high");
   });
@@ -88,7 +89,7 @@ describe("Tasks page", () => {
     renderPage();
     await screen.findByText("Alpha");
     fireEvent.click(screen.getByLabelText("Select Alpha"));
-    fireEvent.change(screen.getByLabelText("Move selected to project"), { target: { value: "p1" } });
+    await choose("Move to project…", "Home");
     await waitFor(() => expect(tasksApi.update).toHaveBeenCalledWith(one, { project_id: "p1" }));
   });
 
@@ -106,16 +107,74 @@ describe("Tasks page", () => {
     expect(tasksApi.restore).toHaveBeenCalledWith("t1");
   });
 
-  it("saves the current view as a shortcut, persists it, and removes it", async () => {
+  it("saves the current view from the bar's menu, applies it later, and removes it", async () => {
     renderPage("/tasks?priority=high");
     await screen.findByText("Alpha");
+    await choose("Filter options", "Save this view…");
     fireEvent.change(screen.getByLabelText("Saved filter name"), { target: { value: "Urgent stuff" } });
     fireEvent.click(screen.getByRole("button", { name: "Save this view" }));
-    const link = await screen.findByRole("link", { name: "Urgent stuff" });
-    expect(link).toHaveAttribute("href", "/tasks?priority=high");
+    expect(screen.queryByLabelText("Saved filter name")).not.toBeInTheDocument();
     expect(window.localStorage.getItem("atlas.savedTaskFilters")).toContain("Urgent stuff");
-    fireEvent.click(screen.getByRole("button", { name: "Remove saved filter Urgent stuff" }));
-    expect(screen.queryByRole("link", { name: "Urgent stuff" })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("atlas.savedTaskFilters")).toContain("priority=high");
+
+    // Apply it from another view.
+    await choose("Priority: High", "Any priority");
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent(/^$/));
+    await choose("Filter options", "Saved views", "Urgent stuff");
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("priority=high"));
+
+    await choose("Filter options", "Remove a saved view", "Urgent stuff");
+    expect(window.localStorage.getItem("atlas.savedTaskFilters")).not.toContain("Urgent stuff");
+    fireEvent.click(await screen.findByRole("button", { name: "Filter options" }));
+    expect(screen.queryByRole("menuitem", { name: "Saved views" })).not.toBeInTheDocument();
+  });
+
+  it("shows a set chip with its value, and the Due popover sets presets and a custom range", async () => {
+    renderPage("/tasks?priority=urgent&sort=title");
+    await screen.findByText("Alpha");
+    expect(screen.getByRole("button", { name: "Priority: Urgent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sort: Title" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Project" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Due" }));
+    const dialog = screen.getByRole("dialog", { name: "Due date" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Next 7 days" }));
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("due_from="));
+    expect(screen.getByTestId("where")).toHaveTextContent("due_to=");
+    expect(screen.getByRole("button", { name: "Due: Next 7 days" })).toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText("Due to"), { target: { value: "2031-01-05" } });
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("due_to=2031-01-05"));
+    // Esc closes the popover and returns focus to the chip.
+    fireEvent.keyDown(within(dialog).getByLabelText("Due to"), { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Due date" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Due:/ })).toHaveFocus();
+  });
+
+  it("switches between List and Board, keeping the filter in the URL", async () => {
+    renderPage("/tasks?priority=high");
+    await screen.findByText("Alpha");
+    expect(screen.queryByRole("heading", { name: "In progress" })).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("group", { name: "View" })).getByRole("button", { name: "Board" }));
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("view=board"));
+    expect(screen.getByTestId("where")).toHaveTextContent("priority=high");
+    expect(screen.getByRole("heading", { name: "In progress" })).toBeInTheDocument();
+    // Archived is behind a toggle.
+    expect(screen.queryByRole("heading", { name: "Archived" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Show archived/ }));
+    expect(screen.getByRole("heading", { name: "Archived" })).toBeInTheDocument();
+    // The list query did not run again just for the view.
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it("floats the bulk bar while rows are selected and clears the selection", async () => {
+    renderPage();
+    await screen.findByText("Alpha");
+    expect(screen.queryByRole("toolbar", { name: "Bulk actions" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Select Alpha"));
+    expect(screen.getByRole("toolbar", { name: "Bulk actions" })).toHaveTextContent("1 selected");
+    fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+    expect(screen.queryByRole("toolbar", { name: "Bulk actions" })).not.toBeInTheDocument();
   });
 });
 
@@ -126,7 +185,7 @@ describe("reset", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reset filters" }));
     await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent(/^$/));
     expect(screen.getByLabelText("Search")).toHaveValue("");
-    fireEvent.change(screen.getByLabelText("Priority"), { target: { value: "urgent" } });
+    await choose("Priority", "Urgent");
     await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("priority=urgent"));
     expect(screen.getByTestId("where")).not.toHaveTextContent("q=");
   });

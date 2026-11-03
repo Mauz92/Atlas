@@ -24,7 +24,7 @@ Atlas is being built milestone by milestone. This table is the honest state of e
 | Markdown notes (create, autosaving editor, preview, rename, move, delete, tags, wiki links, search) | **Available** | Real `.md` files on disk — see [`MARKDOWN_STORAGE.md`](MARKDOWN_STORAGE.md). `[[` suggests notes; **Today's note** and templates (§4). |
 | Tasks — capture, edit, Today, Inbox, Upcoming, the **Tasks** page with filters | **Available** | Open any task to edit title, dates, priority, tags, repeat, subtasks, reminder and linked notes; delete with undo. |
 | Planning — Upcoming and Week views | **Available** | Later days and week-by-week work, in your local time zone. (The separate Day view was removed from navigation in UX-02; `/day` opens Today.) |
-| Kanban board (move a task between statuses) | **Available** | Global board at **Board**; columns are the task statuses. |
+| Kanban board (move a task between statuses) | **Available** | **Board**, the Tasks page's Board view and each project's Board tab; drag, the card menu or **]** / **[**. |
 | Projects and derived progress | **Available** | **Projects** page: create, edit, archive; each project has progress, tasks, a board and linked notes. |
 | Search | **Available** | **Ctrl+K** finds notes, tasks and projects and runs commands; the **Search** page shows the same results. |
 | Offline edits and cross-device sync | **Available** | A **Sync** page shows the queue, conflicts and a manual "Sync now". Edits made in the task and project screens need a connection. |
@@ -66,7 +66,7 @@ them (also **Shortcuts** in the status bar). The main ones: **Ctrl/⌘ K** opens
 shows or hides the sidebar, **Esc** closes a panel or menu, **Enter** on a task opens it (the task panel saves
 by itself; **Ctrl/⌘ Enter** just saves at once).
 In task lists: **j**/**k** move, **x** completes (selects, on the Tasks page), **t** today, **m** project,
-**p** priority (see *The views* below).
+**p** priority (see *The views* below). On a board card: **]** / **[** move it to the next / previous column.
 
 ---
 
@@ -96,9 +96,9 @@ The window has four parts (UX-02):
 | **Upcoming** | `/upcoming` | Tasks for later days, grouped by the day they are due. |
 | *(Day)* | `/day` | Removed from navigation (ADR-0051); the address now opens **Today**. |
 | **Week** | `/week` | The current week (Monday first), day by day. |
-| **Tasks** | `/tasks` | Every task with filters, sort, saved filters and bulk actions. |
-| **Board** | `/board` | Kanban board; drag a card (or use its status menu) to change status. |
-| **Projects** | `/projects` | Your projects and each project's page. |
+| **Tasks** | `/tasks` | Every task: a filter bar (search, Status, Priority, Project, Due, Sort), a List \| Board switch, saved views and bulk actions. |
+| **Board** | `/board` | Kanban board; drag a card, use its **…** menu, or press **]** / **[** on it to change status. |
+| **Projects** | `/projects` | Your projects (progress, open tasks, target date) and each project's page (Tasks, Board, Notes tabs). |
 | **Calendar** | `/calendar` | Sync **status** for connected calendars only (no event views yet). |
 | **Sync** | `/sync` | Offline queue, conflicts, and a manual "Sync now". |
 | **Notifications** | `/notifications` | Notification permission and reminder timing (also on **Settings**). |
@@ -248,11 +248,25 @@ project menu and **p** the priority menu. In a menu, use the arrow keys (or type
 to choose and **Esc** to close. On the **Tasks** page, **x** selects the task for the bulk actions instead
 (the square box before the round checkbox; it shows when you point at a row or once anything is selected).
 
+### The Tasks page
+
+One bar holds the filters: a **Search** box and the chips **Status**, **Priority**, **Project**, **Due** and
+**Sort** (click a chip, or focus it and press Enter, and choose; **Due** also takes a from / to date or a preset
+such as *Next 7 days*). A chip shows its value once it differs from the default; **Reset filters** clears all of
+them. The address of the page is the view, so you can bookmark or share it. In the **…** menu at the end of the
+bar, **Save this view…** keeps the current filters under a name in this browser, and **Saved views** applies or
+removes one. **List | Board** switches between rows and columns for the same tasks.
+
+Tick the square box in front of tasks (or press **x**) to select them: a bar floats at the bottom with
+**Complete selected**, **Move to project…**, **Delete selected** (with **Undo**) and **Clear selection**.
+
 ### The board
 
-On **Board**, the five columns are the task statuses. Move a task by **dragging** its card to another
-column, or with **…** on the card → **Move to…** (the keyboard-accessible path; the same menu also schedules,
-sets the priority, files to a project and deletes). Only transitions Atlas
+On **Board** (also on the Tasks page and on a project's **Board** tab), the columns are the task statuses; the
+**Archived** column is hidden until you choose **Show archived**. Move a task by **dragging** its card to another
+column, with **…** on the card → **Move to…**, or, with the card focused, with **]** (next column) and **[**
+(previous column), which skip moves Atlas does not allow; the card keeps keyboard focus. The same **…** menu also
+schedules, sets the priority, files to a project and deletes. Only transitions Atlas
 allows are offered; a move the server rejects is reported on the page and the card is **not** moved.
 Business rule and rationale: `ROADMAP.md` M4-03 (ADR-0022).
 
@@ -268,8 +282,11 @@ Business rule and rationale: `ROADMAP.md` M4-03 (ADR-0022).
 
 ## 6. Projects and planning
 
-Open **Projects** to create a project, then open it for its description, **progress**, tasks (list or
-board), linked notes, **Edit** and **Archive** / **Restore**. Active projects are also listed under
+Open **Projects** to create a project. Each row shows its **progress**, how many tasks are open, its target
+date and a **…** menu (**Open project**, **Archive project** / **Restore project**); archived projects are
+behind **Show archived**. A project's page has its name, status, progress and dates at the top, a **…** menu
+(**Edit project**, **Archive** / **Restore**) and three tabs: **Tasks** (open tasks, with finished ones folded
+into **Completed (n)** and **Archived (n)**), **Board** and **Notes** (linked notes). Active projects are also listed under
 **Projects** in the sidebar. A task is filed in a project from its task panel (or from the Inbox's *File
 to…*); a note is linked to a project from the note. **Week** shows a short **Projects** summary
 with each project's progress.

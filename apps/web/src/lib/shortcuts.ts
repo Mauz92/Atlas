@@ -38,6 +38,13 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
+    title: "Board (a card focused)",
+    items: [
+      { keys: "]", action: "Move the card to the next column Atlas allows" },
+      { keys: "[", action: "Move the card to the previous column Atlas allows" },
+    ],
+  },
+  {
     title: "Menus",
     items: [
       { keys: "↑ ↓  Home End", action: "Move through the items (a letter jumps to the next item starting with it)" },

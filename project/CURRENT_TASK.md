@@ -1,19 +1,44 @@
 # Current Task
 
-- Task ID: none in progress. Next: UX-07 (Tasks/Projects/Board polish, `READY`).
-- Last completed: UX-06 (`DONE`, 2026-11-03, local verification; not committed): Live preview editor mode and
-  Live as the default. Decisions: ADR-0056. Evidence: `docs/ACCEPTANCE.md` UX-06 (verify.sh PASS, pytest 1053,
-  vitest 776, real-stack 42 passed, mocked e2e 7 passed). Before that UX-05 (ADR-0054), UX-04, UX-03, UX-02,
-  UX-01, MU-08. CI `e2e-real` NOT RUN.
+- Task ID: none in progress. Next: UX-08 (settings, skeletons, empty states, `BACKLOG`).
+- Last completed: UX-07 (`DONE`, 2026-11-03, local verification; not committed): Tasks filter bar + floating bulk
+  bar + List|Board, project rows/header/tabs, compact board cards with `[`/`]`, one date format. Decisions:
+  ADR-0057. Evidence: `docs/ACCEPTANCE.md` UX-07 (verify.sh PASS, pytest 1061, vitest 798, real-stack 46 passed,
+  mocked e2e 7 passed). Before that UX-06 (ADR-0056), UX-05 (ADR-0054), UX-04, UX-03, UX-02, UX-01, MU-08. CI
+  `e2e-real` NOT RUN.
+
 - Milestone: UX — Design system and app shell (docs/ROADMAP.md "UX" section, ADR-0051, evidence in docs/UX_AUDIT.md)
 
 - Dev stack: `scripts/dev-stack.sh` (docs/DEPLOYMENT.md §8a). `ATLAS_DEV_BIND=tailscale` exposes only Vite on the tailnet
   IP over plain HTTP for phone/laptop use; default is localhost-only.
 
 ## Goal (next)
-UX-07 (Tasks, Projects and Board polish, `READY`), then UX-08 (settings, skeletons, empty states). Separately the
-owner may close MU (CI run + release re-score) or resume calendar work. Open backend item found in UX-06: R-24
-(the server reads notes with universal newlines, so CRLF becomes LF and the first save of such a note conflicts).
+UX-08 (settings consolidation, skeletons, empty states). Separately the owner may close MU (CI run + release
+re-score) or resume calendar work. (R-24, CRLF read by the server, was fixed 2026-11-03.)
+
+## UX-07 conventions to keep
+- Tasks page = `pages/Tasks.tsx` + `components/FilterBar.tsx` (chips are `MenuButton`s over the shared `Menu`; the
+  Due range and "Save this view" are `Popover` dialogs) + `components/BulkBar.tsx` (sticky, above the status
+  bar/bottom nav). The URL is the filter (ADR-0045) plus the additive `view=board`; `useTaskQuery` ignores `view`.
+  Filter rules are pure (`lib/taskFilters.ts`: `dueRangeFor`, `duePresetOf`, `dueLabel`, `chipValues`,
+  `isFiltered`); saved views: `hooks/useSavedFilters.ts` (localStorage `atlas.savedTaskFilters`), UI in the bar's
+  "…" menu (`Filter options`: `Save this view…`, `Saved views`, `Remove a saved view`).
+- Names e2e relies on: search `Search`; chips are buttons named `Status: Open` / `Priority` / `Priority: High` /
+  `Project` / `Due` / `Sort: Most urgent` (use `chooseFilter`/`openDueFilter`/`filterBar` in `e2e-real/helpers.ts`;
+  the filter region is `search "Task filters"`); popover `Due date` with `Due from`, `Due to` and preset buttons;
+  group `View` with `List`/`Board` (`aria-pressed`); `Reset filters` (only when something is set);
+  `Filter options`; popover `Save this view` with `Saved filter name` + `Save this view`; toolbar `Bulk actions`
+  (`N selected`, `Complete selected`, `Move to project…` menu, `Delete selected`, `Clear selection`); `Select all`.
+- Board: `components/Board.tsx` props `archivedToggle` (button `Show archived (n)` / `Hide archived`, Archived column
+  hidden by default), `emptyMessage`; `[`/`]` via `adjacentStatus` (`lib/taskStatus.ts`), focus restored after the
+  card is re-created (5 s expiry), polite live region (not `role="status"`). `TaskMeta compact` for cards (flag =
+  icon + sr-only "High priority"). Use `Board` for any new board; columns count is `--board-cols`.
+- Projects: row = name link, `n open`, progress (`role="progressbar"` `Progress N%`, text `a/b done · N%`), `Target
+  <date>`, menu `Actions for <name>` (`Open project`, `Archive project` / `Restore project`); `Show archived (n)`
+  toggle. Project page: header with `Project options` (`Edit project`, `Archive project`, `Restore project`), tabs
+  (`role=tab` Tasks / Board / Notes, `?tab=board|notes`, `components/Tabs.tsx`), `Completed (n)` / `Archived (n)`
+  fold buttons (`FoldGroup`, collapsed on load), `Link a note` select on the Notes tab.
+- Dates: `formatDay(isoDay)` / `formatDue` only; never print an ISO date. Shared popup placement: `lib/placePopup.ts`.
 
 ## UX-06 conventions to keep
 - Live preview is `lib/livePreview.ts`: decorations only (a ViewPlugin building line/mark/replace decorations
@@ -119,11 +144,11 @@ owner may close MU (CI run + release re-score) or resume calendar work. Open bac
 3. Optional: fix the pre-existing dev-only `minimatch` advisory (`npm audit --include=dev`, RISKS.md).
 
 ## Recommended next task
-UX-07 (UX-06 is done). Separately the owner may still close MU (items 1-2 above) or resume calendar
+UX-08 (UX-07 is done). Separately the owner may still close MU (items 1-2 above) or resume calendar
 with M5-00 (blocked on real Google/Microsoft accounts, AR-001).
 
 ## Notes for the next session
-- Verification: `./scripts/verify.sh` (pytest 1053, vitest 670); `cd apps/web && npm run test:e2e:real` (34 tests,
+- Verification: `./scripts/verify.sh` (pytest 1061, vitest 798); `cd apps/web && npm run test:e2e:real` (46 tests,
   real API + throwaway DB, see `docs/TESTING.md` §1b); `npm run e2e` (7 mocked). No `atlas_e2e_*` database is left
   on the dev PostgreSQL.
 - Journeys share one owner: a spec that changes the owner's name, password or reminder default must restore it (J7 does).

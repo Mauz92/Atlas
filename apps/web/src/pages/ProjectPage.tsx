@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import {
   notesApi,
@@ -9,26 +9,37 @@ import {
   type Project,
 } from "../api/client";
 import { Board } from "../components/Board";
+import { FoldGroup } from "../components/FoldGroup";
+import { Icon } from "../components/Icon";
 import { LoadError } from "../components/LoadError";
+import type { MenuEntry } from "../components/Menu";
+import { MenuButton } from "../components/MenuButton";
 import { ProjectForm } from "../components/ProjectForm";
 import { ProjectProgressBar } from "../components/ProjectProgressBar";
 import { QuickCapture } from "../components/QuickCapture";
 import { TaskList } from "../components/TaskList";
+import { Tabs, panelId, tabId } from "../components/Tabs";
 import { useBoard } from "../hooks/useBoard";
 import { useProjects } from "../hooks/useProjects";
 import { useTaskEditor } from "../hooks/useTaskEditor";
-import { sentenceCase } from "../lib/tasks";
+import { formatDay, sentenceCase } from "../lib/tasks";
 
-type View = "list" | "board";
+type Tab = "tasks" | "board" | "notes";
+const TABS = [
+  { id: "tasks", label: "Tasks" },
+  { id: "board", label: "Board" },
+  { id: "notes", label: "Notes" },
+] as const;
 
 function message(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
 
 /**
- * One project (MU-02): description, derived progress (ADR-0023), its tasks as a list or a board,
- * and the notes linked to it (M4-05). Tasks open in the shared detail panel, where they can also be
- * moved to another project. Everything is read from and written to the existing projects API.
+ * One project (MU-02, UX-07): a header (name, status, derived progress per ADR-0023, dates, "…"
+ * menu), then tabs Tasks | Board | Notes (`?tab=`). Finished tasks fold into "Completed (n)" and
+ * "Archived (n)" groups. Tasks open in the shared detail panel, where they can also be moved to
+ * another project. Everything is read from and written to the existing projects API.
  */
 export function ProjectPage() {
   const { id = "" } = useParams();
@@ -38,7 +49,11 @@ export function ProjectPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   const [allNotes, setAllNotes] = useState<NoteSummary[]>([]);
-  const [view, setView] = useState<View>("list");
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("tab");
+  const tab: Tab = TABS.some((t) => t.id === requested) ? (requested as Tab) : "tasks";
+  const setTab = (next: Tab) =>
+    setParams(next === "tasks" ? {} : { tab: next }, { replace: true });
   const [editing, setEditing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -71,9 +86,13 @@ export function ProjectPage() {
   }, [board.refresh, loadProject]); // eslint-disable-line react-hooks/exhaustive-deps
   const editor = useTaskEditor({ refresh, timeZone: board.timeZone });
 
-  const tasks = useMemo(
-    () => board.columns.flatMap((column) => board.tasksByStatus[column.status] ?? []),
-    [board.columns, board.tasksByStatus],
+  const groups = useMemo(
+    () => ({
+      open: ["inbox", "next", "in_progress"].flatMap((status) => board.tasksByStatus[status] ?? []),
+      completed: board.tasksByStatus.completed ?? [],
+      archived: board.tasksByStatus.archived ?? [],
+    }),
+    [board.tasksByStatus],
   );
 
   async function run(action: () => Promise<unknown>, fallback: string) {
@@ -95,6 +114,31 @@ export function ProjectPage() {
   const linkable = allNotes.filter(
     (note) => !notes.some((linked) => linked.id === note.id),
   );
+
+  const projectEntries: MenuEntry[] = [
+    {
+      kind: "item",
+      id: "edit",
+      label: "Edit project",
+      icon: "file-text",
+      onSelect: () => setEditing(true),
+    },
+    project?.status === "archived"
+      ? {
+          kind: "item",
+          id: "restore",
+          label: "Restore project",
+          icon: "refresh-cw",
+          onSelect: () => void setStatus("active"),
+        }
+      : {
+          kind: "item",
+          id: "archive",
+          label: "Archive project",
+          icon: "inbox",
+          onSelect: () => void setStatus("archived"),
+        },
+  ];
 
   if (loadError && !project) {
     return (
@@ -119,17 +163,28 @@ export function ProjectPage() {
       <p>
         <Link to="/projects">All projects</Link>
       </p>
-      <h1>{project.name}</h1>
-      <p className="project-meta">
+      <div className="project-header">
+        <h1>{project.name}</h1>
         <span className={project.status === "completed" ? "pill pill-success" : "pill"}>
           {sentenceCase(project.status)}
         </span>
+        <MenuButton
+          menuLabel="Project options"
+          ariaLabel="Project options"
+          title="Project options"
+          className="icon-button ghost"
+          entries={projectEntries}
+        >
+          <Icon name="ellipsis" />
+        </MenuButton>
+      </div>
+      <p className="project-meta">
         <ProjectProgressBar progress={project.progress} />
         {project.start_date ? (
-          <span className="muted">Starts {project.start_date}</span>
+          <span className="muted">Starts {formatDay(project.start_date)}</span>
         ) : null}
         {project.target_date ? (
-          <span className="muted">Target {project.target_date}</span>
+          <span className="muted">Target {formatDay(project.target_date)}</span>
         ) : null}
       </p>
 
@@ -145,27 +200,11 @@ export function ProjectPage() {
           }}
         />
       ) : (
-        <>
-          <p className="project-description">
-            {project.description ?? (
-              <span className="muted">No description.</span>
-            )}
-          </p>
-          <div className="project-actions">
-            <button type="button" className="ghost" onClick={() => setEditing(true)}>
-              Edit project
-            </button>
-            {project.status === "archived" ? (
-              <button type="button" className="ghost" onClick={() => void setStatus("active")}>
-                Restore project
-              </button>
-            ) : (
-              <button type="button" className="ghost" onClick={() => void setStatus("archived")}>
-                Archive project
-              </button>
-            )}
-          </div>
-        </>
+        <p className="project-description">
+          {project.description ?? (
+            <span className="muted">No description.</span>
+          )}
+        </p>
       )}
 
       {actionError || board.actionError || editor.error ? (
@@ -174,105 +213,138 @@ export function ProjectPage() {
         </p>
       ) : null}
 
-      <h2>Tasks</h2>
-      <QuickCapture
-        placeholder="Add a task to this project…"
-        onCapture={async (title) => {
-          await tasksApi.create(title, { project_id: project.id, status: "next" });
-          await refresh();
-        }}
+      <Tabs
+        label="Project sections"
+        tabs={TABS}
+        value={tab}
+        onChange={setTab}
+        idPrefix="project"
       />
-      <div className="view-toggle" role="group" aria-label="Task view">
-        {(["list", "board"] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            className="ghost"
-            aria-pressed={view === option}
-            onClick={() => setView(option)}
-          >
-            {option === "list" ? "List" : "Board"}
-          </button>
-        ))}
-      </div>
-      {board.state === "error" ? (
-        <LoadError message={board.error} onRetry={() => void board.reload()} />
-      ) : board.state === "loading" ? (
-        <p className="muted" role="status">Loading tasks…</p>
-      ) : view === "list" ? (
-        <TaskList
-          tasks={tasks}
-          timeZone={board.timeZone}
-          emptyMessage="No tasks in this project yet."
-          hideProject
-          actions={editor.actions}
-          filable={editor.projects}
-          onOpen={editor.open}
-        />
-      ) : (
-        <Board
-          columns={board.columns}
-          tasksByStatus={board.tasksByStatus}
-          timeZone={board.timeZone}
-          onMove={(task, toStatus) =>
-            void board.move(task, toStatus).then(loadProject)
-          }
-          onOpen={editor.open}
-          movingId={board.movingId}
-          empty={board.total === 0}
-          actions={editor.actions}
-          hideProject
-        />
-      )}
 
-      <h2>Linked notes</h2>
-      {notes.length === 0 ? (
-        <p className="muted">No notes linked to this project.</p>
-      ) : (
-        <ul className="project-notes">
-          {notes.map((note) => (
-            <li key={note.id}>
-              <Link to="/notes">{note.title || note.path}</Link>{" "}
-              <span className="muted">{note.path}</span>
-              <button
-                type="button"
-                className="ghost"
-                aria-label={`Unlink ${note.path}`}
-                onClick={() =>
-                  void run(async () => {
-                    await projectsApi.unlinkNote(project.id, note.id);
-                    await loadProject();
-                  }, "Could not unlink the note")
-                }
+      <div
+        role="tabpanel"
+        id={panelId("project", tab)}
+        aria-labelledby={tabId("project", tab)}
+        className="tab-panel"
+      >
+        {tab === "notes" ? (
+          <>
+            <h2>Linked notes</h2>
+            {notes.length === 0 ? (
+              <p className="muted">No notes linked to this project.</p>
+            ) : (
+              <ul className="project-notes">
+                {notes.map((note) => (
+                  <li key={note.id}>
+                    <Link to="/notes">{note.title || note.path}</Link>{" "}
+                    <span className="muted">{note.path}</span>
+                    <button
+                      type="button"
+                      className="ghost"
+                      aria-label={`Unlink ${note.path}`}
+                      onClick={() =>
+                        void run(async () => {
+                          await projectsApi.unlinkNote(project.id, note.id);
+                          await loadProject();
+                        }, "Could not unlink the note")
+                      }
+                    >
+                      Unlink
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {linkable.length > 0 ? (
+              <select
+                aria-label="Link a note"
+                value=""
+                onChange={(event) => {
+                  const noteId = event.target.value;
+                  if (noteId) {
+                    void run(async () => {
+                      await projectsApi.linkNote(project.id, noteId);
+                      await loadProject();
+                    }, "Could not link the note");
+                  }
+                }}
               >
-                Unlink
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {linkable.length > 0 ? (
-        <select
-          aria-label="Link a note"
-          value=""
-          onChange={(event) => {
-            const noteId = event.target.value;
-            if (noteId) {
-              void run(async () => {
-                await projectsApi.linkNote(project.id, noteId);
-                await loadProject();
-              }, "Could not link the note");
-            }
-          }}
-        >
-          <option value="">Link a note…</option>
-          {linkable.map((note) => (
-            <option key={note.id} value={note.id}>
-              {note.path}
-            </option>
-          ))}
-        </select>
-      ) : null}
+                <option value="">Link a note…</option>
+                {linkable.map((note) => (
+                  <option key={note.id} value={note.id}>
+                    {note.path}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </>
+        ) : (
+          <>
+            {tab === "tasks" ? (
+              <QuickCapture
+                placeholder="Add a task to this project…"
+                onCapture={async (title) => {
+                  await tasksApi.create(title, { project_id: project.id, status: "next" });
+                  await refresh();
+                }}
+              />
+            ) : null}
+            {board.state === "error" ? (
+              <LoadError message={board.error} onRetry={() => void board.reload()} />
+            ) : board.state === "loading" ? (
+              <p className="muted" role="status">Loading tasks…</p>
+            ) : tab === "tasks" ? (
+              <>
+                <TaskList
+                  tasks={groups.open}
+                  timeZone={board.timeZone}
+                  emptyMessage={
+                    board.total === 0
+                      ? "No tasks in this project yet."
+                      : "Nothing open in this project."
+                  }
+                  hideProject
+                  actions={editor.actions}
+                  filable={editor.projects}
+                  onOpen={editor.open}
+                />
+                {(
+                  [
+                    ["Completed", groups.completed],
+                    ["Archived", groups.archived],
+                  ] as const
+                ).map(([title, list]) => (
+                  <FoldGroup key={title} title={title} count={list.length}>
+                    <TaskList
+                      tasks={[...list]}
+                      timeZone={board.timeZone}
+                      hideProject
+                      actions={editor.actions}
+                      filable={editor.projects}
+                      onOpen={editor.open}
+                    />
+                  </FoldGroup>
+                ))}
+              </>
+            ) : (
+              <Board
+                columns={board.columns}
+                tasksByStatus={board.tasksByStatus}
+                timeZone={board.timeZone}
+                onMove={(task, toStatus) =>
+                  void board.move(task, toStatus).then(loadProject)
+                }
+                onOpen={editor.open}
+                movingId={board.movingId}
+                empty={board.total === 0}
+                actions={editor.actions}
+                hideProject
+                archivedToggle
+              />
+            )}
+          </>
+        )}
+      </div>
       {editor.overlays}
     </section>
   );

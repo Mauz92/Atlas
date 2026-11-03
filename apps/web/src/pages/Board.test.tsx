@@ -97,12 +97,15 @@ describe("BoardPage", () => {
     expect(setStatusMock).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a useful empty state with every column present", async () => {
+  it("shows a useful empty state with every column present (Archived behind its toggle)", async () => {
     listMock.mockResolvedValue({ tasks: [] });
 
     render(<BoardPage />);
 
     expect(await screen.findByText(/Nothing on the board yet/i)).toBeInTheDocument();
+    expect(screen.getAllByText("No tasks")).toHaveLength(4);
+    expect(screen.queryByRole("heading", { name: "Archived" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show archived (0)" }));
     expect(screen.getAllByText("No tasks")).toHaveLength(5);
     expect(screen.getByRole("heading", { name: "Archived" })).toBeInTheDocument();
   });

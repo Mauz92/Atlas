@@ -140,6 +140,25 @@ export async function chooseTaskProperty(page: Page, name: string, option: strin
   await page.getByRole("menuitemradio", { name: option, exact: true }).click();
 }
 
+/** The Tasks page's filter bar (UX-07). */
+export function filterBar(page: Page) {
+  return page.getByRole("search", { name: "Task filters" });
+}
+
+/** Choose a value of a filter chip (Status, Priority, Project, Sort); it is applied to the URL at once. */
+export async function chooseFilter(page: Page, chip: string, option: string) {
+  await filterBar(page).getByRole("button", { name: new RegExp(`^${chip}\\b`) }).click();
+  await page.getByRole("menuitemradio", { name: option, exact: true }).click();
+}
+
+/** Open the Due chip's popover (named "Due date"); Esc or a press outside closes it. */
+export async function openDueFilter(page: Page) {
+  await filterBar(page).getByRole("button", { name: /^Due\b/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Due date" });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
 /** Pick a time zone through the searchable list (Enter takes the best match or the typed name). */
 export async function chooseTimeZone(page: Page, query: string) {
   await taskProperty(page, "Time zone").click();

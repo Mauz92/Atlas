@@ -31,7 +31,7 @@ export function BoardPage() {
     <section className="page board-page">
       <h1>Board</h1>
       <p className="muted">
-        Drag a task between columns, or use “Move to…” in its menu, to change its status. Only
+        Drag a task between columns, use “Move to…” in its menu, or press ] and [ on a focused card, to change its status. Only
         the transitions Atlas allows are offered, and a rejected move is reported here.
       </p>
 
@@ -55,6 +55,7 @@ export function BoardPage() {
           movingId={movingId}
           empty={total === 0}
           actions={editor.actions}
+          archivedToggle
         />
       )}
       {editor.overlays}

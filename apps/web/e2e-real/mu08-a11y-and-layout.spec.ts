@@ -93,7 +93,14 @@ test("axe finds no violations on the main pages in either theme, and no page ove
     const list = await violations(page);
     if (list.length > 0) found[label] = list;
   };
-  const pages = [...PAGES, `/projects/${projectId}`, `/notes?open=${noteId}`];
+  const pages = [
+    ...PAGES,
+    "/tasks?view=board",
+    `/projects/${projectId}`,
+    `/projects/${projectId}?tab=board`,
+    `/projects/${projectId}?tab=notes`,
+    `/notes?open=${noteId}`,
+  ];
 
   for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme });
@@ -151,6 +158,41 @@ test("axe finds no violations on the main pages in either theme, and no page ove
   await page.keyboard.press("?");
   await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
   await check("shortcut help");
+  await page.keyboard.press("Escape");
+
+  // UX-07 states: a filter chip menu, the Due popover, the save-view popover, the floating bulk
+  // bar, the project row menu and the project header menu.
+  await page.goto("/tasks");
+  await settle(page);
+  const filters = page.getByRole("search", { name: "Task filters" });
+  await filters.getByRole("button", { name: /^Priority/ }).click();
+  await expect(page.getByRole("menu", { name: "Priority" })).toBeVisible();
+  await check("tasks: filter chip menu");
+  await page.keyboard.press("Escape");
+  await filters.getByRole("button", { name: /^Due/ }).click();
+  await expect(page.getByRole("dialog", { name: "Due date" })).toBeVisible();
+  await check("tasks: due popover");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Filter options" }).click();
+  await page.getByRole("menuitem", { name: "Save this view…" }).click();
+  await expect(page.getByRole("dialog", { name: "Save this view" })).toBeVisible();
+  await check("tasks: save view popover");
+  await page.keyboard.press("Escape");
+  await page.getByLabel("Select A11y inbox task").check();
+  await expect(page.getByRole("toolbar", { name: "Bulk actions" })).toBeVisible();
+  await check("tasks: bulk bar");
+  await page.getByRole("button", { name: "Clear selection" }).click();
+  await page.goto("/projects");
+  await settle(page);
+  await page.getByRole("button", { name: "Actions for A11y project" }).click();
+  await expect(page.getByRole("menu", { name: "Actions for A11y project" })).toBeVisible();
+  await check("projects: row menu");
+  await page.keyboard.press("Escape");
+  await page.goto(`/projects/${projectId}`);
+  await settle(page);
+  await page.getByRole("button", { name: "Project options" }).click();
+  await expect(page.getByRole("menu", { name: "Project options" })).toBeVisible();
+  await check("project: header menu");
   await page.keyboard.press("Escape");
 
   // UX-05 Notes states: the tree row menu, the header menu, an inline name box, and the details

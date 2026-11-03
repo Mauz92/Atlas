@@ -1,6 +1,7 @@
 import { makeTask } from "../test/tasks";
 import {
   STATUS_ORDER,
+  adjacentStatus,
   allowedTargets,
   boardColumns,
   canMove,
@@ -76,5 +77,30 @@ describe("task status board model", () => {
       "in_progress",
       "archived",
     ]);
+  });
+});
+
+describe("adjacentStatus (board keys [ and ])", () => {
+  it("steps to the neighbouring column", () => {
+    expect(adjacentStatus("inbox", 1)).toBe("next");
+    expect(adjacentStatus("next", 1)).toBe("in_progress");
+    expect(adjacentStatus("in_progress", -1)).toBe("next");
+  });
+
+  it("skips columns the state machine forbids, and stops at the edges", () => {
+    // Completed may only go back to In progress or on to Archived.
+    expect(adjacentStatus("completed", -1)).toBe("in_progress");
+    expect(adjacentStatus("completed", 1)).toBe("archived");
+    // Archived may only go to Inbox or Next: the nearest to its left is Next.
+    expect(adjacentStatus("archived", -1)).toBe("next");
+    expect(adjacentStatus("archived", 1)).toBeNull();
+    expect(adjacentStatus("inbox", -1)).toBeNull();
+    expect(adjacentStatus("bogus", 1)).toBeNull();
+  });
+
+  it("only considers the columns on screen", () => {
+    const hidden = STATUS_ORDER.filter((status) => status !== "archived");
+    expect(adjacentStatus("completed", 1, hidden)).toBeNull();
+    expect(adjacentStatus("in_progress", 1, hidden)).toBe("completed");
   });
 });

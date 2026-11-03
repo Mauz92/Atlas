@@ -2697,3 +2697,74 @@ that starts on a rendered wiki link opens the note instead (the press is taken a
 files with Python universal newlines, so a CRLF note arrives as LF and saves back as LF (R-24); the editor-side
 CRLF fidelity is proven at unit level only. Rollback: set `DEFAULT_EDITOR_MODE` back to `"source"`, or remove
 the extension from the compartment; nothing is stored differently.
+
+## ADR-0057 — Tasks, Projects and Board: filter bar, project header with tabs, board keys (UX-07)
+
+**Status:** Accepted (2026-11-03, within the owner's UX direction ADR-0051 and `UX_AUDIT.md` §4.3; UI-only: no
+backend, schema or new npm package; every write is the existing revision-checked, idempotent call, so it keeps
+the local-first direction of ADR-0055).
+
+**Context.** The Tasks page was a stacked form (seven controls plus a saved-filter section), a bulk bar that
+scrolled away, and no board. Projects had a visible Archive button per row and a native `<progress>`; a project
+page was one long scroll with a List/Board toggle; board cards repeated the full row meta and the board had no
+keyboard move; dates showed as `2026-10-13` on the project page and `Wed 4 Nov` elsewhere.
+
+**Decisions.**
+1. **One filter bar** (`components/FilterBar.tsx`): search field, chips Status / Priority / Project / Due / Sort,
+   a List | Board segmented control, "Reset filters" (only when something is set) and a "…" menu. Chips are
+   `MenuButton`s (`components/MenuButton.tsx`) opening the shared `Menu` (ADR-0052) with radio entries, so focus,
+   keys and dismissal are not re-implemented; a chip shows `Label: value` when it is not at its default. The Due
+   chip opens a `Popover` (`components/Popover.tsx`, a non-modal anchored `dialog` with the same placement,
+   top-layer and Esc/outside rules as the menu) holding presets (Any date, Overdue, Today, Next 7 days) and the
+   two date fields. The filter stays in the URL exactly as in ADR-0045; the only addition is `view=board`
+   (`TaskFilter.view`, default `list`, written only when `board`); it does not trigger a reload (the query key
+   ignores it). Pure rules (`dueRangeFor`, `duePresetOf`, `dueLabel`, `chipValues`, `isFiltered`) are in
+   `lib/taskFilters.ts` with unit tests.
+2. **Saved views live in the bar's "…" menu** (*Save this view…*, *Saved views*, *Remove a saved view*), not
+   in the sidebar: the sidebar is built only from `NAV_SECTIONS` (ADR-0051/UX-02) and saved views are
+   per-browser `localStorage` data (`hooks/useSavedFilters.ts`, same key and format as MU-03), so putting them in
+   the shell would couple it to a page's storage. Revisit if saved views ever become server data.
+3. **Bulk selection** is unchanged (square box, `x`, *Select all*, one revision-checked request per task,
+   failures reported per task, delete with undo) but the bar (`components/BulkBar.tsx`) is `position: sticky`
+   above the status bar (and the phone bottom nav) so it stays in reach; the project picker is a menu button
+   named *Move selected to project*. *Clear selection* is new.
+4. **Board on the Tasks page** renders the *filtered* tasks through the existing `Board` (moves use
+   `actions.setStatus`, which refreshes); it is a view of the same query, so it respects the status filter
+   (default Open hides Completed cards, and a card moved to Completed leaves the board until the filter allows it).
+5. **Board cards are compact** (`TaskMeta compact`): title, project dot and name (omitted on a project's own
+   board), due, and an icon-only priority flag whose name is screen-reader text ("High priority"); subtask counts
+   and tags stay in the row and the panel. **Archived is a column behind a toggle** (`archivedToggle`, "Show
+   archived (n)", per visit, not remembered); a hidden column is also excluded from key moves.
+6. **`[` and `]` move the focused card** to the nearest column in that direction the state machine allows
+   (`adjacentStatus` in `lib/taskStatus.ts`, a client copy of the server table as before; the server still
+   validates). Ignored while typing and with Ctrl/⌘/Alt. After the move the card is re-created in its new column,
+   so the board re-focuses it there once the new status arrives (expires after 5 s so a failed move never steals
+   focus later) and announces "Moved X to Y" / "X cannot move left from Inbox" in a polite live region that is
+   deliberately not `role="status"` (pages and specs own that role). Drag-and-drop and the card menu's *Move
+   to…* are unchanged. Listed in the shortcut help.
+7. **Projects**: one row per project (name, status pill, tokenised progress bar, "n open", target date, "…").
+   The bar is a `role="progressbar"` span painted with tokens (`ProjectProgressBar`); `<progress>` remains only in
+   subtask counts. Archive/Restore and *Open project* are in the row menu; archived projects are behind *Show
+   archived (n)*. "Open" is `progress.total - progress.completed` as the server derives it (ADR-0023), not
+   recomputed from tasks.
+8. **Project page**: header (name, status pill, "…" menu *Project options* with *Edit project* / *Archive
+   project* / *Restore project*, progress, dates), then WAI-ARIA tabs (`components/Tabs.tsx`, automatic
+   activation, ← → Home End) **Tasks | Board | Notes**, kept in the URL as `?tab=` so a reload and a link keep
+   the tab. Tasks: capture, open tasks, then `FoldGroup`s *Completed (n)* and *Archived (n)* (collapsed). Board:
+   `Board` with the archive toggle. Notes: linked notes and the *Link a note* select.
+9. **One date format** (`formatDay` in `lib/tasks.ts`): weekday, month, day in the viewer's locale
+   (the same options `formatDue` uses), plus the year only when it is not the current year; used for project
+   start/target dates and the Due chip's custom range. No ISO date is shown to the user (checked by a spec on
+   Projects and the project page). Timestamps with a time (Sync, Settings) are a different thing and unchanged.
+10. **No new icons** (existing `search`, `chevron-*`, `ellipsis`, `refresh-cw`, `inbox`, `file-text`,
+    `folder-kanban`), no dependency.
+
+**Consequences / limitations.** The Tasks page still sorts client-side over the first 500 matches
+(ADR-0045). *Show archived* and the fold groups reset on reload. Saved views are not shared between browsers.
+Board mode on the Tasks page cannot show a card after it leaves the filter (by design). On a phone the board's
+columns scroll horizontally inside the board (the page does not). Names that changed and were updated in
+specs: the status/priority/project/due/sort `select`s and *Saved filter* controls (now chips, "Filter options"
+menu and popover), the project page's *Board* button (now a tab), *Edit/Archive project* (now in *Project
+options*), *Restore <name>* on the Projects page (row menu), and *Link a note* (Notes tab). Rollback: UI-only; the
+URL format is a superset of ADR-0045's.
+

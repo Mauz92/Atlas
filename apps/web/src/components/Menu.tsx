@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
+import { placePopup as place } from "../lib/placePopup";
 import { Icon, type IconName } from "./Icon";
 
 /**
@@ -103,25 +104,6 @@ function items(root: HTMLElement | null): HTMLElement[] {
         (item) => item.getAttribute("aria-disabled") !== "true",
       )
     : [];
-}
-
-/** Below the anchor, right edges aligned; flipped above or clamped when the viewport is short. */
-function place(popup: HTMLElement, anchor: HTMLElement) {
-  const margin = 8;
-  const a = anchor.getBoundingClientRect();
-  const m = popup.getBoundingClientRect();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  let left = a.right - m.width;
-  if (left < margin) left = a.left;
-  left = Math.max(margin, Math.min(left, vw - m.width - margin));
-  let top = a.bottom + 4;
-  if (top + m.height > vh - margin && a.top - 4 - m.height >= margin) {
-    top = a.top - 4 - m.height;
-  }
-  top = Math.max(margin, Math.min(top, vh - m.height - margin));
-  popup.style.left = `${Math.round(left)}px`;
-  popup.style.top = `${Math.round(top)}px`;
 }
 
 export function Menu({ id, label, anchor, entries, initialPath = [], onClose }: MenuProps) {

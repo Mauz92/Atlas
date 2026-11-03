@@ -6,6 +6,22 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Changed (UX-07): **Tasks, Projects and Board are tidier.** The Tasks page has one filter bar: a search box and
+  chips for **Status**, **Priority**, **Project**, **Due** and **Sort** (each opens a small menu; Due also lets
+  you type a date range) plus a **List | Board** switch. Chips that differ from the default show their value;
+  **Reset filters** appears when anything is set. **Save this view…** and your saved views are in the **…**
+  menu at the end of the bar. Selecting tasks shows a bar that floats at the bottom of the window (complete,
+  move to a project, delete with undo, clear). The address of the page is still the view (it now also holds
+  `view=board`). **Board** view shows the same filtered tasks in columns; on any board, cards are compact (title,
+  project, due date, priority flag), the **Archived** column is behind **Show archived**, and with a card focused
+  **]** / **[** move it to the next / previous column Atlas allows (the card keeps focus; a screen reader is told).
+  **Projects** lists each project as a row with a progress bar, how many tasks are open, its target date and a
+  **…** menu (open, archive or restore); archived projects are behind **Show archived**. A project page has a
+  header (name, status, progress, dates, **…** for edit and archive) and tabs **Tasks | Board | Notes**;
+  completed and archived tasks are folded into **Completed (n)** and **Archived (n)**. Dates now read the same
+  everywhere (for example "Wed, Nov 4", with the year only when it is not this year); project dates no longer
+  show as `2026-10-13`.
+
 - **Account recovery.** New operator command `atlas-admin reset-password --email <email>` (and `list-users`) resets a forgotten password on the server and signs the account out everywhere. Not reachable over the network.
 
 - Added (UX-06): **Live editing mode for notes.** The note header has a new **Source | Live** switch next to

@@ -229,7 +229,6 @@ p {
 .project-summary h2,
 .board-column-header h2,
 .week-day h2,
-.saved-filters h2,
 .shortcut-help h3,
 .palette-group {
   margin: 0 0 var(--s-2);
@@ -2138,9 +2137,15 @@ button.menu-item .menu-chevron,
   margin: 0 0 var(--s-4);
 }
 
+.board-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 var(--s-2);
+}
+
 .board-columns {
   display: grid;
-  grid-template-columns: repeat(5, minmax(200px, 1fr));
+  grid-template-columns: repeat(var(--board-cols, 5), minmax(200px, 1fr));
   gap: var(--s-3);
   align-items: start;
   overflow-x: auto;
@@ -2262,8 +2267,25 @@ button.menu-item .menu-chevron,
 
 @media (max-width: 1100px) {
   .board-columns {
-    grid-template-columns: repeat(5, minmax(180px, 1fr));
+    grid-template-columns: repeat(var(--board-cols, 5), minmax(180px, 1fr));
   }
+}
+
+/* Phone: one column at a time, the next peeking in; the columns scroll, the page does not. */
+@media (max-width: 720px) {
+  .board-columns {
+    grid-template-columns: repeat(var(--board-cols, 5), minmax(240px, 85%));
+    scroll-snap-type: x mandatory;
+  }
+
+  .board-column {
+    scroll-snap-align: start;
+  }
+}
+
+/* Compact card meta: the flag is an icon only (its name is for screen readers). */
+.board-card .task-priority {
+  gap: 0;
 }
 
 /* --- Planning: Day and Week (M4-06) ------------------------------------ */
@@ -3237,8 +3259,7 @@ button.task-chip-remove:hover {
 
 .project-form-dates,
 .project-form-actions,
-.project-actions,
-.view-toggle {
+.project-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-2);
@@ -3253,7 +3274,6 @@ button.task-chip-remove:hover {
   margin: 0;
 }
 
-.project-item,
 .project-notes li,
 .project-meta {
   display: flex;
@@ -3261,7 +3281,41 @@ button.task-chip-remove:hover {
   align-items: center;
   gap: var(--s-2) var(--s-3);
   padding: var(--s-2) 0;
+}
+
+.project-notes li {
   border-bottom: 1px solid var(--border);
+}
+
+/* A project row: name | progress | open | target | menu; wraps on narrow screens. */
+.project-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-3);
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.project-item .project-name {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.project-open {
+  min-width: 64px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  white-space: nowrap;
+}
+
+.project-target {
+  min-width: 112px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  white-space: nowrap;
 }
 
 .project-progress-bar {
@@ -3270,71 +3324,253 @@ button.task-chip-remove:hover {
   gap: var(--s-2);
 }
 
+.progress-track {
+  display: inline-block;
+  width: 96px;
+  height: 6px;
+  overflow: hidden;
+  background: var(--bg-selected);
+  border-radius: var(--r-full);
+}
+
+.progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--r-full);
+}
+
+.project-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin-bottom: var(--s-2);
+}
+
+.project-header h1 {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.archived-toggle {
+  margin-top: var(--s-4);
+}
+
+/* Tabs (project page) */
+.tabs {
+  display: flex;
+  gap: var(--s-1);
+  margin: var(--s-4) 0 var(--s-3);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.tabs button[role="tab"] {
+  min-height: var(--control);
+  padding: 0 var(--s-3);
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  font-weight: 500;
+}
+
+.tabs button[role="tab"]:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.tabs button[role="tab"][aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.fold-group {
+  margin-top: var(--s-4);
+}
+
+.fold-group h2 {
+  margin: 0 0 var(--s-1);
+}
+
+button.fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: 600;
+  color: var(--text-3);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+button.fold-toggle:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
 .project-description {
   white-space: pre-wrap;
 }
 
-.view-toggle [aria-pressed="true"] {
+/* --- Tasks page (MU-03, UX-07) ----------------------------------------- */
+
+/* One row of controls at desktop widths; wraps (never scrolls the page) when narrower. */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin: var(--s-3) 0;
+}
+
+.filter-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 200px;
+  min-width: 160px;
+  max-width: 280px;
+}
+
+.filter-search .icon {
+  position: absolute;
+  left: var(--s-2);
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.filter-search input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+  width: 100%;
+  padding-left: var(--s-6);
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+}
+
+button.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: var(--control-sm);
+  padding: 0 var(--s-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: 500;
+  color: var(--text-2);
+  background: transparent;
+  border: 1px dashed var(--border-control);
+  border-radius: var(--r-full);
+  white-space: nowrap;
+}
+
+button.chip:hover {
+  background: var(--bg-hover);
+}
+
+button.chip.is-set,
+button.chip[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--accent-soft);
+  border-style: solid;
+  border-color: var(--border-strong);
+}
+
+.filter-end {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-left: auto;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.segmented button {
+  min-height: var(--control-sm);
+  padding: 0 var(--s-3);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-2);
+}
+
+.segmented button + button {
+  border-left: 1px solid var(--border-control);
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--bg-selected);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.popover {
+  min-width: 240px;
+}
+
+.popover-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-2);
+}
+
+.popover-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+.popover-presets [aria-pressed="true"] {
   background: var(--bg-selected);
   border-color: var(--border-strong);
 }
 
-/* --- Tasks page (MU-03) ------------------------------------------------ */
-
-.task-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--s-2) var(--s-3);
-  margin: var(--s-3) 0;
-}
-
-.task-filters input,
-.task-filters select {
-  width: auto;
-  min-width: 8rem;
-}
-
-.saved-filters ul {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
-  margin: 0 0 var(--s-2);
-  padding: 0;
-}
-
-.saved-filters li {
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-}
-
-.saved-filters h2 {
-  margin: var(--s-2) 0 var(--s-1);
-}
-
-.save-filter {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
-}
-
+/* Floats above the status bar (and the phone bottom nav) while rows are selected. */
 .bulk-bar {
+  position: sticky;
+  bottom: calc(var(--statusbar) + var(--s-3));
+  z-index: 20;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s-2) var(--s-3);
-  margin: var(--s-3) 0;
+  width: fit-content;
+  max-width: 100%;
+  margin: var(--s-4) auto 0;
   padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-lg);
   background: var(--bg-raised);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--shadow-2);
 }
 
-.bulk-bar select {
-  width: auto;
+.bulk-count {
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .bulk-bar {
+    bottom: calc(var(--bottom-nav) + var(--statusbar) + var(--s-3));
+  }
 }
 
 .bulk-error {
