@@ -7,6 +7,9 @@
   UX-01, MU-08. CI `e2e-real` NOT RUN.
 - Milestone: UX — Design system and app shell (docs/ROADMAP.md "UX" section, ADR-0051, evidence in docs/UX_AUDIT.md)
 
+- Dev stack: `scripts/dev-stack.sh` (docs/DEPLOYMENT.md §8a). `ATLAS_DEV_BIND=tailscale` exposes only Vite on the tailnet
+  IP over plain HTTP for phone/laptop use; default is localhost-only.
+
 ## Goal (next)
 UX-07 (Tasks, Projects and Board polish, `READY`), then UX-08 (settings, skeletons, empty states). Separately the
 owner may close MU (CI run + release re-score) or resume calendar work. Open backend item found in UX-06: R-24

@@ -68,6 +68,16 @@ a security property. This document defines the threat model and the controls Atl
 - Private-network-only deployment supported; remote access documented without requiring public
   exposure.
 - Content-Security-Policy and other standard security headers set on the app.
+- Dev stack on the tailnet (`scripts/dev-stack.sh`, `ATLAS_DEV_BIND`, see `DEPLOYMENT.md` §8a): a
+  development-only exception to "HTTPS for all remote access". Threat: anyone on the tailnet (any
+  device or shared node) or, if a LAN address is chosen, anyone on that LAN can reach a login page
+  over plain HTTP, and credentials/session cookies cross the WireGuard-encrypted tailnet but are not
+  TLS-protected on a LAN. Mitigations: only the Vite port binds to the chosen address, the API,
+  worker and PostgreSQL stay on loopback; wildcard and public addresses are refused by the script;
+  default stays loopback; authentication, CSRF and rate limits are unchanged; cookies are non-`Secure`
+  only when `ATLAS_ENV=development`. Prefer the tailnet address over the LAN; use tailnet ACLs to
+  restrict which devices may reach port 5173. Never funnel or port-forward it. This is not a
+  production deployment path and uses the owner's dev data.
 
 ## 6. Notes and Content Safety
 

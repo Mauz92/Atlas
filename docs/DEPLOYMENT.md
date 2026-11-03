@@ -250,6 +250,36 @@ supported: roll the application image back together with the data.
 - Documented example configuration, including OAuth redirect URIs and any push webhook paths.
 - Do not expose `db` or `worker`. Do not expose the app over plain HTTP for remote access.
 
+## 8a. Dev stack on the tailnet (development only)
+
+`scripts/dev-stack.sh start|stop|restart|status` runs the local dev stack (API on `127.0.0.1:8000`,
+worker, Vite on `:5173`; PostgreSQL stays in its container). Defaults are **localhost-only**. Logs and
+pid files go to `data/dev/run/` (git-ignored). Data dirs default to `data/dev/{notes,backups,exports}`
+and `DATABASE_URL` to the documented dev database; override by exporting the variables first.
+
+To open the dev UI from a phone or laptop on the same private Tailscale network:
+
+```bash
+ATLAS_DEV_BIND=tailscale ./scripts/dev-stack.sh restart     # binds Vite to `tailscale ip -4`
+# open http://<tailscale-ip>:5173 on the other device (this machine: 100.127.227.79)
+# LAN instead (only if the firewall allows it): ATLAS_DEV_BIND=192.168.x.y ...
+```
+
+- Only Vite is bound to that address; it proxies `/api` and `/health` to the API on loopback, so the
+  browser sees one origin (no CORS, `ALLOWED_HOSTS`, or CSRF setting needs changing). The API, worker
+  and PostgreSQL are never reachable from the network.
+- `ATLAS_ENV=development` keeps session/CSRF cookies non-`Secure`, which is what lets login work over
+  plain HTTP on a non-localhost origin. Production still sets `Secure` (`Settings.secure_cookies`).
+- The script refuses `0.0.0.0`, `::` and any address that is not loopback, Tailscale (100.64.0.0/10)
+  or RFC 1918 private. Never use `tailscale funnel` or port-forwarding for this.
+- Open it by IP. Vite 6 rejects other `Host` headers (including the MagicDNS name) with 403.
+- Over plain HTTP the page is not a secure context: no service worker, Web Push or PWA install on
+  the remote device. Those need HTTPS (`tailscale serve`, requires HTTPS certificates enabled on the
+  tailnet) and are out of scope for the dev stack.
+- Host firewall: allow only the tailnet interface, e.g. `sudo ufw allow in on tailscale0 to any port 5173 proto tcp`
+  (ufw is active on the owner's machine; not applied by Atlas). Do not open 8000 or 5432.
+- Revert to localhost-only: `./scripts/dev-stack.sh restart` (no `ATLAS_DEV_BIND`), and remove any ufw rule added.
+
 ## 9. Logging
 
 - Structured (JSON) logs from `api` and `worker`.
