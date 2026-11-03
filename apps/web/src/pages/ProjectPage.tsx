@@ -9,6 +9,7 @@ import {
   type Project,
 } from "../api/client";
 import { Board } from "../components/Board";
+import { CaptureFab } from "../components/CaptureSheet";
 import { FoldGroup } from "../components/FoldGroup";
 import { Icon } from "../components/Icon";
 import { LoadError } from "../components/LoadError";
@@ -159,6 +160,12 @@ export function ProjectPage() {
     );
   }
 
+  const target = project;
+  async function captureToProject(title: string) {
+    await tasksApi.create(title, { project_id: target.id, status: "next" });
+    await refresh();
+  }
+
   return (
     <section className="page project-page">
       <p>
@@ -282,13 +289,7 @@ export function ProjectPage() {
         ) : (
           <>
             {tab === "tasks" ? (
-              <QuickCapture
-                placeholder="Add a task to this project…"
-                onCapture={async (title) => {
-                  await tasksApi.create(title, { project_id: project.id, status: "next" });
-                  await refresh();
-                }}
-              />
+              <QuickCapture placeholder="Add a task to this project…" onCapture={captureToProject} />
             ) : null}
             {board.state === "error" ? (
               <LoadError message={board.error} onRetry={() => void board.reload()} />
@@ -348,6 +349,13 @@ export function ProjectPage() {
           </>
         )}
       </div>
+      {tab === "notes" ? null : (
+        <CaptureFab
+          onCapture={captureToProject}
+          placeholder="Add a task to this project…"
+          destination={project.name}
+        />
+      )}
       {editor.overlays}
     </section>
   );

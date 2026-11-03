@@ -669,8 +669,8 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 | UX-07 | Tasks, Projects and Board polish | UX-03 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-07; ADR-0057; CI `e2e-real` NOT RUN; not committed) |
 | UX-08 | Settings consolidation, skeletons, empty states | UX-02 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-08; ADR-0058; CI `e2e-real` NOT RUN; not committed) |
 | UX-09 | Readability tokens and the task row / section structure on Inbox, Today, Upcoming, Tasks lists, project list (phone first; evidence `UX_AUDIT.md` "Readability and mobile audit (2026-11)") | UX-08 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-09; ADR-0062; CI `e2e-real` NOT RUN; not committed) |
-| UX-10 | Week agenda layout and navigation, phone capture (FAB + sheet), phone menu as bottom sheet, 16 px inputs, viewport/safe-area | UX-09 | `READY` (UX-09 is `DONE`) |
-| UX-11 | Remaining phone pages: Tasks select mode and filter strip, Board column view, Notes toolbar, Projects cards, palette sheet | UX-10 | `BACKLOG` (until UX-10 is `DONE`) |
+| UX-10 | Week agenda layout and navigation, phone capture (FAB + sheet), phone menu as bottom sheet, 16 px inputs, viewport/safe-area | UX-09 | `DONE` (local, 2026-11-03; ADR-0063) |
+| UX-11 | Remaining phone pages: Tasks select mode and filter strip, Board column view, Notes toolbar, Projects cards, palette sheet | UX-10 | `READY` (UX-10 is `DONE`) |
 | AUTH-01 | Account recovery in the UI: recovery code issued at setup/in Settings, "Forgot password?" on the sign-in page, reset without email (CLI `atlas-admin reset-password` exists since 2026-11-03) | UX-02 | `BACKLOG` (needs an ADR and the owner's approval of the recovery design: there is no email service in a self-hosted install, so a one-time recovery code shown once at setup and regenerable in Settings is proposed; reset must revoke all sessions, be rate limited, never log the code, and store only its hash) |
 
 ### UX-01 plan — Design tokens and base controls
@@ -956,7 +956,14 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
   instance at a time).
 - **e2e selectors to keep.** Those of UX-09 plus "Previous week", "This week", "Next week", `Task title`. Selectors that may
   change: `.week-days` / `.week-day` class names (list them in the PR), the phone Today inline capture.
-- **Status: `READY`** (UX-09 is `DONE`).
+- **Refinements made while implementing (2026-11-03, ADR-0063).** (a) The projects summary is wrapping small chips plus a
+  "Projects · n" toggle row on a phone, not "one scrollable line" (that contradicts the no-inner-scroll acceptance). (b) The container
+  query lives on a wrapper `.week-agenda`, not the page (layout containment would trap the fixed capture button). (c) `Popover` (Due range,
+  saved-view name) becomes a sheet with `Menu`. (d) The existing `.segmented` control is reused for week navigation. (e) Capture from
+  Upcoming, Week and Tasks creates an Inbox task and says so; no `c` shortcut was added. (f) Plan item 5 (Inbox "Today" button) was **not
+  built** (owner may decline; revisit). (g) Rail, filter chips, filter menu, "Select all" label and List | Board get 44 px targets on touch.
+- **Status: `DONE`** (local, 2026-11-03, not committed, CI `e2e-real` not run; evidence `ACCEPTANCE.md` UX-10, ADR-0063, R-50). Not verified on a
+  real phone (keyboard, notch, iOS zoom, TalkBack/VoiceOver).
 
 ### UX-11 plan — Remaining phone pages
 - **Problem.** Tasks has two checkboxes per row and a wrapping dashed chip bar; Board is five side-scrolling columns of ~190 px
@@ -976,7 +983,7 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
   Board help button), tests, lint and typecheck pass, `npm run e2e` and `npm run test:e2e:real` pass.
 - **Required tests.** Tasks selection-mode component test; Board column tabs (keyboard: arrows, `[`/`]` still move cards; the move
   announcement is kept); target-size sweep spec; update `tasks-page.spec`, `ux07`.
-- **Status: `BACKLOG`** (becomes `READY` when UX-10 is `DONE`).
+- **Status: `READY`** (UX-10 is `DONE`; it provides the sheet pattern, the capture button and the 16 px / 44 px touch rules; the Tasks select boxes (22 px) and the Select-all box (16 px) are still open for this task).
 
 ---
 

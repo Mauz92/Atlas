@@ -138,3 +138,29 @@ describe("contrast()", () => {
     expect(contrast("#767676", "#ffffff")).toBeCloseTo(4.54, 2);
   });
 });
+
+describe("phone and touch rules (UX-10)", () => {
+  const html = readFileSync(path.join(process.cwd(), "index.html"), "utf8");
+
+  it("covers the notch area and resizes with the keyboard, so safe-area insets apply", () => {
+    expect(html).toMatch(/<meta name="viewport"[^>]*viewport-fit=cover/);
+    expect(html).toMatch(/<meta name="viewport"[^>]*interactive-widget=resizes-content/);
+    for (const edge of ["top", "right", "bottom", "left"]) {
+      expect(css).toContain(`env(safe-area-inset-${edge}, 0px)`);
+    }
+  });
+
+  it("sets 16px text fields on phones and touch (no iOS zoom on focus)", () => {
+    expect(css).toMatch(
+      /@media \(pointer: coarse\), \(hover: none\), \(max-width: 720px\) {\s*input:not\(\[type="checkbox"\]\)[^{]*{\s*font-size: var\(--fs-md\);/,
+    );
+    expect(css).toMatch(/--fs-md: 16px;/);
+  });
+
+  it("pads the bottom nav, FAB and sheets for the home indicator without new colours", () => {
+    expect(css).toMatch(/\.bottom-nav {\s*height: calc\(var\(--bottom-nav\) \+ var\(--safe-bottom\)\)/);
+    expect(css).toMatch(/\.capture-fab {[^}]*bottom: calc\(var\(--bottom-clear\) \+ var\(--s-4\)\)/);
+    expect(css).toMatch(/\.sheet::after {[^}]*height: var\(--safe-bottom\)/);
+    expect(css).toMatch(/\.menu\.is-sheet::after {[^}]*height: var\(--safe-bottom\)/);
+  });
+});

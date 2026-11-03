@@ -194,9 +194,11 @@ the server.
 
 ### Quick capture
 
-Every list view (Today, Inbox) has a capture box: type a title and press **Add**. The task is created
-immediately (on Today it is due today). Press **Enter** on a task title to open it and edit everything about
-it.
+On a computer or tablet, Today, Inbox and a project have a capture box: type a title and press **Add**. The task is
+created immediately (on Today it is due today). On a **phone** (a narrow window) a round **+** button ("Capture a task")
+floats above the bottom bar on Today, Inbox, Upcoming, Week, Tasks and a project; tap it, type a title and press **Add**. The sheet
+stays open so you can add several tasks, and says where each went: Today's go to Today, a project's to that project, the others to
+the Inbox. **Close** or **Esc** closes it. Press **Enter** on a task title to open it and edit everything about it.
 
 ### The task panel
 
@@ -231,8 +233,13 @@ on a phone it fills the screen. **…** at the top has **Copy link** (opens this
   events area that stays empty until calendars are connected. This is the landing page.
 - **Inbox** — everything captured but not yet triaged (status `inbox`).
 - **Upcoming** — tasks due on later days, grouped by day.
-- **Week** — the seven days of the current week (Monday first), with week navigation. Empty days
-  still render, so the week keeps a stable shape.
+- **Week** — the seven days of the current week (Monday first) as day cards that fit your window (one column on a phone,
+  two or more on a wider screen, never sideways scrolling). Today's card is highlighted; a day with nothing on it is one
+  quiet line. Use **Previous week / This week / Next week** (the arrows on a phone) to move; **Projects** shows the
+  projects the week touches (tap it on a phone to expand).
+
+On a phone (or any touch screen without hover) the **…** menu of a task opens as a **sheet from the bottom** with large items and
+a **Cancel**; tap outside it, press **Esc** or choose **Cancel** to close it. On a computer it stays a small popup.
 
 Each task row (UX-03) starts with a round **checkbox**: tick it to complete the task, untick a completed
 task to reopen it (it goes back to *In progress*). Next come the title (select it, or press **Enter**, to open

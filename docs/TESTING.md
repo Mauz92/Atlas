@@ -253,6 +253,19 @@ P0-1/P0-2/P0-3.
   `tasks-page.spec.ts` and J3 were updated for the chips, the "…" menu, the tabs and the row menu;
   `mu08-a11y-and-layout.spec.ts` adds the Tasks board view, the project Board and Notes tabs, and the chip menu,
   Due popover, save-view popover, bulk bar, project row menu and project header menu states.
+- Week agenda, phone capture, menu sheets and touch rules (UX-10, ADR-0063): `lib/keyboardInset.test.ts` (pure inset rule),
+  `components/CaptureSheet.test.tsx` (phone-only button, modal sheet, focus, inert page, Esc/scrim/Close, Tab trap, one add through the
+  page's own function, failed add then retry adds one, double submit ignored, `--kb` follows a fake `visualViewport`),
+  `components/MenuSheet.test.tsx` (sheet roles, scrim, trailing Cancel, Tab cycling, focus return, popover unchanged without a phone
+  query), `pages/Week.test.tsx` (segmented navigation, today card, one-line empty days), `styles.test.ts` (viewport-fit and
+  resizes-content, all four safe-area variables, 16 px rule, nav/FAB/sheet inset rules). Real stack:
+  `e2e-real/ux10-phone.spec.ts` (5 tests): the five pages at 360/390/768/1440 in both themes (no horizontal or inner scroll, axe, fields
+  >= 16 px on touch, changed controls >= 44 px, Week: seven headings, one today card, columns by width, no clipped title, no word split
+  across lines, one-line empty days); the FAB above the bottom nav on six pages in both themes, the open sheet (axe, 44 px, 16 px,
+  docked to the bottom), exactly one task per add, failed-then-retried add creates one, Esc/scrim/Tab; keyboard emulation with a stand-in
+  `visualViewport` (headless Chromium has no on-screen keyboard); the row menu as a sheet at 360/390/768 vs a popover at 1440 (roles,
+  keys, scrim, axe, targets); safe-area emulation by overriding `--safe-bottom`/`--safe-top`. **NOT RUN (needs a device):** real
+  on-screen keyboard overlap, notch/home indicator, iOS zoom-on-focus, TalkBack/VoiceOver, 200 % zoom.
 - Readability tokens, row anatomy and sections (UX-09, ADR-0062): `src/styles.test.ts` (every new token in both themes and both
   dark copies: text on the page tint, card and header band, due/priority colours, eight project dots, card outline, hairline),
   `lib/projectColor.test.ts` (stable, 1..8, even spread), `lib/dueChip.test.ts` (state words, completed, day group drops the date),

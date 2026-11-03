@@ -58,6 +58,13 @@
   --shadow-3: 0 16px 48px rgb(0 0 0 / 0.24);
   --motion: 120ms ease-out;
 
+  /* Device safe areas (UX-10, ADR-0063): 0 unless the page covers a notch or home indicator
+     (index.html sets viewport-fit=cover). Used by the bottom nav, FAB, sheets and mobile header. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+
   /* Colour: light. */
   --bg: #ffffff;
   --bg-sidebar: #f7f7f8;
@@ -562,6 +569,18 @@ progress::-moz-progress-bar {
   }
 }
 
+/*
+ * Phones and touch devices (UX-10): text fields are 16px. iOS Safari zooms the page when a field
+ * with a smaller font gets focus and does not reliably zoom back out.
+ */
+@media (pointer: coarse), (hover: none), (max-width: 720px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: var(--fs-md);
+  }
+}
+
 /* --- Pill and kbd ------------------------------------------------------ */
 
 /* One pill. Tones carry meaning only: danger, warning, success; `quiet` for low emphasis. */
@@ -688,6 +707,8 @@ kbd {
   --statusbar: 24px;
   --bottom-nav: 56px;
   --nav-row: 28px;
+  /* What the fixed bottom chrome covers on a phone: bottom nav + home indicator + status bar. */
+  --bottom-clear: calc(var(--bottom-nav) + var(--safe-bottom) + var(--statusbar));
 
   display: grid;
   grid-template-columns: var(--rail) minmax(0, 1fr);
@@ -775,6 +796,16 @@ button.rail-button {
 .rail-link:hover {
   color: var(--text);
   background: var(--bg-hover);
+}
+
+/* Touch: the rail's links and buttons are 44px targets (it is 48px wide). */
+@media (pointer: coarse), (hover: none) {
+  .rail-link,
+  button.rail-button {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
 }
 
 .rail-link.active {
@@ -1266,14 +1297,17 @@ button.statusbar-item:hover {
     display: none;
   }
 
+  .app-shell:has(.statusbar.is-quiet) {
+    --bottom-clear: calc(var(--bottom-nav) + var(--safe-bottom));
+  }
+
   .main-column {
-    margin-bottom: calc(var(--bottom-nav) + var(--statusbar));
+    margin-right: var(--safe-right);
+    margin-bottom: var(--bottom-clear);
+    margin-left: var(--safe-left);
   }
 
-  .app-shell:has(.statusbar.is-quiet) .main-column {
-    margin-bottom: var(--bottom-nav);
-  }
-
+  /* The top border is the status-bar / notch inset (0 in a browser tab), painted in the header colour. */
   .mobile-header {
     position: sticky;
     top: 0;
@@ -1281,9 +1315,10 @@ button.statusbar-item:hover {
     display: flex;
     align-items: center;
     gap: var(--s-2);
-    height: 48px;
+    height: calc(48px + var(--safe-top));
     padding: 0 var(--s-2);
     background: var(--bg);
+    border-top: var(--safe-top) solid var(--bg);
     border-bottom: 1px solid var(--border);
   }
 
@@ -1323,8 +1358,9 @@ button.statusbar-item:hover {
     display: none;
   }
 
+  /* The nav keeps its 56px of targets; the home-indicator inset below them is painted in the nav colour. */
   .bottom-nav {
-    height: var(--bottom-nav);
+    height: calc(var(--bottom-nav) + var(--safe-bottom));
     background: var(--bg-sidebar);
     border-top: 1px solid var(--border);
   }
@@ -1332,7 +1368,7 @@ button.statusbar-item:hover {
   .bottom-nav ul {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    height: 100%;
+    height: var(--bottom-nav);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -1847,15 +1883,11 @@ button.statusbar-item:hover {
 /* Phones: the tree and the note take turns; the panel covers the note. */
 @media (max-width: 720px) {
   .notes-page {
-    height: calc(100dvh - 48px - var(--bottom-nav) - var(--statusbar));
+    height: calc(100dvh - 48px - var(--safe-top) - var(--bottom-clear));
   }
 
   .notes-stage {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .app-shell:has(.statusbar.is-quiet) .notes-page {
-    height: calc(100dvh - 48px - var(--bottom-nav));
   }
 
   .notes-tree,
@@ -2659,6 +2691,189 @@ button.menu-item .menu-chevron,
   }
 }
 
+/*
+ * Bottom sheets (UX-10, ADR-0063): the menu and small popovers on a phone or a device with no hover,
+ * and the capture sheet. A scrim dims the page; the sheet is docked to the bottom edge, pads for the
+ * home indicator (the ::after spacer: padding only takes scale values) and slides up unless the user
+ * prefers reduced motion (the global rule above removes the animation).
+ */
+.sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--scrim);
+  touch-action: none;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: none;
+  }
+}
+
+.menu.is-sheet {
+  inset: auto 0 0;
+  z-index: 56;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  max-height: calc(100dvh - 48px);
+  padding: var(--s-2);
+  border-width: 1px 0 0;
+  border-color: var(--border-strong);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  box-shadow: var(--shadow-3);
+  animation: sheet-up 160ms ease-out;
+}
+
+.menu.is-sheet::after {
+  content: "";
+  display: block;
+  height: var(--safe-bottom);
+}
+
+.menu.is-sheet button.menu-item {
+  min-height: 48px;
+  padding: 0 var(--s-3);
+  gap: var(--s-3);
+  font-size: var(--fs-md);
+  line-height: var(--lh-base);
+  border-radius: var(--r-md);
+}
+
+.menu.is-sheet .menu-hint {
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+}
+
+.menu.is-sheet .menu-icon-space {
+  width: 16px;
+}
+
+.menu.is-sheet .menu-date {
+  padding: var(--s-3);
+}
+
+.menu.is-sheet .menu-date-actions button {
+  min-height: 48px;
+}
+
+/* The floating capture button: above the bottom nav, status bar and home indicator. */
+.capture-fab {
+  position: fixed;
+  right: calc(var(--s-4) + var(--safe-right));
+  bottom: calc(var(--bottom-clear) + var(--s-4));
+  z-index: 25;
+  width: 56px;
+  height: 56px;
+  min-height: 56px;
+  padding: 0;
+  border-radius: var(--r-full);
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-3);
+}
+
+.capture-fab:hover {
+  color: var(--accent-contrast);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+/* Room under the last row so the button never covers it; selecting rows (bulk bar) replaces it. */
+.page:has(> .capture-fab)::after {
+  content: "";
+  display: block;
+  height: 72px;
+}
+
+.main-column:has(.bulk-bar) .capture-fab {
+  display: none;
+}
+
+/* --kb is the part of the window the on-screen keyboard covers (useKeyboardInset). */
+.sheet {
+  position: fixed;
+  inset: auto 0 var(--kb, 0px);
+  z-index: 56;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  width: 100%;
+  max-width: none;
+  max-height: calc(100dvh - 48px - var(--kb, 0px));
+  margin: 0;
+  padding: var(--s-3) var(--s-4);
+  overflow-y: auto;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-width: 1px 0 0;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  box-shadow: var(--shadow-3);
+  animation: sheet-up 160ms ease-out;
+}
+
+.sheet::after {
+  content: "";
+  flex: none;
+  display: block;
+  height: var(--safe-bottom);
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.sheet-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: var(--lh-md);
+  font-weight: 600;
+}
+
+.sheet .quick-capture {
+  align-items: stretch;
+  margin: 0;
+}
+
+.sheet .quick-capture input,
+.sheet .quick-capture button.primary {
+  min-height: 48px;
+}
+
+.sheet .quick-capture .error {
+  flex-basis: 100%;
+}
+
+.sheet-status {
+  min-height: 20px;
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.sheet-head button.icon-button {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+}
+
 .daily-excerpt {
   white-space: pre-line;
 }
@@ -2868,31 +3083,81 @@ button.menu-item .menu-chevron,
   cursor: default;
 }
 
+/*
+ * Week navigation as one bordered, segmented control (UX-10): Previous | This week | Next. "This week"
+ * is the current state while it is disabled (selected look, readable). Phone: three segments across the
+ * width, the arrows icon-only (the names stay "Previous week" / "Next week").
+ */
+.planning-nav.segmented {
+  flex-wrap: nowrap;
+  gap: 0;
+  background: var(--bg-raised);
+}
+
+.planning-nav.segmented button {
+  gap: var(--s-1);
+}
+
+/* "This week" is the current state while it is disabled: selected look, full-contrast text. */
+.planning-nav.segmented button:disabled,
+.planning-nav.segmented button:disabled:hover {
+  color: var(--text);
+  background: var(--bg-selected);
+  font-weight: 600;
+}
+
 .project-warning {
   margin: var(--s-4) 0 0;
 }
 
+/* Projects touched by the plan: small wrapping chips; one expandable row on a phone. */
 .project-summary {
-  margin-top: var(--s-5);
+  margin-top: var(--s-4);
+}
+
+.project-summary h2 {
+  margin-bottom: var(--s-1);
 }
 
 .project-summary ul {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s-2);
+  gap: var(--s-1) var(--s-2);
   margin: 0;
   padding: 0;
+}
+
+.project-summary ul[hidden] {
+  display: none;
 }
 
 .project-summary li {
   display: flex;
   align-items: baseline;
   gap: var(--s-2);
-  padding: var(--s-1) var(--s-3);
+  max-width: 100%;
+  padding: var(--s-1) var(--s-2);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--bg-raised);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+button.project-summary-toggle {
+  width: 100%;
+  min-height: 44px;
+  justify-content: flex-start;
+  padding: 0 var(--s-3);
+  color: var(--text);
+  background: var(--bg-card);
+  border-color: var(--border-strong);
+  font-size: var(--fs-base);
+}
+
+button.project-summary-toggle .icon {
+  margin-left: auto;
 }
 
 .project-name {
@@ -2904,32 +3169,73 @@ button.menu-item .menu-chevron,
   line-height: var(--lh-sm);
 }
 
+/*
+ * Week agenda (UX-10, ADR-0063): the days are cards in an auto-fit grid, so the page never scrolls
+ * sideways: one column on a phone, as many 260px+ columns as the width allows otherwise, seven only
+ * when the container is ultrawide. `.week-agenda` is the size container (a container on the page
+ * itself would also contain `position: fixed` children such as the capture button).
+ */
+.week-agenda {
+  container: week / inline-size;
+  margin-top: var(--s-5);
+}
+
 .week-days {
   display: grid;
-  grid-template-columns: repeat(7, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
   gap: var(--s-3);
   align-items: start;
-  overflow-x: auto;
-  margin-top: var(--s-5);
-  padding-bottom: var(--s-1);
+}
+
+@container week (min-width: 1600px) {
+  .week-days {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
 }
 
 .week-day {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
   min-width: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
 }
 
-.week-day h2 {
-  justify-content: space-between;
+.week-day > .section-head {
+  margin: 0;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+
+.week-day.is-today {
+  border-color: var(--due-today);
 }
 
 .week-day .task-row-actions {
   display: none;
 }
 
-/* Narrow columns (desktop): the title wraps and the meta stacks under it; actions live in the menu. */
+/* A day with nothing on it is one line: the date at the left, "Nothing scheduled." at the right. */
+.week-day.is-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+}
+
+.week-day.is-empty > .section-head {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border-radius: var(--r-lg);
+}
+
+.week-day.is-empty > p.muted {
+  flex: none;
+  margin: 0 var(--s-3) 0 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+/* Narrow cards (desktop): the title wraps and the meta stacks under it; actions live in the menu. */
 @media (min-width: 721px) {
   .week-day .task-row {
     align-items: flex-start;
@@ -2947,6 +3253,7 @@ button.menu-item .menu-chevron,
   .week-day .task-row .task-title {
     flex-basis: 100%;
     white-space: normal;
+    overflow-wrap: break-word;
   }
 
   .week-day .task-meta {
@@ -2977,21 +3284,32 @@ button.menu-item .menu-chevron,
   }
 }
 
-@media (max-width: 1100px) {
-  .week-days {
-    grid-template-columns: repeat(7, minmax(150px, 1fr));
-  }
-}
-
 @media (max-width: 720px) {
   .planning-header {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
   }
 
-  .week-days {
-    grid-template-columns: minmax(0, 1fr);
-    overflow-x: visible;
+  .planning-nav.segmented {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr) 56px;
+    width: 100%;
+  }
+
+  .segmented-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .week-agenda {
+    margin-top: var(--s-4);
   }
 }
 
@@ -3010,8 +3328,7 @@ button.menu-item .menu-chevron,
   }
 
   .view-section,
-  .list-card,
-  .week-day {
+  .list-card {
     background: var(--bg-card);
     border: 1px solid var(--border-strong);
     border-radius: var(--r-lg);
@@ -3024,7 +3341,7 @@ button.menu-item .menu-chevron,
   .view-section > .section-head,
   .week-day > h2 {
     position: sticky;
-    top: 48px;
+    top: calc(48px + var(--safe-top));
     z-index: 5;
     margin: 0;
     border-radius: var(--r-lg) var(--r-lg) 0 0;
@@ -3831,7 +4148,12 @@ button.task-chip-remove:hover {
 /* Narrow screens: the sheet becomes a full page. */
 @media (max-width: 720px) {
   .undo-toast {
-    bottom: calc(56px + var(--s-3));
+    bottom: calc(var(--bottom-clear) + var(--s-3));
+  }
+
+  /* With a capture button on the page the toast sits above it. */
+  .main-column:has(.capture-fab) .undo-toast {
+    bottom: calc(var(--bottom-clear) + 56px + var(--s-4) + var(--s-3));
   }
 
   .task-detail,
@@ -3839,6 +4161,7 @@ button.task-chip-remove:hover {
     inset: 0;
     width: 100vw;
     border-left: none;
+    border-top: var(--safe-top) solid var(--bg);
   }
 
   .task-prop {
@@ -4134,6 +4457,35 @@ button.chip[aria-expanded="true"] {
   font-weight: 600;
 }
 
+.segmented button:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Touch and phone: filter chips, the filter menu and "Select all" are 44px targets too (UX-11 redesigns them). */
+@media (pointer: coarse), (hover: none), (max-width: 720px) {
+  button.chip,
+  .filter-end button.icon-button {
+    min-height: 44px;
+  }
+
+  .filter-end button.icon-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .task-count label {
+    min-height: 44px;
+  }
+}
+
+/* Touch and phone: the segments (week navigation, List | Board) are 44px targets. */
+@media (pointer: coarse), (hover: none), (max-width: 720px) {
+  .segmented button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
 .popover {
   min-width: 240px;
 }
@@ -4181,7 +4533,7 @@ button.chip[aria-expanded="true"] {
 
 @media (max-width: 720px) {
   .bulk-bar {
-    bottom: calc(var(--bottom-nav) + var(--statusbar) + var(--s-3));
+    bottom: calc(var(--bottom-clear) + var(--s-3));
   }
 }
 

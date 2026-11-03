@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { tasksApi, type Task, type TaskStatus } from "../api/client";
 import { Board } from "../components/Board";
 import { BulkBar } from "../components/BulkBar";
+import { CaptureFab } from "../components/CaptureSheet";
 import { EmptyState } from "../components/EmptyState";
 import { FilterBar } from "../components/FilterBar";
 import { LoadError } from "../components/LoadError";
@@ -73,6 +74,12 @@ export function Tasks() {
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
   );
+
+  // Phone capture (UX-10): a new task lands in the Inbox, whatever the filters show.
+  async function captureToInbox(title: string) {
+    await tasksApi.create(title);
+    await refresh();
+  }
 
   const [text, setText] = useState(filter.q);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -290,6 +297,7 @@ export function Tasks() {
           onDismiss={() => setDeleted([])}
         />
       ) : null}
+      <CaptureFab onCapture={captureToInbox} destination="Inbox" />
       {editor.overlays}
     </section>
   );

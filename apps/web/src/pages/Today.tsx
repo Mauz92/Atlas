@@ -2,16 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { notesApi, tasksApi, type Task } from "../api/client";
+import { CaptureFab } from "../components/CaptureSheet";
 import { EmptyState } from "../components/EmptyState";
 import { LoadError } from "../components/LoadError";
 import { QuickCapture } from "../components/QuickCapture";
 import { Skeleton } from "../components/Skeleton";
 import { TaskList } from "../components/TaskList";
 import { ViewSection } from "../components/ViewSection";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 import { useTaskView } from "../hooks/useTaskView";
 import { dailyPath, excerpt, plainPreview } from "../lib/dailyNote";
 import { ACTIVE_STATUSES, addDays, dayKeyOf, startOfDay } from "../lib/planning";
+import { PHONE_QUERY } from "../lib/phone";
 import { dueOn, localDate } from "../lib/taskForm";
 import { groupToday } from "../lib/tasks";
 
@@ -30,6 +33,8 @@ function messageOf(err: unknown, fallback: string): string {
  * today's note and a slot for calendar events (empty until a calendar is connected, M5).
  */
 export function Today() {
+  // On a phone the capture field lives in the floating sheet (UX-10); the inline field is desktop and tablet.
+  const phone = useMediaQuery(PHONE_QUERY, false);
   const navigate = useNavigate();
   const { tasks, state, error, timeZone, reload, refresh } = useTaskView("today");
   const [scheduled, setScheduled] = useState<Task[]>([]);
@@ -130,7 +135,7 @@ export function Today() {
   return (
     <section className="page today-page tinted-page">
       <h1>Today</h1>
-      <QuickCapture onCapture={capture} placeholder="Add a task for today…" />
+      {phone ? null : <QuickCapture onCapture={capture} placeholder="Add a task for today…" />}
 
       {editor.error ? (
         <p className="error" role="alert">
@@ -143,7 +148,7 @@ export function Today() {
       ) : state === "loading" ? (
         <Skeleton label="Loading today" rows={2} groups={3} />
       ) : overdue.length + dueToday.length + startsToday.length === 0 && !scheduledError ? (
-        <EmptyState icon="sun">Nothing is due today. Capture a task above, or enjoy the quiet.</EmptyState>
+        <EmptyState icon="sun">Nothing is due today. Capture a task, or enjoy the quiet.</EmptyState>
       ) : (
         <>
           {overdue.length + dueToday.length > 0 ? (
@@ -201,6 +206,7 @@ export function Today() {
           <p className="muted section-note">Calendar events will appear here once a calendar is connected.</p>
         </ViewSection>
       </div>
+      <CaptureFab onCapture={capture} placeholder="Add a task for today…" destination="Today" />
       {editor.overlays}
     </section>
   );

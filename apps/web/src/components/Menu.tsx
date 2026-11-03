@@ -2,7 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { placePopup as place } from "../lib/placePopup";
+import { SHEET_QUERY, promoteToTopLayer } from "../lib/phone";
 import { Icon, type IconName } from "./Icon";
 
 /**
@@ -16,6 +18,9 @@ import { Icon, type IconName } from "./Icon";
  *   pointer press outside closes it without moving focus.
  * - A submenu replaces the current view (with a "Back" item) instead of flying out, so it works the
  *   same at phone width. A date view is a small `role="dialog"` with a labelled date field.
+ * - On a phone (<= 720px) or a device with no hover (UX-10, ADR-0063) the same menu is a bottom sheet:
+ *   full width, 48px items, a scrim, safe-area padding, a trailing "Cancel", and Tab cycles inside
+ *   instead of closing. Roles, names, keys, Esc and focus return are identical to the popover.
  * - It is rendered in a portal (inside the opener's landmark) so a list's `overflow: hidden` never
  *   clips it, and promoted to the browser's top layer with the native Popover API
  *   (`popover="manual"`) where available; the open/close logic stays here so it behaves the same in
@@ -110,6 +115,8 @@ export function Menu({ id, label, anchor, entries, initialPath = [], onClose }: 
   const [path, setPath] = useState<string[]>(initialPath);
   const [date, setDate] = useState("");
   const popup = useRef<HTMLDivElement>(null);
+  const scrim = useRef<HTMLDivElement>(null);
+  const sheet = useMediaQuery(SHEET_QUERY, false);
   const view = resolve(label, entries, path);
 
   const close = useCallback(
@@ -123,9 +130,11 @@ export function Menu({ id, label, anchor, entries, initialPath = [], onClose }: 
   );
 
   // Top layer (where supported), then position. Runs again when the view (and its size) changes.
+  // The scrim of a sheet is promoted first so the sheet stacks above it.
   useLayoutEffect(() => {
     const element = popup.current;
     if (!element) return;
+    if (sheet) promoteToTopLayer(scrim.current);
     if (typeof element.showPopover === "function" && !element.hasAttribute("popover")) {
       element.setAttribute("popover", "manual");
       try {
@@ -134,8 +143,14 @@ export function Menu({ id, label, anchor, entries, initialPath = [], onClose }: 
         // Already shown, or not connected yet: the fixed position below still applies.
       }
     }
-    place(element, anchor);
-  }, [anchor, path]);
+    if (sheet) {
+      // The CSS docks a sheet to the bottom edge: drop the popover's computed position.
+      element.style.left = "";
+      element.style.top = "";
+    } else {
+      place(element, anchor);
+    }
+  }, [anchor, path, sheet]);
 
   // Focus follows the view: the date field, else the checked choice, else the first item.
   useLayoutEffect(() => {
@@ -151,10 +166,17 @@ export function Menu({ id, label, anchor, entries, initialPath = [], onClose }: 
   }, [path]);
 
   useEffect(() => {
-    const reposition = () => popup.current && place(popup.current, anchor);
+    const reposition = () => popup.current && !sheet && place(popup.current, anchor);
     function onPointerDown(event: Event) {
       const target = event.target as Node;
       if (popup.current?.contains(target) || anchor.contains(target)) return;
+      if (scrim.current?.contains(target)) {
+        // A press on a sheet's scrim is "dismiss": focus goes back to the opener like Esc. The press
+        // itself moves focus to the page afterwards, so the return is deferred past it.
+        close("outside");
+        window.setTimeout(() => anchor.isConnected && anchor.focus(), 0);
+        return;
+      }
       close("outside");
     }
     window.addEventListener("resize", reposition);
@@ -165,7 +187,7 @@ export function Menu({ id, label, anchor, entries, initialPath = [], onClose }: 
       window.removeEventListener("scroll", reposition, true);
       document.removeEventListener("pointerdown", onPointerDown, true);
     };
-  }, [anchor, close]);
+  }, [anchor, close, sheet]);
 
   function move(to: "next" | "prev" | "first" | "last") {
     const list = items(popup.current);
@@ -228,7 +250,12 @@ export function Menu({ id, label, anchor, entries, initialPath = [], onClose }: 
     switch (event.key) {
       case "Tab":
         handled();
-        close("tab");
+        if (sheet) {
+          // A modal sheet keeps focus inside: Tab cycles through the items.
+          move(event.shiftKey ? "prev" : "next");
+        } else {
+          close("tab");
+        }
         return;
       case "ArrowDown":
         handled();
@@ -279,7 +306,7 @@ export function Menu({ id, label, anchor, entries, initialPath = [], onClose }: 
       <div
         id={id}
         ref={popup}
-        className="menu menu-dialog"
+        className={`menu menu-dialog${sheet ? " is-sheet" : ""}`}
         role="dialog"
         aria-label={view.entry.title}
         onKeyDown={onKeyDown}
@@ -310,7 +337,7 @@ export function Menu({ id, label, anchor, entries, initialPath = [], onClose }: 
       <div
         id={id}
         ref={popup}
-        className="menu"
+        className={`menu${sheet ? " is-sheet" : ""}`}
         role="menu"
         aria-label={view.label}
         onKeyDown={onKeyDown}
@@ -375,11 +402,32 @@ export function Menu({ id, label, anchor, entries, initialPath = [], onClose }: 
             </button>
           );
         })}
+        {sheet && path.length === 0 ? (
+          <>
+            <div role="separator" className="menu-separator" />
+            <button
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              className="menu-item menu-cancel"
+              onClick={() => close("escape")}
+            >
+              <span className="menu-icon-space" />
+              <span className="menu-label">Cancel</span>
+            </button>
+          </>
+        ) : null}
       </div>
     );
 
   // Inside the opener's landmark (so all content stays in landmarks); the top layer or fixed
   // positioning keeps it unclipped wherever it is attached.
   const host = anchor.closest<HTMLElement>("main, aside, nav, [role='dialog']") ?? document.body;
-  return createPortal(body, host);
+  return createPortal(
+    <>
+      {sheet ? <div ref={scrim} className="sheet-scrim" aria-hidden="true" /> : null}
+      {body}
+    </>,
+    host,
+  );
 }

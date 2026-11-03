@@ -1,3 +1,5 @@
+import { tasksApi } from "../api/client";
+import { CaptureFab } from "../components/CaptureSheet";
 import { EmptyState } from "../components/EmptyState";
 import { LoadError } from "../components/LoadError";
 import { Skeleton } from "../components/Skeleton";
@@ -14,6 +16,12 @@ export function Upcoming() {
   const editor = useTaskEditor({ refresh, timeZone });
   const groups = groupUpcomingByDay(tasks, timeZone);
   const tomorrow = dayKeyOf(addDays(new Date(), 1), timeZone);
+
+  // Capture from here lands in the Inbox, like capture anywhere without a date or project.
+  async function capture(title: string) {
+    await tasksApi.create(title);
+    await refresh();
+  }
 
   return (
     <section className="page upcoming-page tinted-page">
@@ -51,6 +59,7 @@ export function Upcoming() {
           ))}
         </div>
       )}
+      <CaptureFab onCapture={capture} destination="Inbox" />
       {editor.overlays}
     </section>
   );

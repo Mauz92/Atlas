@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 interface QuickCaptureProps {
@@ -6,6 +6,8 @@ interface QuickCaptureProps {
   onCapture: (title: string) => Promise<void>;
   placeholder?: string;
   label?: string;
+  /** Put the cursor back in the field after a task was added (the capture sheet adds several in a row). */
+  refocus?: boolean;
 }
 
 /**
@@ -16,8 +18,12 @@ export function QuickCapture({
   onCapture,
   placeholder = "Add a task…",
   label = "Task title",
+  refocus = false,
 }: QuickCaptureProps) {
   const inputId = useId();
+  const input = useRef<HTMLInputElement>(null);
+  // A second submit while one is in flight (double tap, Enter twice) must not add a second task.
+  const inFlight = useRef(false);
   const [title, setTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -27,17 +33,20 @@ export function QuickCapture({
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     const value = title.trim();
-    if (!value) {
+    if (!value || inFlight.current) {
       return;
     }
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
       await onCapture(value);
       setTitle("");
+      if (refocus) input.current?.focus();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add the task");
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -48,6 +57,7 @@ export function QuickCapture({
         {label}
       </label>
       <input
+        ref={input}
         id={inputId}
         type="text"
         required

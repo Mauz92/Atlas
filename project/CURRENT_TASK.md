@@ -1,3 +1,22 @@
+- **UX-10 (Week agenda, phone capture sheet, menu sheets, 16 px fields, safe areas) is `DONE` locally (2026-11-03, not committed, CI not run).**
+  ADR-0063, evidence `docs/ACCEPTANCE.md` UX-10 (verify.sh PASS: pytest 4172, vitest 898; real-stack 61 passed incl. 5 new in
+  `e2e-real/ux10-phone.spec.ts`; mocked e2e 7 passed), R-50. **Next UX step: UX-11** (`READY`: Tasks select mode and filter strip, Board column
+  view, Notes toolbar, Projects cards, palette sheet). Not built from the UX-10 plan: the Inbox per-row "Today" button (owner may decline).
+  NOT RUN: real phone (keyboard, notch, iOS zoom), TalkBack/VoiceOver.
+
+## UX-10 conventions to keep
+- Phone breakpoints in `lib/phone.ts`: `PHONE_QUERY` (<= 720 px: FAB, no inline Today capture) and `SHEET_QUERY` (<= 720 px or `(hover: none)`: menus
+  and popovers are sheets); `promoteToTopLayer` for the native Popover API. jsdom has no `matchMedia`, so unit tests get desktop unless they stub it.
+- Capture: `components/CaptureSheet.tsx` exports `CaptureFab` (page passes its own `onCapture`, `destination` for the confirmation). Render it as the
+  last child of the page `section.page` (the sheet makes `.page` `inert` while open). Never duplicate capture logic; `QuickCapture` guards double submit.
+- Sheets: `.sheet` / `.sheet-scrim` / `.menu.is-sheet` in `styles.css`; safe-area insets come from `--safe-*` and `--bottom-clear` (padding only takes scale
+  tokens, so insets use `height`, `border-top` and `::after` spacers). Keyboard: `--kb` from `useKeyboardInset`.
+- Week: `.week-agenda` (container `week`) > `.week-days` (auto-fit grid) > `ViewSection.week-day[.is-today][.is-empty]`; navigation is the shared `.segmented`.
+  Do not put `container-type` on the page (it would trap fixed children).
+- Touch: `(pointer: coarse), (hover: none), (max-width: 720px)` gives 16 px fields, 44 px segments, chips, filter menu.
+- Specs: `e2e-real/ux10-phone.spec.ts` (shares one seed; the layout test excludes `.sr-only` boxes and phone ellipsised meta from the inner-scroll scan).
+
+## UX-09 summary (previous step)
 - **UX-09 (readability tokens, task row anatomy, section cards) is `DONE` locally (2026-11-03, not committed, CI not run).** ADR-0062,
   evidence `docs/ACCEPTANCE.md` UX-09 (verify.sh PASS: pytest 4172, vitest 877; real-stack 56 passed; mocked e2e 7 passed), R-49.
   **Next UX step: UX-10** (`READY`: Week agenda layout, phone FAB + capture sheet, bottom-sheet menu, 16 px inputs).

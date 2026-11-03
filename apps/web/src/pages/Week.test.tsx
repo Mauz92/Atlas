@@ -82,6 +82,45 @@ describe("Week", () => {
     expect(within(headings[0].closest("section") as HTMLElement).getByText(/Nothing scheduled/i)).toBeInTheDocument();
   });
 
+  it("offers week navigation as one segmented control, with 'This week' as the current state", async () => {
+    listMock.mockResolvedValue({ tasks: [] });
+    render(<Week />);
+    await screen.findByText(/Nothing planned for this week/i);
+    const nav = screen.getByRole("navigation", { name: "Change week" });
+    expect(nav).toHaveClass("segmented");
+    expect(within(nav).getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "Previous week",
+      "This week",
+      "Next week",
+    ]);
+    expect(within(nav).getByRole("button", { name: "This week" })).toBeDisabled();
+    fireEvent.click(within(nav).getByRole("button", { name: "Next week" }));
+    expect(within(nav).getByRole("button", { name: "This week" })).toBeEnabled();
+  });
+
+  it("highlights today, counts each day and renders an empty day as one muted line", async () => {
+    const today = new Date();
+    listMock.mockResolvedValue({
+      tasks: [makeTask({ id: "a", title: "Today job", due_state: "upcoming", due_at: new Date().toISOString() })],
+    });
+    render(<Week />);
+    expect(await screen.findByText("Today job")).toBeInTheDocument();
+    const headings = screen.getAllByRole("heading", { level: 2 });
+    expect(headings).toHaveLength(7);
+    const todayCard = screen
+      .getAllByRole("heading", { level: 2 })
+      .find((heading) => heading.textContent?.startsWith("Today"))
+      ?.closest("section") as HTMLElement;
+    expect(todayCard).toHaveClass("is-today");
+    expect(todayCard).not.toHaveClass("is-empty");
+    // The count is decoration (aria-hidden): the heading's name is the day.
+    expect(within(todayCard).getByRole("heading", { level: 2 })).toHaveAccessibleName(/^Today · /);
+    const empty = document.querySelectorAll(".week-day.is-empty");
+    expect(empty.length).toBe(6);
+    expect(within(empty[0] as HTMLElement).getByText("Nothing scheduled.")).toBeInTheDocument();
+    expect(today).toBeTruthy();
+  });
+
   it("navigates to another week and back", async () => {
     listMock.mockResolvedValue({ tasks: [] });
 

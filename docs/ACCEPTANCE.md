@@ -3429,6 +3429,44 @@ Limitations: ADR-0057 and R-26 (saved views per browser; the Tasks board shows o
 archive toggles reset on reload; client copy of the transition table for `[` / `]`).
 
 
+### UX-10 — Week agenda, phone capture sheet, menu sheets, 16 px fields and safe areas
+
+**Result: `DONE` (local, 2026-11-03); CI job `e2e-real` `NOT RUN` on GitHub Actions; not committed.** Week is an auto-fit agenda of day
+cards; a phone capture button opens a keyboard-aware bottom sheet around the existing `QuickCapture`; `Menu` and `Popover` are bottom
+sheets on phones and no-hover devices; text fields are 16 px on touch/phone; the bottom nav, header, FAB and sheets use the safe-area
+insets (ADR-0063). CSS and markup only: no backend, schema or dependency change; one Lucide icon (`plus`) added to `DEPENDENCIES.md`.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| No horizontal document scroll and no inner scroll on Week at 360/390/768/1440 (sidebar open at 1440), both themes | `PASS` | `ux10` test 1 (5 pages x 4 sizes x 2 themes: document overflow 0; Week: no scroll container with overflow, every card inside `.week-agenda`) |
+| All seven days reachable; no word split across lines; no clipped titles; today highlighted; empty day one line | `PASS` | `ux10` test 1 (7 `.week-day`, 7 day headings, one `.is-today`, per-word `Range` rects on one row, title `scrollWidth <= clientWidth`, empty cards <= 64 px; columns 1 at 360/390, >= 2 at 768/1440); `Week.test.tsx`. Phone meta lines with `text-overflow: ellipsis` (ADR-0062 line 3) are exempt at <= 390 px |
+| Capture reachable in one tap from every task page; sheet not covered by the keyboard | `PASS` (emulated) | `ux10` test 2 (FAB >= 56 px, above the bottom nav, on Today, Inbox, Upcoming, Week, Tasks and a project page, both themes); test 3 (stand-in `visualViewport` of -300 px lifts the sheet and the field stays above the keyboard; returns to 844 px). **Real keyboard: `NOT RUN`** (R-50) |
+| Capture adds exactly one task; failure keeps the title; retry adds one | `PASS` | `ux10` test 2 (`/api/tasks?q=` returns one per page; a 503 on the first POST then retry returns one); `CaptureSheet.test.tsx` (retry, double submit ignored); the page's own `onCapture` is reused |
+| Sheet focus, Esc, scrim, Close, focus return, Tab trap, inert page | `PASS` | `CaptureSheet.test.tsx`, `MenuSheet.test.tsx`, `ux10` tests 2 and 4 |
+| Every control in the sheets >= 44 px; fields compute to 16 px on touch | `PASS` | `ux10` tests 1, 2, 4 (`boundingBox` of buttons, inputs and `menuitem`s; computed `font-size` of every visible input/select/textarea on the five pages at 360/390/768, both themes) |
+| Menu: bottom sheet at 360/390/768, popover at 1440, same roles and keys | `PASS` | `ux10` test 4 (full width, docked at the bottom, scrim, `menuitemradio` x 5 in Priority, End/Tab/Esc, scrim press returns focus, choosing an item works; 1440: no sheet, no scrim, no Cancel, width <= 320); `Menu.test.tsx` unchanged and passing |
+| axe WCAG 2.0/2.1 A/AA + best practice clean (both themes) at 360/390/768/1440 on Today, Inbox, Upcoming, Week, Tasks, the open capture sheet and the open row sheet | `PASS` | `ux10` tests 1, 2 (sheet at 390 on Today and Inbox) and 4 (row sheet and Priority sheet at 360/390/768) |
+| Safe-area padding (bottom nav, header, FAB, sheet) | `PASS` (emulated) | `ux10` test 5 (overriding `--safe-bottom: 34px`, `--safe-top: 47px`: nav 90 px with 56 px of targets, header 95 px, FAB above the nav, sheet keeps 34 px under its controls); `styles.test.ts`. **Real notch / home indicator: `NOT RUN`** |
+| 44 px for changed controls (week segments, rail, FAB, chips, filter menu, nav) | `PASS` | `ux10` test 1 (touch sizes); measured sweep before the final run listed only task-open titles (the keyboard path; the body is the target), "Synced" (20 px, status bar), per-row Select boxes (22 px) and "Select all" box (16 px): UX-11 / not in scope |
+| J1-J7, ux02-ux09, tasks-page, mu04, mu08 pass unchanged | `PASS` | `npm run test:e2e:real`: `61 passed` (56 + 5 new in `ux10-phone.spec.ts`); no existing spec was edited |
+| Lint (scale), typecheck, unit tests; mocked e2e | `PASS` | `./scripts/verify.sh`: ruff, format, mypy, pytest `4172 passed, 14 skipped`; eslint + `check-css-scale: OK`, `tsc`, vitest `898 passed` (79 files; UX-09 recorded 877); `verification: PASS`. `npm run e2e`: `7 passed` |
+| Contrast of any new token | `PASS` (none) | No colour token added (`--accent`, `--scrim`, `--due-today`, existing text tokens); `styles.test.ts` unchanged for colours |
+| iOS zoom-on-focus, real keyboard overlap, notch, TalkBack/VoiceOver, other browsers, 200 % zoom | `NOT RUN` | Chromium emulation only (R-50) |
+| No stray `atlas_e2e_*` databases; owner's stack and `atlas` DB untouched | `PASS` | `pg_database` listed after teardown: `postgres`, `atlas`, `atlas_test`, templates only; the throwaway screenshot stack `atlas_e2e_ux10_*` was dropped with `down.sh` |
+
+Selector changes: Week only. `.week-day` is now `section.view-section.week-day` (with `.is-today` / `.is-empty`) whose first child is `h2.section-head`;
+`.week-days` is an auto-fit grid wrapped in `.week-agenda`; `.week-day-count` is gone; phone Today has no inline "Task title" field (the sheet has it).
+Kept: `Task title`, "Previous week", "This week", "Next week" and every ADR-0062 row selector.
+
+Not built: the Inbox per-row "Today" button (plan item 5, owner may decline). Deviations: the projects summary toggles instead of scrolling (no inner scroll was a
+stricter requirement); no `c` shortcut. Notes: the `ux10` layout test excludes `.sr-only` 1 px boxes from the inner-scroll scan and phone ellipsised meta; the
+first full-suite run failed on that scan (`.sr-only`), the spec was fixed and the whole suite re-run (61 passed).
+
+**Screenshots** (throwaway stack, scratchpad `ux10/`, not in the repository). Before (`git archive HEAD`, UX-09 tree):
+`/tmp/claude-1000/-home-kim-Documents-Atlas/31ff7fb3-5923-481a-b611-5657fde6b6ea/scratchpad/ux10/shots_before/{week_p390_dark,week_t768_light,week_d1440_light,row-menu_p390_light,today_p390_light}.png`;
+after: `.../ux10/shots_after/` with the same names plus `capture-sheet_p390_light.png`, `capture-sheet_p390_dark.png`, `row-menu_p390_dark.png`,
+`row-submenu_p390_light.png`, `due-popover_p390.png`, `week-nextweek_{p390,d1440}.png` (empty days).
+
 ### UX-09 — Readability tokens, task row anatomy and section structure
 
 **Result: `DONE` (local, 2026-11-03); CI job `e2e-real` `NOT RUN` on GitHub Actions; not committed.** New colour tokens, one row
@@ -3448,7 +3486,7 @@ tab (ADR-0062). CSS and markup only: no backend, schema, dependency or icon chan
 | Upcoming drops the date under a day header and keeps it elsewhere; "Tomorrow" header | `PASS` | `ux09` test 3; `Upcoming.test.tsx`; `dueChip.test.ts` |
 | Project dot colour = `hash(id) % 8`, name always shown | `PASS` | `projectColor.test.ts`; `TaskRow.test.tsx`; `ux09` test 2 |
 | Selectors kept (`.task-row`, `.task-priority`, `.task-due`, `.project-tag`, accessible names, regions) | `PASS` | No existing spec was edited; only `TaskRow.test.tsx` changed its "Overdue, due" expectation to the visible "Overdue · date" |
-| Week 7-column layout, FAB, bottom-sheet menu, 16 px inputs | `NOT RUN` | UX-10 by plan (Week rows and headers got the new anatomy; Sunday is still cut off on desktop) |
+| Week 7-column layout, FAB, bottom-sheet menu, 16 px inputs | `NOT RUN` | UX-10 by plan (Week rows and headers got the new anatomy; Sunday is still cut off on desktop); delivered later, see UX-10 above |
 | Other browsers, real phone, screen reader, 200 % zoom, forced colours | `NOT RUN` | Chromium only; R-49 |
 | No stray `atlas_e2e_*` databases; owner's stack untouched | `PASS` | `pg_database`: `postgres`, `atlas`, `atlas_test`, templates only (listed at the end); the audit throwaway stack was torn down with `down.sh` |
 

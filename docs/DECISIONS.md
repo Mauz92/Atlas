@@ -3127,3 +3127,66 @@ the project dot is an element (`.project-dot`) not `::before`; the Overdue chip 
 clipped at its end on a 360 px phone when a long due, "Urgent" and a subtask count all appear; Week still hides Sunday on desktop
 until UX-10; the project hues were checked for contrast, not simulated for colour-vision deficiency (never the only cue);
 sticky-header behaviour under a real touch scroll and screen-reader order are unverified (R-49).
+
+
+## ADR-0063 — Week agenda, phone capture sheet, bottom-sheet menus and touch rules (UX-10)
+
+**Status:** Accepted (owner feedback 2026-11-03; follows ADR-0062; UI-only and reversible). **Source:**
+[`UX_AUDIT.md`](UX_AUDIT.md) "Readability and mobile audit (2026-11)" findings 1, 4, 7 and §D.4. (Numbered 0063: 0061 is SYNC-05, 0062 is UX-09.)
+
+**Context.** Week's seven fixed columns hid Saturday and Sunday and clipped text at 768 and 1440 px; a phone had no capture control
+that stays in reach; the row menu was a small popover over the row text; text fields were 14 px (iOS zooms on focus); the bottom
+nav ignored the home indicator.
+
+**Decisions.**
+1. **Week is an agenda of day cards**, not columns: `.week-days` is `grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr))`
+   inside `.week-agenda`, which is the CSS size container (`container: week / inline-size`); only when that container is >= 1,600 px
+   does it become seven columns. The container is a wrapper, not the page: `container-type` implies layout containment, which would
+   make the page the containing block of the fixed capture button. One column at 360/390, two at 768, two to four at 1440. A day is a
+   `ViewSection` (so it inherits the sticky band, count and today tone) with `week-day`; today's card says "Today · <day>", has the
+   due-today colour, icon and outline; an empty day is one muted line (date left, "Nothing scheduled." right) in a slim card. Rows in
+   narrow desktop cards keep the stacked meta of ADR-0062. No sideways scroll anywhere on the page, and no inner scroll container.
+2. **Week navigation** is the existing `.segmented` control (also used for List | Board) with the same names "Previous week",
+   "This week", "Next week". "This week" is the current state while disabled (selected fill, full-contrast text). On a phone it is a
+   three-segment grid across the width and the arrows are icon-only (their names stay, as visually hidden text). Segments are 44 px
+   under `(pointer: coarse), (hover: none), (max-width: 720px)`.
+3. **Projects summary** (`ProjectSummary`) is smaller wrapping chips on a wide window and one "Projects · n" toggle row on a phone
+   that expands on tap. The plan said "one scrollable line"; that contradicts the no-inner-scroll acceptance, so it is a toggle.
+4. **Phone capture** (`components/CaptureSheet.tsx`, `CaptureFab`): at <= 720 px a 56 px round button "Capture a task" sits above the
+   bottom nav, the status bar and the home indicator (`--bottom-clear`), on Today, Inbox, Upcoming, Week, Tasks and the project
+   page (Tasks and Board tabs). It opens a modal bottom sheet (`role="dialog"`, `aria-modal`) around the **same** `QuickCapture`
+   (label "Task title", validation, API call): every page passes its own `onCapture`, so nothing is duplicated. Capture from
+   Upcoming, Week and Tasks creates an Inbox task (said in the confirmation: "Added "x" to Inbox."); Today's creates a task due
+   today; a project's creates a `next` task in that project. Opening focuses the field and makes the page section `inert`; Esc,
+   the scrim and Close close it and focus returns to the button; Tab is trapped. It stays open after an add (field cleared and
+   focused, `role="status"` says where it went) so several tasks can be captured in a row. A second submit while one is in flight
+   is ignored (`QuickCapture` guard), a failed add keeps the title for a retry. The inline field stays on desktop and tablet, on
+   phone Inbox and phone project pages; phone Today drops it (the sheet replaces it). No `c` keyboard shortcut was added: desktop
+   keeps its inline field and a new global shortcut is outside the plan. Hidden while rows are selected on Tasks (the bulk bar needs the space).
+5. **Keyboard.** `index.html` sets `viewport-fit=cover, interactive-widget=resizes-content`. Chromium on Android then resizes the layout
+   viewport; iOS Safari does not, so `useKeyboardInset` (`lib/keyboardInset.ts`, pure) lifts the sheet by
+   `innerHeight - visualViewport.height - offsetTop` through `--kb`. The two cannot double count (with resizes-content the
+   inset is 0). Verified only with an emulated `visualViewport` (R-50).
+6. **Menus as sheets.** `Menu` and `Popover` use `useMediaQuery("(max-width: 720px), (hover: none)")`: a bottom sheet with a scrim (a
+   `popover=manual` element promoted first, so the menu stacks above it), 48 px items, 16 px text, safe-area spacer, slide-up
+   animation, a trailing "Cancel" menu item at the top level, and Tab cycling inside instead of closing (ADR-0052 §4 had Tab close
+   a popover; a modal sheet keeps focus). Roles (`menu`, `menuitem`, `menuitemradio`, `dialog`), names, arrow keys, type-ahead, Esc
+   and focus return are unchanged; a press on the scrim closes and returns focus to the opener (deferred past the press, which
+   would otherwise blur it). The page behind is **not** made inert (menus portal into the opener's landmark, which may be a dialog):
+   pointer and keyboard are blocked, a screen-reader swipe could still reach it (R-50). jsdom has no `matchMedia`, so unit tests keep the popover.
+7. **Touch rules.** Text inputs, selects and textareas are 16 px under `(pointer: coarse), (hover: none), (max-width: 720px)`. Under
+   the same query filter chips, the filter menu button, "Select all" and the segments are 44 px; the rail's links and buttons are
+   44 px on touch devices. The bottom nav keeps 56 px of targets and adds `env(safe-area-inset-bottom)` below them; the mobile header
+   adds the top inset; the main column the side insets. `padding` is limited to scale tokens by the lint, so insets are applied with
+   `height`, `border-top` and `::after` spacers, not padding.
+8. **No new colour token, no gestures, no backend.** The button uses `--accent`/`--accent-contrast`, the scrim `--scrim`. Icon: one Lucide
+   shape added, `plus` (`DEPENDENCIES.md`).
+9. **Not done (decided):** the Inbox "Today" button per row (plan item 5, "owner may decline"): the 44 px "..." sheet already gives
+   Today in two taps; revisit with the owner. Tasks select boxes (22 px) and the 16 px "Select all" box remain for UX-11.
+
+**Consequences.** CSS and markup only; `Week` changes class names: `.week-days` stays (now an auto-fit grid, wrapped in `.week-agenda`),
+`.week-day` is now a `ViewSection` (`section.view-section.week-day[.is-today][.is-empty]` > `h2.section-head`), `.week-day-count`
+is gone (the count is `aria-hidden` `.section-count`), the three navigation buttons keep their names. Selectors kept: `Task title`,
+"Previous week" / "This week" / "Next week", row selectors of ADR-0062. Changed behaviour: on a phone the menus are sheets (Tab
+no longer closes them), phone Today has no inline capture field, Today's empty text no longer says "above".
+Limitations are recorded in R-50 (real keyboard, notch, screen readers, `:has()` and container queries in older browsers).

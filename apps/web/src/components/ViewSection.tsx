@@ -12,6 +12,8 @@ interface ViewSectionProps {
   label?: string;
   /** The weekend, a past or an empty day: a quieter header. */
   muted?: boolean;
+  /** Extra classes for the section (Week adds `week-day`, `is-today`, `is-empty`). */
+  className?: string;
   children: ReactNode;
 }
 
@@ -21,10 +23,10 @@ interface ViewSectionProps {
  * header itself and the section's first child, so existing queries (`heading` then its parent)
  * keep working; the count is `aria-hidden` so the heading's accessible name stays the title.
  */
-export function ViewSection({ title, count, tone, label, muted, children }: ViewSectionProps) {
+export function ViewSection({ title, count, tone, label, muted, className, children }: ViewSectionProps) {
   return (
     <section
-      className={`view-section${tone ? ` tone-${tone}` : ""}${muted ? " is-muted" : ""}`}
+      className={`view-section${tone ? ` tone-${tone}` : ""}${muted ? " is-muted" : ""}${className ? ` ${className}` : ""}`}
       aria-label={label}
     >
       <h2 className="section-head">

@@ -6,6 +6,13 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Changed (UX-10): **Week fits any screen, and the phone gets a capture button and bottom sheets.** Week is now a set of day cards
+  that fill the width (one column on a phone, more on a wider screen), so Saturday and Sunday are never cut off and no text is clipped;
+  today's card is highlighted, an empty day is one quiet line, and week navigation is one segmented control with large touch targets.
+  On a phone a floating **+** button on Today, Inbox, Upcoming, Week, Tasks and project pages opens a capture sheet that stays clear of
+  the on-screen keyboard; the **…** menu of a task (and the due-date popup) opens as a bottom sheet with large items. Text fields are
+  16 px on phones (no zoom on focus), the bottom bar respects the home-indicator area, and filter chips, the rail and the week
+  segments are at least 44 px on touch screens. No data, sync or settings change (ADR-0063).
 - Changed (UX-09): **Task lists are easier to read, especially on a phone.** Each task is now up to three lines: the title (larger on a
   phone), then when it is due (with an icon and the word **Overdue** or **Today**, never only a colour), its priority and subtask
   count, then its project (with a small colour dot that is the same everywhere for that project) and at most two tags. Tapping

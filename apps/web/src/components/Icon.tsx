@@ -229,6 +229,12 @@ const ICONS = {
     </>
   ),
   check: <path d="M20 6 9 17l-5-5" />,
+  plus: (
+    <>
+      <path d="M5 12h14" />
+      <path d="M12 5v14" />
+    </>
+  ),
   "chevron-left": <path d="m15 18-6-6 6-6" />,
   flag: (
     <>

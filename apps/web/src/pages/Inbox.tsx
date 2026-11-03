@@ -1,4 +1,5 @@
 import { tasksApi } from "../api/client";
+import { CaptureFab } from "../components/CaptureSheet";
 import { EmptyState } from "../components/EmptyState";
 import { LoadError } from "../components/LoadError";
 import { QuickCapture } from "../components/QuickCapture";
@@ -52,6 +53,7 @@ export function Inbox() {
           />
         </div>
       )}
+      <CaptureFab onCapture={capture} placeholder="Capture a task…" destination="Inbox" />
       {editor.overlays}
     </section>
   );
