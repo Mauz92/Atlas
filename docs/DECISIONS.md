@@ -2546,34 +2546,85 @@ note titles (first heading), not file names; a renamed or moved note keeps the r
 an open second tab conflicts once and recovers through the normal choices; no collaborative merge (conflicts are
 resolved as copy-or-reload, never merged).
 
-## ADR-0055 — Product direction: local-first desktop and mobile clients syncing to the self-hosted server (PROPOSED)
+## ADR-0055 — Product direction: local-first clients (desktop, Android) syncing to the self-hosted server
 
-**Status.** Proposed 2026-11-03 on the owner's statement; **not approved and not implemented**. Needs the owner's
-review before any work that depends on it.
+**Status.** ACCEPTED by the owner 2026-11-03, including the conflict policy (§4). Nothing is implemented; each
+item (Tauri, Android) is verified by a spike before it is relied on.
 
-**Owner statement.** Atlas is self-hosted with a desktop and a mobile interface that are *local first*: they work
-on local data and sync automatically to the server for cross-platform availability (desktop: native app, Obsidian
-style).
+**Owner requirements.** Self-hosted; desktop and mobile clients that are *local first* (work on local data, sync
+automatically to the server for cross-platform availability); desktop is a native app, Obsidian style. Platforms:
+Linux, Windows (work laptop, so no admin-only install assumptions) and Android; macOS/iOS are not required.
+Priorities: cross-platform, fast, secure.
 
-**What this means against today's design.** Today the server is authoritative (Markdown files on the server,
-PostgreSQL for tasks and projects) and clients are online-only for mutations (R-22). Local-first reverses the
-default: each client holds a full local copy and is usable offline, and the server is the sync hub.
+**Against today's design.** The server is authoritative (Markdown files on the server, PostgreSQL for tasks and
+projects) and UI mutations are online-only (R-22). Local-first makes each client hold a full local copy; the
+server becomes the sync hub and the durable backup, still owning accounts, auth and provider integrations
+(calendar tokens never leave the server).
 
-**Already aligned.** Roadmap milestone 8 (cross-device and offline sync); revision-checked writes
-(`base_revision`) and idempotency keys; no-overwrite conflict handling; the note autosave engine is
-framework-free with injected stores (ADR-0054) and the task save session is pure TypeScript (ADR-0053).
+### 1. Shell: Tauri 2 (recommended, accepted)
+- Reuses the existing React web UI unchanged; ships on Linux, Windows and **Android** from one codebase and
+  tool chain (Tauri 2 targets desktop and mobile), which Electron does not.
+- Small installers and memory (uses the system webview), Rust core, deny-by-default capability/permission model
+  for the web layer: the best security and size trade-off for a notes app.
+- Costs: the system webview differs per OS (WebKitGTK on Linux, WebView2 on Windows, Android System WebView), so
+  CSS/JS must be tested on all three; Rust is needed for native code; Tauri's Android support is younger than its
+  desktop support. Electron (bundled Chromium: identical rendering everywhere, larger and heavier, no Android)
+  remains the fallback if WebKitGTK problems prove unmanageable.
+- Gate: a spike (Linux + Windows build, SQLite plugin, file-system access, notifications, auto-update, the web UI
+  rendering) must pass before milestone 9 is planned on it. Licence and maintenance are checked per AGENTS.md §14
+  at that point.
 
-**Open questions (to decide before milestone 8).**
-1. Desktop shell: Tauri or Electron (licence, size, maintenance; reuse of the web UI).
-2. Desktop notes storage: a real folder of `.md` files on disk (Obsidian style, editable externally) synced to
-   the server, versus an internal local database. AGENTS.md §8 requires ordinary Markdown files, which favours
-   the folder.
-3. Local store for tasks and projects: SQLite on desktop and mobile, with a defined sync protocol (change log or
-   per-entity revisions, tombstones for deletes, ordering, conflict rules per entity).
-4. Mobile: native, or the web app as an installable app with a local store (open decision A-09).
-5. Which side wins for tasks when both changed: today a stale write is rejected; local-first needs a documented
-   merge or conflict-resolution action per field.
+### 2. Desktop notes: a real folder of `.md` files (accepted)
+The desktop client's notes are ordinary Markdown files in a user-chosen folder, editable by other tools
+(AGENTS.md §8). A local index (in the local database) holds paths, content hashes, revisions and sync state; the
+file watcher is a hint, not a guarantee, so a scan reconciles on start and on focus. The server keeps notes as
+files too, so both sides stay portable.
 
-**Consequences for current work.** Keep client logic out of React where practical, keep every write
-revision-checked and idempotent, and do not add new online-only assumptions beyond those in R-22. UX-06/UX-07
-are unaffected.
+### 3. Local store and sync (accepted: local database with sync)
+- SQLite on each client for tasks, projects, the note index, the sync queue and per-entity revisions.
+- Every change is a revision-checked, idempotent operation (already true of the API: `base_revision`,
+  idempotency keys), queued locally and pushed when connected; clients pull incremental changes (a server-side
+  change feed with a cursor; the cursor only advances after the changes are applied, AGENTS.md §10 spirit).
+- Deletes are tombstones; ids are client-generated UUIDs so a retry never duplicates.
+- Order is decided by **server-assigned revisions**, never by device clocks (clocks drift).
+- The existing engines (ADR-0053 task saves, ADR-0054 note saves) are already framework-free and take injected
+  stores, so a local store plugs in under them instead of rewriting them.
+
+### 4. Conflict policy (RECOMMENDED, needs the owner's OK)
+"Latest change wins" everywhere is rejected: it silently loses data (AGENTS.md §10) and device clocks are
+unreliable. Recommended instead, by kind of data, so the owner is asked as rarely as possible:
+1. **Different fields of one task changed on two devices: merge automatically** (title on one, due date on the
+   other: both kept).
+2. **Same simple field changed on both (status, priority, due, project, tags): the later change, in server
+   order, wins automatically.** The overwritten value is kept in the task's history and the other device shows
+   "changed on another device" with one-click undo. Nothing is lost, nobody is prompted.
+3. **Same text field changed on both (task title/description): keep both and ask** (a conflict marker with the
+   two versions), because merging prose by rule can corrupt it.
+4. **Edit versus delete: the edit wins** (the task comes back, with a notice). Losing a deletion is
+   recoverable; losing an edit is not.
+5. **Notes: three-way text merge** against the common base. Non-overlapping edits merge automatically and silently
+   (typical: edited on the laptop and on the phone in different paragraphs); overlapping edits never overwrite:
+   the other version is saved as a conflict copy and the note shows a resolve action (today's behaviour, ADR-0054).
+   A note is never merged into an invalid state: if a merge is uncertain, it is a conflict.
+6. **Calendar-owned events stay with the provider**; Atlas never resolves those locally (AGENTS.md §10).
+Every automatic resolution is logged (what, when, which device, no content in logs) so it can be inspected and
+undone.
+
+### 5. Mobile: Tauri 2 for Android (recommended, to be spike-proven), PWA as the fallback
+Same web UI and the same sync client as desktop, with native notifications and a real SQLite. If Tauri Android
+fails the spike (background sync limits, notifications, store distribution), the fallback is the installable web
+app (PWA) with an IndexedDB/SQLite-wasm store, which still gives offline use but weaker background sync and
+reminders. iOS is out of scope. Decide after the spike; this supersedes open decision A-09 only once the spike has
+passed.
+
+### 6. Consequences and sequencing
+- This is milestone 8 (cross-device and offline sync) and milestone 9 (native apps), and a hard prerequisite is a
+  server **change feed + tombstones** API and a per-entity revision on every table; plan these as the first
+  vertical slice, before any native shell work.
+- Order of risk: (1) sync protocol design and a server change feed, tested against concurrent-edit and offline
+  cases; (2) Tauri spike on Linux/Windows/Android; (3) desktop client with the local DB and notes folder;
+  (4) Android; (5) conflict UI.
+- Until then: keep client logic out of React, keep every write revision-checked and idempotent, add no new
+  online-only assumptions beyond R-22. UX-06/UX-07 are unaffected. Security: local database and note folder are
+  not encrypted by Atlas (the OS disk encryption protects them); the server session/token for sync is stored in
+  the OS keystore, never in plain files (to be designed in `SECURITY.md` with the sync protocol).

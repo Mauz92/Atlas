@@ -845,7 +845,7 @@ decisions below are made.
 | A-07 | Decide the supported Python version (image/CI use 3.13; local venv 3.14; `mypy` targets 3.12) | `READY` | Needs a decision; see `DECISIONS.md` when taken |
 | A-08 | M5-00 real-account validation (AR-001) | `BLOCKED` | Needs owner to supply throwaway Google/Microsoft test accounts |
 | A-10 | Function audit; adopt the personal-OS direction; add milestone MU; re-score REQ-005/006 `PARTIAL` (ADR-0043, R-22) | `DONE` | `PRODUCT_SPEC.md` §1.1, `DECISIONS.md` ADR-0043, this section |
-| A-09 | Decide mobile strategy: PWA-only v1 vs native Android/iOS (M8-06/07) | `BLOCKED` | Owner decision (iOS needs a paid Apple developer account) |
+| A-09 | Decide mobile strategy: PWA-only v1 vs native Android/iOS (M8-06/07) | `BLOCKED` | Direction set in ADR-0055 (Android via Tauri 2, PWA fallback, iOS out of scope); final choice after the spike |
 
 **Caveats recorded by the audit.**
 - M7 and M9 are `DONE` for their buildable scope; M7 sync has not been exercised against real
