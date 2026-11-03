@@ -49,6 +49,13 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: "Task details",
     items: [{ keys: "Ctrl/⌘ Enter", action: "Save the open task now (it also saves by itself)" }],
   },
+  {
+    title: "Notes",
+    items: [
+      { keys: "Ctrl/⌘ S", action: "Save the open note now (it also saves by itself)" },
+      { keys: "Ctrl/⌘ Alt B", action: "Show or hide the links and tasks panel" },
+    ],
+  },
 ];
 
 /** True when a key press is going into a text field, so a bare-letter shortcut must not fire. */

@@ -2463,3 +2463,85 @@ reload while offline or a crash (no local draft store for tasks; notes get their
 after its panel unmounted is shown only when the task is reopened; the time-zone list comes from
 `Intl.supportedValuesOf` (a zone it lacks can still be typed and is validated by the server); mutations remain
 online-only (R-22).
+
+## ADR-0054 — Note autosave: a framework-free save engine with injected stores, a local draft, and the Notes workspace (UX-05)
+
+**Status:** Accepted (2026-11-03, implements the owner's decision ADR-0051 §4 for notes; UI-only, no backend,
+schema or dependency change). **Source:** `UX_AUDIT.md` §4.3, ROADMAP "UX-05 plan". **Owner note (2026-11-03):**
+Atlas is expected to become a native desktop app (Obsidian style) that syncs with the owner's own server, so
+the save logic must not be tied to the browser.
+
+**Context.** The Notes page had a Save button, a "Discard unsaved changes?" prompt, and one `PUT` per click.
+ADR-0051 §4 removes the button: the text must save by itself, and AGENTS.md §8 still applies (no silent
+overwrite of a newer revision, no loss of typed text, files stay ordinary Markdown). Unlike task properties
+(ADR-0053) a note is one large text field, the file on disk is authoritative and may be edited by other
+programs, and the browser must be able to lose its tab at any time, so a local copy of unsaved text is part of
+the feature.
+
+**Decisions.**
+1. **The engine is portable.** `apps/web/src/lib/noteAutosave.ts` contains no React, no DOM, no `window`, no
+   `localStorage`. Everything it needs is injected: `NoteStore` (`update`, `read`, optional `reconcile`,
+   `saveConflictCopy`; the web app wraps `notesApi`, a desktop client would wrap its sync layer),
+   `DraftStore` (synchronous `read/write/clear`; the web app uses `localStorage` in `lib/noteDrafts.ts`, a
+   desktop client would use a file or SQLite, an in-memory one ships for tests), `isOnline`, `now`, and the
+   global `setTimeout`. Errors are recognised structurally (an object with a numeric `status`), not by
+   importing `ApiError`. The React binding (`hooks/useNoteAutosave.ts`) and the page are the only web-specific
+   parts. A native client reuses the engine and its unit tests unchanged. IndexedDB was not chosen for drafts
+   because the draft must be written synchronously on every keystroke and read synchronously on open (a page
+   being unloaded cannot await); an async store can sit behind the same interface with an in-memory mirror.
+2. **One session per open note** (`NoteAutosave`), kept in a registry (`NoteSessions`) while it holds unsaved
+   text, so switching notes or leaving the page never drops text; a clean session is dropped on release.
+3. **Timing.** Debounce 1 s after the last change; flush on switching note, creating, opening the daily note,
+   rename, move, sign-out, Ctrl/⌘ S, `pagehide` and `visibilitychange → hidden` (`fetch keepalive` for bodies
+   under 60 KB; a larger note relies on its draft). Delete does not flush (the note is going away).
+4. **One request in flight per note; coalescing; revision chaining.** A single send loop builds each body from
+   the newest text at send time against the revision the previous answer returned. Text typed back to the
+   server's text sends nothing.
+5. **Local draft.** Written synchronously on every change as `{content, baseRevision, savedAt, attempted?}`
+   (`attempted` = the text of a request that may have been applied without its answer arriving). It is cleared
+   only when the server has confirmed exactly the text in the editor. On open: equal to the server → dropped;
+   typed on the revision the server still holds, or on the state our own possibly-applied request created →
+   put back and saved (the revision check guards it); typed on an older revision → shown in conflict with the
+   usual choices and **never applied silently**. The restored text is only sent after the host has attached its
+   listeners (`resume()`), so the first answer cannot arrive unseen.
+6. **`409` never overwrites.** The session stops sending, keeps the text in the editor and the draft on disk,
+   and shows the existing choices *Keep my version as a copy* (server writes a conflict copy next to the note,
+   then the server's version is shown) and *Reload server version* (local text dropped). Before it reads the
+   server's version the store may `reconcile()` (the on-demand scan, `POST /api/notes/reconcile`, ADR-0010):
+   an edit made by another program is only visible to the revision check once indexed, and without it "reload"
+   would keep conflicting.
+7. **Unknown outcomes.** A network failure, timeout, `429` or `5xx` keeps the exact request (same body, same
+   `base_revision`) and sends it again on the next edit, flush, *Retry* or the `online` event. The note `PUT`
+   has no idempotency key and the backend is unchanged, so if the retry answers `409` (the first try was
+   applied) the note is re-read: **equal to the text that was sent → saved at the server's revision**;
+   different → genuine conflict. If the re-read itself fails nothing is overwritten and it is tried again
+   later. Any other `4xx` keeps the text and shows the server's message verbatim; it is not re-sent until the
+   text changes.
+8. **Offline.** Nothing is sent; the header says *Offline — saved on this device*; the draft holds the text
+   across a reload or a closed tab and it is sent when the page is opened or the `online` event fires.
+   Structural operations (create, rename, move, delete) stay online-only (R-22).
+9. **Indicator.** `[data-save-state]` in the note header: *Saved*, *Saving…*, *Not saved yet*, *Offline —
+   saved on this device*, *Couldn't save — kept on this device* (+ Retry), *Not saved*, *Conflict*;
+   `aria-live="polite"`, not `role="status"`. The revision is only in the tooltip of the path.
+10. **Workspace.** Tree (header icons: New note, New folder, New from template, Today's note, Collapse all;
+    row "…" menu through the shared `Menu`: Rename (inline name box), Move to…, New from template, Delete;
+    folders: New note/folder here, Rename, Delete; no path text box and no `window.prompt`; delete still uses
+    `window.confirm`), editor header (breadcrumb with the file path, save state, Preview toggle, details toggle,
+    "…" with Task from selection, Rename, Delete), full-height editor with a centred 72ch column and a
+    token-based CodeMirror theme, details panel (Links, Backlinks, linked tasks and projects, tags) toggled with
+    Ctrl/⌘ Alt B and remembered per browser (default open from 1440 px; an overlay below that; on phones closed
+    and not remembered). The shell's sidebar docks on Notes only from 1280 px (a drawer below; `.compact` in
+    `Layout.tsx`). Phones show the tree or the note. `[[links]]` render as links in the preview; unknown targets
+    show as plain text. New notes are created in the folder that is open in the tree.
+11. **Editor safety.** Replacing the text from outside (switching notes, reload server version) is not added to
+    the undo history and the editor is keyed per note, so Ctrl+Z can never step back into another note's text
+    or empty the note.
+
+**Consequences.** More `PUT`s than before (at most one per second of typing, one at a time); each rewrites the
+file atomically. The engine is covered by 27 unit tests with a fake revisioned server (`noteAutosave.test.ts`)
+and by real-stack specs (`ux05-notes.spec.ts`) that check the file bytes on disk. Known limitations: drafts live
+in `localStorage` (about 5 MB per origin; a very large unsaved note may not be stored, and the draft is not
+removed at sign-out when it could not be saved, RISKS R-23); delete asks with a native `confirm`; the tree shows
+note titles (first heading), not file names; a renamed or moved note keeps the revision the server assigns, so
+an open second tab conflicts once and recovers through the normal choices; no collaborative merge (conflicts are
+resolved as copy-or-reload, never merged).

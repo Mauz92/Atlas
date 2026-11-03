@@ -21,7 +21,7 @@ Atlas is being built milestone by milestone. This table is the honest state of e
 
 | Area | State | Notes |
 |---|---|---|
-| Markdown notes (create, edit, preview, rename, delete, tags, wiki links, search) | **Available** | Real `.md` files on disk — see [`MARKDOWN_STORAGE.md`](MARKDOWN_STORAGE.md). `[[` suggests notes; **Today's note** and templates (§4). |
+| Markdown notes (create, autosaving editor, preview, rename, move, delete, tags, wiki links, search) | **Available** | Real `.md` files on disk — see [`MARKDOWN_STORAGE.md`](MARKDOWN_STORAGE.md). `[[` suggests notes; **Today's note** and templates (§4). |
 | Tasks — capture, edit, Today, Inbox, Upcoming, the **Tasks** page with filters | **Available** | Open any task to edit title, dates, priority, tags, repeat, subtasks, reminder and linked notes; delete with undo. |
 | Planning — Upcoming and Week views | **Available** | Later days and week-by-week work, in your local time zone. (The separate Day view was removed from navigation in UX-02; `/day` opens Today.) |
 | Kanban board (move a task between statuses) | **Available** | Global board at **Board**; columns are the task statuses. |
@@ -114,35 +114,53 @@ Notes are ordinary UTF-8 Markdown files under the configured notes root. Atlas n
 to read them — open the same files in any editor. Storage details, integrity rules and conflict
 semantics are in [`MARKDOWN_STORAGE.md`](MARKDOWN_STORAGE.md).
 
-**Open a note** — go to **Notes** and select a file in the tree on the left. The editor (source) and a
-rendered **preview** are shown side by side.
+**The workspace** — **Notes** has three parts: the file tree on the left, the open note in the middle and, on
+the right, a details panel (**Links**, **Backlinks**, linked tasks and projects, tags). The panel opens and
+closes with the panel button in the note header or **Ctrl/⌘ Alt B**, and Atlas remembers your choice (it
+starts open on wide screens, and closed on a phone). On a phone the tree and the note take turns; the button
+at the left of the note header brings the tree back. On a screen narrower than 1280 px the main sidebar tucks
+away on this page to leave room (**Ctrl/⌘ B** or the rail's button still opens it).
 
-**Create a note or folder**
+**Open a note** — select a file in the tree. Turn on **Preview** in the note header to see the rendered note
+beside the editor; `[[links]]` to other notes are clickable there.
 
-1. In the left panel's path box, type a path such as `Inbox/New note` (a `.md` extension is optional).
-2. Select **New note** (starts from a heading) or **New folder**.
+**Create a note or folder** — the icons above the tree are **New note**, **New folder**, **New from template**
+and **Today's note**. A name box appears in the tree in the folder you have open (select a folder to choose
+another): type a name such as `Ideas` (or a path such as `Inbox/Ideas`; the `.md` ending is optional) and press
+Enter. **New from template** lists the notes in `templates/`; choose one, then name the note. In a folder's **…**
+menu, **New note here** and **New folder here** create inside that folder.
 
-**Edit and save** — type in the editor; **Save** is enabled while there are unsaved changes. The
-toolbar shows the note's path and its current **revision**.
+**Edit — there is no Save button.** Type; the note saves by itself about a second after you pause, and when
+you switch to another note, rename, delete, create, leave the page or sign out. **Ctrl/⌘ S** just saves
+immediately. The note header says what is happening: **Saving…**, **Saved**, **Not saved yet**, **Offline —
+saved on this device**, **Couldn't save — kept on this device** (with **Retry**), **Not saved** (Atlas refused
+the text; its message is shown) or **Conflict**. Hover the path to see the note's revision. Text you type is also
+kept on this device until the server has it, so a crash, a closed tab or being offline does not lose it: open
+the note again and the text is put back (and saved) with a short notice. Notes edited by another program or
+device are never overwritten.
 
-**Tags and wiki links** — write `#tag` and `[[Other note]]` directly in the note body. Tags appear
-under the editor; **Links** and **Backlinks** are listed below. An unresolved wiki link is shown as
-such until a matching note exists.
+**Tags and wiki links** — write `#tag` and `[[Other note]]` directly in the note body. Tags and **Links** and
+**Backlinks** are listed in the details panel. An unresolved wiki link is shown as such until a matching note
+exists.
 
-**Rename** — select **Rename** and enter the new path. Links that reference the note by its stable id
-survive the rename.
-
-**Delete** — select **Delete**. The file moves to the notes trash (`<notes-root>/.atlas/trash/…`) and
-a tombstone is recorded; it is never `rm`-ed, and a file restored by hand is picked up again.
+**Rename, move, delete** — use the note's **…** menu in the tree (**Rename** edits the name in place, **Move
+to…** lists your folders, **Delete**) or the **…** in the note header (**Task from selection**, **Rename**,
+**Delete**). Links that reference the note by its stable id survive the rename. Deleting asks first; the file
+moves to the notes trash (`<notes-root>/.atlas/trash/…`) and a tombstone is recorded; it is never `rm`-ed, and
+a file restored by hand is picked up again. A folder can be deleted only when it is empty.
 
 **Resolve a conflict** — if the note changed elsewhere (for example, edited on disk or on another
-device) while you had it open, saving is refused and Atlas shows *"This note changed elsewhere."*
-Nothing is overwritten. Choose:
+device) while you had it open, the header shows **Conflict** and Atlas says *"Nothing was overwritten."* Your
+text stays in the editor and nothing more is sent. Choose:
 
-- **Keep my version as a copy** — your version is written next to the note as a conflict copy; and
+- **Keep my version as a copy** — your version is written next to the note as a conflict copy, and the
+  current file is shown; and
 - **Reload server version** — discard your local edit and load the current file.
 
-**Search notes** — use the **Search notes** box in the left panel; matching notes are listed and open
+The same appears if you open a note whose saved-on-this-device text was typed on an older version than the
+one the server now has.
+
+**Search notes** — use the **Search notes** box above the tree; matching notes are listed and open
 on click.
 
 ---

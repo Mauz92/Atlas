@@ -189,6 +189,27 @@ Cover, at minimum:
   panel's *Saved* indicator (`expectTaskSaved` in `e2e-real/helpers.ts`) instead of clicking Save; property
   menus via `chooseTaskProperty`, zones via `chooseTimeZone`. The axe sweep also covers the panel's menu,
   zone list and overlay.
+- Note autosave and workspace (UX-05, ADR-0054): `src/lib/noteAutosave.test.ts` is the risky part — the
+  framework-free engine against a fake revisioned server (fake timers, scripted network/5xx/lost-answer/4xx
+  outcomes, an in-memory `DraftStore`, no DOM): one request with the latest text after a pause; never two in
+  flight and the revision chains; typed-back text sends nothing; flush; `pagehide` flush with `keepalive`;
+  draft written on every change and cleared only after confirmation; draft equal to / on the same revision as /
+  older than the server's text (and built on our own applied request); 409 mid-typing keeps the text and sends
+  nothing more (also on `online()`, flush and long waits); keep-as-copy and reload; reconcile before the
+  re-read; unknown outcome re-sent, then 409 with identical server text = saved, with different text =
+  conflict, re-read failing = tried again; 422 kept and not re-sent until edited; offline then online, offline
+  typing restored after a "reload"; adopt only while clean; the registry keeps unsaved sessions.
+  `src/lib/noteDrafts.test.ts` (localStorage store, corrupt entries, failing storage), `src/lib/noteLinks.test.ts`
+  (`resolveWikiLink`), `src/components/MarkdownPreview.test.tsx` (`[[links]]`, escaping), `NoteTree.test.tsx`
+  (row menus, inline names), `src/pages/Notes.test.tsx` (autosave through the page: no Save button, pause →
+  one `PUT`, Ctrl+S, draft until confirmed, 409 banner + copy, flush before switching, rename without a
+  prompt, inline creation, Ctrl+Alt+B, restored draft). `e2e-real/ux05-notes.spec.ts` (real stack) checks the
+  exact UTF-8 bytes on disk, overlapping `PUT`s counted (max 1), reload right after typing, offline typing with
+  the tab closed and reopened, an external file edit → conflict with the file never overwritten and the copy,
+  a stale draft shown in conflict and never applied, the tree/menus/preview links workflow, and the layout
+  at 1440/1024/720/390 px. Helpers in `e2e-real/helpers.ts`: `expectNoteSaved`, `noteSaveState`,
+  `openNoteDetails`, `noteMenu`, `noteEditor`, `noteFileBytes`, `writeNoteFile`. J4, J6 and the axe sweep
+  were updated for the new controls (selectors changed only where the UI legitimately changed).
 
 ## 5. Calendar Adapter Tests
 

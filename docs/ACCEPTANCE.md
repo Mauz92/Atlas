@@ -3293,3 +3293,57 @@ sheet at 390×844, light and dark; the priority menu open; the time-zone list se
 Limitations: unsaved task edits survive closing and navigating within the tab but not a reload while offline
 (no local draft store for tasks); a save failing after its panel unmounted is shown when the task is reopened;
 mutations stay online-only (R-22); the native date/datetime fields show their placeholder format when empty.
+
+### UX-05 — Notes autosave and the Notes workspace
+
+**Result: `DONE` (local, 2026-11-03); CI job `e2e-real` `NOT RUN` on GitHub Actions; not committed.** The Notes
+**Save** button, the Ctrl+S requirement and the "Discard unsaved changes?" prompts are gone. A note saves by
+itself through a framework-free engine (`lib/noteAutosave.ts`, ADR-0054; `NoteStore` and `DraftStore` injected,
+so a native desktop client can reuse it) with a synchronous local draft. The page is a workspace: file tree
+(header icons, row menus, inline names, no path box or `window.prompt`), note header (breadcrumb, save state,
+Preview, details toggle, "…" menu), full-height editor with a 72ch column, details panel (Ctrl/⌘ Alt B),
+`[[links]]` in the preview, shell sidebar docked on Notes only from 1280 px. No backend, schema or npm change;
+six vendored Lucide shapes (`DEPENDENCIES.md`). Order of work: the engine and its unit tests were complete and
+passing (27 + 3 draft-store tests) before the Save button was removed; the real-stack specs needed the wired
+page, so they were written with it and run against the final code.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| No Save button or Ctrl+S requirement | `PASS` | `Notes.test.tsx` ("has no Save button…"), `ux05-notes.spec.ts` test 1 (`getByRole("button", { name: "Save" })` count 0 on the real stack); Ctrl/⌘ S only flushes (`Notes.test.tsx`, `ux05-notes.spec.ts` test 2) |
+| Every edit reaches the `.md` file without a click, byte for byte | `PASS` | `ux05-notes.spec.ts` test 1: 120 ms/char typing of `ünï ✓ 日本語 — 𝄞 emoji 😀` + a second line → `[data-save-state]="saved"` → `Buffer.compare` of the file on disk with `# Typing\n` + the typed text is 0 (UTF-8, no added front matter or newline changes), `GET /api/notes/{id}` equals it, and again after `page.reload()`; J4 (typed `[[` link reaches the file via the API) and J6 (daily note typed text on disk) |
+| Requests never overlap; typing coalesces | `PASS` | `noteAutosave.test.ts` "sends nothing until the typing pauses, then one request with the latest text", "never has two requests in flight and chains the revision…" (held server, `maxInFlight` = 1, `["one",1]` then `["one two three",2]`); real stack: overlapping `PUT /api/notes/{id}` counted in `ux05-notes.spec.ts` test 1 (max 1) |
+| Reload / closed tab loses nothing | `PASS` | `ux05-notes.spec.ts` test "reloading right after typing loses nothing" (reload inside the 1 s pause: the `pagehide` flush with `keepalive`, else the draft, saves it; file bytes polled) and test 3 below; unit: draft written synchronously, cleared only after confirm, restored on open |
+| Offline typing, reload/reopen, reconnect persists | `PASS` | `ux05-notes.spec.ts` test 3 (`context.setOffline`): indicator `offline` + "Offline — saved on this device", `localStorage` draft holds the text, file unchanged; going online sends it without a click; then offline typing, the tab goes to `about:blank`, connection returns, the note is reopened → "Restored text you typed here…" → saved, file bytes exact, draft removed. Unit: "restores offline typing after a reload and sends it once online". Not tested in a browser: a reload *while the API is unreachable* (the page cannot start without the API) |
+| External file edit during typing → conflict; the file on disk is never overwritten | `PASS` | `ux05-notes.spec.ts` test "a file edited on disk while typing is a conflict…": `writeFile` on disk, then typing → `conflict` + "Nothing was overwritten", editor keeps the text, file still the other program's text after typing more and 2.5 s; *Keep my version as a copy* → a `(conflict …)` file holds our text, the original is still theirs, editor shows theirs; then typing saves normally. Needed (found by this spec): the server only notices an edit on disk after indexing, so the conflict path calls `POST /api/notes/reconcile` before re-reading |
+| Stale draft is never applied silently | `PASS` | `ux05-notes.spec.ts` "reload server version drops my text; a stale draft…" (draft on revision 1 while the server is on 2 → `conflict`, draft text shown, file unchanged; *Reload server version* → server text, draft removed); unit: "never applies a draft typed on an older revision…" |
+| Unknown outcome: retry, then re-read on 409 | `PASS` (unit only) | `noteAutosave.test.ts`: network failure re-sent with the same body and applied once; lost answer + retry 409 + identical server text = saved at the server's revision, no conflict; retry 409 + different text = conflict; re-read failing keeps the request and looks again; 5xx like a network failure; 422 kept with the server's message and not re-sent until edited. **NOT RUN against a real server**: producing a lost answer needs a proxy that drops a response; the backend `PUT` is exercised for 409 only |
+| Conflict never overwrites; existing choices kept | `PASS` | as above; `Notes.test.tsx` ("a 409 keeps the text, shows the conflict choices…") |
+| Flush before switching note / rename / pagehide | `PASS` | `ux05-notes.spec.ts` test 2 (type then click another note at once → the first file has the text; Ctrl+Z in the new note does not reach back), `Notes.test.tsx` ("flushes the note before opening another one", "renames … after saving, without a prompt"), `noteAutosave.test.ts` ("flushes every unsaved session on pagehide with keepalive") |
+| Workspace: create, rename in place, move, delete; `[[links]]` in the preview | `PASS` | `ux05-notes.spec.ts` "workspace…" (inline name boxes, a `dialog` handler asserts only a delete `confirm` appears, file contents, move to a folder through the menu, delete → file in the trash and listing, preview link opens the target, unresolved link is plain text); `NoteTree.test.tsx`, `MarkdownPreview.test.tsx` |
+| Layout at 1440, 1024, 720 and 390 px without horizontal scroll; editor fills the height | `PASS` | `ux05-notes.spec.ts` "layout…" (`scrollWidth ≤ clientWidth`; editor taller than half the viewport at each width; at 1024 the shell sidebar is hidden and the tree remains; Ctrl+Alt+B toggles the panel and the choice survives a reload); screenshots below |
+| axe clean incl. the new states | `PASS` | `mu08-a11y-and-layout.spec.ts` now also loads the note with Preview and the details panel on (both themes, a `[[link]]` and an unresolved one), the tree row menu, the header menu, an inline name box and the panel overlay at 1024 px: 0 violations; no horizontal overflow at 375 and 800 px (found and fixed: the overlay panel first covered the header's buttons; `aside` inside `main` is not allowed, so the panel is a labelled region) |
+| J1–J7, ux02–ux04 and all real-stack specs pass | `PASS` | `npm run test:e2e:real` → `34 passed` (26 + 8 new in `ux05-notes.spec.ts`). Changed selectors only where the UI legitimately changed: J4 (no Save: wait for the *Saved* indicator; *Task from selection* and *Rename* from the "…" menu; rename box instead of `window.prompt`; revision read as a pattern because autosave may use more than one save; panel opened with `openNoteDetails`), J6 (no Save; template menu + inline name box instead of the combobox and path field; the new note lands in the open folder `daily/`), mu08 (above). J1–J3, J5, J7, MU-04, tasks-page, ux01–ux04 unchanged |
+| Path traversal and note ownership still enforced | `PASS` (not new) | backend tests (`pytest` 1053 passed) and J5 (`../escape` from the palette → "path traversal is not allowed"); the UI changes add no new path input except the name boxes, which the server validates and whose message is shown verbatim (J6 "already exists") |
+| Mocked e2e | `PASS` | `npm run e2e` → `7 passed` |
+| Repository checks | `PASS` | `./scripts/verify.sh` → ruff, ruff format, mypy (`no issues found in 114 source files`), pytest `1053 passed`; eslint + scale check, `tsc`, vitest `670 passed` (68 files); `verification: PASS` |
+| No stray `atlas_e2e_*` databases; owner's stack untouched | `PASS` | `pg_database` lists only `atlas`, `atlas_test`, `postgres`, templates after all runs; the owner's `atlas` database and running stack were not used |
+| Screenshots reviewed | `PASS` (manual) | see below |
+| Other browsers, real phones, screen reader, 200 % zoom, forced colours; two tabs on one note; a note over 64 KB closed mid-save; drafts near the storage quota | `NOT RUN` | Chromium (desktop + mobile emulation) only |
+
+**Screenshots** (throwaway real stack with a fictional orchard seed, scratchpad `ux05/`, not in the repository):
+`desktop-light-1440.png`, `desktop-dark-1440.png`, `tablet-light-1024.png`, `phone-light-390.png`,
+`phone-dark-390.png`, `desktop-preview-menu-1440.png` (Preview on, row menu open) and `phone-tree-390.png`.
+Reviewed and iterated: tree rows were centred (flex `justify-content`), the details panel overlay covered the
+header buttons at 1280 px (now starts below the header), the panel stayed open on a phone because the desktop
+choice was remembered (now closed and unremembered on phones), the breadcrumb truncated the file name instead of
+the folders (folders now give way first).
+
+**Found and fixed during verification:** (1) a draft restored on open could finish saving before the page
+listened, leaving the header on an older revision — restored text is sent only after the host calls `resume()`,
+and the page also takes any newer confirmed version; (2) a conflict after an edit made by another program kept
+conflicting after *Reload* because the file was not yet indexed — `reconcile` before the re-read; (3) Ctrl+Z
+right after opening a note could empty it (the initial text was an undoable transaction) — initial text is the
+editor's starting document and later replacements are not undoable.
+
+Limitations: see ADR-0054 and R-23 (drafts in `localStorage`, delete uses a native `confirm`, conflicts are
+copy-or-reload with no merge, tree shows note titles, structural operations online-only R-22).

@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
-import { apiCall, ensureOwner, searchButton } from "./helpers";
+import { apiCall, ensureOwner, openNoteDetails, searchButton } from "./helpers";
 
 /**
  * MU-08 accessibility and layout sweep. Every main page is checked with axe-core (WCAG 2.x A/AA
@@ -38,10 +38,12 @@ async function seed(page: Page) {
     due_at: `${new Date().toISOString().slice(0, 10)}T09:00:00`,
     time_zone: "UTC",
   });
-  // An open note puts the editor and a task-list checkbox on the page (both failed axe before UX-01).
+  // An open note puts the editor, the preview with a task-list checkbox, the details panel and a
+  // [[link]] on the page (the editor and the checkbox failed axe before UX-01).
   const note = await apiCall<{ id: string }>(page, "POST", "/api/notes", {
     path: "a11y/Note.md",
-    content: "# A11y note\n\nSome text with a [link](https://example.com).\n\n- [ ] A11y checkbox item\n",
+    content:
+      "# A11y note\n\nSome text with a [link](https://example.com), a [[a11y/Note]] link and a [[a11y/missing]] one.\n\n- [ ] A11y checkbox item\n",
   });
   return { projectId: project.id, noteId: note.id };
 }
@@ -50,8 +52,16 @@ async function settle(page: Page) {
   await expect(page.getByRole("main")).toBeVisible();
   await expect(page.getByText(/^Loading/)).toHaveCount(0);
   if (page.url().includes("/notes?open=")) {
-    await expect(page.getByRole("textbox", { name: "Note content" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toBeVisible();
+    // Preview and details panel on, so axe sees every part of the workspace (UX-05). On a phone the
+    // preview replaces the editor, so the editor is only expected beside it on wider screens.
+    const preview = page.getByRole("button", { name: "Preview", exact: true });
+    if ((await preview.getAttribute("aria-pressed")) !== "true") await preview.click();
+    await openNoteDetails(page);
     await expect(page.getByRole("checkbox", { name: "A11y checkbox item" })).toBeVisible();
+    if ((page.viewportSize()?.width ?? 0) > 720) {
+      await expect(page.getByRole("textbox", { name: "Note content" })).toBeVisible();
+    }
   }
 }
 
@@ -130,6 +140,27 @@ test("axe finds no violations on the main pages in either theme, and no page ove
   await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
   await check("shortcut help");
   await page.keyboard.press("Escape");
+
+  // UX-05 Notes states: the tree row menu, the header menu, an inline name box, and the details
+  // panel as an overlay below 1440 px.
+  await page.goto(`/notes?open=${noteId}`);
+  await settle(page);
+  await page.getByRole("button", { name: "Actions for A11y note" }).click();
+  await expect(page.getByRole("menu", { name: "Actions for A11y note" })).toBeVisible();
+  await check("notes: tree row menu");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Note options" }).click();
+  await expect(page.getByRole("menu", { name: "Note options" })).toBeVisible();
+  await check("notes: header menu");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "New folder" }).click();
+  await expect(page.getByRole("textbox", { name: "New folder name" })).toBeVisible();
+  await check("notes: inline name box");
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(page.getByRole("region", { name: "Note details" })).toBeVisible();
+  await check("notes (1024, panel overlay)");
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   expect(found).toEqual({});
 

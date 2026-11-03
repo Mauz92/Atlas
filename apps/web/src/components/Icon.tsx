@@ -140,6 +140,43 @@ const ICONS = {
       <path d="M9 3v18" />
     </>
   ),
+  "panel-right": (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M15 3v18" />
+    </>
+  ),
+  "file-plus": (
+    <>
+      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="12" x2="12" y1="18" y2="12" />
+      <line x1="9" x2="15" y1="15" y2="15" />
+    </>
+  ),
+  folder: (
+    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+  ),
+  "folder-plus": (
+    <>
+      <path d="M12 10v6" />
+      <path d="M9 13h6" />
+      <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+    </>
+  ),
+  "chevrons-down-up": (
+    <>
+      <path d="m7 20 5-5 5 5" />
+      <path d="m7 4 5 5 5-5" />
+    </>
+  ),
+  "layout-template": (
+    <>
+      <rect width="18" height="7" x="3" y="3" rx="1" />
+      <rect width="9" height="7" x="3" y="14" rx="1" />
+      <rect width="5" height="7" x="16" y="14" rx="1" />
+    </>
+  ),
   cloud: <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />,
   "cloud-off": (
     <>

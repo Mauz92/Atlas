@@ -8,8 +8,8 @@ import {
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { EditorState } from "@codemirror/state";
-import { EditorView, keymap, lineNumbers } from "@codemirror/view";
+import { EditorState, Transaction } from "@codemirror/state";
+import { EditorView, keymap } from "@codemirror/view";
 
 import type { NoteSummary } from "../api/client";
 import { wikiCompletions } from "../lib/noteLinks";
@@ -17,6 +17,8 @@ import { wikiCompletions } from "../lib/noteLinks";
 export interface NoteEditorHandle {
   /** The selected text, or the line the cursor is on when nothing is selected. */
   selectionOrLine: () => string;
+  /** Put the cursor in the editor (after creating a note). */
+  focus: () => void;
 }
 
 interface NoteEditorProps {
@@ -24,6 +26,8 @@ interface NoteEditorProps {
   onChange: (value: string) => void;
   /** Notes offered after `[[` (MU-06). Read on each keystroke, so a changing list needs no rebuild. */
   notes?: readonly NoteSummary[];
+  /** Put the cursor in the editor when it is created (a note was just made). */
+  autoFocus?: boolean;
   ref?: Ref<NoteEditorHandle>;
 }
 
@@ -59,19 +63,31 @@ function wikiLinkSource(getNotes: () => readonly NoteSummary[]) {
 }
 
 /**
- * Editor colours and type from the design tokens (UX-01), so the editor, its gutter and the `[[`
- * completion popup follow light and dark mode through CSS variables, with no second theme to keep
- * in sync.
+ * Editor colours and type from the design tokens (UX-01), so the editor and the `[[` completion
+ * popup follow light and dark mode through CSS variables, with no second theme to keep in sync.
+ * The editor fills the height it is given and scrolls inside; the text is a centred column of at
+ * most `--measure` (72ch), the way a note reads best (UX-05).
  */
 const tokenTheme = EditorView.theme({
   "&": {
+    height: "100%",
     color: "var(--text)",
     backgroundColor: "var(--bg)",
     fontSize: "var(--fs-base)",
   },
-  "&.cm-focused": { outline: "2px solid var(--accent-text)", outlineOffset: "-1px" },
-  ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.6" },
-  ".cm-content": { caretColor: "var(--text)", maxWidth: "var(--measure)" },
+  "&.cm-focused": { outline: "none" },
+  ".cm-scroller": {
+    fontFamily: "var(--font-mono)",
+    lineHeight: "var(--lh-md)",
+    overflow: "auto",
+  },
+  ".cm-content": {
+    caretColor: "var(--text)",
+    maxWidth: "var(--measure)",
+    margin: "0 auto",
+    padding: "var(--s-5) var(--s-4)",
+  },
+  ".cm-line": { padding: "0" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--text)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
     { backgroundColor: "var(--bg-selected)" },
@@ -98,7 +114,7 @@ const tokenTheme = EditorView.theme({
 });
 
 /** Markdown source editor (CodeMirror 6). The document is plain text — what you type is stored. */
-export function NoteEditor({ value, onChange, notes = [], ref }: NoteEditorProps) {
+export function NoteEditor({ value, onChange, notes = [], autoFocus = false, ref }: NoteEditorProps) {
   const host = useRef<HTMLDivElement | null>(null);
   const view = useRef<EditorView | null>(null);
   const changeHandler = useRef(onChange);
@@ -106,7 +122,11 @@ export function NoteEditor({ value, onChange, notes = [], ref }: NoteEditorProps
   const notesRef = useRef(notes);
   notesRef.current = notes;
 
+  // The editor is created once with the text it is mounted with; later changes arrive via `value`.
+  const initial = useRef(value);
+
   useImperativeHandle(ref, () => ({
+    focus: () => view.current?.focus(),
     selectionOrLine: () => {
       const state = view.current?.state;
       if (!state) {
@@ -122,9 +142,8 @@ export function NoteEditor({ value, onChange, notes = [], ref }: NoteEditorProps
       return;
     }
     const state = EditorState.create({
-      doc: "",
+      doc: initial.current,
       extensions: [
-        lineNumbers(),
         tokenTheme,
         EditorView.contentAttributes.of({ "aria-label": "Note content" }),
         history(),
@@ -141,10 +160,15 @@ export function NoteEditor({ value, onChange, notes = [], ref }: NoteEditorProps
     });
     const instance = new EditorView({ state, parent: host.current });
     view.current = instance;
+    if (autoFocus) {
+      instance.focus();
+    }
     return () => {
       instance.destroy();
       view.current = null;
     };
+    // Created once per mount; `autoFocus` only matters at that moment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -154,7 +178,11 @@ export function NoteEditor({ value, onChange, notes = [], ref }: NoteEditorProps
     }
     const current = instance.state.doc.toString();
     if (current !== value) {
-      instance.dispatch({ changes: { from: 0, to: current.length, insert: value } });
+      // Not part of the undo history: Ctrl+Z must never step back into another note's text.
+      instance.dispatch({
+        changes: { from: 0, to: current.length, insert: value },
+        annotations: Transaction.addToHistory.of(false),
+      });
     }
   }, [value]);
 

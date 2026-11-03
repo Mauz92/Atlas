@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import { MarkdownPreview } from "./MarkdownPreview";
 
@@ -41,5 +41,35 @@ describe("MarkdownPreview", () => {
     );
     expect(container.querySelector("img")?.getAttribute("onerror")).toBeNull();
     expect(container.innerHTML).not.toContain("pwned");
+  });
+
+  describe("[[links]]", () => {
+    const notes = [
+      { id: "n2", path: "Projects/Seed list.md" },
+      { id: "n3", path: "Index.md" },
+    ];
+
+    it("render as links to the note, with an alias as the label", () => {
+      render(<MarkdownPreview content={"See [[Projects/Seed list]] and [[index|the index]]."} notes={notes} />);
+      expect(screen.getByRole("link", { name: "Projects/Seed list" })).toHaveAttribute("href", "/notes?open=n2");
+      expect(screen.getByRole("link", { name: "the index" })).toHaveAttribute("href", "/notes?open=n3");
+    });
+
+    it("opens the note in the app instead of reloading the page", () => {
+      const onOpenNote = vi.fn();
+      render(<MarkdownPreview content="[[Index]]" notes={notes} onOpenNote={onOpenNote} />);
+      fireEvent.click(screen.getByRole("link", { name: "Index" }));
+      expect(onOpenNote).toHaveBeenCalledWith("n3");
+    });
+
+    it("shows an unresolved target as text, escapes it, and leaves code alone", () => {
+      const { container } = render(
+        <MarkdownPreview content={"[[Missing <b>x</b>]] and `[[Index]]`"} notes={notes} />,
+      );
+      expect(screen.queryByRole("link")).toBeNull();
+      expect(container.querySelector(".wikilink.unresolved")?.textContent).toBe("Missing <b>x</b>");
+      expect(container.querySelector("b")).toBeNull();
+      expect(container.querySelector("code")?.textContent).toBe("[[Index]]");
+    });
   });
 });

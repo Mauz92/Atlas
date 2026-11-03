@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import { apiCall, ensureOwner } from "./helpers";
+import { apiCall, ensureOwner, expectNoteSaved, noteMenu, openNoteDetails } from "./helpers";
 
 /**
  * MU-06 journey J4 — write and link (docs/ROADMAP.md, MU): write a note, turn a line into a task,
@@ -7,7 +7,8 @@ import { apiCall, ensureOwner } from "./helpers";
  * its backlinks include tasks and projects. Real API and a fresh database.
  *
  * Also checks the Markdown rules: a checkbox line is not a task until the explicit action is used,
- * creating a task does not disturb unsaved editor text, and a rename keeps the link.
+ * creating a task does not disturb the editor text, and a rename keeps the link. Since UX-05 the
+ * note saves itself (no Save button) and Rename/Task from selection live in the "…" menu.
  */
 interface TaskList {
   tasks: { id: string; title: string }[];
@@ -39,6 +40,7 @@ test("J4: [[ autocomplete, task from a line, project and backlinks, rename and u
 
   await page.goto(`/notes?open=${plan.id}`);
   await expect(page.getByTitle("Revision 1").filter({ hasText: "j4/garden-plan.md" })).toBeVisible();
+  await openNoteDetails(page);
   await expect(page.getByRole("list", { name: "Linked projects" }).getByRole("link", { name: "J4 Garden" })).toBeVisible();
 
   // `[[` offers notes; accepting one inserts its path and the closing brackets.
@@ -50,12 +52,11 @@ test("J4: [[ autocomplete, task from a line, project and backlinks, rename and u
   await expect(option).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(editor).toContainText("See: [[j4/seed-list]]");
-  await expect(page.getByText("Unsaved changes")).toBeVisible();
 
   // Task from the line under the cursor (nothing selected): the title is the cleaned line, and a
   // too-long title is refused with the server's own message.
   await editor.locator(".cm-line", { hasText: "J4 buy bulbs" }).click();
-  await page.getByRole("button", { name: "Task from selection" }).click();
+  await noteMenu(page, "Task from selection");
   const form = page.getByRole("form", { name: "New task from note" });
   await expect(form.getByLabel("Task title")).toHaveValue("J4 buy bulbs");
   await expect(form).toContainText("Will be filed in “J4 Garden”");
@@ -67,20 +68,22 @@ test("J4: [[ autocomplete, task from a line, project and backlinks, rename and u
   await form.getByRole("button", { name: "Create task" }).click();
   await expect(form).toBeHidden();
 
-  // The note lists the task and the project; unsaved text was left alone; one task exists.
+  // The note lists the task and the project; the text was left alone; one task exists.
   const linkedTasks = page.getByRole("list", { name: "Linked tasks" });
   await expect(linkedTasks.getByRole("button", { name: "J4 buy bulbs" })).toBeVisible();
   await expect(page.getByRole("list", { name: "Linked projects" })).toBeVisible();
   await expect(editor).toContainText("See: [[j4/seed-list]]");
-  await expect(page.getByText("Unsaved changes")).toBeVisible();
   const created = (await tasksMatching()).tasks;
   expect(created).toHaveLength(1);
   const taskDetail = await apiCall<{ project_id: string }>(page, "GET", `/api/tasks/${created[0].id}`);
   expect(taskDetail.project_id).toBe(project.id);
 
-  // Saving writes the link text; the target note now has the plan as a backlink.
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByTitle("Revision 2").filter({ hasText: "j4/garden-plan.md" })).toBeVisible();
+  // Autosave writes the link text without any click; the target note now has the plan as a backlink.
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
+  await expectNoteSaved(page);
+  expect((await apiCall<{ content: string }>(page, "GET", `/api/notes/${plan.id}`)).content).toContain(
+    "See: [[j4/seed-list]]",
+  );
   await page.goto(`/notes?open=${seeds.id}`);
   await expect(
     page.getByRole("list", { name: "Linked notes" }).getByRole("button", { name: "j4/garden-plan.md" }),
@@ -94,10 +97,11 @@ test("J4: [[ autocomplete, task from a line, project and backlinks, rename and u
   await expect(detail.getByRole("button", { name: "Open note j4/garden-plan.md" })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  // Rename the note: the link follows (it holds the note's id, not its path).
-  page.once("dialog", (dialog) => void dialog.accept("j4/garden-plan-renamed.md"));
-  await page.getByRole("button", { name: "Rename" }).click();
-  await expect(page.getByTitle("Revision 3").filter({ hasText: "j4/garden-plan-renamed.md" })).toBeVisible();
+  // Rename the note in the header (no prompt): the link follows (it holds the note's id, not its path).
+  await noteMenu(page, "Rename");
+  await page.getByRole("textbox", { name: "Note name" }).fill("garden-plan-renamed");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTitle(/^Revision \d+$/).filter({ hasText: "j4/garden-plan-renamed.md" })).toBeVisible();
   await page.getByRole("list", { name: "Linked tasks" }).getByRole("button", { name: "J4 buy bulbs" }).click();
   await expect(detail.getByRole("button", { name: "Open note j4/garden-plan-renamed.md" })).toBeVisible();
 
@@ -110,7 +114,8 @@ test("J4: [[ autocomplete, task from a line, project and backlinks, rename and u
   await expect(detail.getByText(/No linked notes/)).toBeVisible();
   await page.keyboard.press("Escape");
   await page.reload();
-  await expect(page.getByTitle("Revision 3").filter({ hasText: "j4/garden-plan-renamed.md" })).toBeVisible();
+  await expect(page.getByTitle(/^Revision \d+$/).filter({ hasText: "j4/garden-plan-renamed.md" })).toBeVisible();
+  await openNoteDetails(page);
   await expect(page.getByRole("list", { name: "Linked tasks" })).toHaveCount(0);
   await expect(page.getByRole("list", { name: "Linked projects" })).toBeVisible();
 });

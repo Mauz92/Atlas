@@ -200,11 +200,21 @@ export const notesApi = {
   get: (id: string) => apiFetch<NoteDetail>(`/api/notes/${id}`),
   create: (path: string, content: string) =>
     apiFetch<NoteDetail>("/api/notes", { method: "POST", body: JSON.stringify({ path, content }) }),
-  update: (id: string, content: string, baseRevision: number) =>
-    apiFetch<NoteDetail>(`/api/notes/${id}`, {
+  /**
+   * Replace a note's text if the server still holds `baseRevision` (a `409` otherwise). `keepalive`
+   * lets a save started while the page is going away finish; browsers cap such bodies at 64 KiB, so
+   * a larger note is sent without it (its local draft covers that case, UX-05).
+   */
+  update: (id: string, content: string, baseRevision: number, options: { keepalive?: boolean } = {}) => {
+    const body = JSON.stringify({ content, base_revision: baseRevision });
+    return apiFetch<NoteDetail>(`/api/notes/${id}`, {
       method: "PUT",
-      body: JSON.stringify({ content, base_revision: baseRevision }),
-    }),
+      body,
+      keepalive: options.keepalive === true && body.length < 60_000,
+    });
+  },
+  /** Re-index notes edited outside Atlas (the on-demand form of the periodic scan, ADR-0010). */
+  reconcile: () => apiFetch<unknown>("/api/notes/reconcile", { method: "POST" }),
   saveConflictCopy: (id: string, content: string) =>
     apiFetch<NoteSummary>(`/api/notes/${id}/conflict`, {
       method: "POST",

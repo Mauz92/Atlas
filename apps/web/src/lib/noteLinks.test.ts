@@ -1,5 +1,5 @@
 import type { NoteSummary } from "../api/client";
-import { taskTitleFromText, wikiCompletions, wikiTarget } from "./noteLinks";
+import { resolveWikiLink, taskTitleFromText, wikiCompletions, wikiTarget } from "./noteLinks";
 
 const note = (path: string, title = path): NoteSummary => ({
   id: path,
@@ -59,5 +59,21 @@ describe("wiki link completion", () => {
   it("is bounded", () => {
     const many = Array.from({ length: 50 }, (_, i) => note(`n${i}.md`));
     expect(wikiCompletions(many, "")).toHaveLength(20);
+  });
+});
+
+describe("resolveWikiLink", () => {
+  const notes = [note("Projects/Seed list.md"), note("Index.md")];
+
+  it("resolves a path with or without .md, ignoring heading, block and alias parts", () => {
+    expect(resolveWikiLink(notes, "Projects/Seed list").id).toBe("Projects/Seed list.md");
+    expect(resolveWikiLink(notes, "./Index.md#Top").id).toBe("Index.md");
+    expect(resolveWikiLink(notes, "Index^block|The index")).toMatchObject({ id: "Index.md", label: "The index" });
+  });
+
+  it("falls back to a case-insensitive match and reports a missing target", () => {
+    expect(resolveWikiLink(notes, "index").id).toBe("Index.md");
+    expect(resolveWikiLink(notes, "Nope")).toEqual({ id: null, target: "Nope.md", label: "Nope" });
+    expect(resolveWikiLink(notes, "#only heading").id).toBeNull();
   });
 });

@@ -60,3 +60,21 @@ export function wikiCompletions(
     .slice(0, limit)
     .map(({ target, title }) => ({ target, title }));
 }
+
+/**
+ * The note a `[[…]]` link points at, resolved like the server does when it indexes links: alias
+ * (`|`), heading (`#`) and block (`^`) parts are dropped, a leading `./` is dropped and `.md` is
+ * added. Exact path first, then a case-insensitive match. `label` is what the link shows.
+ */
+export function resolveWikiLink(
+  notes: readonly Pick<NoteSummary, "id" | "path">[],
+  raw: string,
+): { id: string | null; target: string; label: string } {
+  const [written, alias] = raw.split("|", 2);
+  const label = (alias ?? written.split(/[#^]/, 1)[0]).trim() || raw.trim();
+  let target = written.split("#", 1)[0].split("^", 1)[0].trim().replace(/^(\.\/)+/, "").replace(/\\/g, "/");
+  if (target && !/\.md$/i.test(target)) target += ".md";
+  const exact = notes.find((note) => note.path === target);
+  const found = exact ?? notes.find((note) => note.path.toLowerCase() === target.toLowerCase());
+  return { id: target ? (found?.id ?? null) : null, target, label };
+}

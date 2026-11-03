@@ -24,7 +24,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M8 | Notifications and mobile apps | `IN_PROGRESS` | Platform behaviour tested on real devices |
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
-| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `IN_PROGRESS` | UX-01, UX-02 and UX-03 `DONE` 2026-11-02, UX-04 `DONE` 2026-11-03; next UX-05 (plan first) or UX-07 (`READY`); J1–J7 and the axe sweep keep passing while the UI is rebuilt |
+| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `IN_PROGRESS` | UX-01, UX-02 and UX-03 `DONE` 2026-11-02, UX-04 and UX-05 `DONE` 2026-11-03; next UX-06 (live preview, `READY`) or UX-07 (`READY`); J1–J7 and the axe sweep keep passing while the UI is rebuilt |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -663,8 +663,8 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 | UX-02 | App shell: rail, sectioned sidebar, status bar, mobile bottom nav, vendored icons; Day removed from nav | UX-01 | `DONE` (local PASS 2026-11-02; evidence `ACCEPTANCE.md` UX-02; CI `e2e-real` NOT RUN; not committed) |
 | UX-03 | Task row, menus, quick actions (fixes: subtasks shown without parent; Complete shown on completed tasks) | UX-02 | `DONE` (local PASS 2026-11-02; evidence `ACCEPTANCE.md` UX-03; ADR-0052; CI `e2e-real` NOT RUN; not committed) |
 | UX-04 | Task detail as property panel with per-field autosave | UX-03 | `DONE` |
-| UX-05 | Notes workspace + note autosave (own tests before Save is removed) | UX-02 | `BACKLOG` (plan to write; reuse the ADR-0053 pattern) |
-| UX-06 | Live preview mode; Live becomes default once round-trip tests pass | UX-05 | `BACKLOG` |
+| UX-05 | Notes workspace + note autosave (own tests before Save is removed) | UX-02 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-05; ADR-0054; CI `e2e-real` NOT RUN; not committed) |
+| UX-06 | Live preview mode; Live becomes default once round-trip tests pass | UX-05 | `READY` |
 | UX-07 | Tasks, Projects and Board polish | UX-03 | `READY` |
 | UX-08 | Settings consolidation, skeletons, empty states | UX-02 | `BACKLOG` |
 
@@ -763,11 +763,55 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
   tasks, hands row-action updates to the panel and opens `/tasks?task=<id>` links; six vendored Lucide shapes.
   Note autosave and removing the Notes **Save** button remain in **UX-05**. Evidence: `ACCEPTANCE.md` UX-04.
 
+### UX-05 plan — Notes workspace and note autosave
+- **Scope.** (A, first) `lib/noteAutosave.ts`: a framework-free save session per note (no React, no DOM, no
+  `window`): the API and the draft store are injected (`NoteStore`, `DraftStore`) so the same engine runs in
+  the web app now and in the planned native desktop client later (owner note 2026-11-03: desktop app, Obsidian
+  style, syncing with the Atlas server). Behaviour: debounce 1 s + flush on blur/switch/close/pagehide; one
+  `PUT` in flight per note, queued edits coalesced, `base_revision` chained from each response; local draft
+  (`content`, `base_revision`, timestamp) written synchronously on every change and cleared only after the
+  server confirms; draft offered back on open/reload when it differs from the server (never applied silently
+  over a newer revision). `409` = no overwrite: keep the text, show the existing conflict choices (keep as
+  copy / load server version). Unknown outcome (network/5xx): retry with the same body; if the retry returns
+  `409`, re-read the note and treat it as saved when the server content equals ours (note `PUT` has no
+  idempotency key; no backend change). Offline: "Offline — saved on this device". Then remove the **Save**
+  button and the "Discard unsaved changes?" prompts. (B) Workspace: sidebar is the tree (header icons New
+  note / New folder / Collapse, row "…" menu: Rename, Move, Delete, New from template; no path text box or
+  `window.prompt`), editor header (breadcrumb, save state, "…" menu with Task from selection / Rename /
+  Delete), editor fills the height with a 72 ch measure and token-based CodeMirror theme, Links / Backlinks /
+  linked tasks and projects in a right panel (toggle Ctrl+Alt+B), revision hidden in a tooltip, `[[links]]`
+  render as links in the preview, sidebar collapses on Notes at 1024 px (UX-02 follow-up). Source mode stays
+  the default; Live preview is UX-06.
+- **Out of scope.** Live preview (UX-06); backend or note-format changes; new npm packages; a native client;
+  offline *queueing* of structural operations (create/rename/delete stay online-only, R-22).
+- **Required tests (written before Save is removed).** Unit (fake store, fake timers): rapid typing = one
+  request with latest text; requests never overlap and the revision chains; 409 mid-typing keeps text and sends
+  nothing more; unknown outcome then 409 with identical server content = saved; unknown outcome with different
+  content = conflict; offline then online resends; flush on switch/close/pagehide; draft written on every
+  change and cleared only after confirm; reload with a draft equal to / older than / different from the server.
+  Real-stack: type then reload persists; offline typing, reload, reconnect persists; an external file edit
+  during typing gives the conflict UI and the file on disk is never overwritten; Markdown file bytes are exactly
+  the typed text (UTF-8, no added content); path traversal and note-ownership journeys (J4) still pass.
+- **Acceptance.** No Save button or Ctrl+S requirement; every edit reaches the `.md` file without a click;
+  no data loss under the cases above; conflict never overwrites; sidebar/editor/right panel layout works at
+  1440, 1024, 720 and 390 px without horizontal scroll; axe clean; J1–J7, ux02–ux04 and all real-stack specs
+  pass; ADR-0054 records the engine boundary (portable to desktop), draft format and the 409 rule.
+- **Status: `DONE` (2026-11-03).** As built (ADR-0054): `lib/noteAutosave.ts` (engine, no React/DOM/window; `NoteStore` +
+  `DraftStore` injected, `NoteSessions` registry), `lib/noteDrafts.ts` (`localStorage` drafts), `hooks/useNoteAutosave.ts`
+  (web wiring, pagehide/online listeners), `NoteTree.tsx` (inline names, row menus), `Notes.tsx` rewritten (tree |
+  note | details panel), `NoteEditor.tsx` (full height, 72ch, no line numbers, undo-safe replacement),
+  `MarkdownPreview.tsx` (`[[links]]`), `Layout.tsx` (shell sidebar docks on Notes from 1280 px), six Lucide shapes.
+  Phase A (engine, 27 unit tests) was finished and passing before the Save button and the discard prompts were
+  removed; the real-stack specs needed the wired page, so they were written with it and run against the final
+  code. Also added during verification: `reconcile` before reading a version to resolve a conflict (an edit made
+  by another program is invisible to the revision check until indexed). Left for UX-06: live preview. Limitations in
+  ADR-0054 and `RISKS.md` R-23.
+
 ---
 
 ## Immediate Next Tasks
 
-**Next: UX-05 (notes workspace and note autosave, ADR-0051 §4; write its plan first, reusing the ADR-0053 save-session pattern; UX-01…UX-04 are `DONE`) or UX-07 (`READY`), then close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
+**Next: UX-06 (live preview mode) or UX-07 (`READY`; UX-01…UX-05 are `DONE`), then close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
 editing) and `MU-02` (Projects UI), `MU-03` (Tasks page) and `MU-04` (recurrence, subtasks and reminders in the UI) and `MU-05` (command palette, quick switcher and unified search) and `MU-06` (note ↔ task ↔ project linking) and `MU-07` (daily note, templates and Today as home) and `MU-08` (settings and shell polish) are `DONE`; MU itself is not closed (CI run and release re-score outstanding, see the MU exit-criteria evaluation).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 

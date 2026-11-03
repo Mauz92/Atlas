@@ -225,7 +225,7 @@ p {
  */
 .section-header,
 .view-section h2,
-.notes-links h2,
+.notes-panel h2,
 .project-summary h2,
 .board-column-header h2,
 .week-day h2,
@@ -1022,32 +1022,30 @@ button.statusbar-item:hover {
   flex: 1;
 }
 
-/* Below 1024px the sidebar is a drawer over the page, opened from the rail or the menu button. */
-@media (max-width: 1023px) {
-  .app-shell.has-sidebar {
-    grid-template-columns: var(--rail) minmax(0, 1fr);
-  }
+/*
+ * Below 1024px (1280px on Notes, which has its own tree) the sidebar is a drawer over the page,
+ * opened from the rail or the menu button. `.compact` is set by Layout.tsx for exactly that state,
+ * so the rules do not depend on which page asked for it.
+ */
+.app-shell.compact .sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 45;
+  width: min(300px, 85vw);
+  height: auto;
+  /* Insets size an absolutely positioned box only when it stretches. */
+  align-self: stretch;
+  border-right: 1px solid var(--border);
+  box-shadow: var(--shadow-3);
+}
 
-  .sidebar {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 45;
-    width: min(300px, 85vw);
-    height: auto;
-    /* Insets size an absolutely positioned box only when it stretches. */
-    align-self: stretch;
-    border-right: 1px solid var(--border);
-    box-shadow: var(--shadow-3);
-  }
-
-  .drawer-scrim {
-    position: fixed;
-    inset: 0;
-    z-index: 44;
-    background: var(--scrim);
-  }
+.app-shell.compact .drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  background: var(--scrim);
 }
 
 /* Phones: header + bottom nav; the status bar only shows itself when something needs attention. */
@@ -1175,60 +1173,122 @@ button.statusbar-item:hover {
   min-width: 0;
 }
 
-.notes-layout {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: var(--s-5);
-  margin-top: var(--s-4);
-  align-items: start;
+/* --- Notes workspace (UX-05) -------------------------------------------- */
+/*
+ * Tree | note | details panel, filling the height under the shell's status bar. The page itself
+ * does not scroll: the tree, the editor and the panel scroll inside. The panel is a column from
+ * 1440px; below that it overlays the note. On phones the tree and the note take turns.
+ */
+
+.content:has(> .notes-page) {
+  padding: 0;
 }
 
-.notes-sidebar {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: var(--s-3);
+.notes-page {
+  --notes-header: 45px;
+
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--statusbar));
+}
+
+.notes-stage {
+  position: relative;
+  display: grid;
+  flex: 1;
+  grid-template-columns: 260px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.notes-alerts:not(:empty) {
+  padding: var(--s-2) var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.notes-alerts p {
+  margin: 0;
+}
+
+.notes-tree {
+  grid-column: 1;
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
+  min-height: 0;
+  padding: var(--s-2);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
 }
 
-.notes-sidebar input {
+.notes-tree-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: 0 var(--s-1);
+}
+
+.notes-tree-title {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.notes-tree-actions {
+  display: flex;
+  gap: var(--s-1);
+}
+
+.notes-tree input[type="search"] {
   width: 100%;
 }
 
-.notes-sidebar > button {
-  align-self: flex-start;
-}
-
-.notes-sidebar .row {
-  flex-wrap: wrap;
-}
-
-.notes-sidebar .row input,
-.notes-sidebar .row select {
-  flex: 1 1 100%;
-  min-width: 0;
+.notes-tree-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 .tree {
   list-style: none;
-  margin: var(--s-1) 0 0;
+  margin: 0;
   padding: 0 0 0 var(--s-3);
   display: flex;
   flex-direction: column;
   gap: 0;
 }
 
-.tree:first-child {
+.notes-tree-scroll > .tree,
+.notes-tree-scroll > div > .tree {
   padding: 0;
 }
 
-.tree button {
-  display: block;
-  width: 100%;
+.tree-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--r-md);
+}
+
+.tree-row:hover {
+  background: var(--bg-hover);
+}
+
+.tree-row:has(.tree-note.selected) {
+  background: var(--bg-selected);
+}
+
+.tree button.tree-note,
+.tree button.tree-folder {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--s-2);
+  min-width: 0;
   min-height: var(--control-sm);
-  padding: var(--s-1) var(--s-2);
+  padding: 0 var(--s-2);
   color: var(--text);
   background: transparent;
   border: none;
@@ -1236,55 +1296,224 @@ button.statusbar-item:hover {
   box-shadow: none;
   font-weight: 400;
   text-align: left;
-  overflow-wrap: anywhere;
 }
 
-.tree button:hover {
-  background: var(--bg-hover);
+.tree button.tree-folder {
+  color: var(--text-2);
 }
 
-.tree-note.selected,
-.tree-note.selected:hover {
-  background: var(--bg-selected);
+.tree-note.selected {
   font-weight: 500;
 }
 
-.tree-folder,
-.tree button.tree-folder {
-  color: var(--text-2);
-  font-weight: 600;
-}
-
-.notes-main {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
+.tree-label {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.notes-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--s-4);
-  flex-wrap: wrap;
-}
-
-.notes-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  min-width: 0;
-  margin: 0;
+.tree .icon {
   color: var(--text-3);
 }
 
+.tree button.tree-more {
+  flex: none;
+  opacity: 0;
+}
+
+.tree-row:hover .tree-more,
+.tree-row:focus-within .tree-more,
+.tree button.tree-more[aria-expanded="true"] {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .tree button.tree-more {
+    opacity: 1;
+  }
+}
+
+.tree-create,
+.tree-row > .tree-name-input {
+  padding: var(--s-1) 0;
+}
+
+.tree-name-input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control-sm);
+  height: var(--control-sm);
+}
+
+.notes-main {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.notes-main > .error,
+.notes-main > .conflict-banner,
+.notes-main > .note-task-form {
+  margin: var(--s-2) var(--s-4) 0;
+}
+
+.notes-notice {
+  margin: 0;
+  padding: var(--s-2) var(--s-4) 0;
+}
+
+.notes-header {
+  display: flex;
+  box-sizing: border-box;
+  height: var(--notes-header);
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.note-breadcrumb {
+  flex: 1;
+  min-width: 0;
+}
+
 .note-path {
+  display: flex;
+  min-width: 0;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* Folders give way first; the file name stays readable. */
+.note-path > span {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-path > span > [aria-hidden="true"] {
+  margin: 0 var(--s-1);
+  color: var(--text-3);
+}
+
+.note-path > .note-leaf {
+  flex: 0 0 auto;
+  max-width: 100%;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.note-save-state {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  white-space: nowrap;
+}
+
+.note-save-state[data-save-state="offline"],
+.note-save-state[data-save-state="unsaved"] {
+  color: var(--warning);
+}
+
+.note-save-state[data-save-state="failed"],
+.note-save-state[data-save-state="rejected"],
+.note-save-state[data-save-state="conflict"] {
+  color: var(--danger);
+}
+
+.notes-header-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.notes-header-actions button[aria-pressed="true"] {
+  background: var(--bg-selected);
+}
+
+.notes-tree-toggle {
+  display: none;
+}
+
+.notes-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.notes-body[data-preview="true"] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.editor-host {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.editor-host .cm-editor {
+  height: 100%;
+}
+
+.notes-panel {
+  position: absolute;
+  top: var(--notes-header);
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  width: min(320px, 100%);
+  background: var(--bg-raised);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-2);
+}
+
+.notes-panel[hidden] {
+  display: none;
+}
+
+.notes-panel-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-height: 0;
+  padding: var(--s-4);
+  overflow: auto;
+}
+
+.notes-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.notes-panel li {
   overflow-wrap: anywhere;
 }
 
-.note-save-state[data-dirty="true"] {
-  color: var(--warning);
+@media (min-width: 1440px) {
+  .notes-page[data-panel="open"] .notes-stage {
+    grid-template-columns: 260px minmax(0, 1fr) 300px;
+  }
+
+  .notes-panel {
+    position: static;
+    grid-column: 3;
+    width: auto;
+    box-shadow: none;
+    background: var(--bg-sidebar);
+  }
 }
 
 .conflict-banner {
@@ -1298,35 +1527,13 @@ button.statusbar-item:hover {
   color: var(--danger);
 }
 
-.editor-split {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--s-4);
-  min-height: 420px;
-}
-
-.editor-host {
-  min-width: 0;
-  min-height: 420px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: var(--bg);
-}
-
-.editor-host .cm-editor {
-  height: 100%;
-  min-height: 418px;
-  border-radius: inherit;
-}
-
 .markdown-preview {
   min-width: 0;
-  max-width: var(--measure);
-  min-height: 420px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--border);
   background: var(--bg);
-  padding: var(--s-3) var(--s-5);
+  padding: var(--s-5);
   font-size: var(--fs-md);
   line-height: var(--lh-md);
   overflow-wrap: anywhere;
@@ -1401,18 +1608,6 @@ button.statusbar-item:hover {
   max-width: 100%;
 }
 
-.notes-links {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--s-4);
-}
-
-.notes-links ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
 .note-task-form {
   display: flex;
   flex-direction: column;
@@ -1423,15 +1618,48 @@ button.statusbar-item:hover {
   padding: var(--s-3);
 }
 
-@media (max-width: 900px) {
-  .notes-layout,
-  .editor-split,
-  .notes-links {
-    grid-template-columns: 1fr;
+/* Phones: the tree and the note take turns; the panel covers the note. */
+@media (max-width: 720px) {
+  .notes-page {
+    height: calc(100dvh - 48px - var(--bottom-nav) - var(--statusbar));
   }
 
-  .markdown-preview {
-    max-width: none;
+  .notes-stage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell:has(.statusbar.is-quiet) .notes-page {
+    height: calc(100dvh - 48px - var(--bottom-nav));
+  }
+
+  .notes-tree,
+  .notes-main {
+    grid-column: 1;
+  }
+
+  .notes-page[data-tree="closed"] .notes-tree,
+  .notes-page[data-tree="open"] .notes-main {
+    display: none;
+  }
+
+  .notes-tree-toggle {
+    display: inline-grid;
+  }
+
+  .notes-body[data-preview="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .notes-body[data-preview="true"] .editor-host {
+    display: none;
+  }
+
+  .notes-header {
+    padding: 0 var(--s-2);
+  }
+
+  .notes-panel {
+    width: 100%;
   }
 }
 

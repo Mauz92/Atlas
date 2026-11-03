@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { expect, test } from "./fixtures";
-import { apiCall, dateIn, ensureOwner } from "./helpers";
+import { apiCall, dateIn, ensureOwner, expectNoteSaved } from "./helpers";
 
 /**
  * MU-07 journey J6 — Today as home, the daily note and templates (docs/ROADMAP.md, MU). Real API,
@@ -42,7 +42,7 @@ test("J6: Today is home, today's note is created once, notes start from a templa
   await task("J6 overdue", { due_at: `${dateIn(ZONE, -2)}T09:00:00` });
   await task("J6 due today", { due_at: `${today}T23:30:00` });
   await task("J6 scheduled", { start_at: `${today}T10:00:00` });
-  const template = await apiCall<{ id: string }>(page, "POST", "/api/notes", {
+  await apiCall(page, "POST", "/api/notes", {
     path: "templates/J6 meeting.md",
     content:
       "# {{title}}\n\nDate: {{date}}\n\n{{time}} {{ title }} <b>raw</b>\n",
@@ -71,25 +71,28 @@ test("J6: Today is home, today's note is created once, notes start from a templa
   await expect(page.getByTitle("Revision 1").filter({ hasText: `daily/${today}.md` })).toBeVisible();
   expect(await onDisk(`daily/${today}.md`)).toBe(`# ${today}\n`);
 
-  // Write in it and save, then come back through Today: the card previews it as text.
+  // Write in it (it saves itself), then come back through Today: the card previews it as text.
   const editor = page.getByTestId("note-editor").locator(".cm-content");
   await editor.click();
   await page.keyboard.press("Control+End");
   await page.keyboard.type("\nJ6 wrote <b>this</b> today\n");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByTitle("Revision 2").filter({ hasText: `daily/${today}.md` })).toBeVisible();
+  await expectNoteSaved(page);
+  const daily = () =>
+    apiCall<{ notes: { path: string; revision: number }[] }>(page, "GET", "/api/notes?folder=daily");
+  const revision = (await daily()).notes[0].revision;
+  expect(revision).toBeGreaterThan(1);
   await page.goto("/");
   await expect(card.getByText("J6 wrote <b>this</b> today")).toBeVisible();
   await expect(card.locator("b")).toHaveCount(0);
 
   // Opening it again, from the card and from the palette, never rewrites it.
   await card.getByRole("button", { name: "Open today's note" }).click();
-  await expect(page.getByTitle("Revision 2").filter({ hasText: `daily/${today}.md` })).toBeVisible();
+  await expect(page.getByTitle(`Revision ${revision}`).filter({ hasText: `daily/${today}.md` })).toBeVisible();
   await page.keyboard.press("Control+k");
   const palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByRole("combobox").fill("open today's");
   await palette.getByRole("option", { name: /Open today's note/ }).click();
-  await expect(page.getByTitle("Revision 2").filter({ hasText: `daily/${today}.md` })).toBeVisible();
+  await expect(page.getByTitle(`Revision ${revision}`).filter({ hasText: `daily/${today}.md` })).toBeVisible();
   const saved = await onDisk(`daily/${today}.md`);
   expect(saved).toContain("J6 wrote <b>this</b> today");
   expect(
@@ -106,20 +109,22 @@ test("J6: Today is home, today's note is created once, notes start from a templa
   await page.keyboard.press("Control+k");
   await palette.getByRole("combobox").fill("from template");
   await palette.getByRole("option", { name: /New note from template/ }).click();
-  const picker = page.getByRole("combobox", { name: "Template" });
-  await expect(picker).toBeFocused();
-  await picker.selectOption(template.id);
-  await page.getByLabel("New note or folder path").fill("j6/Standup");
-  await page.getByRole("button", { name: "New from template" }).click();
-  await expect(page.getByTitle("Revision 1").filter({ hasText: "j6/Standup.md" })).toBeVisible();
+  // The palette's link opens the template menu; choosing one asks for a name in the tree.
+  await page.getByRole("menu", { name: "New from template" }).getByRole("menuitem", { name: "J6 meeting" }).click();
+  // The note goes into the folder that is open in the tree (today's note lives in daily/).
+  await page.getByRole("textbox", { name: "Name for the new note from J6 meeting" }).fill("Standup");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTitle("Revision 1").filter({ hasText: "daily/Standup.md" })).toBeVisible();
   const expected = `# Standup\n\nDate: ${today}\n\n{{time}} Standup <b>raw</b>\n`;
-  expect(await onDisk("j6/Standup.md")).toBe(expected);
+  expect(await onDisk("daily/Standup.md")).toBe(expected);
 
   // Creating over an existing note is refused with the server's message and changes nothing.
-  await page.getByLabel("New note or folder path").fill("j6/Standup");
   await page.getByRole("button", { name: "New from template" }).click();
+  await page.getByRole("menuitem", { name: "J6 meeting" }).click();
+  await page.getByRole("textbox", { name: "Name for the new note from J6 meeting" }).fill("Standup");
+  await page.keyboard.press("Enter");
   await expect(
     page.getByText("A note or folder already exists there"),
   ).toBeVisible();
-  expect(await onDisk("j6/Standup.md")).toBe(expected);
+  expect(await onDisk("daily/Standup.md")).toBe(expected);
 });

@@ -4,6 +4,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 
 import type { Project } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
+import { noteSessions } from "../hooks/useNoteAutosave";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { ProjectsProvider, activeProjects, useProjects } from "../hooks/useProjects";
 import { useTaskEditor } from "../hooks/useTaskEditor";
@@ -32,6 +33,11 @@ import { ThemeToggle } from "./ThemeToggle";
 
 /** Wide screens dock the sidebar; narrower ones show it as a drawer over the page. */
 const WIDE = "(min-width: 1024px)";
+/**
+ * The Notes workspace has its own tree (and a details panel), so the shell's sidebar only docks from
+ * 1280px there; below that it is a drawer, like below 1024px elsewhere (UX-05).
+ */
+const NOTES_WIDE = "(min-width: 1280px)";
 /** Phones: no rail, a bottom nav and a header with the menu button instead. */
 const NARROW = "(max-width: 720px)";
 const SIDEBAR_ID = "app-sidebar";
@@ -65,7 +71,7 @@ function Shell() {
   const { projects } = useProjects();
   const listed = activeProjects(projects);
   const { pathname } = useLocation();
-  const wide = useMediaQuery(WIDE, true);
+  const wide = useMediaQuery(pathname.startsWith("/notes") ? NOTES_WIDE : WIDE, true);
   const narrow = useMediaQuery(NARROW, false);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -172,7 +178,11 @@ function Shell() {
   logoutRef.current = logout;
   // Stable identities for the palette, whose command list is memoised on its props.
   const paletteToggleSidebar = useCallback(() => toggleSidebarRef.current(), []);
-  const signOut = useCallback(() => void logoutRef.current(), []);
+  // Text typed in a note but not yet saved is sent before the session ends (UX-05).
+  const signOut = useCallback(
+    () => void noteSessions.flushAll(false).finally(() => logoutRef.current()),
+    [],
+  );
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const modifier = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
@@ -242,7 +252,7 @@ function Shell() {
   const name = user?.display_name || user?.email || "";
 
   return (
-    <div className={`app-shell${sidebarVisible && wide ? " has-sidebar" : ""}${drawer ? " has-drawer" : ""}`}>
+    <div className={`app-shell${sidebarVisible && wide ? " has-sidebar" : ""}${drawer ? " has-drawer" : ""}${wide ? "" : " compact"}`}>
       <a className="skip-link" href={`#${MAIN_ID}`} inert={drawer}>
         Skip to content
       </a>

@@ -6,6 +6,20 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Changed (UX-05): **notes save by themselves and the Notes page is a workspace.** There is no **Save** button
+  and no "Discard unsaved changes?" question any more: a note saves about a second after you stop typing, and
+  when you switch notes, create, rename, delete, open today's note, leave the page or sign out (Ctrl/⌘ S saves
+  at once). The note header shows **Saving…**, **Saved**, **Offline — saved on this device**, **Conflict** and
+  so on. What you type is also kept on this device until the server has it, so a crash, a closed tab or being
+  offline does not lose it; open the note again and it is put back and saved. If the file was changed
+  somewhere else (another program, another device), nothing is overwritten: your text stays and you choose
+  **Keep my version as a copy** or **Reload server version**. The page is now a file tree (icons for New note,
+  New folder, New from template and Today's note; a **…** menu on each row with Rename in place, Move to… and
+  Delete; no path box and no prompt), a full-height editor with a readable column, and a details panel for
+  Links, Backlinks, tasks, projects and tags (Ctrl/⌘ Alt B). **Task from selection**, **Rename** and **Delete**
+  moved into the note header's **…** menu, **Preview** is a toggle, and `[[links]]` in the preview open the
+  note. On screens under 1280 px the main sidebar tucks away on this page.
+
 - Changed (UX-04): **the task panel saves by itself — there is no Save button.** The panel is now a calm
   list of properties: a large title you edit in place, then Status, Priority, Due (date and time), Start, Time
   zone, Project and Tags, then the description, Repeat, Subtasks, Reminder and Linked notes. Choices from a
@@ -18,8 +32,7 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
   Enter (or a comma) to add, × to remove. A reminder applies as soon as you choose it. On a wide screen
   (1280 px and up) the panel sits beside the list, which stays usable; on smaller screens it opens over the page
   (Esc or a click outside closes it) and on a phone it fills the screen. **…** in the panel has **Copy link**
-  and **Delete task** (with Undo). Ctrl/⌘ Enter still works and simply saves at once. Notes keep their **Save**
-  button until UX-05.
+  and **Delete task** (with Undo). Ctrl/⌘ Enter still works and simply saves at once. (Notes followed in UX-05.)
 
 - Changed (UX-03): **calmer task rows with a menu and keyboard keys.** Every task list (Today, Inbox,
   Upcoming, Week, Tasks, a project's list and search results) uses one row: a round checkbox instead of the

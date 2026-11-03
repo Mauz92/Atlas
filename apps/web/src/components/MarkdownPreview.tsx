@@ -1,8 +1,43 @@
 import DOMPurify from "dompurify";
-import { marked } from "marked";
+import { Marked } from "marked";
 import { useMemo } from "react";
+import type { MouseEvent } from "react";
 
-marked.setOptions({ gfm: true, breaks: true });
+import type { NoteSummary } from "../api/client";
+import { resolveWikiLink } from "../lib/noteLinks";
+
+const NO_NOTES: readonly Pick<NoteSummary, "id" | "path">[] = [];
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * `[[target]]` and `[[target|label]]` become links to the note (UX-05). An unresolved target shows
+ * as plain text that says so. Everything written into the HTML is escaped here, and the result is
+ * sanitised again below like all other note content.
+ */
+function markdownFor(notes: readonly Pick<NoteSummary, "id" | "path">[]): Marked {
+  return new Marked({ gfm: true, breaks: true }).use({
+    extensions: [
+      {
+        name: "wikilink",
+        level: "inline",
+        start: (src: string) => src.indexOf("[["),
+        tokenizer(src: string) {
+          const match = /^\[\[([^[\]\n]+?)\]\]/.exec(src);
+          return match ? { type: "wikilink", raw: match[0], text: match[1] } : undefined;
+        },
+        renderer(token) {
+          const { id, target, label } = resolveWikiLink(notes, String((token as { text?: string }).text));
+          return id
+            ? `<a class="wikilink" href="/notes?open=${encodeURIComponent(id)}" data-note-id="${escapeHtml(id)}">${escapeHtml(label)}</a>`
+            : `<span class="wikilink unresolved" title="${escapeHtml(`No note “${target}” yet`)}">${escapeHtml(label)}</span>`;
+        },
+      },
+    ],
+  });
+}
 
 /**
  * A Markdown task item (`- [ ] text`) renders as a disabled checkbox with no label; name it after
@@ -20,9 +55,20 @@ function labelTaskCheckboxes(fragment: DocumentFragment) {
  * Renders Markdown to HTML and sanitises it before it reaches the DOM.
  * Note content is untrusted input (SECURITY.md T3/T6).
  */
-export function MarkdownPreview({ content }: { content: string }) {
+export function MarkdownPreview({
+  content,
+  notes = NO_NOTES,
+  onOpenNote,
+}: {
+  content: string;
+  /** Notes `[[links]]` are resolved against. */
+  notes?: readonly Pick<NoteSummary, "id" | "path">[];
+  /** A `[[link]]` to a note was activated; without it the link navigates normally. */
+  onOpenNote?: (id: string) => void;
+}) {
+  const markdown = useMemo(() => markdownFor(notes), [notes]);
   const html = useMemo(() => {
-    const rendered = marked.parse(content, { async: false });
+    const rendered = markdown.parse(content, { async: false });
     const safe = DOMPurify.sanitize(typeof rendered === "string" ? rendered : "", {
       RETURN_DOM_FRAGMENT: true,
     });
@@ -30,12 +76,20 @@ export function MarkdownPreview({ content }: { content: string }) {
     const container = document.createElement("div");
     container.appendChild(safe);
     return container.innerHTML;
-  }, [content]);
+  }, [markdown, content]);
 
   return (
     <div
       className="markdown-preview"
       data-testid="markdown-preview"
+      onClick={(event: MouseEvent<HTMLDivElement>) => {
+        const link = (event.target as HTMLElement).closest<HTMLElement>("a[data-note-id]");
+        const plain = !event.metaKey && !event.ctrlKey && !event.shiftKey && event.button === 0;
+        if (link?.dataset.noteId && onOpenNote && plain) {
+          event.preventDefault();
+          onOpenNote(link.dataset.noteId);
+        }
+      }}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

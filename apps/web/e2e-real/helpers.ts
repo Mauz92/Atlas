@@ -1,3 +1,6 @@
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+
 import type { Page } from "@playwright/test";
 import { expect } from "./fixtures";
 
@@ -153,4 +156,46 @@ export async function expectTaskSaved(page: Page) {
     "data-save-state",
     "saved",
   );
+}
+
+/** The notes directory of this run's API (global setup creates it; notes are plain files in it). */
+export function notesDir(): string {
+  const dir = process.env.ATLAS_E2E_NOTES_DIR;
+  if (!dir) throw new Error("ATLAS_E2E_NOTES_DIR is not set — global setup did not run");
+  return dir;
+}
+
+/** The exact bytes of a note's file on disk. */
+export const noteFileBytes = (rel: string) => readFile(path.join(notesDir(), rel));
+
+/** Write a note's file directly, the way an external editor would. */
+export const writeNoteFile = (rel: string, text: string) =>
+  writeFile(path.join(notesDir(), rel), text, "utf8");
+
+/** The open note's save indicator (UX-05). */
+export function noteSaveState(page: Page) {
+  return page.locator(".notes-header [data-save-state]");
+}
+
+/** Autosave settled: the header says Saved (there is no Save button since UX-05). */
+export async function expectNoteSaved(page: Page) {
+  await expect(noteSaveState(page)).toHaveAttribute("data-save-state", "saved");
+}
+
+/** Make sure the links/details panel is showing (its default depends on the screen width). */
+export async function openNoteDetails(page: Page) {
+  const toggle = page.getByRole("button", { name: "Links and details" });
+  if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
+  await expect(page.getByRole("region", { name: "Note details" })).toBeVisible();
+}
+
+/** Choose an entry of the open note's "…" menu. */
+export async function noteMenu(page: Page, item: string) {
+  await page.getByRole("button", { name: "Note options" }).click();
+  await page.getByRole("menuitem", { name: item, exact: true }).click();
+}
+
+/** The note's CodeMirror text area. */
+export function noteEditor(page: Page) {
+  return page.getByTestId("note-editor").locator(".cm-content");
 }

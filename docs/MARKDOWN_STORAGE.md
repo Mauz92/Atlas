@@ -70,6 +70,14 @@ Use **optimistic concurrency control**:
 
 Silent last-write-wins is prohibited for Markdown.
 
+**Autosave clients (ADR-0054).** A client saves by itself, so it must: send every change with its
+`base_revision`; send one request at a time per note; keep unsent text in a local draft until the server
+confirms exactly that text; on `409` stop sending, keep the text and offer *keep as a conflict copy* /
+*reload*; after a request whose outcome is unknown (the `PUT` has no idempotency key) re-send the same body and,
+if that answers `409`, re-read the note and treat it as saved only when the server's text equals the text sent;
+and call `POST /api/notes/reconcile` before reading the server's version to resolve a conflict, because an edit
+made on disk is only visible to the revision check once indexed (§5).
+
 ## 5. External Editing and Reconciliation (ADR-0010)
 
 - The filesystem is authoritative. Files edited outside Atlas are legitimate.
