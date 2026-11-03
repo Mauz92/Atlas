@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { tasksApi, type Task } from "../api/client";
+import { Icon } from "./Icon";
 
 interface TaskSubtasksProps {
   parent: Task;
-  /** Open a subtask in the detail panel (disabled while the parent has unsaved edits). */
+  /** Open a subtask in the detail panel (the panel saves the parent's edits first). */
   onOpen: (task: Task) => void;
   openDisabled?: boolean;
   /** Subtasks changed; lists showing the parent's "x/y" should refresh. */
@@ -83,70 +84,55 @@ export function TaskSubtasks({
 
   return (
     <section className="task-subtasks" aria-label="Subtasks">
-      <h3>
+      <h3 className="task-section-title">
         Subtasks
         {rollup.total > 0 ? (
-          <span className="muted">
-            {" "}
+          <span className="task-section-count">
             {rollup.done}/{rollup.total} done
           </span>
         ) : null}
       </h3>
       {rollup.total > 0 ? (
-        <progress
-          max={rollup.total}
-          value={rollup.done}
-          aria-label="Subtask progress"
-        />
+        <progress max={rollup.total} value={rollup.done} aria-label="Subtask progress" />
       ) : null}
       <ul className="task-subtask-list">
         {subtasks.map((sub) => (
           <li key={sub.id}>
             <input
               type="checkbox"
+              className="task-check"
               aria-label={`Complete ${sub.title}`}
               checked={sub.status === "completed"}
               disabled={busy || sub.status === "completed"}
               onChange={() => void run(() => tasksApi.complete(sub))}
             />
-            <span
-              className={
-                sub.status === "completed" ? "task-title done" : "task-title"
-              }
-            >
-              {sub.title}
-            </span>
             <button
               type="button"
-              className="ghost"
+              className={`task-subtask-title${sub.status === "completed" ? " done" : ""}`}
               aria-label={`Open subtask ${sub.title}`}
               disabled={openDisabled}
               onClick={() => onOpen(sub)}
             >
-              Open
+              {sub.title}
             </button>
             <button
               type="button"
-              className="ghost danger"
+              className="ghost icon-button task-subtask-remove"
               aria-label={`Remove ${sub.title}`}
               disabled={busy}
               onClick={() => void run(() => tasksApi.remove(sub))}
             >
-              Remove
+              <Icon name="x" size={14} />
             </button>
           </li>
         ))}
       </ul>
-      {openDisabled ? (
-        <p className="muted task-detail-hint">
-          Save or discard your edits to open a subtask.
-        </p>
-      ) : null}
       <div className="task-subtask-add">
-        <label htmlFor={`${parentId}-new-subtask`}>New subtask</label>
         <input
           id={`${parentId}-new-subtask`}
           type="text"
+          aria-label="New subtask"
+          placeholder="Add a subtask…"
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           onKeyDown={(event) => {
@@ -156,16 +142,14 @@ export function TaskSubtasks({
             }
           }}
         />
-        <button
-          type="button"
-          onClick={add}
-          disabled={busy || title.trim() === ""}
-        >
-          Add subtask
-        </button>
+        {title.trim() !== "" ? (
+          <button type="button" className="ghost" onClick={add} disabled={busy}>
+            Add subtask
+          </button>
+        ) : null}
       </div>
       {error ? (
-        <p className="error" role="alert">
+        <p className="task-prop-error" role="alert">
           {error}
         </p>
       ) : null}

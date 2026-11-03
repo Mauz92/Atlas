@@ -2471,80 +2471,463 @@ button.menu-item .menu-chevron,
   color: var(--success);
 }
 
-/* --- Task detail surface (MU-01) --------------------------------------- */
+/* --- Task detail: property panel with autosave (MU-01, UX-04, ADR-0053) --- */
+
+/*
+ * >= 1280px: docked beside the page (the main column makes room, the list stays usable).
+ * Below: an overlay with a scrim (modal). <= 720px: a full-screen sheet. DOCKED in TaskDetail.tsx.
+ */
+:root {
+  --panel: 400px;
+}
 
 .task-detail {
   position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(420px, 100vw);
+  width: min(var(--panel), 100vw);
   z-index: 40;
   display: flex;
   flex-direction: column;
-  background: var(--bg-raised);
+  background: var(--bg);
   border-left: 1px solid var(--border);
-  box-shadow: var(--shadow-2);
-  overflow-y: auto;
+}
+
+.task-detail.is-overlay {
+  box-shadow: var(--shadow-3);
+}
+
+.task-detail.is-docked {
+  bottom: var(--statusbar, 24px);
+}
+
+.task-detail-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: var(--scrim);
+}
+
+@media (min-width: 1280px) {
+  :root[data-task-panel="docked"] .main-column {
+    margin-right: var(--panel);
+  }
 }
 
 .task-detail-header {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--s-3) var(--s-4);
+  gap: var(--s-2);
+  min-height: 44px;
+  padding: var(--s-1) var(--s-2) var(--s-1) var(--s-4);
+}
+
+.task-detail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--text-3);
+}
+
+.save-state.save-invalid,
+.save-state.save-failed,
+.save-state.save-conflict {
+  color: var(--danger);
+}
+
+.save-state.save-offline {
+  color: var(--warning);
+}
+
+.save-state.save-saving .icon {
+  animation: save-spin 1s linear infinite;
+}
+
+@keyframes save-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.task-detail-notices {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: 0 var(--s-4);
+}
+
+.task-detail-notices:empty {
+  display: none;
+}
+
+.task-notice {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-sidebar);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+.task-notice p {
+  margin: 0 0 var(--s-2);
+}
+
+.task-notice p:last-child {
+  margin-bottom: 0;
+}
+
+.task-notice.tone-danger {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--text);
+}
+
+.task-notice.tone-warning {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+  color: var(--text);
+}
+
+.task-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.task-detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-3) var(--s-4) var(--s-6);
+}
+
+button.task-detail-parent {
+  min-height: var(--control-sm);
+  margin: 0 0 var(--s-1) calc(-1 * var(--s-2));
+  padding: 0 var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+
+/* Inline title: large, borderless until hover or focus. */
+textarea.task-detail-title,
+textarea.task-detail-description {
+  display: block;
+  width: 100%;
+  resize: none;
+  overflow: hidden;
+  border-color: transparent;
+  background: transparent;
+}
+
+textarea.task-detail-title {
+  margin: 0 0 var(--s-2) calc(-1 * var(--s-2));
+  width: calc(100% + var(--s-2) * 2);
+  padding: var(--s-1) var(--s-2);
+  font-size: var(--fs-xl);
+  line-height: var(--lh-xl);
+  font-weight: 600;
+}
+
+textarea.task-detail-description {
+  min-height: 72px;
+  margin: var(--s-3) 0 0 calc(-1 * var(--s-2));
+  width: calc(100% + var(--s-2) * 2);
+  padding: var(--s-2);
+  font-size: var(--fs-base);
+  line-height: var(--lh-md);
+}
+
+textarea.task-detail-title:hover,
+textarea.task-detail-description:hover {
+  background: var(--bg-hover);
+}
+
+.task-detail textarea.task-detail-title:focus-visible,
+.task-detail textarea.task-detail-description:focus-visible {
+  outline: none;
+  background: transparent;
+  border-color: var(--border);
+}
+
+/* Property list (Notion-like): muted label with an icon, then a borderless value. */
+.task-props {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-bottom: var(--s-3);
   border-bottom: 1px solid var(--border);
 }
 
-.task-detail-header h2 {
-  margin: 0;
-  font-size: var(--fs-md);
-  line-height: var(--lh-lg);
+.task-prop {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-items: start;
+  column-gap: var(--s-2);
+  min-height: var(--control);
 }
 
-.task-detail-form {
+.task-prop-label {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  min-height: var(--control);
+  gap: var(--s-2);
+  min-width: 0;
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  font-weight: 400;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-prop-label > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-prop-value {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: var(--s-1);
+  align-items: center;
+  min-height: var(--control);
   gap: var(--s-1);
-  padding: var(--s-4);
+  min-width: 0;
 }
 
-.task-detail-form label {
-  margin-top: var(--s-2);
+.task-prop-error {
+  grid-column: 2;
+  margin: 0 0 var(--s-1);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--danger);
 }
 
-.task-detail-form input,
-.task-detail-form textarea,
-.task-detail-form select {
+button.task-prop-button,
+.task-detail .task-prop-value input.task-prop-input,
+.task-detail select.task-prop-select {
+  min-height: var(--control-sm);
+  height: var(--control-sm);
+  padding: 0 var(--s-2);
+  font-weight: 400;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  box-shadow: none;
+}
+
+button.task-prop-button {
+  justify-content: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.task-prop-button:hover,
+.task-detail .task-prop-value input.task-prop-input:hover,
+.task-detail select.task-prop-select:hover {
+  background: var(--bg-hover);
+}
+
+.task-detail .task-prop-value input.task-prop-input:focus-visible,
+.task-detail select.task-prop-select:focus-visible {
+  background: var(--bg);
+  border-color: var(--border-strong);
+}
+
+.task-detail .task-prop-value input[type="date"].task-prop-input {
+  width: 132px;
+}
+
+.task-detail .task-prop-value input[type="datetime-local"].task-prop-input {
+  width: 188px;
+}
+
+.task-prop-button.is-empty,
+.task-prop-input.is-empty,
+.task-prop-select.is-empty {
+  color: var(--text-3);
+}
+
+.task-detail .task-prop-value input.task-prop-time {
+  width: 72px;
+}
+
+/* Typed, not picked: the clock icon would crowd the value in a 400px panel. */
+.task-prop-time::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+.task-detail .task-prop-value input.task-prop-text {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.task-prop-note {
+  margin-left: var(--s-1);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.task-prop-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.task-prop-priority.priority-low {
+  color: var(--text-2);
+}
+
+button.icon-button.task-prop-clear {
+  width: 24px;
+  min-height: 24px;
+  height: 24px;
+  opacity: 0;
+}
+
+.task-prop:hover .task-prop-clear,
+.task-prop-clear:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  button.icon-button.task-prop-clear {
+    opacity: 1;
+  }
+}
+
+/* Searchable time zone list, inline under its row. */
+.tz-picker {
+  flex-basis: 100%;
+  margin-top: var(--s-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+
+.task-detail .tz-picker input[type="text"] {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.task-detail .tz-picker input[type="text"]:focus-visible {
+  outline-offset: -2px;
+}
+
+.tz-list {
+  max-height: 220px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: var(--s-1);
+}
+
+.tz-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.tz-list li.is-active {
+  background: var(--bg-selected);
+}
+
+.tz-list li.tz-empty {
+  color: var(--text-3);
+  cursor: default;
+}
+
+/* Tags as #tag text chips, Notion-quiet. */
+.task-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1);
+  min-width: 0;
   width: 100%;
 }
 
-.task-detail-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--s-2) var(--s-3);
+.task-chip-list {
+  display: contents;
+  list-style: none;
+}
+
+.task-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  min-height: 22px;
+  padding: 0 0 0 var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-hover);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+
+button.task-chip-remove {
+  width: 18px;
+  min-height: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-3);
+}
+
+button.task-chip-remove:hover {
+  color: var(--text);
+  background: var(--bg-selected);
+}
+
+.task-detail .task-prop-value input.task-chip-input {
+  flex: 1;
+  min-width: 72px;
+  min-height: var(--control-sm);
+  height: var(--control-sm);
+  padding: 0 var(--s-2);
+  border-color: transparent;
+  background: transparent;
+}
+
+.task-detail .task-prop-value input.task-chip-input:hover {
+  background: var(--bg-hover);
 }
 
 .task-detail-hint {
   margin: 0;
   font-size: var(--fs-sm);
   line-height: var(--lh-sm);
-}
-
-.task-detail-actions,
-.task-detail-discard {
-  display: flex;
-  gap: var(--s-2);
-  align-items: center;
-  margin-top: var(--s-4);
-}
-
-.task-detail-conflict,
-.task-detail-discard,
-.task-detail-completion {
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: var(--s-2) var(--s-3);
+  color: var(--text-3);
 }
 
 .undo-toast {
@@ -2570,9 +2953,15 @@ button.menu-item .menu-chevron,
     bottom: calc(56px + var(--s-3));
   }
 
-  .task-detail {
+  .task-detail,
+  .task-detail.is-docked {
+    inset: 0;
     width: 100vw;
     border-left: none;
+  }
+
+  .task-prop {
+    grid-template-columns: 96px minmax(0, 1fr);
   }
 }
 
@@ -2712,7 +3101,7 @@ button.menu-item .menu-chevron,
   margin: var(--s-2) 0;
 }
 
-/* --- Repeat, subtasks and reminder in the task detail (MU-04) ---------- */
+/* --- Repeat, subtasks, reminder and notes in the task detail (MU-04, UX-04) --- */
 
 .task-repeat {
   border: none;
@@ -2721,6 +3110,10 @@ button.menu-item .menu-chevron,
   display: flex;
   flex-direction: column;
   gap: var(--s-1);
+}
+
+.task-repeat-preview {
+  margin-left: calc(104px + var(--s-2));
 }
 
 .task-repeat-preview ul,
@@ -2733,48 +3126,139 @@ button.menu-item .menu-chevron,
 .task-repeat-preview li {
   font-size: var(--fs-sm);
   line-height: var(--lh-sm);
+  color: var(--text-2);
+}
+
+.task-repeat > .task-detail-hint,
+.task-repeat > .task-prop-error {
+  margin-left: calc(104px + var(--s-2));
 }
 
 .task-detail-sections {
   display: flex;
   flex-direction: column;
-  gap: var(--s-3);
-  padding: 0 var(--s-4) var(--s-4);
+  gap: var(--s-5);
+  margin-top: var(--s-4);
+  padding-top: var(--s-3);
   border-top: 1px solid var(--border);
 }
 
-.task-detail-sections h3 {
-  margin: var(--s-3) 0 var(--s-1);
+.task-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: 600;
+  color: var(--text-3);
 }
 
-.task-detail-sections label {
-  margin-top: var(--s-2);
-}
-
-.task-detail-sections input[type="text"],
-.task-detail-sections input[type="number"],
-.task-detail-sections input[type="time"],
-.task-detail-sections select {
-  width: 100%;
+.task-section-count {
+  font-weight: 400;
 }
 
 .task-subtasks progress {
   width: 100%;
+  height: 4px;
+  margin-bottom: var(--s-2);
 }
 
 .task-subtask-list li {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  padding: var(--s-1) 0;
+  min-height: var(--control);
 }
 
-.task-subtask-list .task-title {
+button.task-subtask-title {
   flex: 1;
+  min-width: 0;
+  min-height: var(--control-sm);
+  justify-content: flex-start;
+  padding: 0 var(--s-1);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.task-subtask-title:hover {
+  background: var(--bg-hover);
+}
+
+button.task-subtask-title.done {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.task-subtask-list .task-subtask-remove {
+  opacity: 0;
+}
+
+.task-subtask-list li:hover .task-subtask-remove,
+.task-subtask-remove:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .task-subtask-list .task-subtask-remove {
+    opacity: 1;
+  }
 }
 
 .task-subtask-add {
-  margin-top: var(--s-2);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+}
+
+.task-detail .task-subtask-add input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.task-detail .task-subtask-add input[type="text"]:hover {
+  background: var(--bg-hover);
+}
+
+.task-reminder-custom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-2) var(--s-3);
+  margin: var(--s-2) 0;
+}
+
+.task-reminder-custom input {
+  width: 100%;
+}
+
+.task-reminder > .task-detail-hint {
+  margin-top: var(--s-1);
+}
+
+.task-notes ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.task-notes li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: var(--control);
+}
+
+.task-note-path {
+  font-size: var(--fs-sm);
 }
 
 /* --- Command palette (MU-05) ------------------------------------------- */
@@ -2878,12 +3362,6 @@ button.menu-item .menu-chevron,
 .search-results li {
   padding: var(--s-2) 0;
   border-bottom: 1px solid var(--border);
-}
-
-.task-notes ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
 }
 
 /* --- Settings and shell polish (MU-08) --------------------------------- */

@@ -1,13 +1,21 @@
 import type { Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
-import { dateIn, ensureOwner } from "./helpers";
+import {
+  chooseTaskProperty,
+  chooseTimeZone,
+  dateIn,
+  ensureOwner,
+  expectTaskSaved,
+  taskProperty,
+} from "./helpers";
 
 /**
  * MU-01 journey J1 — capture and plan (docs/ROADMAP.md, MU):
  * add "Buy milk" on Today, open it, set priority High and due tomorrow; it shows in Today
  * immediately after capture, moves to Upcoming after the date edit, survives a reload, and a stale
- * second-tab edit shows a conflict. Runs against the real API and a fresh database.
+ * second-tab edit shows a conflict. Runs against the real API and a fresh database. Since UX-04 the
+ * detail saves each property by itself (no Save button); specs wait for the "Saved" indicator.
  */
 const ZONE = "Europe/Stockholm";
 test.use({ timezoneId: ZONE, locale: "en-GB" });
@@ -38,20 +46,17 @@ test("J1: capture on Today, plan it for tomorrow, reload, and see a stale edit c
   await expect(dialog(page)).toBeVisible();
   await expect(dialog(page).getByLabel("Title")).toHaveValue(title);
   // The capture put the due date on today, as a date-only due (no time).
-  await expect(dialog(page).getByLabel("Due date")).toHaveValue(
+  await expect(dialog(page).getByLabel("Due date", { exact: true })).toHaveValue(
     dateIn(ZONE, 0),
   );
   await expect(dialog(page).getByLabel("Due time")).toHaveValue("");
 
   // Plan it: priority High, due tomorrow.
-  await dialog(page).getByLabel("Priority").selectOption("high");
-  await dialog(page).getByLabel("Due date").fill(tomorrow);
-  await dialog(page).getByRole("button", { name: "Save" }).click();
-  await expect(
-    dialog(page).getByRole("button", { name: "Save" }),
-  ).toBeDisabled();
+  await chooseTaskProperty(page, "Priority", "High");
+  await dialog(page).getByLabel("Due date", { exact: true }).fill(tomorrow);
+  await expect(dialog(page).getByRole("button", { name: "Save" })).toHaveCount(0);
 
-  // Esc closes and returns focus to the page; the task has left Today.
+  // Esc saves what is pending, closes and returns focus to the page; the task has left Today.
   await page.keyboard.press("Escape");
   await expect(dialog(page)).toBeHidden();
   await expect(
@@ -70,8 +75,8 @@ test("J1: capture on Today, plan it for tomorrow, reload, and see a stale edit c
 
   // The saved values persisted on the server.
   await page.getByRole("button", { name: `Open ${title}` }).click();
-  await expect(dialog(page).getByLabel("Priority")).toHaveValue("high");
-  await expect(dialog(page).getByLabel("Due date")).toHaveValue(tomorrow);
+  await expect(taskProperty(page, "Priority")).toContainText("High");
+  await expect(dialog(page).getByLabel("Due date", { exact: true })).toHaveValue(tomorrow);
   await page.keyboard.press("Escape");
 
   // A second tab opens the same task...
@@ -83,23 +88,20 @@ test("J1: capture on Today, plan it for tomorrow, reload, and see a stale edit c
   // ...the first tab edits and saves it...
   await page.getByRole("button", { name: `Open ${title}` }).click();
   await dialog(page).getByLabel("Title").fill(`${title} edited`);
-  await dialog(page).getByRole("button", { name: "Save" }).click();
-  await expect(
-    dialog(page).getByRole("button", { name: "Save" }),
-  ).toBeDisabled();
+  await dialog(page).getByLabel("Title").press("Enter");
+  await expectTaskSaved(page);
 
   // ...so the stale second tab gets a conflict, not a silent overwrite.
-  await dialog(other).getByLabel("Priority").selectOption("urgent");
-  await dialog(other).getByRole("button", { name: "Save" }).click();
+  await chooseTaskProperty(other, "Priority", "Urgent");
   await expect(other.getByText(/changed somewhere else/i)).toBeVisible();
-  await expect(dialog(other).getByLabel("Priority")).toHaveValue("urgent");
+  await expect(taskProperty(other, "Priority")).toContainText("Urgent");
   await dialog(other)
     .getByRole("button", { name: "Load latest version" })
     .click();
   await expect(dialog(other).getByLabel("Title")).toHaveValue(
     `${title} edited`,
   );
-  await expect(dialog(other).getByLabel("Priority")).toHaveValue("high");
+  await expect(taskProperty(other, "Priority")).toContainText("High");
   await other.close();
 });
 
@@ -118,16 +120,17 @@ test("J1: every field can be edited, saved and read back after a reload", async 
   await panel
     .getByLabel("Description")
     .fill("Book the venue\nand the catering");
-  await panel.getByLabel("Status").selectOption("in_progress");
-  await panel.getByLabel("Priority").selectOption("medium");
-  await panel.getByLabel("Due date").fill(dateIn(ZONE, 5));
+  await chooseTaskProperty(page, "Status", "In progress");
+  await chooseTaskProperty(page, "Priority", "Medium");
+  await panel.getByLabel("Due date", { exact: true }).fill(dateIn(ZONE, 5));
   await panel.getByLabel("Due time").fill("09:30");
-  await panel.getByLabel("Time zone").fill("Asia/Tokyo");
-  await panel.getByLabel("Start").fill(`${dateIn(ZONE, 2)}T08:15`);
-  await panel.getByLabel("Tags").fill("work, Offsite ,work");
-  await panel.getByRole("button", { name: "Save" }).click();
-  await expect(panel.getByRole("button", { name: "Save" })).toBeDisabled();
+  await chooseTimeZone(page, "Asia/Tokyo");
+  await panel.getByLabel("Start", { exact: true }).fill(`${dateIn(ZONE, 2)}T08:15`);
+  await panel.getByLabel("Add a tag").fill("work, Offsite ,work");
+  await panel.getByLabel("Add a tag").press("Enter");
+  await expectTaskSaved(page);
   await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
 
   // In-progress tasks leave the Inbox; find it on the Board, then reload and read everything back.
   await page.goto("/board");
@@ -137,15 +140,18 @@ test("J1: every field can be edited, saved and read back after a reload", async 
   await expect(panel.getByLabel("Description")).toHaveValue(
     "Book the venue\nand the catering",
   );
-  await expect(panel.getByLabel("Status")).toHaveValue("in_progress");
-  await expect(panel.getByLabel("Priority")).toHaveValue("medium");
-  await expect(panel.getByLabel("Due date")).toHaveValue(dateIn(ZONE, 5));
+  await expect(taskProperty(page, "Status")).toContainText("In progress");
+  await expect(taskProperty(page, "Priority")).toContainText("Medium");
+  await expect(panel.getByLabel("Due date", { exact: true })).toHaveValue(dateIn(ZONE, 5));
   await expect(panel.getByLabel("Due time")).toHaveValue("09:30");
-  await expect(panel.getByLabel("Time zone")).toHaveValue("Asia/Tokyo");
-  await expect(panel.getByLabel("Start")).toHaveValue(
+  await expect(taskProperty(page, "Time zone")).toContainText("Asia/Tokyo");
+  await expect(panel.getByLabel("Start", { exact: true })).toHaveValue(
     `${dateIn(ZONE, 2)}T08:15`,
   );
-  await expect(panel.getByLabel("Tags")).toHaveValue("Offsite, work");
+  await expect(panel.getByRole("list", { name: "Tags" }).getByRole("listitem")).toHaveText([
+    "#Offsite",
+    "#work",
+  ]);
 });
 
 test("J1: the server's validation message is shown verbatim and nothing is lost", async ({
@@ -160,14 +166,15 @@ test("J1: the server's validation message is shown verbatim and nothing is lost"
 
   const panel = dialog(page);
   await panel.getByLabel("Title").fill("");
-  await panel.getByRole("button", { name: "Save" }).click();
+  await panel.getByLabel("Title").blur();
   await expect(panel.getByRole("alert")).toContainText(
     "title: String should have at least 1 character",
   );
+  await expect(panel.getByLabel("Title")).toHaveValue("");
 
   await panel.getByLabel("Title").fill(title);
-  await panel.getByLabel("Time zone").fill("Mars/Olympus");
-  await panel.getByRole("button", { name: "Save" }).click();
+  await panel.getByLabel("Title").blur();
+  await chooseTimeZone(page, "Mars/Olympus");
   await expect(panel.getByRole("alert")).toContainText("time_zone");
   await expect(panel.getByRole("alert")).not.toContainText("Unprocessable");
 });
@@ -181,7 +188,8 @@ test("J1: a task can be deleted from the detail and the delete undone", async ({
   await page.getByLabel("Task title").fill(title);
   await page.getByRole("button", { name: "Add" }).click();
   await page.getByRole("button", { name: `Open ${title}` }).click();
-  await dialog(page).getByRole("button", { name: "Delete" }).click();
+  await dialog(page).getByRole("button", { name: "Task options" }).click();
+  await page.getByRole("menuitem", { name: "Delete task" }).click();
 
   await expect(dialog(page)).toBeHidden();
   await expect(

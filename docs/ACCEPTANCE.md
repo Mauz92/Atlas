@@ -3228,3 +3228,68 @@ Limitations: reopening lands in *In progress* (the server keeps no earlier statu
 old title in rows until it is listed again or the page reloads; search rows are read-only (the search API
 returns no revision); quick actions are not shown under `(hover: none)` (the menu has them); a keyboard `x`
 does not show the optimistic tick (the row updates on the server's answer).
+
+### UX-04 — Task detail as a property panel with per-field autosave
+
+**Result: `DONE` (local, 2026-11-03); CI job `e2e-real` `NOT RUN` on GitHub Actions; not committed.** The task
+detail is a calm property panel: an inline borderless title, property rows (Status, Priority, Due date + time,
+Start, Time zone, Project, Tags) whose values open the shared menu, a searchable time-zone list or an inline
+editor, an auto-growing description, then Repeat, Subtasks, Reminder and Linked notes. **There is no Save
+button**: each property saves itself through a per-task save session (`lib/taskAutosave.ts`, ADR-0053). Docked
+beside the list at ≥ 1280 px, an overlay with a scrim and a focus trap below that, a full-screen sheet on phones.
+Header: save indicator, "…" (*Copy link*, *Delete task* with undo), Close. No backend, schema or npm change; six
+vendored Lucide shapes (`DEPENDENCIES.md`).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| No Save button in the task detail | `PASS` | `TaskDetail.test.tsx` ("…has no Save button"), `ux04-task-panel.spec.ts` (`getByRole("button", { name: /^Save/ })` count 0 on the real stack); `TaskReminder` has no *Set reminder* button (`TaskReminder.test.tsx`) |
+| Every property persists without an extra click, verified after reload | `PASS` | `ux04-task-panel.spec.ts` test 1: title, priority (menu), due date, tags (Enter), description (typed) → Esc → reload → all read back in the panel and via `GET /api/tasks/{id}`; `j1-capture-and-plan.spec.ts` "every field…": title, description, status, priority, due date + time, time zone (searchable list), start, tags → reload on Board → all read back; MU-04 spec: repeat preset/custom rule and reminder |
+| Save requests never overlap for a task | `PASS` | `taskAutosave.test.ts` "never sends two requests at once…" (held fake server; `maxInFlight` = 1, `maxConcurrent` = 1, each request built on the revision the previous one returned, queued keystrokes coalesced into one PATCH); real stack: `ux04-task-panel.spec.ts` counts overlapping `PATCH /api/tasks/{id}` (request → finished) in tests 1 and 3: max 1 |
+| Stale edit → conflict UI, no overwrite | `PASS` | `ux04-task-panel.spec.ts` test 2 (two tabs: the stale tab's description edit shows *Conflict* + "changed somewhere else", keeps the local text, the server still has the first tab's title and no description; *Load latest version* shows the first tab's title, *Reapply my changes* then saves the description against the new revision); J1 test 1 (priority via the menu in the stale tab → conflict, value kept, Load latest → server values); unit: `taskAutosave.test.ts` (409 → no further sends, `flush()` false, stash only the changed values), `TaskDetail.test.tsx` |
+| Rapid typing then immediate close persists | `PASS` | `ux04-task-panel.spec.ts` test 3: `keyboard.type(…, { delay: 0 })` into the description and Esc at once → panel closes after the flush → API has the full text; switching to another row while the title is pending saves it first; delete while a title edit is pending saves it first, so Undo restores it |
+| Validation message verbatim, text kept | `PASS` | `ux04-task-panel.spec.ts` test 4 (empty title → blur → alert exactly "title: String should have at least 1 character", field stays empty, indicator *Not saved*, server title unchanged; Esc asks "Some changes are not saved yet: Title", *Keep editing*, fix, Esc → saved and closed); J1 validation test (title, and an unknown zone "Mars/Olympus" typed in the zone list → `time_zone` message, not "Unprocessable"); MU-04 (custom RRULE on blur, reminder days on blur) |
+| Escape closes and focus returns to the row | `PASS` | `ux04-task-panel.spec.ts` test 1 (`toBeFocused` on the opening row after Esc), `ux03-rows-and-menus.spec.ts` (unchanged, still passes), `TaskDetail.test.tsx` (Esc flushes then closes) |
+| Save/status indicator visible without scrolling at 900 px height | `PASS` | `ux04-task-panel.spec.ts` test 1 at 1440×900: `[data-save-state]` `toBeInViewport()`; it sits in the non-scrolling header (screenshots: same at 1024×768 and 390×844) |
+| List stays visible when docked at ≥ 1280 px | `PASS` | `ux04-task-panel.spec.ts` test 1: another row's right edge ≤ the panel's left edge, panel not `aria-modal`; screenshots at 1440 |
+| axe clean incl. panel states | `PASS` | `mu08-a11y-and-layout.spec.ts` now also checks the docked panel, its priority menu, the open time-zone list and the overlay at 1024 px (`aria-modal`): 0 violations (found and fixed during the work: `heading-order` after the panel lost its visible `h2` — a screen-reader-only "Task details" heading keeps the order). The sweep's timeout is raised to 90 s (it now runs ~30 s) |
+| J1–J7, tasks-page, ux02, ux03 and all real-stack specs pass | `PASS` | `npm run test:e2e:real` → `26 passed` (22 existing + 4 in `ux04-task-panel.spec.ts`). Selector changes only where the UI legitimately changed: J1 (no Save; priority/status via the property menu, zone via the searchable list, tags via "Add a tag", `exact` for "Due date"/"Start" because the new clear buttons contain those words, delete via "…" → *Delete task*); J3 (project via the property menu + wait for *Saved*); MU-04 (no Save/Set reminder; custom rule saved on blur/Enter, reminder on choice/blur); mu08 (panel states). J2, J4–J7, tasks-page, ux01–ux03 unchanged. New helpers in `e2e-real/helpers.ts` (`taskPanel`, `taskProperty`, `chooseTaskProperty`, `chooseTimeZone`, `expectTaskSaved`) |
+| Lean tests for the risky part | `PASS` | `lib/taskAutosave.test.ts` (18, fake timers + a fake revisioned server: debounce, serialisation + coalescing, one group per request, typed-back no-op, a kick right after an empty flush is not lost, flush on close/switch/pagehide with keepalive, 409 + load latest + reapply, 422 hidden while typing then verbatim on flush and not blocking other fields, offline then online, network failure re-sent with the same key, 5xx + Retry, focus keeps text, per-field adoption of the server-pinned zone, external adopt only when clean, hold mode, discard, registry keeps unsaved sessions and forgets deleted ones); `TaskDetail.test.tsx` (28, parametrized menu properties, repeat presets, zone queries, flush shortcuts; overlay focus trap and scrim) |
+| Mocked e2e | `PASS` | `npm run e2e` → `7 passed` |
+| Repository checks | `PASS` | `./scripts/verify.sh` → pytest `1053 passed`; eslint + scale check, `tsc`, vitest `623 passed` (66 files); `verification: PASS` (final run, after the last code change; real-stack `26 passed` and mocked `7 passed` re-run then too) |
+| No stray `atlas_e2e_*` databases; owner's stack untouched | `PASS` | `pg_database` lists no `atlas_e2e_*` after all runs (screenshots used the same harness with teardown); only the owner's API (826156), worker (826157) and Vite (826171) are running, never restarted; the owner's `atlas` database was not touched |
+| Screenshots reviewed | `PASS` (manual) | see below |
+| Other browsers, real phones, screen reader, 200 % zoom, forced colours; offline across a reload | `NOT RUN` | Chromium (desktop + mobile emulation) only. Offline is exercised with Playwright `setOffline` in the screenshot run and in unit tests, not in a committed real-stack spec |
+
+**Found and fixed during verification** (each with a regression unit test): (1) a send request arriving
+while the loop was finishing (blur-flush immediately followed by a menu choice) was stranded — the loop now
+re-runs; (2) after the first due-date save the server pinned the viewer's zone, but a time typed while that
+request was in flight later sent `time_zone: null` (J1 read back 10:30 instead of 09:30) — the server's answer
+is now adopted per field, keeping only fields the user changed since their request was built.
+
+**Screenshots** (throwaway real stack, the UX-03 fictional seed plus a long task with ten tags, a long
+description, a monthly repeat, Tokyo zone and two subtasks): panel docked at 1440×900, overlay at 1024×768,
+sheet at 390×844, light and dark; the priority menu open; the time-zone list searching "eu"; the indicator in
+*Saving…* (PATCH held by a route), *Saved*, *Conflict* (edited via the API underneath), *Offline — not saved*
+(`setOffline`) and *Not saved* (empty title); the long task scrolled (38 PNGs in the session scratchpad
+`ux04/shots`, not in the repository). Reviewed and iterated:
+- 1440: the list keeps its full width minus the 400 px panel; the panel has no shadow when docked, a hairline
+  left border, a 44 px header with a small grey "✓ Saved" on the left and two quiet icons on the right; a 24 px
+  bold title with no box; seven 32 px property rows with grey icon + label and plain values ("Empty" in grey
+  for unset ones, priority flag in amber/red for High/Urgent); tags are quiet grey `#tag` chips with a small ×;
+  the description reads as text; sections below have small grey headings.
+- 1024: the same panel over a dimmed scrim with a shadow; 390: a full-screen sheet, rows keep their two columns,
+  ten tags wrap in three lines.
+- States: *Saving…* with a spinning icon; *Conflict* in red with a red-tinted notice under the header ("…Your
+  edits were not saved (Description)" + Load latest version) while the edited text stays in the field;
+  *Offline — not saved* in amber with an amber notice (and the status bar's Offline); *Not saved* with the
+  server's message in red under the empty title.
+- Iterations from review: the title showed a heavy focus box on open (now a hairline border); tags rendered as
+  `##tag` (the row's `.task-tag::before` applied; chips got their own class); date/time/tag/subtask inputs
+  kept the base control border (selector specificity) and due date + time wrapped onto two lines (narrower
+  fields, the clock icon of the time field hidden); multi-line values (tags, the open zone list) centred their
+  label vertically (now top-aligned); "Reminder timing for this task" was truncated as a row label (now "When",
+  the select keeps that accessible name).
+
+Limitations: unsaved task edits survive closing and navigating within the tab but not a reload while offline
+(no local draft store for tasks); a save failing after its panel unmounted is shown when the task is reopened;
+mutations stay online-only (R-22); the native date/datetime fields show their placeholder format when empty.

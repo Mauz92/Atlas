@@ -4,7 +4,7 @@ import { useInRouterContext } from "react-router-dom";
 
 import { tasksApi, type Project, type Task } from "../api/client";
 import { RoutedTaskDetail } from "../components/RoutedTaskDetail";
-import { TaskDetail } from "../components/TaskDetail";
+import { TaskDetail, type TaskPanelHandle } from "../components/TaskDetail";
 import { UndoToast } from "../components/UndoToast";
 import { useTaskActions, type TaskActions } from "./useTaskActions";
 import { activeProjects, useProjects } from "./useProjects";
@@ -16,8 +16,10 @@ export interface TaskEditorOptions {
 }
 
 export interface TaskEditor {
-  /** Open the detail panel on a task (every list calls this). */
+  /** Open the detail panel on a task (every list calls this). An open panel saves first. */
   open: (task: Task) => void;
+  /** Open a task by id (the "Copy link" deep link, `/tasks?task=<id>`). */
+  openById: (id: string) => Promise<void>;
   /** Delete a task from a list row, offering undo. */
   remove: (task: Task) => Promise<void>;
   /** Row quick actions (UX-03): complete/reopen, schedule, priority, project, status, delete. */
@@ -43,6 +45,9 @@ export function useTaskEditor({
   const [deleted, setDeleted] = useState<Task | null>(null);
   const [error, setError] = useState<string | null>(null);
   const opener = useRef<HTMLElement | null>(null);
+  const panel = useRef<TaskPanelHandle | null>(null);
+  const selectedRef = useRef<Task | null>(null);
+  selectedRef.current = selected;
   const { projects, reload: reloadProjects } = useProjects();
   const routed = useInRouterContext();
 
@@ -53,11 +58,31 @@ export function useTaskEditor({
   }, [refresh, reloadProjects]);
 
   const open = useCallback((task: Task) => {
-    if (document.activeElement instanceof HTMLElement) {
-      opener.current = document.activeElement;
+    const from = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const show = () => {
+      if (from) opener.current = from;
+      setSelected(task);
+    };
+    // A docked panel on another task saves (or asks) before it switches (UX-04, ADR-0053).
+    const current = selectedRef.current;
+    if (current && current.id !== task.id && panel.current) {
+      panel.current.guard(show);
+    } else {
+      show();
     }
-    setSelected(task);
   }, []);
+
+  const openById = useCallback(
+    async (id: string) => {
+      setError(null);
+      try {
+        open(await tasksApi.get(id));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not open the task");
+      }
+    },
+    [open],
+  );
 
   const close = useCallback(() => {
     setSelected(null);
@@ -102,7 +127,21 @@ export function useTaskEditor({
 
   const dismissToast = useCallback(() => setDeleted(null), []);
 
-  const actions = useTaskActions({ refresh: refreshAll, timeZone, remove });
+  // A row action on the task the panel shows hands the panel the new version, which it adopts
+  // when it has nothing unsaved (otherwise its next save meets the revision check).
+  const refreshAfterRowAction = useCallback(async () => {
+    await refreshAll();
+    const current = selectedRef.current;
+    if (!current) return;
+    try {
+      const fresh = await tasksApi.get(current.id);
+      setSelected((shown) => (shown && shown.id === fresh.id ? fresh : shown));
+    } catch {
+      // Deleted or unreachable: the panel keeps what it has.
+    }
+  }, [refreshAll]);
+
+  const actions = useTaskActions({ refresh: refreshAfterRowAction, timeZone, remove });
   const filable = useMemo(() => activeProjects(projects), [projects]);
 
   // Outside a router (component tests of a single list) there is nowhere to navigate to.
@@ -112,6 +151,8 @@ export function useTaskEditor({
     <>
       {selected ? (
         <Detail
+          key={selected.id}
+          handle={panel}
           task={selected}
           timeZone={timeZone}
           projects={projects}
@@ -143,6 +184,7 @@ export function useTaskEditor({
 
   return {
     open,
+    openById,
     remove,
     actions,
     projects: filable,

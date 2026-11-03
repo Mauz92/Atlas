@@ -1,22 +1,38 @@
 # Current Task
 
-- Task ID: UX-04 (`READY`) — Task detail as a property panel with per-field autosave (ADR-0051 §4; UX_AUDIT §4.3)
-- Last completed: UX-03 (`DONE`, 2026-11-02, local verification; not committed). One `TaskRow` + shared `Menu`,
-  list keys, compact board cards with "Move to…", subtask parent context, completed tasks reopen from a checked
-  checkbox. Decisions: ADR-0052. Evidence: `docs/ACCEPTANCE.md` UX-03.
-- Before that: UX-02 (`DONE`, committed 00e00c5), UX-01 (`DONE`, d39c522), MU-08 (`DONE`, b921945).
+- Task ID: UX-05 (`BACKLOG`: write its plan first) — Notes workspace and note autosave (ADR-0051 §4; UX_AUDIT §4.3
+  "Notes"). Alternative: UX-07 (`READY`, Tasks/Projects/Board polish).
+- Last completed: UX-04 (`DONE`, 2026-11-03, local verification; not committed). Task detail is a property panel
+  that saves itself (no Save button). Decisions: ADR-0053. Evidence: `docs/ACCEPTANCE.md` UX-04.
+- Before that: UX-03 (`DONE`, committed d34450d), UX-02 (00e00c5), UX-01 (d39c522), MU-08 (b921945).
   CI `e2e-real` NOT RUN.
 - Milestone: UX — Design system and app shell (docs/ROADMAP.md "UX" section, ADR-0051, evidence in docs/UX_AUDIT.md)
-- Also `READY`: UX-07 (Tasks, Projects and Board polish; depends on UX-03).
 
-## Goal
-UX-04 per `docs/UX_AUDIT.md` §4.3 "Task detail" and §6: inline title, property rows with popovers (reuse
-`components/Menu.tsx` and `TaskMenu` entries where they fit), searchable time-zone select, auto-growing
-description; docked at ≥ 1280 px, overlay with scrim below, full-screen sheet on phones; focus trap and return.
-Owner decision (ADR-0051 §4): **autosave per field, no Save button**, every save with `base_revision`, a 409 never
-overwrites (keep the local value, show the conflict UI), saves serialised per task and idempotent. Acceptance:
-J1 incl. the stale-edit conflict, Esc closes and focus returns to the row, state indicator visible without
-scrolling at 900 px height, list visible when docked.
+## Goal (next)
+UX-05: write the plan in `ROADMAP.md` (then `READY`). Note autosave is a data-integrity feature (ADR-0051 §4
+consequences): own tests first (rapid typing, offline, 409 mid-typing, tab close, reload with a local draft),
+then remove the Notes **Save** button. Reuse the ADR-0053 pattern (one save session per document, serialised,
+coalesced, revision-chained, same idempotency key on unknown outcomes, conflict = no overwrite, flush on
+blur/close/navigate/pagehide). Notes differ: one text field (no groups), Markdown files are authoritative, and a
+local draft must survive reload (tasks do not have one).
+
+## UX-04 conventions to keep
+- The task panel saves through `lib/taskAutosave.ts` (`TaskAutosave` session per task, registry keeps unsaved
+  sessions after unmount) bound by `hooks/useTaskAutosave.ts`; the panel is keyed by task id. Do not call
+  `tasksApi.update` from the panel directly. Edit modes: `now` (menus), `debounce` (text, 600 ms + blur flush),
+  `hold` (custom RRULE: only on blur/Enter).
+- Leaving the panel goes through its guard (flush, else ask): close, switching task (`useTaskEditor.open` uses
+  the `handle` ref), opening a subtask/parent/next occurrence/note, delete.
+- Accessible names e2e relies on: dialog `Task details`; property buttons start with their label (`Status …`,
+  `Priority …`, `Project …`, `Time zone …`); inputs `Title`, `Description`, `Due date`, `Due time`, `Start`
+  (use `exact: true` — the clear buttons are `Clear due date` / `Clear start`), `Add a tag`, list `Tags`,
+  `Remove tag <tag>`, combobox `Search time zones`; header `Task options` (menu: `Copy link`, `Delete task`),
+  `Close`; indicator `[data-save-state]` (`saved|saving|unsaved|invalid|offline|failed|conflict`), not
+  `role="status"`. Helpers in `e2e-real/helpers.ts`: `taskPanel`, `taskProperty`, `chooseTaskProperty`,
+  `chooseTimeZone`, `expectTaskSaved`.
+- Breakpoint 1280 px (`DOCKED` in `TaskDetail.tsx`, `@media (min-width: 1280px)` + `:root[data-task-panel]` in
+  `styles.css`): docked and non-modal above, modal overlay with scrim below, full sheet ≤ 720 px.
+- `/tasks?task=<id>` opens a task once (Copy link).
 
 ## UX-03 conventions to keep
 - Every task list renders `TaskList` → `TaskRow`; actions come from `useTaskEditor(...).actions`
@@ -58,12 +74,12 @@ scrolling at 900 px height, list visible when docked.
 3. Optional: fix the pre-existing dev-only `minimatch` advisory (`npm audit --include=dev`, RISKS.md).
 
 ## Recommended next task
-UX-04 (task detail property panel with autosave). Alternatively UX-07 (Tasks/Projects/Board polish). Separately the
-owner may still choose to close MU (items 1-2 above) or resume calendar with M5-00, which needs real
-Google/Microsoft accounts (AR-001) and is blocked until provided.
+UX-05 (write its plan first; notes autosave and removal of the Notes Save button). Alternatively UX-07 (`READY`).
+Separately the owner may still close MU (items 1-2 above) or resume calendar with M5-00 (blocked on real
+Google/Microsoft accounts, AR-001).
 
 ## Notes for the next session
-- Verification: `./scripts/verify.sh`; `cd apps/web && npm run test:e2e:real` (22 tests, real API + throwaway DB,
+- Verification: `./scripts/verify.sh`; `cd apps/web && npm run test:e2e:real` (26 tests, real API + throwaway DB,
   see `docs/TESTING.md` §1b); `npm run e2e` (7 mocked). No `atlas_e2e_*` database is left on the dev PostgreSQL.
 - Journeys share one owner: a spec that changes the owner's name, password or reminder default must restore it (J7 does).
 - No user time-zone setting exists (ADR-0049); "today" is the browser's zone.
@@ -73,6 +89,8 @@ Google/Microsoft accounts (AR-001) and is blocked until provided.
 - UX-03 limitations: reopening lands in *In progress*; a renamed parent keeps its old title in rows until
   re-listed/reloaded; search rows are read-only; quick actions hidden under `(hover: none)`; lists span the full
   main width (no max width).
+- UX-04 limitations: unsaved task edits do not survive a reload while offline (no task draft store); a save
+  failing after its panel unmounted shows when the task is reopened; the mu08 axe sweep has a 90 s timeout.
 - Known limitations carried forward: UI mutations are online-only (R-22); a due time of exactly 23:59 reads as "end
   of day"; no project delete in the UI; Tasks page sorts client-side over the first 500 matches (ADR-0045);
   an occurrence of a repeating series shows its rule read-only (ADR-0046); search matches word prefixes only and the

@@ -120,3 +120,37 @@ export function dateIn(timeZone: string, days = 0): string {
   const [y, m, d] = today.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + days, 12)).toISOString().slice(0, 10);
 }
+
+/** The task detail panel (UX-04). */
+export function taskPanel(page: Page) {
+  return page.getByRole("dialog", { name: "Task details" });
+}
+
+/** A property's value button in the task detail ("Priority High", "Status Inbox", …). */
+export function taskProperty(page: Page, name: string) {
+  return taskPanel(page).getByRole("button", { name: new RegExp(`^${name}\\b`) });
+}
+
+/** Choose a value of a menu property (status, priority, project); it saves by itself. */
+export async function chooseTaskProperty(page: Page, name: string, option: string) {
+  await taskProperty(page, name).click();
+  await page.getByRole("menuitemradio", { name: option, exact: true }).click();
+}
+
+/** Pick a time zone through the searchable list (Enter takes the best match or the typed name). */
+export async function chooseTimeZone(page: Page, query: string) {
+  await taskProperty(page, "Time zone").click();
+  const search = page.getByRole("combobox", { name: "Search time zones" });
+  await search.fill(query);
+  const exact = page.getByRole("option", { name: query, exact: true });
+  const typed = page.getByRole("option", { name: `Use “${query}”` });
+  await exact.or(typed).first().click();
+}
+
+/** Autosave settled: the header indicator says Saved (there is no Save button since UX-04). */
+export async function expectTaskSaved(page: Page) {
+  await expect(taskPanel(page).locator("[data-save-state]")).toHaveAttribute(
+    "data-save-state",
+    "saved",
+  );
+}

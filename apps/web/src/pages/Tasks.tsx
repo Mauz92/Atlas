@@ -64,6 +64,16 @@ export function Tasks() {
     useTaskQuery(filter);
   const timeZone = useMemo(() => viewerTimeZone(), []);
   const editor = useTaskEditor({ refresh, timeZone });
+  // "Copy link" in the task detail points here: `/tasks?task=<id>` opens that task once.
+  const linked = params.get("task");
+  useEffect(() => {
+    if (!linked) return;
+    void editor.openById(linked);
+    const next = new URLSearchParams(params);
+    next.delete("task");
+    setParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linked]);
   const { projects } = useProjects();
   const projectsById = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),

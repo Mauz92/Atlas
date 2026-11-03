@@ -98,6 +98,17 @@ export interface RequestOptions extends RequestInit {
   idempotencyKey?: string;
 }
 
+/**
+ * Options for a task `PATCH` from the autosaving task detail (UX-04, ADR-0053): a retry of a
+ * request whose outcome is unknown re-sends the same body under the **same** key, so the server
+ * replays its stored answer instead of applying the change twice; `keepalive` lets a save started
+ * while the page is being hidden finish after it unloads.
+ */
+export interface TaskUpdateOptions {
+  idempotencyKey?: string;
+  keepalive?: boolean;
+}
+
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { idempotencyKey, ...init } = options;
   const headers = new Headers(init.headers);
@@ -333,11 +344,12 @@ export const tasksApi = {
    * rejected with `409` instead of overwriting a newer one; the server validates every value and
    * the transition rules, and its message is surfaced verbatim.
    */
-  update: (task: Task, changes: TaskFields) =>
+  update: (task: Task, changes: TaskFields, options: TaskUpdateOptions = {}) =>
     apiFetch<Task>(`/api/tasks/${task.id}`, {
       method: "PATCH",
       body: JSON.stringify({ ...changes, base_revision: task.revision }),
-      idempotencyKey: newIdempotencyKey(),
+      idempotencyKey: options.idempotencyKey ?? newIdempotencyKey(),
+      ...(options.keepalive ? { keepalive: true } : {}),
     }),
   /**
    * Move a task to another status (M4-03 board). Carries the task's `base_revision` so a stale

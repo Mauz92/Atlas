@@ -4,7 +4,7 @@ import { tasksApi, type NoteSummary } from "../api/client";
 
 interface TaskNotesProps {
   taskId: string;
-  /** Open a note (disabled while the task has unsaved edits, as the panel closes on navigation). */
+  /** Open a note (the panel saves the task's edits first, then closes and navigates). */
   onOpen: (noteId: string) => void;
   openDisabled?: boolean;
 }
@@ -49,9 +49,9 @@ export function TaskNotes({ taskId, onOpen, openDisabled = false }: TaskNotesPro
 
   return (
     <section className="task-notes" aria-label="Linked notes">
-      <h3>Linked notes</h3>
+      <h3 className="task-section-title">Linked notes</h3>
       {notes !== null && notes.length === 0 ? (
-        <p className="muted">
+        <p className="task-detail-hint">
           No linked notes. Select text in a note and choose “Task from selection”.
         </p>
       ) : null}
@@ -68,10 +68,10 @@ export function TaskNotes({ taskId, onOpen, openDisabled = false }: TaskNotesPro
               >
                 {note.title || note.path}
               </button>{" "}
-              <span className="muted">{note.path}</span>{" "}
+              <span className="muted task-note-path">{note.path}</span>{" "}
               <button
                 type="button"
-                className="ghost"
+                className="ghost task-note-unlink"
                 aria-label={`Unlink note ${note.path}`}
                 onClick={() => void unlink(note)}
               >

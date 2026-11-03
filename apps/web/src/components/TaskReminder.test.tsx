@@ -46,7 +46,8 @@ describe("TaskReminder", () => {
       target: { value: choice === "default" ? "1w-9am" : "default" },
     });
     fireEvent.change(select, { target: { value: choice } });
-    fireEvent.click(screen.getByRole("button", { name: "Set reminder" }));
+    // Saved as soon as it is chosen (UX-04): no button.
+    expect(screen.queryByRole("button", { name: "Set reminder" })).toBeNull();
     await waitFor(() =>
       expect(notificationsApi.setTaskReminder).toHaveBeenCalledWith(
         "t1",
@@ -64,13 +65,16 @@ describe("TaskReminder", () => {
     fireEvent.change(screen.getByLabelText("Reminder timing for this task"), {
       target: { value: "custom" },
     });
+    // Choosing "Custom…" only reveals the fields; leaving one saves what was typed.
+    expect(notificationsApi.setTaskReminder).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("Days before"), {
       target: { value: "99" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Set reminder" }));
+    fireEvent.blur(screen.getByLabelText("Days before"));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "less than or equal to 30",
     );
+    expect(screen.getByLabelText("Days before")).toHaveValue(99);
     expect(notificationsApi.setTaskReminder).toHaveBeenCalledWith("t1", {
       days_before: 99,
       at_time: "09:00",

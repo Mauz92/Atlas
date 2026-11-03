@@ -175,6 +175,20 @@ Cover, at minimum:
   first moves earlier specs' Inbox leftovers to *Next* (the database is shared per run). The axe sweep
   (`mu08-a11y-and-layout.spec.ts`) also checks the open row menu and its date dialog. Unit tests open menus with
   `choose(trigger, ...items)` / `menuItem(name)` from `src/test/menu.ts`.
+- Task detail autosave (UX-04, ADR-0053): `src/lib/taskAutosave.test.ts` is the risky part — the save session
+  against a fake revisioned server with fake timers (debounce, never two requests in flight, coalescing,
+  revision chaining, one property group per request, flush points incl. `keepalive`, 409 → conflict with no
+  further sends and set-aside values, 422 held while typing then verbatim, offline/online, unknown outcomes
+  re-sent with the same idempotency key, per-field adoption of the server's answer, registry). The panel:
+  `src/components/TaskDetail.test.tsx` (parametrized menu properties, repeat presets and zone queries; Esc
+  flushes then closes; unsaved close asks; delete flushes first; overlay focus trap and scrim).
+  `e2e-real/ux04-task-panel.spec.ts` (real stack, 1440×900): every property via the UI then reload, no Save
+  button, indicator in view, list visible beside the docked panel, Esc returns focus, overlapping `PATCH`es
+  counted (max 1); two-tab stale edit → conflict, server unchanged, load latest + reapply; rapid type + Esc,
+  switch task and delete while pending; validation verbatim and close-with-unsaved. Specs wait for the
+  panel's *Saved* indicator (`expectTaskSaved` in `e2e-real/helpers.ts`) instead of clicking Save; property
+  menus via `chooseTaskProperty`, zones via `chooseTimeZone`. The axe sweep also covers the panel's menu,
+  zone list and overlay.
 
 ## 5. Calendar Adapter Tests
 

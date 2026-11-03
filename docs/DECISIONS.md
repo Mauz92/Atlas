@@ -2386,3 +2386,80 @@ status before completion (the server keeps no history to restore); a renamed par
 rows until it is listed again or the page reloads; quick actions cover the end of the meta while shown; Week's
 narrow day columns hide the quick actions (menu only); the board's `[`/`]` keys and drag-and-drop changes are
 UX-07.
+
+## ADR-0053 — Task detail autosave: one save session per task, serialised per-group PATCHes (UX-04)
+
+**Status:** Accepted (2026-11-03, implements the owner's decision ADR-0051 §4 for the task detail; UI-only,
+no backend, schema or dependency change). **Source:** `UX_AUDIT.md` §3.4, §4.3, §6 (UX-04).
+
+**Context.** The task detail had one form and a Save button: all edits went out in one `PATCH` with the task's
+`base_revision`, a `409` showed "Load latest version". ADR-0051 §4 removes the Save button: every property must
+save itself, and the safety rules of AGENTS.md §8/§9 must hold (no overwrite of a newer revision, no silent
+loss, idempotent, never two overlapping requests for one document). Per-field saving raises request volume and
+makes the order of requests and the revision bookkeeping the core of the feature, so it lives in a small pure
+module with its own tests rather than in the component.
+
+**Decisions.**
+1. **One save session per task** (`apps/web/src/lib/taskAutosave.ts`, `TaskAutosave`). It holds the last
+   version the server confirmed (`task`, whose revision is the next `base_revision`), what the fields show
+   (`draft`), the unsaved property groups and the indicator state. The panel binds to it with
+   `hooks/useTaskAutosave.ts` (`useSyncExternalStore`); the panel is keyed by task id, so each task has its own.
+2. **Property groups, one group per request.** Groups: title, description, status, priority, *schedule* (due
+   date, due time, time zone and start travel together because they jointly define the instants, as
+   `changesFromDraft` already required), tags, project, repeat. A `PATCH` carries exactly one group, so a `422`
+   names the field that caused it and an invalid field never blocks the others.
+3. **Serialised, coalesced, revision-chained.** One send loop per session; never two requests in flight for a
+   task (asserted by unit tests and by counting overlapping `PATCH`es in the real-stack spec). The body is
+   computed from the draft **at send time** against the latest confirmed version, so keystrokes queued behind a
+   request become one `PATCH` with the newest text, and each request uses the revision the previous answer
+   returned (no self-conflicts). An edit typed back to the server's value sends nothing. A new idempotency key
+   per request.
+4. **When things are sent.** Menu choices (status, priority, project, time zone, a repeat preset, adding or
+   removing a tag) at once. Text (title, description, due date/time, start) after a 600 ms pause and
+   immediately on blur, Enter in the title, closing the panel, opening another task (from the list while
+   docked, a subtask, the parent, the next occurrence, a linked note), delete, `pagehide` and
+   `visibilitychange → hidden` (with `fetch keepalive`), and Ctrl/⌘ Enter or Ctrl/⌘ S. A custom RRULE is sent
+   only on blur/Enter (a half-typed rule is never sent). The reminder override (its own endpoint, M8-05) saves
+   when chosen; a custom timing when a field is left.
+5. **Adopting the server's answer per field.** After a save every field takes the server's value (for example
+   the zone the server pins when a due date is first set), except fields the user changed since their group's
+   request was built and the field that has focus (a save never rewrites text under the cursor). A newer copy
+   of the task from outside the panel (a row action on the same task) is adopted only when nothing is pending;
+   otherwise the next save meets the revision check.
+6. **Failures never drop an edit.**
+   - `409` with `current_revision` → **conflict**: nothing more is sent, the local values stay in the fields,
+     the header says *Conflict* and the MU-01 notice offers **Load latest version**. Loading shows the server's
+     version and sets the user's changed values aside (only those that differ), offered as **Reapply my
+     changes** (saved against the new revision, an explicit choice) or **Dismiss**. No silent last-write-wins.
+   - `422`, a refused transition (`409` without a revision), `404` and other client errors → the field keeps
+     its text and shows the server's message verbatim; it is not re-sent until it is edited again. An error
+     from a pause in typing is held back until the field is left or flushed (no error spam while typing an
+     intermediate value); errors from menu choices show at once.
+   - Network failure or `5xx`/`408`/`429` → outcome unknown: the exact request (same body, same
+     `base_revision`, **same idempotency key**) is kept and re-sent on the next edit, flush, **Retry** or the
+     `online` event, so a request that did reach the server is replayed, not applied twice. With the browser
+     offline nothing is sent and the header says *Offline — not saved* (mutations stay online-only, R-22).
+7. **Leaving with unsaved edits asks first.** Close, switching task and delete flush first and proceed only if
+   everything is confirmed; otherwise the panel stays with "Some changes are not saved yet: …" and **Keep
+   editing** / **Discard and close|switch|delete**. Discarding is the only way an edit is thrown away.
+8. **Sessions outlive the panel while unsaved.** A module-level registry keeps a session with unsaved edits
+   after its panel unmounts (navigation, a page-owned panel going away); reopening the task shows the unsaved
+   values and the state; the `online`/`pagehide` handlers flush every live session. A clean session is dropped
+   on release (deferred a microtask so a StrictMode remount keeps it). Delete forgets the session after the
+   flush (undo restores the server's version, which already has the edits).
+9. **Indicator** in the panel header, always visible: *Saved*, *Saving…*, *Not saved yet* (held text), *Not
+   saved* (rejected), *Offline — not saved*, *Couldn't save* (+ Retry), *Conflict*. It is `aria-live="polite"`,
+   not `role="status"` (pages own that role and specs use it unscoped).
+10. **Layout.** ≥ 1280 px the panel docks (400 px) beside the page, which gets a right margin
+    (`:root[data-task-panel="docked"]`), so the list stays visible and usable; the panel is non-modal and Esc
+    closes from anywhere. Below 1280 px it is a modal overlay with a scrim (click closes) and a focus trap;
+    ≤ 720 px a full-screen sheet. Focus returns to the row that opened it. The "…" menu (*Task options*) has
+    *Copy link* (`/tasks?task=<id>`, opened once by the Tasks page) and *Delete task* (with undo).
+
+**Consequences.** More requests than before (one per group change, bounded by the debounce); acceptable for a
+single-user self-hosted instance. `tasksApi.update` gained optional `idempotencyKey`/`keepalive`. No backend
+change was needed. Limitations: unsaved task edits survive closing and navigation within the tab but not a
+reload while offline or a crash (no local draft store for tasks; notes get theirs in UX-05); a save that fails
+after its panel unmounted is shown only when the task is reopened; the time-zone list comes from
+`Intl.supportedValuesOf` (a zone it lacks can still be typed and is validated by the server); mutations remain
+online-only (R-22).

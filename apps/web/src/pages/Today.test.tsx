@@ -284,13 +284,16 @@ describe("Today", () => {
     );
 
     const dialog = await screen.findByRole("dialog", { name: "Task details" });
-    fireEvent.change(within(dialog).getByLabelText("Priority"), {
-      target: { value: "high" },
-    });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    // Autosave (UX-04): choosing a priority saves it, no Save button.
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Priority/ }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "High" }));
 
     await waitFor(() =>
-      expect(updateMock).toHaveBeenCalledWith(task, { priority: "high" }),
+      expect(updateMock).toHaveBeenCalledWith(
+        task,
+        { priority: "high" },
+        expect.objectContaining({ idempotencyKey: expect.any(String) }),
+      ),
     );
     await waitFor(() => expect(viewCalls()).toBe(2));
   });

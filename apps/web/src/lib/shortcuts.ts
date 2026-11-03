@@ -47,7 +47,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   },
   {
     title: "Task details",
-    items: [{ keys: "Ctrl/⌘ Enter", action: "Save the open task" }],
+    items: [{ keys: "Ctrl/⌘ Enter", action: "Save the open task now (it also saves by itself)" }],
   },
 ];
 

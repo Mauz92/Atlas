@@ -63,7 +63,8 @@ in this browser and follows your system preference until you change it.
 
 Press **?** (when you are not typing in a field) or choose **Keyboard shortcuts** in the palette to see
 them (also **Shortcuts** in the status bar). The main ones: **Ctrl/⌘ K** opens the palette, **Ctrl/⌘ B**
-shows or hides the sidebar, **Esc** closes a panel or menu, **Enter** on a task opens it, **Ctrl/⌘ Enter** saves it.
+shows or hides the sidebar, **Esc** closes a panel or menu, **Enter** on a task opens it (the task panel saves
+by itself; **Ctrl/⌘ Enter** just saves at once).
 In task lists: **j**/**k** move, **x** completes (selects, on the Tasks page), **t** today, **m** project,
 **p** priority (see *The views* below).
 
@@ -158,6 +159,33 @@ Every list view (Today, Inbox) has a capture box: type a title and press **Add**
 immediately (on Today it is due today). Press **Enter** on a task title to open it and edit everything about
 it.
 
+### The task panel
+
+Opening a task shows its panel: the title at the top (click it to edit), then its properties — **Status**,
+**Priority**, **Due** (a date, and optionally a time; without a time it is due by the end of that day),
+**Start**, **Time zone**, **Project** and **Tags** — then the description, **Repeat**, **Subtasks**,
+**Reminder** and **Linked notes**. Click a value to change it: status, priority and project open a small menu;
+the time zone opens a list you can search (type *tokyo*, press Enter); tags are added by typing and pressing
+Enter or a comma, and removed with their ×.
+
+**Everything saves by itself; there is no Save button.** A choice saves at once; text saves after a short pause
+and whenever you leave the field, close the panel, open another task or leave the page. The top of the panel
+says *Saving…*, *Saved*, *Offline — not saved* or *Conflict*:
+- **Conflict** — the task was changed elsewhere (another tab or device) since you opened it. Nothing is
+  overwritten and your values stay visible. **Load latest version** shows the newer version and keeps your
+  changes aside; **Reapply my changes** saves them on top, **Dismiss** drops them.
+- **Not saved** — Atlas rejected a value (for example an empty title); the reason is shown under the field and
+  your text stays until you fix it.
+- **Offline — not saved** — your changes stay in the panel and are saved when the connection is back. Task
+  changes need a connection (they are not queued across a reload).
+If you close the panel (or open another task) while something is not saved, Atlas asks whether to keep
+editing or discard it.
+
+On a wide screen (1280 px and up) the panel sits beside the list, so you can keep working in the list and open
+another task with one click. On smaller screens it opens over the page (Esc or a click outside closes it), and
+on a phone it fills the screen. **…** at the top has **Copy link** (opens this task on the Tasks page) and
+**Delete task** (with **Undo**).
+
 ### The views
 
 - **Today** — *Overdue*, *Due today*, *Scheduled today* (work that starts today), today's note and an
@@ -200,7 +228,8 @@ Business rule and rationale: `ROADMAP.md` M4-03 (ADR-0022).
 - Change a repeating task's rule or stop the series from an occurrence (the rule is shown read-only).
 - Link an existing task to a note (a task links to a note when it is created from that note).
 - Delete a project (you can archive it).
-- Edit anything while offline: task and project changes need a connection; notes use the Sync page's queue.
+- Edit anything while offline: task and project changes need a connection (the task panel keeps unsaved
+  changes until it is back online, but not across a reload); notes use the Sync page's queue.
 
 ---
 

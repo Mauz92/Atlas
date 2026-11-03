@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
-import { apiCall, dateIn, ensureOwner } from "./helpers";
+import { apiCall, chooseTaskProperty, dateIn, ensureOwner, expectTaskSaved } from "./helpers";
 
 /**
  * MU-04 — recurrence, subtasks and reminders in the task detail (docs/ROADMAP.md, MU). Real API
@@ -14,8 +14,6 @@ test.use({ timezoneId: ZONE, locale: "en-GB" });
 
 const panel = (page: Page) =>
   page.getByRole("dialog", { name: "Task details" });
-const save = (page: Page) =>
-  panel(page).getByRole("button", { name: "Save", exact: true });
 
 async function openTask(page: Page, title: string) {
   await page.goto(`/tasks?q=${encodeURIComponent(title)}`);
@@ -55,16 +53,21 @@ test("repeat: server preview and validation, completing shows the next occurrenc
       .getByRole("listitem"),
   ).toHaveCount(5);
 
-  // A bad custom rule shows the server's message as is and cannot be saved.
+  // The preset saved by itself (UX-04 autosave).
+  await expectTaskSaved(page);
+
+  // A bad custom rule shows the server's message as is; it is sent only when the field is left,
+  // and the typed text stays.
   await panel(page).getByLabel("Repeat").selectOption("custom");
   await panel(page).getByLabel("Custom rule").fill("FREQ=SOMETIMES");
   await expect(panel(page).getByRole("alert")).toContainText(
     "invalid recurrence rule",
   );
-  await save(page).click();
+  await panel(page).getByLabel("Custom rule").blur();
   await expect(
     panel(page).getByRole("alert").filter({ hasText: "recurrence_rule" }),
   ).toContainText("invalid recurrence rule");
+  await expect(panel(page).getByLabel("Custom rule")).toHaveValue("FREQ=SOMETIMES");
 
   // A bounded custom rule saves and survives a reload.
   await panel(page).getByLabel("Custom rule").fill("FREQ=DAILY;COUNT=2");
@@ -73,8 +76,8 @@ test("repeat: server preview and validation, completing shows the next occurrenc
       .getByRole("list", { name: "Next occurrences" })
       .getByRole("listitem"),
   ).toHaveCount(2);
-  await save(page).click();
-  await expect(save(page)).toBeDisabled();
+  await panel(page).getByLabel("Custom rule").press("Enter");
+  await expectTaskSaved(page);
   await openTask(page, title);
   await expect(panel(page).getByLabel("Repeat")).toHaveValue("custom");
   await expect(panel(page).getByLabel("Custom rule")).toHaveValue(
@@ -82,15 +85,14 @@ test("repeat: server preview and validation, completing shows the next occurrenc
   );
 
   // Completing it completes only this occurrence; the next one is shown and opens.
-  await panel(page).getByLabel("Status").selectOption("completed");
-  await save(page).click();
+  await chooseTaskProperty(page, "Status", "Completed");
   await expect(
     panel(page).getByText(/Completed\. Next occurrence:/),
   ).toBeVisible();
   await panel(page)
     .getByRole("button", { name: "Open next occurrence" })
     .click();
-  await expect(panel(page).getByLabel("Due date")).toHaveValue(dateIn(ZONE, 3));
+  await expect(panel(page).getByLabel("Due date", { exact: true })).toHaveValue(dateIn(ZONE, 3));
   await expect(panel(page).getByLabel("Repeat")).toBeDisabled();
   const open = await apiCall<{ tasks: { status: string }[] }>(
     page,
@@ -103,8 +105,7 @@ test("repeat: server preview and validation, completing shows the next occurrenc
   ]);
 
   // COUNT=2: completing the second occurrence ends the series.
-  await panel(page).getByLabel("Status").selectOption("completed");
-  await save(page).click();
+  await chooseTaskProperty(page, "Status", "Completed");
   await expect(
     panel(page).getByText(/last occurrence of the series/),
   ).toBeVisible();
@@ -150,8 +151,8 @@ test("subtasks with progress and a per-task reminder override", async ({
   // Reminder override: a preset, a server-rejected custom value, then back to the default.
   const reminder = panel(page).getByRole("region", { name: "Reminder" });
   const timing = reminder.getByLabel("Reminder timing for this task");
+  // UX-04: a choice saves itself; custom values save when a field is left.
   await timing.selectOption("1d-9am");
-  await reminder.getByRole("button", { name: "Set reminder" }).click();
   await expect(reminder.getByRole("status")).toContainText(
     "1 day before at 09:00",
   );
@@ -159,7 +160,7 @@ test("subtasks with progress and a per-task reminder override", async ({
 
   await timing.selectOption("custom");
   await reminder.getByLabel("Days before").fill("99");
-  await reminder.getByRole("button", { name: "Set reminder" }).click();
+  await reminder.getByLabel("Days before").blur();
   await expect(reminder.getByRole("alert")).toContainText("days_before");
 
   await page.reload();
@@ -172,7 +173,6 @@ test("subtasks with progress and a per-task reminder override", async ({
   await panel(page)
     .getByLabel("Reminder timing for this task")
     .selectOption("default");
-  await panel(page).getByRole("button", { name: "Set reminder" }).click();
   await expect(
     panel(page).getByRole("region", { name: "Reminder" }).getByRole("status"),
   ).toContainText("No reminder");

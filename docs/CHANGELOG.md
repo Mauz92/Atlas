@@ -6,6 +6,21 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Changed (UX-04): **the task panel saves by itself — there is no Save button.** The panel is now a calm
+  list of properties: a large title you edit in place, then Status, Priority, Due (date and time), Start, Time
+  zone, Project and Tags, then the description, Repeat, Subtasks, Reminder and Linked notes. Choices from a
+  menu save at once; text saves after a short pause and whenever you leave the field, close the panel, open
+  another task or leave the page. The top of the panel says **Saving…**, **Saved**, **Offline — not saved** or
+  **Conflict**. If the task was changed somewhere else, nothing is overwritten: your values stay, and **Load
+  latest version** shows the newer one with your changes set aside to **Reapply** or dismiss. If Atlas rejects a
+  value (for example an empty title), its message appears under the field and your text stays. Closing with an
+  unsaved change asks first. The time zone is chosen from a searchable list. Tags are chips: type and press
+  Enter (or a comma) to add, × to remove. A reminder applies as soon as you choose it. On a wide screen
+  (1280 px and up) the panel sits beside the list, which stays usable; on smaller screens it opens over the page
+  (Esc or a click outside closes it) and on a phone it fills the screen. **…** in the panel has **Copy link**
+  and **Delete task** (with Undo). Ctrl/⌘ Enter still works and simply saves at once. Notes keep their **Save**
+  button until UX-05.
+
 - Changed (UX-03): **calmer task rows with a menu and keyboard keys.** Every task list (Today, Inbox,
   Upcoming, Week, Tasks, a project's list and search results) uses one row: a round checkbox instead of the
   **Complete** button, the title, and a grey meta line (project, due date in amber when overdue, priority

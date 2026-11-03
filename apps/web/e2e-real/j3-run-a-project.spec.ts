@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import { apiCall, ensureOwner } from "./helpers";
+import { apiCall, chooseTaskProperty, ensureOwner, expectTaskSaved } from "./helpers";
 
 /**
  * MU-02 journey J3 — run a project (docs/ROADMAP.md, MU): create a project in the UI, add tasks,
@@ -30,9 +30,9 @@ test("J3: create a project, run its tasks on the list and board, link a note, ar
   await page.getByLabel("Task title").fill("J3 buy saplings");
   await page.getByRole("button", { name: "Add" }).click();
   await page.getByRole("button", { name: "Open J3 buy saplings" }).click();
-  await page.getByLabel("Project", { exact: true }).selectOption({ label: "J3 Orchard" });
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  // UX-04: choosing the project saves it; wait for the panel's "Saved" indicator.
+  await chooseTaskProperty(page, "Project", "J3 Orchard");
+  await expectTaskSaved(page);
   await page.keyboard.press("Escape");
 
   // The project page: description, an empty-then-filling task list, derived progress.

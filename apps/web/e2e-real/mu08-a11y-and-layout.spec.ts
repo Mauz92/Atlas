@@ -70,6 +70,8 @@ async function violations(page: Page) {
 test("axe finds no violations on the main pages in either theme, and no page overflows on a phone", async ({
   page,
 }) => {
+  // Two themes x every page plus the overlays (UX-04 added four panel states): ~30 s of axe runs.
+  test.setTimeout(90_000);
   await ensureOwner(page);
   const { projectId, noteId } = await seed(page);
   // Collect every finding first so one run reports them all.
@@ -93,9 +95,25 @@ test("axe finds no violations on the main pages in either theme, and no page ove
   // Overlays: the task panel, the command palette and the shortcut help.
   await page.goto("/inbox");
   await page.getByRole("button", { name: "A11y inbox task" }).first().click();
-  await expect(page.getByRole("dialog", { name: "Task details" })).toBeVisible();
+  const details = page.getByRole("dialog", { name: "Task details" });
+  await expect(details).toBeVisible();
   await check("task details");
+  // UX-04 panel states: a property menu, the searchable time-zone list, the overlay below 1280 px.
+  await details.getByRole("button", { name: /^Priority/ }).click();
+  await expect(page.getByRole("menu", { name: "Priority" })).toBeVisible();
+  await check("task details: priority menu");
   await page.keyboard.press("Escape");
+  await details.getByRole("button", { name: /^Time zone/ }).click();
+  await page.getByRole("combobox", { name: "Search time zones" }).fill("Stock");
+  await check("task details: time zone list");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("combobox", { name: "Search time zones" })).toBeHidden();
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(details).toHaveAttribute("aria-modal", "true");
+  await check("task details (overlay)");
+  await page.keyboard.press("Escape");
+  await expect(details).toBeHidden();
+  await page.setViewportSize({ width: 1280, height: 720 });
   // UX-03: the shared row menu (a portal in the top layer) and its date dialog.
   await page.getByRole("button", { name: "Actions for A11y inbox task" }).click();
   await expect(page.getByRole("menu", { name: "Actions for A11y inbox task" })).toBeVisible();
