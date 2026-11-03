@@ -365,6 +365,17 @@ async def test_the_text_must_be_utf8_and_free_of_nul(c: AsyncClient) -> None:
         assert response.status_code == 422
 
 
+async def test_an_oversized_note_is_a_422_that_does_not_echo_the_body(c: AsyncClient) -> None:
+    """Smoke finding (P0-1): a 5 MiB + 1 body came back inside its own 422 (another 5 MiB)."""
+    too_big = "c" * (5 * 1024 * 1024 + 1)
+    response = await c.post(
+        "/api/notes", json={"path": "over.md", "content": too_big}, headers=h(c)
+    )
+    assert response.status_code == 422
+    assert len(response.content) < 4096
+    assert "cccccccccc" not in response.text
+
+
 # --- replay returns the result, with its content ---------------------------------------------
 
 

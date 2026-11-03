@@ -164,3 +164,9 @@ def test_shipped_nginx_accepts_a_maximum_note_and_still_rejects_large_bodies_els
         assert post("/not-the-api", 2 * MIB + 1) == 413, "the limit outside /api/ stays small"
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=30, check=False)
+
+
+def test_forwarded_proto_of_an_https_proxy_is_preserved() -> None:
+    """P0-2: nginx must not overwrite X-Forwarded-Proto: https from tailscale serve or Caddy."""
+    text = NGINX_CONF.read_text(encoding="utf-8")
+    assert "X-Forwarded-Proto $atlas_forwarded_proto" in text and "$http_x_forwarded_proto" in text

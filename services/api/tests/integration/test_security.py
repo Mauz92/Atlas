@@ -82,7 +82,10 @@ async def test_trusted_host_rejects_unknown_host(monkeypatch) -> None:
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://evil.example"
     ) as attacker:
-        rejected = await attacker.get("/health")
+        rejected = await attacker.get("/api/auth/me")
+        # The Compose healthcheck and nginx call /health with their own Host (P0-1 smoke finding):
+        # health is exempt from the allow-list, every other path is not.
+        health_any_host = await attacker.get("/health")
 
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://atlas.example.com"
@@ -90,4 +93,5 @@ async def test_trusted_host_rejects_unknown_host(monkeypatch) -> None:
         accepted = await allowed.get("/health")
 
     assert rejected.status_code == 400
+    assert health_any_host.status_code == 200
     assert accepted.status_code == 200

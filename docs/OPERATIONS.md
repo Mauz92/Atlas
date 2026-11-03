@@ -1,7 +1,7 @@
 # Atlas — Operations
 
 **Status:** Draft for approval (Milestone 0)
-**Last updated:** 2026-10-27
+**Last updated:** 2026-11-03 (P0-3: schedule, off-machine copies and a Docker-only restore drill verified)
 
 Backups, recovery, monitoring and maintenance for a self-hosted Atlas deployment.
 
@@ -141,6 +141,33 @@ destination. Set `EXPORT_DIR` (default `./data/exports`) for the CLI's destinati
 > what a fresh install expects. The export is for portability, inspection and migration to other
 > tools.
 
+### 1.4 Schedule, retention and getting sets off the machine (verified 2026-11-03)
+
+- **Schedule.** Nothing needs enabling. The worker enqueues `backups.run` when it starts (the first set appears within
+  seconds of `up -d`) and again `BACKUP_INTERVAL_SECONDS` after each run (default 86400). A second `up -d` that restarts
+  the worker therefore adds a set. Verified with `BACKUP_INTERVAL_SECONDS=60`: one set per minute, each `jobs` row
+  `backups.run` `succeeded`, the next one `pending`.
+- **Retention.** `BACKUP_RETAIN` (default 7) newest published sets are kept; older ones are deleted after each run.
+  Verified with `BACKUP_RETAIN=3`: the fourth set removed the first. Seven daily sets are one week of history, not a
+  long-term archive: copy the sets you want to keep.
+- **Where files land.** `BACKUP_DIR` = `/data/atlas/backups` inside `api`/`worker`, i.e. the `atlas-backups` volume
+  (`docker volume inspect <project>_atlas-backups` shows the host path). It is on the same disk as the database and notes:
+  it protects against mistakes, upgrades and corruption, **not** against losing the disk or the machine.
+- **Getting sets off the machine** (Docker only, no volume path needed):
+
+```bash
+docker compose -f deploy/docker-compose.yml exec worker atlas-backup list
+SET=$(docker compose -f deploy/docker-compose.yml exec -T worker sh -c 'ls -d /data/atlas/backups/atlas-backup-*/ | tail -1' | tr -d '\r')
+docker compose -f deploy/docker-compose.yml cp "worker:${SET%/}" ./offsite/        # a directory of 3 files
+```
+
+  Then let your own tool carry `./offsite` elsewhere (rsync, restic, rclone, an external disk). The sets are **not
+  encrypted** and contain your notes and password hashes: encrypt them (`restic` and `rclone crypt` do) before they leave
+  the machine. Keep `.env` (in particular `TOKEN_ENCRYPTION_KEY`) with them: it is not in a set.
+- **Settings page** shows the number of sets and the newest one; **`atlas-backup verify`** is the checksum check.
+- **Note history** (`<notes root>/.atlas/history`, SYNC-04) is inside `notes.tar.gz` and was restored byte-identically.
+  It keeps older text of overwritten and deleted notes (up to `NOTE_HISTORY_KEEP_DAYS`), so a backup set holds that text too.
+
 
 ## 2. Restore Procedure
 
@@ -184,7 +211,9 @@ psql -U atlas -d postgres -c "CREATE DATABASE atlas_restore OWNER atlas;"
 # 2. apply the dump — local client:
 psql -U atlas -d atlas_restore -v ON_ERROR_STOP=1 < "$SET/database.sql"
 
-#    ... or, as executed in the drill on a host without a local client, run it inside the DB container:
+#    ... or, as executed in the drill on a host without a local client, run it inside the DB container
+#    (the container name depends on the Compose project; `docker compose -f deploy/docker-compose.yml exec -T db`
+#    is the name-independent form, see §2.7):
 docker exec -i atlas-db-1 psql -U atlas -d atlas_restore -v ON_ERROR_STOP=1 < "$SET/database.sql"
 ```
 
@@ -268,6 +297,36 @@ executed on 2026-10-27 (M9-06; evidence in `ACCEPTANCE.md`).
 (`sync_cursors`) and is restored with it, so the next sync resumes from the stored cursor and is
 idempotent (`ADR-0029`/`ADR-0031`) — no event is duplicated. *Confirming this against a real provider
 needs the M5-00 real accounts (AR-001) and is `NOT RUN` here, recorded not waived.*
+
+### 2.7 Restore drill for a Docker-only install (verified 2026-11-03)
+
+For a host with only Docker (no `psql`, no `atlas-backup` on the host): restore a set from `./offsite` (§1.4) into a
+**new, empty stack**. The stack must not have started `api` or `worker` yet, because they migrate the database and the
+dump then fails with `ON_ERROR_STOP`. Run from the repository root; use a different `-p` project name to restore beside
+a running install (also change `WEB_PORT`), or the default name on a fresh machine. `.env` must be the original one.
+
+```bash
+DC="docker compose -f deploy/docker-compose.yml"
+SET="$PWD/offsite/atlas-backup-<timestamp>-<id>"
+$DC build api                                                  # the image carries atlas-backup and tar
+$DC up -d db                                                   # empty database only
+$DC run --rm --no-deps -v "$SET:/restore:ro" api atlas-backup verify /restore        # 2.1: must print ok / ok / ok
+$DC exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' < "$SET/database.sql"   # 2.2
+$DC run --rm --no-deps -v "$SET:/restore:ro" api tar -xzf /restore/notes.tar.gz -C /data/atlas/notes        # 2.3
+$DC up -d                                                      # 2.4: api finds nothing to migrate
+$DC exec -T api atlas-admin record-restore                     # 2.2a, harmless without sync clients
+$DC exec -T db psql -U atlas -d atlas -tAc "select version_num from alembic_version"   # 2.5: equals the source head
+curl -fsS http://127.0.0.1:8080/health/ready
+```
+
+Result of the drill (set taken from a running stack holding notes up to 5 MiB, tasks, a project, a fired reminder and
+note history; restored into a second project with a different database password): `atlas-backup verify` ok;
+`psql` exit 0 with no `ERROR`; `tar` exit 0; both stacks at revision `e7a3c5b1d9f2`; a fingerprint query (row counts,
+note paths/revisions/hashes, task titles) identical; `sha256sum` of every file under the notes root **including
+`.atlas/history`** identical; login with the original password worked (users and password hashes are in the dump);
+`/api/notes/<id>/history` returned the same revisions; `/health/ready` ready. `atlas-admin record-restore` printed
+`restore recorded: …` (run twice, no error). Not covered: sessions (browser logins continue only if `SESSION_SECRET` is
+unchanged), calendar tokens (none exist yet).
 
 ## 3. Monitoring
 

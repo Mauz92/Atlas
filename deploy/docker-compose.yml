@@ -5,6 +5,42 @@
 #
 # Copy ../.env.example to ../.env and set real secrets before a production deployment.
 
+# Every setting the api and worker read, forwarded to both services from one place (a setting
+# forwarded to only one of them drifted before). tests/unit/test_compose_env.py fails when the
+# application gains a setting that is neither listed here nor explicitly exempted.
+x-atlas-env: &atlas-env
+    ATLAS_ENV: ${ATLAS_ENV:-development}
+    PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
+    # Built from the same POSTGRES_* values that initialise the db service, so the two cannot
+    # disagree (a separate DATABASE_URL in .env used to leave the api unable to log in to db).
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas}@db:5432/${POSTGRES_DB:-atlas}
+    NOTES_ROOT: ${NOTES_ROOT:-/data/atlas/notes}
+    BACKUP_DIR: ${BACKUP_DIR:-/data/atlas/backups}
+    BACKUP_RETAIN: ${BACKUP_RETAIN:-7}
+    BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    SECRET_KEY: ${SECRET_KEY:-dev-insecure-change-me}
+    SESSION_SECRET: ${SESSION_SECRET:-dev-insecure-change-me}
+    TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-dev-insecure-change-me}
+    TOKEN_ENCRYPTION_KEY_ID: ${TOKEN_ENCRYPTION_KEY_ID:-v1}
+    TOKEN_ENCRYPTION_PREVIOUS_KEYS: ${TOKEN_ENCRYPTION_PREVIOUS_KEYS:-{}}
+    ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
+    CORS_ORIGINS: ${CORS_ORIGINS:-}
+    SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-1209600}
+    AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-10}
+    EXPORT_DIR: ${EXPORT_DIR:-/data/atlas/exports}
+    CHANGE_RETENTION_DAYS: ${CHANGE_RETENTION_DAYS:-90}
+    CHANGE_PURGE_INTERVAL_SECONDS: ${CHANGE_PURGE_INTERVAL_SECONDS:-3600}
+    NOTES_RECONCILE_SECONDS: ${NOTES_RECONCILE_SECONDS:-300}
+    REMINDER_SCAN_SECONDS: ${REMINDER_SCAN_SECONDS:-60}
+    CALENDAR_RECONCILE_SECONDS: ${CALENDAR_RECONCILE_SECONDS:-300}
+    NOTE_HISTORY_KEEP_REVISIONS: ${NOTE_HISTORY_KEEP_REVISIONS:-20}
+    NOTE_HISTORY_KEEP_DAYS: ${NOTE_HISTORY_KEEP_DAYS:-90}
+    NOTE_HISTORY_MAX_REVISIONS: ${NOTE_HISTORY_MAX_REVISIONS:-200}
+    NOTE_HISTORY_MAX_BYTES: ${NOTE_HISTORY_MAX_BYTES:-67108864}
+    VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+    VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+    VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+
 services:
   db:
     image: postgres:17-alpine
@@ -30,32 +66,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    environment:
-      ATLAS_ENV: ${ATLAS_ENV:-development}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://atlas:atlas@db:5432/atlas}
-      NOTES_ROOT: ${NOTES_ROOT:-/data/atlas/notes}
-      BACKUP_DIR: ${BACKUP_DIR:-/data/atlas/backups}
-      SECRET_KEY: ${SECRET_KEY:-dev-insecure-change-me}
-      SESSION_SECRET: ${SESSION_SECRET:-dev-insecure-change-me}
-      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-dev-insecure-change-me}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
-      TOKEN_ENCRYPTION_KEY_ID: ${TOKEN_ENCRYPTION_KEY_ID:-v1}
-      EXPORT_DIR: ${EXPORT_DIR:-/data/atlas/exports}
-      CHANGE_RETENTION_DAYS: ${CHANGE_RETENTION_DAYS:-90}
-      CHANGE_PURGE_INTERVAL_SECONDS: ${CHANGE_PURGE_INTERVAL_SECONDS:-3600}
-      NOTES_RECONCILE_SECONDS: ${NOTES_RECONCILE_SECONDS:-300}
-      NOTE_HISTORY_KEEP_REVISIONS: ${NOTE_HISTORY_KEEP_REVISIONS:-20}
-      NOTE_HISTORY_KEEP_DAYS: ${NOTE_HISTORY_KEEP_DAYS:-90}
-      NOTE_HISTORY_MAX_REVISIONS: ${NOTE_HISTORY_MAX_REVISIONS:-200}
-      NOTE_HISTORY_MAX_BYTES: ${NOTE_HISTORY_MAX_BYTES:-67108864}
-      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
-      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
-      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
-      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+    environment: *atlas-env
     volumes:
       - atlas-notes:/data/atlas/notes
       - atlas-backups:/data/atlas/backups
+      - atlas-exports:/data/atlas/exports
     ports:
       - "127.0.0.1:8000:8000"
     command: ["sh", "-c", "atlas-migrate && uvicorn atlas.main:app --host 0.0.0.0 --port 8000"]
@@ -78,33 +93,11 @@ services:
         condition: service_healthy
       api:
         condition: service_healthy
-    environment:
-      ATLAS_ENV: ${ATLAS_ENV:-development}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://atlas:atlas@db:5432/atlas}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
-      NOTES_ROOT: ${NOTES_ROOT:-/data/atlas/notes}
-      BACKUP_DIR: ${BACKUP_DIR:-/data/atlas/backups}
-      BACKUP_RETAIN: ${BACKUP_RETAIN:-7}
-      SECRET_KEY: ${SECRET_KEY:-dev-insecure-change-me}
-      SESSION_SECRET: ${SESSION_SECRET:-dev-insecure-change-me}
-      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-dev-insecure-change-me}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
-      TOKEN_ENCRYPTION_KEY_ID: ${TOKEN_ENCRYPTION_KEY_ID:-v1}
-      EXPORT_DIR: ${EXPORT_DIR:-/data/atlas/exports}
-      CHANGE_RETENTION_DAYS: ${CHANGE_RETENTION_DAYS:-90}
-      CHANGE_PURGE_INTERVAL_SECONDS: ${CHANGE_PURGE_INTERVAL_SECONDS:-3600}
-      NOTES_RECONCILE_SECONDS: ${NOTES_RECONCILE_SECONDS:-300}
-      NOTE_HISTORY_KEEP_REVISIONS: ${NOTE_HISTORY_KEEP_REVISIONS:-20}
-      NOTE_HISTORY_KEEP_DAYS: ${NOTE_HISTORY_KEEP_DAYS:-90}
-      NOTE_HISTORY_MAX_REVISIONS: ${NOTE_HISTORY_MAX_REVISIONS:-200}
-      NOTE_HISTORY_MAX_BYTES: ${NOTE_HISTORY_MAX_BYTES:-67108864}
-      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
-      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
-      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
-      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+    environment: *atlas-env
     volumes:
       - atlas-notes:/data/atlas/notes
       - atlas-backups:/data/atlas/backups
+      - atlas-exports:/data/atlas/exports
     command: ["atlas-worker"]
 
   web:
@@ -114,9 +107,12 @@ services:
     depends_on:
       - api
     ports:
-      - "${WEB_PORT:-8080}:80"
+      # Loopback by default: HTTPS is terminated by `tailscale serve` or a reverse proxy on this host
+      # (docs/DEPLOYMENT.md section 8). Set WEB_BIND=0.0.0.0 only behind a firewall you control.
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:80"
 
 volumes:
   atlas-db:
   atlas-notes:
   atlas-backups:
+  atlas-exports:

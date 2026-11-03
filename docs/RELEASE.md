@@ -122,6 +122,15 @@ Each limitation lists its **impact** and where it is tracked. This consolidates
 [`OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md) §12, the per-task "Limitations" notes in
 [`ACCEPTANCE.md`](ACCEPTANCE.md), and [`RISKS.md`](RISKS.md).
 
+### 5.0 Personal alpha status (2026-11-03)
+
+The notes/tasks/projects core was smoke-tested end to end on the current code in Docker Compose (fresh install, upgrade from
+`b7d3e1a95c24` with data, HTTPS in front with Caddy, scheduled backups, a restore drill into a second empty stack):
+`ACCEPTANCE.md` P0-1/P0-2/P0-3, install steps `DEPLOYMENT.md` section 11. For **one owner on one server** that is usable.
+Still not done: `tailscale serve` and ACME were not run; no restore drill on the owner's real data; `e2e-real` has never run on
+CI (P0-4); no browser other than headless Chromium on the same host; the rate-limit, redirect and HSTS edges of R-46; backup
+sets are unencrypted and stay on the server's disk until copied off. Everything in 5.1 and below still applies.
+
 ### 5.1 Blocked on external resources (not defects)
 
 1. **Calendar accounts and event views (REQ-007/008/009).** *Limitation:* no Google/Microsoft

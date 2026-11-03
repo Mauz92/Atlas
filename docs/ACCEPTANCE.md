@@ -3609,3 +3609,41 @@ Local verification, 2026-11-03, uncommitted tree, CI not run. Decisions: ADR-006
 | Dev stack and owner data | `PASS` | nothing was restarted, no migration or test touched the `atlas` database (tests use `atlas_test`, the real-stack suite a throwaway database, the real-API simulations a per-test notes folder) |
 | Known limitations (not defects) | note | R-44 history keeps overwritten/deleted text up to 90 days; R-45 conservative merge makes conflict copies for touching edits and two-sided front-matter edits; `ETag`/`If-None-Match` for note reads not built; `resolution` entries are response-only until SYNC-05; the export set carries current notes only (history is operational data, covered by backups) |
 | Not covered | `NOT RUN` | CI; history pruning as a random simulation action (the model keeps 200 revisions; pruned bases covered by integration tests); unindexed external edits, folder renames and server restore as random simulation actions; two-process concurrency beyond the single-event-loop gather test (it does use separate database sessions and real row locks); any real client (SYNC-08/09) or device; load and scale of history on very large vaults (TESTING 10.4); a restore drill with history in the backup |
+
+### P0-1 / P0-2 / P0-3 - Personal alpha: Compose smoke, HTTPS, backups and restore drill
+
+Local verification, 2026-11-03, uncommitted tree, CI not run. Isolated Compose projects `atlas-smoke`, `atlas-smoke-up`,
+`atlas-smoke-restore` (own volumes, throwaway secrets, ports 18000-18443 on loopback, all removed afterwards); the owner's
+`atlas-db-1`, `atlas` database, `data/dev` and dev stack were not touched. Statuses: `PASS`, `FAIL`, `BLOCKED`, `NOT RUN`.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| P0-1 images build from the current tree | `PASS` | `docker compose -p atlas-smoke ... build` (api, worker, web) |
+| P0-1 empty database migrates on start to `e7a3c5b1d9f2`; all four services healthy; worker no errors | `PASS` | api log shows every revision `eefce463b569` -> head; `ps`: db/api healthy |
+| P0-1 first-run setup, second setup `409`, bad login `401`, login `200`, CSRF wrong/absent `403` | `PASS` | scripted HTTP through the `web` container |
+| P0-1 notes 1.5 MiB, 5 MiB and 5 MiB of newlines (10 MiB JSON body) through nginx | `PASS` | `201` each; 12 MiB body: nginx `413`; 5 MiB + 1: `422` |
+| P0-1 oversized note answers with a small error | `FAIL` then fixed | the 422 echoed the whole 5 MiB body; `main.py` now drops large `input`; `test_an_oversized_note_is_a_422_that_does_not_echo_the_body` |
+| P0-1 task, project, project task list, search, history, export, `/api/instance`, health, `/health/ready` | `PASS` | same script |
+| P0-1 worker runs jobs: backup at start and on schedule, reminder at its minute (`log` channel), scans, purge | `PASS` | `jobs` rows `succeeded`; `reminders.status=sent`, `reminder_deliveries` row at 16:01:00 |
+| P0-1 `atlas-backup run/list/verify` and `atlas-export run/verify` inside the containers | `PASS` | export sets were written to an unmounted path (lost on recreate): `FAIL` then fixed with the `atlas-exports` volume |
+| P0-1 Compose forwards every setting | `FAIL` then fixed | not forwarded: `TOKEN_ENCRYPTION_PREVIOUS_KEYS`, `SESSION_TTL_SECONDS`, `AUTH_RATE_LIMIT_PER_MINUTE`, `CORS_ORIGINS`, `REMINDER_SCAN_SECONDS`, `CALENDAR_RECONCILE_SECONDS`, `BACKUP_RETAIN` (api); `NOTE_HISTORY_*`, retention and sync settings were already forwarded. `tests/unit/test_compose_env.py` |
+| P0-1 install from `.env.example` works | `FAIL` then fixed | `.env.example` set a `DATABASE_URL` password but no `POSTGRES_PASSWORD`, so api could not log in to db; the URL is now built from `POSTGRES_*` |
+| P0-1 production `ALLOWED_HOSTS=<public name>` keeps the stack healthy | `FAIL` then fixed | the healthcheck (`Host: localhost`) and `/health` through nginx got `400`, api unhealthy, worker never started; `/health*` is exempt (`test_trusted_host_rejects_unknown_host`); re-verified with `ALLOWED_HOSTS=atlas.example.com` and `=localhost` |
+| P0-1 web published only on loopback by default | `PASS` after change | was `0.0.0.0:8080` (plain HTTP on every interface); `WEB_BIND` |
+| P0-1 Chromium (Playwright) against the real stack: load, sign in, reload, console | `PASS` | Today view rendered; only console error is the expected pre-login `401` |
+| P0-1 upgrade from `b7d3e1a95c24` with data to head via the new images | `PASS` | old tree (`ea85a32`) built and seeded through its API (4 notes incl. a 3 MiB and a soft-deleted one, 3 tasks incl. recurring and deleted, project link); pre-upgrade backup; `up -d --build` ran `a1f0c3d2b4e6`, `c3b7d9e1f2a8`, `d5e8a2f1c4b9`, `e7a3c5b1d9f2`; DB fingerprint and every note file hash identical before/after; `compare_metadata` `[]`; field revisions backfilled to 1; reading, editing (history starts at the first edit; earlier revisions have no history), re-creating the deleted path (revives the note), feed, export, search work |
+| P0-1 downgrade to `b7d3e1a95c24` and upgrade again with data | `PASS` | data intact; `note_revisions` rows are lost by the downgrade (the history files stay on disk) |
+| P0-2 Caddy in front, TLS verified against its CA, cookies `Secure`, `HttpOnly` (session), `SameSite=Lax`, CSRF, 5 MiB note, Chromium secure context | `PASS` | `DEPLOYMENT.md` §8.2 table |
+| P0-2 ACME certificate issuance (real name) | `NOT RUN` | no public name; Caddy used `local_certs` |
+| P0-2 `tailscale serve` | `NOT RUN` | forbidden to change Tailscale on the owner's machine; documented from the CLI |
+| P0-2 API redirect `Location` behind an HTTPS proxy | `FAIL` (accepted) | `http://localhost/api/tasks` for `/api/tasks/`; the web app never uses such URLs; R-46 |
+| P0-3 scheduled backups run, retained, verified | `PASS` | `BACKUP_INTERVAL_SECONDS=60`, `BACKUP_RETAIN=3`: one set per minute, oldest pruned, `atlas-backup verify` ok |
+| P0-3 off-machine copy | `PASS` | `docker compose cp worker:<set> ./offsite/` (3 files) |
+| P0-3 restore drill into a second empty project from the smoke project's set, following `OPERATIONS.md` section 2 | `PASS` | `OPERATIONS.md` 2.7: fingerprint, notes tree incl. `.atlas/history` and login identical |
+| P0-3 `atlas-admin record-restore` | `PASS` | prints `restore recorded`, twice without error |
+| P0-3 `atlas-admin list-users` / `reset-password` | `PASS` | old password `401`, new `200`, 9 sessions signed out |
+| P0-3 restore drill on the owner's real data | `NOT RUN` | forbidden here; the owner still has to do one (Roadmap P0-3) |
+| `./scripts/verify.sh` | `PASS` | 3912 passed, 14 skipped; frontend 817 passed; ruff, format, mypy clean |
+
+Not covered: a browser on a second device, a real tailnet or ACME name, behaviour across a Docker host reboot
+(`restart: unless-stopped` only), long-running disk growth, Windows/macOS Docker hosts.

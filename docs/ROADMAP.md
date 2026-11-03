@@ -1091,13 +1091,21 @@ SYNC-01…04, exists), account recovery in the UI (AUTH-01), HTTPS (operator-pro
 second device. `RELEASE.md` still labels the release "not production-ready"; that label is accurate for calendars
 and devices, not for the notes/tasks core.
 
-**Phase 0 — Personal alpha (web, own server).** Usable for your own notes and tasks once these hold:
-P0-1 build the current Compose images and smoke-test the stack on the current code (not re-run since the UX work;
-the `web` image also needs the 11m nginx rebuild); P0-2 HTTPS (Tailscale serve or a reverse proxy; needed for
-service workers, push and install-as-app); P0-3 scheduled backups on, one restore drill on the real data;
+**Phase 0 — Personal alpha (web, own server).** Usable for your own notes and tasks once these hold. Results of
+2026-11-03 (evidence `ACCEPTANCE.md` P0-1/P0-2/P0-3; install guide `DEPLOYMENT.md` section 11; risks R-46):
+- **P0-1 `DONE` (locally).** Compose images built from the current tree; fresh install, notes up to 5 MiB through nginx, tasks,
+  projects, worker jobs, export, browser check, and the upgrade from `b7d3e1a95c24` with data all `PASS`. Six defects found and
+  fixed (DATABASE_URL vs POSTGRES_PASSWORD, unforwarded settings, `ALLOWED_HOSTS` vs the healthcheck, 5 MiB error echo,
+  exports not in a volume, web on all interfaces). CI has not run it.
+- **P0-2 `IN_REVIEW`.** HTTPS documented (`DEPLOYMENT.md` section 8). Cookies, CSRF, secure context and a 5 MiB note verified through
+  Caddy with a local CA. `tailscale serve` and ACME issuance are `NOT RUN` (not allowed to touch Tailscale or the network
+  config); the owner runs the three `tailscale serve` commands once and checks login.
+- **P0-3 `IN_REVIEW`.** Scheduled backups (start-up plus every 24 h, keep 7), off-machine copy and a full restore drill into a second
+  empty stack `PASS` on smoke data, including note history and `record-restore`. **Still to do by the owner: one drill on the real
+  data, an off-machine copy job, and `.env` stored safely.**
 P0-4 run `e2e-real` on GitHub Actions once (needs `master` pushed; owner's decision) and re-score REQ-005/006;
-P0-5 AUTH-01 (recovery) or keep the `atlas-admin` CLI; P0-6 a two-week dogfood log of defects. Limits to accept:
-no calendars, online only, one user.
+P0-5 AUTH-01 (recovery) or keep the `atlas-admin` CLI (verified in the smoke test); P0-6 a two-week dogfood log of defects.
+Limits to accept: no calendars, online only, one user.
 
 **Phase 1 — Finish the sync server.** SYNC-05 (resolution log + undo), SYNC-06 (device credentials; AUTH-01 shares
 the revoke function), SYNC-07 (Tauri 2 spike on Linux first; Windows and Android need your hardware).
@@ -1149,7 +1157,7 @@ decisions below are made.
 | A-01 | Commit the accumulated M3–M9 work | `DONE` | Commits `eb5a299`, `2fa7c7f`, `fe5d031` |
 | A-02 | Fix the 8 failing backup tests (test probe chose an app container with a `pg_dump` client but no server) | `DONE` | `pytest tests/integration/test_backups.py` → 10 passed |
 | A-03 | CI: install PostgreSQL 17 client so backup tests run against the postgres service | `IN_REVIEW` | Workflow edited; **not run on GitHub Actions** |
-| A-04 | Compose: forward every setting the API reads (ALLOWED_HOSTS, VAPID_*, EXPORT_DIR, CHANGE_*, …) and bind the API port to 127.0.0.1 | `DONE` | `docker compose config -q` passes; runtime re-check pending |
+| A-04 | Compose: forward every setting the API reads (ALLOWED_HOSTS, VAPID_*, EXPORT_DIR, CHANGE_*, …) and bind the API port to 127.0.0.1 | `DONE` | Runtime check done 2026-11-03 (P0-1); more gaps found and fixed, guarded by `test_compose_env.py` |
 | A-05 | Fix startup crash on documented `ALLOWED_HOSTS=host` / blank values (list settings now accept comma-separated or JSON) | `DONE` | `tests/unit/test_config.py` (regression, 4 cases) |
 | A-06 | Docs: condense roadmap verification narrative to pointers (evidence lives in `ACCEPTANCE.md`); remove stale `project/BACKLOG.md` | `DONE` | `ROADMAP.md` 105 KB → 44 KB; original text in git history |
 | A-07 | Decide the supported Python version (image/CI use 3.13; local venv 3.14; `mypy` targets 3.12) | `READY` | Needs a decision; see `DECISIONS.md` when taken |

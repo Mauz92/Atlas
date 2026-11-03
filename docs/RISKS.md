@@ -437,6 +437,19 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 - **Mitigation:** none needed for safety; quality improvements (word-level merge inside a conflicting line, YAML-aware front-matter
   merge) are optional later work and need their own property tests; the resolve UI is SYNC-11. **Status:** Accepted.
 
+### R-46 - Personal-install edges found by the Compose smoke test (P0-1/P0-2)
+
+Fixed: placeholder-free `DATABASE_URL` mismatch, unforwarded settings, `ALLOWED_HOSTS` breaking the healthcheck, 5 MiB error
+echo, exports on an unmounted path, web published on all interfaces. **Open, accepted for a personal install:** (1) the login
+rate limiter keys on `request.client.host`, which behind nginx is the nginx container, so all clients share one bucket
+(10 failures per minute lock out the owner); proxy headers are not trusted by the app and trusting them safely needs a
+documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks/` carry an `http://host` `Location`
+(wrong scheme and port behind HTTPS); nginx `proxy_redirect` did not rewrite the 307. The web app never requests such URLs.
+(3) The static page has no HSTS (the API has); add it in the proxy on a public name. (4) `db` still publishes
+`127.0.0.1:5432` (needed by host-side tests; any local user can reach it with the password). (5) A downgrade drops the
+`note_revisions` table but leaves `.atlas/history` files. (6) Backup sets are unencrypted and on the same disk until copied.
+**Status:** Mitigating.
+
 ### R-43 - Idempotency table growth and the purge scan
 - **Severity/Likelihood:** Low / Medium
 - **Description:** every sync-mode write stores a key; with 90-day retention at personal scale (tens of thousands of rows) the hourly
@@ -524,3 +537,4 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 | 2026-11-03 | SYNC-01 | R-34 verified as a real defect (shipped nginx rejects bodies above 1 MiB with `413`; fix proposed, not applied). R-32 ordering proven by a concurrency test. R-30: server side of `cursor_ahead` delivered. New finding: `NotesReconciler` tombstones a removed note but, unlike `NotesService.delete`, does not drop its `note_projects` rows or announce the link removal (pre-existing; recorded in `ROADMAP.md` SYNC-03 scope, not changed in SYNC-01). |
 | 2026-11-03 | SYNC-04 (note history and merge) | R-42 closed (server side); R-28 and R-40 updated (the note simulation found that a replayed *delete* acknowledgement needs the same re-read rule as a create, seed 109); R-44 (history keeps overwritten and deleted text; disk) and R-45 (conservative merge, conflict-copy volume) added. |
 | 2026-11-03 | SYNC-03 (protocol v1) | R-38 (snapshot walk vs floor, sim seed 29) found and closed; R-39 (restore regrowth, `epoch`), R-40 (late ack vs tombstone, sim seed 681), R-41 (resolutions response-only until SYNC-05), R-42 (notes not merge/delete-safe until SYNC-04), R-43 (idempotency purge scan) added. R-28, R-29, R-30, R-31 moved to Mitigating (server side). |
+| 2026-11-03 | P0-1/P0-2/P0-3 | R-46 added (smoke test of the Compose stack found and fixed six defects; four accepted edges). R-34 verified through the real web container (1.5/5/10 MiB `201`, 12 MiB `413`). First restore drill of a set that contains note history. |

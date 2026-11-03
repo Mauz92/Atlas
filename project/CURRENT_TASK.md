@@ -1,5 +1,22 @@
 # Current Task
 
+- **Personal alpha steps P0-1, P0-2, P0-3 done locally (2026-11-03, not committed, CI not run).** Results and the install guide:
+  `docs/ACCEPTANCE.md` P0-1/P0-2/P0-3, `docs/DEPLOYMENT.md` sections 8 and 11, `docs/OPERATIONS.md` 1.4 and 2.7, `RISKS.md` R-46.
+  Code/config changed: `deploy/docker-compose.yml` (one shared env block with every setting, `DATABASE_URL` from `POSTGRES_*`,
+  `atlas-exports` volume, web on `127.0.0.1` via `WEB_BIND`), `services/api/Dockerfile` (exports dir), `apps/web/nginx.conf`
+  (keeps `X-Forwarded-Proto`), `atlas/main.py` (422 no longer echoes huge input; `/health*` exempt from `ALLOWED_HOSTS`),
+  `.env.example`, tests `test_compose_env.py`, `test_nginx_config.py`, `test_security.py`, `test_note_sync_merge.py`.
+  `./scripts/verify.sh` PASS. The owner's `atlas` database, containers and dev stack were not touched; the three smoke projects
+  and the `atlas-smoke-*` images were removed.
+- **Owner to do:** rebuild and recreate the stack when ready (`docker compose -f deploy/docker-compose.yml up -d --build` applies
+  migrations `a1f0c3d2b4e6`..`e7a3c5b1d9f2`, back up first), run `tailscale serve` per `DEPLOYMENT.md` 8.1, do one restore drill on
+  real data (`OPERATIONS.md` 2.7), copy backup sets off the machine, then P0-4 (`e2e-real` on CI) and P0-6 (dogfood).
+- **Next engineering step unchanged: SYNC-05** (resolution log, undo), details below.
+
+---
+
+## Earlier state (SYNC-04 finished)
+
 - Task ID: none in progress. **SYNC-01 … SYNC-04 are `DONE` locally (2026-11-03, not committed, CI not run).**
   **SYNC-04 (note history, three-way merge, move/delete/revive, portable paths) delivered in seven verified sub-steps**
   (`docs/ROADMAP.md` SYNC-04, evidence `docs/ACCEPTANCE.md` SYNC-04, decisions ADR-0060): 04a history (`note_revisions` + content-addressed

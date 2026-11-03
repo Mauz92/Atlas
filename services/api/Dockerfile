@@ -9,7 +9,7 @@ ENV PYTHONUNBUFFERED=1 \
 # mounted at these paths inherits the correct ownership (Docker copies image directory
 # ownership into an empty named volume).
 RUN useradd --create-home --uid 10001 atlas \
-    && mkdir -p /data/atlas/notes /data/atlas/backups \
+    && mkdir -p /data/atlas/notes /data/atlas/backups /data/atlas/exports \
     && chown -R atlas:atlas /data/atlas
 WORKDIR /app
 

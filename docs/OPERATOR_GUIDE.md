@@ -1,5 +1,8 @@
 # Atlas — Operator Guide
 
+> **Personal install in one place:** [`DEPLOYMENT.md`](DEPLOYMENT.md) section 11 (install, HTTPS, backups, upgrade,
+> recovery, with commands verified on 2026-11-03). Where this guide differs, that section is correct.
+
 **Status:** Delivered-feature operator handbook
 **Last updated:** 2026-10-27
 **Audience:** the person *running* an Atlas instance (installing, configuring, securing, backing up,
@@ -166,9 +169,9 @@ user-visible feature ([§10](#10-what-is-not-delivered-yet)).
 
 ### 4.6 Passing settings into the containers
 
-The shipped `deploy/docker-compose.yml` forwards every setting the API and worker read, with the
-defaults from `.env.example`: core secrets, `DATABASE_URL`, `NOTES_ROOT`, `BACKUP_*`, `EXPORT_DIR`,
-`CHANGE_*`, `ALLOWED_HOSTS`, `VAPID_*`, `TOKEN_ENCRYPTION_KEY_ID` and the scheduler intervals. It does
+The shipped `deploy/docker-compose.yml` forwards every setting the API and worker read from one shared
+`x-atlas-env` block (guarded by `tests/unit/test_compose_env.py`). `DATABASE_URL` is built from `POSTGRES_USER`/
+`POSTGRES_PASSWORD`/`POSTGRES_DB`, not read from `.env`. It does
 **not** forward `GOOGLE_*`/`MICROSOFT_*`/`FCM_*`/`EXPO_*`: the application does not read them yet
 (calendar adapters are blocked on M5-00). When you add a new setting, add it to the relevant service's
 `environment:` block, then `docker compose … up -d` to recreate the containers. Verify what a container actually

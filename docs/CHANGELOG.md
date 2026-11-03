@@ -6,6 +6,12 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Changed (P0-1): **Docker Compose install fixes.** The web container now listens on `127.0.0.1:8080` only (set `WEB_BIND=0.0.0.0`
+  for the old behaviour); `POSTGRES_PASSWORD` now sets the database password for both the database and the app (a
+  `DATABASE_URL` in `.env` is ignored by Compose); `ALLOWED_HOSTS` no longer makes the api container unhealthy; every setting
+  is forwarded to api and worker; `atlas-export` sets are kept in a volume; an oversized note gets a short error. HTTPS and
+  backup steps are in `docs/DEPLOYMENT.md` sections 8 and 11.
+
 - Added (SYNC-04): **Notes now merge instead of conflicting, for the coming desktop and Android apps.** Apps that send
   `Atlas-Sync: 1` can save a note they edited offline from an older version: edits in different parts merge silently
   (line endings, the final newline and the front matter are kept exactly); edits that touch never overwrite anything, the

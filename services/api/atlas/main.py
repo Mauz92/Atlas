@@ -60,6 +60,30 @@ def _is_unencodable(value: Any) -> bool:
     return False
 
 
+_MAX_ECHOED_INPUT_CHARS = 1024
+
+
+class _HostCheckExceptHealth(TrustedHostMiddleware):
+    """Host allow-list for everything except ``/health*``.
+
+    The Compose healthcheck calls ``http://localhost:8000/health`` and nginx proxies ``/health``
+    with the upstream's own name, so a production ``ALLOWED_HOSTS=atlas.example.com`` used to make
+    the api container permanently unhealthy (P0-1 smoke test). The health endpoints return no
+    host-derived content, so exempting them costs nothing.
+    """
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] == "http" and str(scope.get("path", "")).startswith("/health"):
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
+def _is_oversized(value: object) -> bool:
+    """A huge offending string (a 5 MiB note body) is not echoed back in a 422."""
+    return isinstance(value, str) and len(value) > _MAX_ECHOED_INPUT_CHARS
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
@@ -88,7 +112,7 @@ def create_app() -> FastAPI:
         )
 
     if settings.allowed_hosts:
-        app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
+        app.add_middleware(_HostCheckExceptHealth, allowed_hosts=settings.allowed_hosts)
 
     app.include_router(health_router)
     app.include_router(auth_router)
@@ -125,7 +149,7 @@ def create_app() -> FastAPI:
             # cannot be encoded back to UTF-8: echoing it would turn the 422 into a 500.
             errors = [
                 {key: value for key, value in error.items() if key != "input"}
-                if _is_unencodable(error.get("input"))
+                if _is_unencodable(error.get("input")) or _is_oversized(error.get("input"))
                 else error
                 for error in errors
             ]

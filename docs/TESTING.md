@@ -126,6 +126,12 @@ Cover, at minimum:
 - Sync-token/delta handling and cursor advancement.
 - Retry, backoff and idempotency logic.
 
+Deployment files have unit tests too: `tests/unit/test_compose_env.py` (every `Settings` field is forwarded by
+`deploy/docker-compose.yml` or exempted with a reason; `DATABASE_URL` is built from `POSTGRES_*`; web binds loopback) and
+`tests/unit/test_nginx_config.py`. The Compose stack itself is not part of `verify.sh`; the manual smoke procedure (isolated
+`-p atlas-smoke` project, override file that moves published ports, throwaway secrets) and its results are in `ACCEPTANCE.md`
+P0-1/P0-2/P0-3.
+
 ## 3. Integration Tests (real PostgreSQL)
 
 - API ↔ database transactions.
