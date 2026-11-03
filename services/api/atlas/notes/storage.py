@@ -103,7 +103,9 @@ class NotesStorage:
         size = path.stat().st_size
         if size > MAX_NOTE_BYTES:
             raise NoteTooLargeError(f"{normalized} exceeds {MAX_NOTE_BYTES} bytes")
-        content = path.read_text(encoding="utf-8")
+        # Decode the bytes as they are on disk: ``read_text`` turns CRLF into LF, so the content and
+        # its hash would differ from what was written and a CRLF note would conflict (R-24).
+        content = path.read_bytes().decode("utf-8")
         return NoteFile(
             path=normalized,
             content=content,

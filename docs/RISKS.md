@@ -171,7 +171,7 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 - **Mitigation / next step:** backend fix, out of scope for UX-06 (no backend changes): read with
   `newline=""` in `NoteStorage.read`, hash the bytes as written, add a CRLF round-trip test. Until then the
   real-stack CRLF byte test is `BLOCKED` (documented in `ACCEPTANCE.md` UX-06).
-- **Status:** Open.
+- **Status:** Fixed 2026-11-03: `NoteStorage.read` decodes the bytes as stored (writes already used `newline=""`). Regression tests: `test_note_storage.py` (line-ending round trips, a CRLF file from another editor) and `test_notes_api.py` (CRLF create, read, save without conflict, exact bytes). Notes already indexed from a CRLF file may show one revision bump when reconciled. The real-stack CRLF byte test (UX-06) can now be added.
 
 ### R-25 — Live preview is a display layer over untrusted text (UX-06, ADR-0056)
 - **Severity/Likelihood:** Medium / Low

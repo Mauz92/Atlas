@@ -317,3 +317,28 @@ async def test_tags_are_indexed_and_returned(notes_client: AsyncClient) -> None:
         )
     ).json()
     assert created["tags"] == ["alpha", "beta", "gamma"]
+
+
+async def test_crlf_note_round_trips_and_autosave_does_not_conflict(
+    notes_client: AsyncClient, notes_storage: NotesStorage
+) -> None:
+    """R-24: a CRLF note is served with its CRLF, so the next save is not a false conflict."""
+    headers = await _auth(notes_client)
+    text = "# Win\r\n\r\nLine one\r\n"
+    created = await notes_client.post(
+        "/api/notes", json={"path": "Win.md", "content": text}, headers=headers
+    )
+    assert created.status_code == 201, created.text
+    note = created.json()
+
+    fetched = (await notes_client.get(f"/api/notes/{note['id']}")).json()
+    assert fetched["content"] == text
+
+    edited = text + "Line two\r\n"
+    saved = await notes_client.put(
+        f"/api/notes/{note['id']}",
+        json={"content": edited, "base_revision": fetched["revision"]},
+        headers=headers,
+    )
+    assert saved.status_code == 200, saved.text
+    assert (notes_storage.root / "Win.md").read_bytes() == edited.encode("utf-8")

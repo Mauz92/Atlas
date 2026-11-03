@@ -101,3 +101,19 @@ def test_listing_ignores_trash_and_temporary_files(storage: NotesStorage) -> Non
 def test_list_folders(storage: NotesStorage) -> None:
     storage.write("A/B/Note.md", "x")
     assert storage.list_folders() == ["A", "A/B"]
+
+
+@pytest.mark.parametrize("content", ["a\r\nb\r\n", "a\nb\r\nc\n", "a\rb", "a\x0bb\r\n"])
+def test_line_endings_are_read_exactly_as_written(storage: NotesStorage, content: str) -> None:
+    written = storage.write("Endings.md", content)
+    read = storage.read("Endings.md")
+    assert read.content == content
+    assert read.content_hash == written.content_hash
+    assert (storage.root / "Endings.md").read_bytes() == content.encode("utf-8")
+
+
+def test_a_crlf_file_made_by_another_editor_is_read_with_its_crlf(storage: NotesStorage) -> None:
+    (storage.root / "Windows.md").write_bytes(b"# Title\r\n\r\nBody\r\n")
+    read = storage.read("Windows.md")
+    assert read.content == "# Title\r\n\r\nBody\r\n"
+    assert read.content_hash == content_hash("# Title\r\n\r\nBody\r\n")
