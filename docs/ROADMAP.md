@@ -899,8 +899,8 @@ none is `DONE` until its tests ran. WIP limit: one task at a time except the spi
 
 | ID | Title | Depends on | Status |
 |---|---|---|---|
-| SYNC-01 | Feed correctness fixes (no protocol change) | — | `READY` |
-| SYNC-02 | Simulation harness: model server, fault transport, invariants, conformance vs real server | — (uses current API) | `READY` |
+| SYNC-01 | Feed correctness fixes (no protocol change) | — | `DONE` (2026-11-03) |
+| SYNC-02 | Simulation harness: model server, fault transport, invariants, conformance vs real server | — (uses current API) | `DONE` (2026-11-03) |
 | SYNC-03 | Protocol v1 server: client ids, sync mode, field merge, `include=data`/`types`/snapshot/retention, versioning | SYNC-01, SYNC-02, ADR-0059 D1–D4, D6, D9, D11–D12 | `BACKLOG` (ADR-0059 accepted 2026-11-03; starts after SYNC-01/02) |
 | SYNC-04 | Note history and three-way merge, move/delete/revive rules, portable paths | SYNC-03, ADR-0059 D3, D5, D10 | `BACKLOG` (ADR-0059 accepted) |
 | SYNC-05 | Resolution log, feed entity and undo | SYNC-03, ADR-0059 D7 | `BACKLOG` (ADR-0059 accepted) |
@@ -914,37 +914,71 @@ none is `DONE` until its tests ran. WIP limit: one task at a time except the spi
 
 ### SYNC-01 — Feed correctness fixes
 - **Problem.** (a) `NotesReconciler` changes revisions/tombstones without recording feed changes; (b) a client whose cursor
-  is ahead of the server (restore) is told nothing; (c) the one-row-per-entity ordering is claimed monotonic but untested under concurrency.
-- **Scope.** Record `note` upsert/delete from `NotesReconciler.run` (and `_adopt`'s paths already do); `since > head` ⇒
-  `resync_required` with `resync_reason=cursor_ahead` (additive field, default absent); extend `ChangesOut` and the
-  OpenAPI/`schema.d.ts`; the web engine treats it like `resync_required`. No retention or id change.
+  is ahead of the server (restore) is told nothing; (c) the one-row-per-entity ordering is claimed monotonic but untested
+  under concurrency; (d) the shipped nginx may reject notes above 1 MiB (R-34, unverified).
+- **Scope (plan, 2026-11-03).**
+  (a) `NotesReconciler.run` records `note` `upsert` (added, updated, revived) and `delete` (removed) through the same
+  `ChangeRecorder` the API uses, in the reconcile transaction, only for rows it actually changed (a scan that finds nothing
+  records nothing, so repeated scans are idempotent and do not churn the cursor). No schema change, no migration.
+  (b) `ChangesService`: `since > head` ⇒ `resync_required=true`, `resync_reason="cursor_ahead"`, `next_since=head`,
+  empty `changes`. `below_floor` is reported with `resync_reason="below_floor"`. `ChangesOut.resync_reason` is additive
+  (`null` when no resync). `openapi.json`/`schema.d.ts` regenerated; the web engine already stops on `resync_required`.
+  The pure decision lives in `atlas.changes.retention` (unit tested).
+  (c) Read the ordering mechanism (user-row lock taken by `UPDATE users SET change_seq…`, held to commit), document it in
+  `ChangeRecorder`/`SYNC_PROTOCOL.md`, and prove it with `tests/integration/test_change_concurrency.py`: deterministic
+  interleavings (writer A holds an allocated cursor, B blocks, reader sees neither; A commits; B proceeds; rollback gives
+  no gap) plus an N-writer stress with a concurrent reader asserting no reader ever skips a later-committed change.
+  Fix only if the test shows it unsafe.
+  (d) Run the shipped `apps/web/nginx.conf` in a throwaway container and POST bodies of 0.5/2/6 MiB; record the result in
+  RISKS R-34 and `DEPLOYMENT.md`; do **not** change deploy config in this task (owner decision; proposed one-line fix).
 - **Acceptance.** An external edit, add, removal and revival on the server filesystem each appear once in `/api/changes` after
-  reconcile; reconcile with no change records nothing (no cursor churn); `since > head` returns the resync signal; N parallel
-  mutating transactions of one user (asyncio + real PostgreSQL) yield strictly increasing, gap-free, unique cursors and a
-  reader never observes cursor `k+1` committed before `k`.
-- **Tests.** `tests/integration/test_notes_reconcile.py` (feed assertions), `test_changes_api.py` (cursor ahead), new
-  `test_change_concurrency.py`; unit for the plan; web unit for the engine.
-- **Evidence.** pending. **Status** `READY`.
+  reconcile; reconcile with no change records nothing (no cursor churn); `since > head` returns the resync signal with
+  reason `cursor_ahead`; N parallel mutating transactions of one user (asyncio + real PostgreSQL) yield strictly
+  increasing, gap-free, unique cursors and a reader never observes cursor `k+1` committed before `k`; (d) result recorded.
+- **Tests.** `tests/integration/test_notes_reconcile.py` (feed assertions), `test_changes_api.py` (cursor ahead, reasons),
+  new `test_change_concurrency.py`; unit `test_change_retention.py`; web unit for the engine (`syncEngine.test.ts`).
+- **Evidence.** `ACCEPTANCE.md` SYNC-01. **Status** `DONE` (2026-11-03, local; not committed; CI not run).
+- **Follow-up found (not fixed):** `NotesReconciler` tombstones a removed note without dropping its `note_projects` rows or
+  announcing the link removal (`NotesService.delete` does both). Add to SYNC-03/04 scope with a regression test.
 
 ### SYNC-02 — Simulation harness
 - **Problem.** There is no multi-client test; M7-06 e2e uses a mocked API. Sync correctness cannot be claimed without one.
-- **Scope.** A TypeScript package/test tree (vitest, no new runtime dependency; a property-testing library only after a §14
-  review): virtual clock and scheduler per client, seeded PRNG, `Transport` fault wrapper (drop request, **drop response
-  after the server applied**, duplicate, delay/reorder, 5xx, 429, disconnect), an in-memory **model server** implementing the
-  current endpoints' semantics, the invariant checker, and a **conformance suite** that replays the same operation traces
-  against the model and the real API (httpx/Playwright-free, a running test server) and compares results. Initial clients use
-  today's task/project queue; the harness is the vehicle that later runs sync-core.
-- **Acceptance.** `npm run test:sim` runs ≥ 200 seeds in < 2 min on the model; the first failing seed is printed and
-  reproduces; ≥ 20 seeds run against the real API; the harness detects planted bugs (cursor advanced before apply; retry
-  without key; ignoring a tombstone) — each planted bug is a test that must fail.
-- **Tests.** The harness's own tests plus the three planted-bug tests. **Status** `READY`.
+- **Language choice (changed from the first sketch, which said TypeScript/vitest).** Python, under
+  `services/api/tests/sim/`, run by the existing `pytest` call in `scripts/verify.sh`. Reasons: the conformance half must
+  drive the real FastAPI app and PostgreSQL through the existing `httpx` ASGI fixtures (a TS harness would need a second
+  process and a bridge); the model server mirrors server semantics and belongs next to the code it models; no new
+  dependency. Cost, stated honestly: the model *clients* are a Python model of the intended client protocol (durable queue,
+  idempotency keys, cursor + apply), **not** the shipped TypeScript (`offlineQueue.ts` is unused by the app, see
+  `SYNC_PROTOCOL.md` §2). SYNC-08 (`packages/sync-core`) must therefore add a TS adapter that runs the same scenarios and
+  invariants against the real core; the scenario/trace format is JSON-serialisable for that.
+- **Scope (plan, 2026-11-03).** Discrete-event simulation with a virtual clock and one seeded PRNG: N model clients (durable
+  op queue with idempotency keys persisted before the first send, mirror of server state, cursor committed with the applied
+  page, one request in flight, backoff with jitter, full resync on `resync_required`), a fault-injecting network (drop
+  request, drop response after the server applied, duplicate, delay and so reorder, timeout, 5xx, offline periods, client
+  restart losing volatile state at any step incl. mid-pull, per-client clock skew sent as `X-Client-Time`), and two server
+  ports behind one interface: an in-memory **model server** of today's task/project/feed/idempotency semantics and the **real
+  API** (ASGI test client + PostgreSQL). Invariants: convergence, no lost acknowledged write, no duplicate on retry, no
+  resurrection, cursor safety, clock independence (same seed, different skew, identical final state), idempotence of an extra
+  pull+push, bounded quiescence, revision-identifies-state. Planted-bug checks mutate model server/client (one flag each)
+  and assert that the named invariant fails. Conformance: identical sequential traces (create/patch/delete/restore with
+  keys, replays, key reuse, stale base revision, feed paging, cursor ahead) against model and real, responses compared;
+  plus a real-server concurrency test.
+- **Acceptance.** `pytest` runs the model simulation (default 100 seeds), the real-API simulation (default 3 seeds) and the
+  conformance suite in the existing verify run without a noticeable increase (< 60 s added); env `ATLAS_SIM_SEEDS`,
+  `ATLAS_SIM_REAL_SEEDS`, `ATLAS_SIM_STEPS` raise them (soak); every failure message carries `seed=` and reproduces by
+  `ATLAS_SIM_SEED=<n>`; each planted bug (cursor advanced before apply, key regenerated on retry, idempotency ignored,
+  tombstone ignored, resurrect on stale patch, acked-but-dropped write, feed row skipped, cursor skip, client clock used for
+  ordering) is a test that fails the named invariant; ≥ 20 real-API seeds are run once as a soak and recorded.
+- **Tests.** `tests/sim/test_sim_model.py`, `test_sim_planted_bugs.py`, `test_sim_real.py`, `test_sim_conformance.py`, harness
+  self-tests. **Evidence.** `ACCEPTANCE.md` SYNC-02. **Status** `DONE` (2026-11-03, local, with the stated deviations: Python not TS; default 100 model / 3 real seeds, the 200/20 figures are soak runs).
+- **Found:** R-37 (lost update on concurrent PATCH, `xfail(strict)` test). Start SYNC-03 with it.
 
 ### SYNC-03 … SYNC-06
 Scope, acceptance and tests follow `SYNC_PROTOCOL.md` §3–§10; each task gets its own plan section here when it becomes
 `READY` (after ADR-0059). Minimum acceptance common to all: the simulation scenarios named in `TESTING.md` §10.3 for that
 feature pass on the model and on the real API; old non-sync-mode behaviour is unchanged (existing suites untouched and green);
 migrations tested up/down on a clean DB and a populated one; `alembic check` clean.
-- **SYNC-03** also: `field_revisions` backfill; `Atlas-Sync` header; `426`; `include=data`, `types=`, snapshot, tombstone-only purge,
+- **SYNC-03** first: fix R-37 (atomic `base_revision` check on tasks/projects/notes, remove the `xfail`) and make `NotesReconciler` drop and announce a removed note's project links. Also: `field_revisions` backfill; `Atlas-Sync` header; `426`; `include=data`, `types=`, snapshot, tombstone-only purge,
   idempotency-key TTL job; `GET /api/instance` sync block; the task feed `GET /api/tasks/changes` marked deprecated.
 - **SYNC-04** also: nginx/compose body limit for 5 MiB notes verified; merge library licence/maintenance check recorded in
   `DEPENDENCIES.md`; history included in backup and export sets (ADR-0041/0042 amended).

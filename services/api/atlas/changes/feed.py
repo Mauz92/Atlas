@@ -27,6 +27,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
+from .retention import ResyncReason
+
 #: Default number of changes returned by ``GET /api/changes`` when ``limit`` is omitted.
 DEFAULT_CHANGE_LIMIT = 200
 #: Largest accepted ``limit``.
@@ -108,13 +110,15 @@ class ChangeSet:
     ``resync_required`` is ``True`` when the requested ``since`` predates the retention floor, so
     the change set cannot be delivered incrementally and the client must full-resync (M7-02). In
     that case ``changes`` is empty and ``next_since`` is the current high-water mark the client
-    resumes from after its full resync.
+    resumes from after its full resync. ``resync_reason`` says why (``below_floor`` or, when the
+    cursor is *ahead* of the server's head after a restore, ``cursor_ahead``; SYNC-01).
     """
 
     changes: Sequence[FeedChange]
     next_since: int
     has_more: bool
     resync_required: bool = False
+    resync_reason: ResyncReason | None = None
 
 
 def parse_since(value: int | None) -> int:

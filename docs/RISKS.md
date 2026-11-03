@@ -293,7 +293,7 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 - **Severity/Likelihood:** Medium / Medium
 - **Description:** a bug in the floor logic, a server restored from an older backup (clients ahead of the server today get an empty
   feed and never notice), or many clients resyncing at once can loop or silently diverge.
-- **Mitigation:** SYNC-01 `cursor_ahead` signal; resync cooldown and per-device snapshot limit; confirm-before-reupload; operator
+- **Mitigation:** SYNC-01 `cursor_ahead` signal (server side done 2026-11-03; client handling and the operator command are not); resync cooldown and per-device snapshot limit; confirm-before-reupload; operator
   runbook; simulation scenario "restore from backup"; `epoch` check.
 - **Owner milestone:** SYNC. **Status:** Open.
 
@@ -310,9 +310,22 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 - **Description:** applying a page without storing the cursor atomically (or the reverse) skips or repeats changes; the browser
   KV store keeps the cursor in a separate write from the data (`syncEngine.ts`).
 - **Mitigation:** one local SQLite transaction for page + cursor (spike S2); state-based apply by revision (idempotent); no local
-  foreign keys between synced entities; crash-point simulation. The user-row lock that orders cursors is verified by reading only
-  and gets a concurrency test (SYNC-01); it also serialises all of a user's writes.
+  foreign keys between synced entities; crash-point simulation. The user-row lock that orders cursors is now proven by a
+  concurrency test (SYNC-01, 2026-11-03: `test_change_concurrency.py`); it also serialises all of a user's writes (so a slow
+  transaction that has already recorded a change blocks every other write of that user until it ends).
 - **Owner milestone:** SYNC. **Status:** Open.
+
+### R-37 — Lost update: concurrent PATCHes with the same base_revision (found by SYNC-02)
+- **Severity/Likelihood:** High / Medium (two devices editing one task/project at once; autosave makes it likelier)
+- **Description:** `TasksService.update` reads the row without a lock and checks `base_revision` against that read; the
+  `UPDATE` has no revision predicate. Two concurrent requests with the same `base_revision` both pass, the second silently
+  overwrites the first, and both responses report the same new revision for different states (8 of 8 attempts in
+  `test_two_concurrent_patches_with_the_same_base_revision_cannot_both_win`, currently `xfail(strict)`). Projects use the same
+  pattern (not tested). It breaks "revision identifies state", which every sync rule assumes.
+- **Mitigation (not applied: SYNC-02 changes no behaviour):** lock the row (`SELECT ... FOR UPDATE`) or add `AND revision = :base`
+  to the update and map zero rows to 409; add the same to projects and notes; remove the `xfail` marker. Schedule at the start
+  of SYNC-03.
+- **Owner milestone:** SYNC-03. **Status:** Open.
 
 ### R-33 — Desktop notes folder edited by other programs
 - **Severity/Likelihood:** High / High
@@ -324,9 +337,15 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 
 ### R-34 — Large notes and request limits
 - **Severity/Likelihood:** Medium / Medium
-- **Description:** notes up to 5 MiB are sent as JSON; the shipped nginx config sets no `client_max_body_size` (default 1 MiB) so a
-  large note may fail through the web container — **not tested**; merge cost on large files; desktop files above the cap.
-- **Mitigation:** verify and set the proxy limit in SYNC-04; explicit "too large to sync" state; 413 handling; merge time bound.
+- **Description:** notes up to 5 MiB are sent as JSON; the shipped nginx config sets no `client_max_body_size` (default 1 MiB).
+  **Verified 2026-11-03 (SYNC-01 d):** the shipped `apps/web/nginx.conf` in a throwaway nginx 1.27 container returns `413` for
+  any request body above 1 MiB (0.99 MiB `200`, 1.01 / 2 / 6 MiB `413`), so **a note larger than about 1 MiB cannot be created or
+  saved through the shipped web container today** (a user-visible defect that already exists, independent of sync); direct API
+  access and a different reverse proxy are unaffected. Merge cost on large files; desktop files above the cap.
+- **Proposed fix (not applied: owner decision, deploy config):** `client_max_body_size 6m;` inside `location /api/` of
+  `apps/web/nginx.conf` (5 MiB content + JSON overhead), plus a note for operators whose own reverse proxy sits in front
+  (`DEPLOYMENT.md` §8). Needs a real-stack check that a 5 MiB note round-trips.
+- **Mitigation:** apply the fix above (can be done before SYNC-04); explicit "too large to sync" state; 413 handling; merge time bound.
 - **Owner milestone:** SYNC. **Status:** Open.
 
 ### R-35 — Device credential theft and revocation gaps
@@ -371,3 +390,5 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 | 2026-11-02 | MU-02 | R-22 progress: Projects UI delivered (J3 passes in a browser); project mutations are online-only like task mutations. |
 | 2026-11-02 | MU-01 | R-22 progress: task detail/editing delivered (J1, J2 pass in a browser). Sub-risk recorded: UI task mutations are online-only (not via the offline queue). |
 | 2026-11-03 | SYNC design | R-28…R-36 added (sync data loss, clock skew, resync/restore, retention, partial apply, desktop folder, large notes, device credentials, Tauri maturity). Found while reading M7: reconcile does not feed the change log; purge removes the ability to bootstrap from cursor 0; a restored server is invisible to clients; ADR-0055's "client-generated ids" is not yet true. Detail `SYNC_PROTOCOL.md` §2. |
+| 2026-11-03 | SYNC-02 | R-37 added: concurrent PATCHes with one `base_revision` both succeed (lost update). Also learned: a retried request must be byte-identical including `base_revision`, because the server fingerprints the whole body; a client that re-reads the base revision on retry gets `409` on its own key. The production `fullResync` hook is still not supplied (model client implements it by listing). |
+| 2026-11-03 | SYNC-01 | R-34 verified as a real defect (shipped nginx rejects bodies above 1 MiB with `413`; fix proposed, not applied). R-32 ordering proven by a concurrency test. R-30: server side of `cursor_ahead` delivered. New finding: `NotesReconciler` tombstones a removed note but, unlike `NotesService.delete`, does not drop its `note_projects` rows or announce the link removal (pre-existing; recorded in `ROADMAP.md` SYNC-03 scope, not changed in SYNC-01). |

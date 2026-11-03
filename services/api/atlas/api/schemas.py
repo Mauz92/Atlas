@@ -24,6 +24,7 @@ from ..calendar import (
     CursorHealth,
     SyncState,
 )
+from ..changes import ResyncReason
 from ..models import ProjectStatus, PushChannel, TaskPriority, TaskStatus
 from ..notifications import MAX_ENDPOINT_LENGTH, MAX_KEY_LENGTH, MAX_PLATFORM_LENGTH
 from ..reminders import MAX_DAYS_BEFORE, InvalidReminderTimingError, format_at_time, parse_at_time
@@ -430,6 +431,11 @@ class ChangesOut(BaseModel):
     delivered, so the client must **full-resync** (fetch the entities afresh) rather than trust the
     — empty — ``changes`` list, then resume from ``next_since``. Adding it defaults to ``False`` so
     existing clients are unaffected.
+
+    ``resync_reason`` (SYNC-01) is ``null`` unless ``resync_required``; then ``below_floor`` (the
+    cursor predates the purge floor) or ``cursor_ahead`` (the cursor is beyond the server's head,
+    e.g. the server was restored from an older backup: the server has lost changes the client holds,
+    so the client must not assume it is up to date and must not silently discard local state).
     """
 
     changes: list[ChangeOut]
@@ -437,6 +443,7 @@ class ChangesOut(BaseModel):
     next_since: int
     has_more: bool
     resync_required: bool = False
+    resync_reason: ResyncReason | None = None
 
 
 # --- Projects ------------------------------------------------------------

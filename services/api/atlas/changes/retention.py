@@ -22,6 +22,7 @@ the boundary logic is unit-testable. The SQL lives in :mod:`atlas.changes.purge`
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from enum import StrEnum
 
 #: Default retention window, in days. Bounds how far back the feed's tombstone history reaches —
 #: i.e. the maximum offline window a client can be away and still catch up incrementally before it
@@ -54,3 +55,27 @@ def resync_required(since: int, purge_floor: int) -> bool:
     of the cursor order), so the normal incremental pull is correct.
     """
     return since < purge_floor
+
+
+class ResyncReason(StrEnum):
+    """Why a client must resync instead of pulling incrementally (SYNC-01)."""
+
+    #: ``since`` predates the purge floor: changes it missed were purged (M7-02).
+    BELOW_FLOOR = "below_floor"
+    #: ``since`` is beyond the server's head: this server has lost changes the client already saw
+    #: (restored from an older backup) or is a different server (SYNC_PROTOCOL.md §4, §7.4).
+    CURSOR_AHEAD = "cursor_ahead"
+
+
+def resync_reason(since: int, purge_floor: int, head: int) -> ResyncReason | None:
+    """The reason a client at ``since`` cannot be served incrementally, or ``None`` if it can.
+
+    ``head`` is the last cursor the server has allocated. A cursor above it can only have come from
+    a server state that no longer exists, so returning "no changes" would leave the client believing
+    it is up to date while the server lacks what the client already holds; it must be told.
+    """
+    if since > head:
+        return ResyncReason.CURSOR_AHEAD
+    if resync_required(since, purge_floor):
+        return ResyncReason.BELOW_FLOOR
+    return None

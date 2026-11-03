@@ -962,7 +962,9 @@ export interface paths {
          *     have been purged and can never be delivered, so instead of a partial set that could resurrect a
          *     deleted entity the response sets ``resync_required`` to ``True`` with an empty ``changes`` list
          *     and ``next_since`` at the current high-water mark (M7-02). The client must full-resync, then
-         *     resume from ``next_since``.
+         *     resume from ``next_since``. A ``since`` *above* the current head means the server lost changes
+         *     the client holds (restored from an older backup): the response is ``resync_required`` with
+         *     ``resync_reason="cursor_ahead"`` (SYNC-01), never an empty page that looks up to date.
          */
         get: operations["list_changes_api_changes_get"];
         put?: never;
@@ -1256,6 +1258,11 @@ export interface components {
          *     delivered, so the client must **full-resync** (fetch the entities afresh) rather than trust the
          *     — empty — ``changes`` list, then resume from ``next_since``. Adding it defaults to ``False`` so
          *     existing clients are unaffected.
+         *
+         *     ``resync_reason`` (SYNC-01) is ``null`` unless ``resync_required``; then ``below_floor`` (the
+         *     cursor predates the purge floor) or ``cursor_ahead`` (the cursor is beyond the server's head,
+         *     e.g. the server was restored from an older backup: the server has lost changes the client holds,
+         *     so the client must not assume it is up to date and must not silently discard local state).
          */
         ChangesOut: {
             /** Changes */
@@ -1271,6 +1278,7 @@ export interface components {
              * @default false
              */
             resync_required: boolean;
+            resync_reason?: components["schemas"]["ResyncReason"] | null;
         };
         /**
          * CredentialProvider
@@ -1970,6 +1978,12 @@ export interface components {
              */
             at_time: string;
         };
+        /**
+         * ResyncReason
+         * @description Why a client must resync instead of pulling incrementally (SYNC-01).
+         * @enum {string}
+         */
+        ResyncReason: "below_floor" | "cursor_ahead";
         /**
          * SearchNoteOut
          * @description A matching note: identity and location only, never its content.

@@ -74,7 +74,9 @@ async def list_changes(
     have been purged and can never be delivered, so instead of a partial set that could resurrect a
     deleted entity the response sets ``resync_required`` to ``True`` with an empty ``changes`` list
     and ``next_since`` at the current high-water mark (M7-02). The client must full-resync, then
-    resume from ``next_since``.
+    resume from ``next_since``. A ``since`` *above* the current head means the server lost changes
+    the client holds (restored from an older backup): the response is ``resync_required`` with
+    ``resync_reason="cursor_ahead"`` (SYNC-01), never an empty page that looks up to date.
     """
     try:
         cursor = parse_since(since)
@@ -99,4 +101,5 @@ async def list_changes(
         next_since=page.next_since,
         has_more=page.has_more,
         resync_required=page.resync_required,
+        resync_reason=page.resync_reason,
     )

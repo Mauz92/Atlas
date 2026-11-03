@@ -3463,3 +3463,50 @@ skeletons replace "Loading…" on the list pages; one `EmptyState`; sign-in and 
 
 Limitations: ADR-0058 and R-27 (old addresses are redirects; only the open Settings section is mounted; Today shows
 one empty state when all three groups are empty; no density toggle).
+
+### SYNC-01 — Feed correctness fixes (no protocol change)
+
+**Result: `DONE` (local, 2026-11-03); not committed; CI `NOT RUN`.** Server: `NotesReconciler` records the change feed;
+`/api/changes` answers a cursor ahead of the head with `resync_required` + `resync_reason`; the cursor ordering is proven
+under real concurrency; the nginx body limit is verified. No migration (no schema change), no new dependency.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| External edit, add, removal and revival found by reconcile each appear once in `/api/changes` | `PASS` | `test_notes_reconcile.py` (4 feed tests via `ChangesService`), `test_changes_api.py::test_a_reconciled_external_edit_reaches_a_client_through_the_feed` (HTTP, `POST /api/notes/reconcile` then `GET /api/changes`). Run against the old `reconcile.py`: 6 of these fail (regression value shown) |
+| A scan that finds nothing records nothing; repeated scans are idempotent | `PASS` | `test_a_scan_that_finds_nothing_records_nothing` (3 scans: `users.change_seq` and `change_log` unchanged, 1 row) |
+| Feed rows and index change are one transaction | `PASS` | `test_reconcile_feed_rows_roll_back_with_the_index` (failure after `run()`: no index row, no feed row, `change_seq` 0) |
+| `since > head` returns a resync signal, not an empty page | `PASS` | `test_changes_api.py` (`head+1`, `head+10`, `MAX_CURSOR` -> `resync_required=true`, `resync_reason="cursor_ahead"`, `next_since=head`, no write to `change_seq`); `at head`/below head stay ordinary; `below_floor` reason in `test_change_purge.py`; unit `test_change_retention.py` (pure `resync_reason`) |
+| API contract regenerated; web engine treats the new reason as a resync | `PASS` | `openapi.json` regenerated, `npm run gen:api` (`ResyncReason`, optional `resync_reason`); `syncEngine.test.ts` "treats a cursor ahead of the server as a resync" |
+| N parallel same-user transactions: strictly increasing, gap-free, unique cursors; a reader never sees `k+1` committed before `k` | `PASS` | `test_change_concurrency.py` (8 tests; 12 consecutive runs after the last test fix, no failure): second writer observed blocked in `pg_stat_activity`; rollback leaves no gap; 5 writers released one at a time; other users not blocked; 3 seeded stress runs (8 writers x 3 changes, 25 % rolled back, paging reader with limits 1/2/5): nothing skipped, nothing duplicated, cursors `1..n` |
+| The concurrency test can fail | `PASS` | negative control in the same file: a cursor handed out in its own short transaction lets the reader skip a committed change (asserted). A mutation of the real recorder in the stress test was not observable (pool exhaustion in the mutant, see note) |
+| Ordering mechanism documented | `PASS` | `atlas/changes/record.py` docstring (unchanged, now test-backed), `SYNC_PROTOCOL.md` §2.1, RISKS R-32 |
+| (d) nginx body limit vs the 5 MiB note limit | `PASS` (check done) / **defect found** | the shipped `apps/web/nginx.conf` in a throwaway `nginx:1.27-alpine` (own docker network, stub upstream, removed afterwards): POST 0.5 MiB `200`, 0.99 MiB `200`, 1.01 MiB `413`, 2 MiB `413`, 6 MiB `413`. Notes above ~1 MiB cannot be saved through the web container. **Not fixed** (deploy config, owner decision): RISKS R-34 + `DEPLOYMENT.md` §8 record it with the proposed `client_max_body_size 6m;` |
+| Repository checks | `PASS` | `./scripts/verify.sh`: ruff, ruff format (227 files), mypy (115 files), pytest `1084 passed` (was 1061), eslint, tsc, vitest `817 passed` (was 816); `verification: PASS` |
+| Real-stack suite | `PASS` | `npm run test:e2e:real` -> `53 passed` (4.6 min; web change was types only) |
+| Reconcile of a removed note also drops its project links and announces them | **not done** | Pre-existing difference from `NotesService.delete`; recorded in ROADMAP SYNC-01 follow-up and the RISKS change log. Not a SYNC-01 acceptance criterion |
+| Migration | n/a | none |
+| Client handling of `cursor_ahead` beyond "resync" (confirm-before-reupload, notice) | `NOT RUN` | SYNC-08 / ADR-0059 D12 |
+
+Note on the mutation attempt: replacing the allocator by an out-of-band one inside the real `ChangeRecorder` hung the stress
+test instead of failing it (each writer needs a second pooled connection, 8 + 8 > 15), so that mutation was abandoned; the
+deterministic negative control is the evidence that the check detects a skip.
+
+### SYNC-02 — Simulation harness
+
+**Result: `DONE` (local, 2026-11-03); not committed; CI `NOT RUN`.** Python harness in `services/api/tests/sim/` (reason in
+`TESTING.md` §10.0). No dependency, no production code change, `scripts/verify.sh` untouched.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Deterministic, seeded; failure prints the seed and reproduces | `PASS` | `test_a_run_is_reproducible_from_its_seed` (identical trace and state twice); every `SimFailure` carries `seed=` and the last 30 events; planted-bug tests re-run the failing seed and get the same invariant |
+| Fault transport: drop request, drop response after apply, duplicate, delay/reorder, 5xx, offline, restart, clock skew | `PASS` | `engine.py`, `client.py`; traces show each fault kind. 429/`Retry-After` and truncated pages are handled by the client but **not injected** (`NOT RUN`) |
+| Invariants: convergence, no acknowledged loss, no duplicates, no resurrection, cursor safety, clock independence, idempotence, bounded work, revision-identifies-state | `PASS` | all implemented in `runner.py`; each is made to fail by a planted bug |
+| Planted bugs fail the named invariant (and pass without the bug) | `PASS` | 11 flags (server: ignore idempotency, ack-but-drop, order by client time, skip feed row, resurrect, cursor overshoot; client: cursor before apply, key regenerated on retry, tombstones ignored, stale revisions applied, queue ordered by client clock) + convergence-alone, clock-dependence, scripted stale replay. The first version of the retry-key bug was too weak (1 of 60 seeds) and was corrected by this check |
+| Model on many seeds | `PASS` | default 100 + 40 + 40 + 1; soak `ATLAS_SIM_SEEDS=1000` -> `1081 passed` in 10 s; no failure in 1000 seeds of the default shape or 300 with purge/4 clients |
+| Real API under the same simulation | `PASS` | default 3 seeds; soak `ATLAS_SIM_REAL_SEEDS=30 ATLAS_SIM_STEPS=150` -> `30 passed` in 82 s (acceptance asked for >= 20); `test_the_real_api_run_can_fail` (client bugs caught against the real server) |
+| Conformance model vs real | `PASS` | 8 traces (lifecycle, projects, validation, idempotency, replay after change, failed request stores nothing, base revision, feed paging/tombstones/cursor ahead) identical; the comparison itself can fail |
+| Concurrency on the real API | **FAIL (finding)** | `test_two_concurrent_patches_...cannot_both_win`: both PATCHes returned 200 with the same revision in 8 of 8 attempts: lost update, **R-37**. Kept as `xfail(strict)` so verify stays green and the fix will flip it |
+| Does not slow verify noticeably | `PASS` | `pytest tests/sim` 213 tests (212 + 1 xfail) in about 13 s |
+| Model server mirrors the TS client / shipped web code | `NOT RUN` | model clients are Python; SYNC-08 owns the TS adapter. Not simulated: notes, links, subtasks, edit-wins, field merge, server restore as a random action, exhaustive crash points |
+| Repository checks | `PASS` | `./scripts/verify.sh` after both tasks: ruff, ruff format (237 files), mypy (115), pytest `1296 passed, 1 xfailed` (SYNC-01 baseline 1084; +212 sim tests), eslint, tsc, vitest `817 passed`; `verification: PASS`. Web e2e not re-run after SYNC-02 (no web change) |
+

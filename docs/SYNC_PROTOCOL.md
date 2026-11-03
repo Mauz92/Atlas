@@ -35,8 +35,8 @@ its *buildable* scope; it is not a local-first sync layer.
 
 | Area | Today [EXISTS] | Needed for ADR-0055 | Severity |
 |---|---|---|---|
-| Feed integrity for notes | `NotesReconciler` (external edit/add/remove, `POST /api/notes/reconcile`, the `notes.reconcile` job) bumps `revision` and tombstones but **never calls `ChangeRecorder`**; `reindex_note` neither. Edits, new files and removals made on the server filesystem never appear in `/api/changes`. | Every revision bump is recorded | **High (bug)** |
-| Server restored from backup | `since > change_seq` returns an empty page with `next_since = since`; the client stays "up to date" while the server has lost changes it already pulled/pushed. | `resync_required(reason=cursor_ahead)` | **High** |
+| Feed integrity for notes | **[FIXED by SYNC-01, 2026-11-03]** (was:  (external edit/add/remove, `POST /api/notes/reconcile`, the `notes.reconcile` job) bumps `revision` and tombstones but **never calls `ChangeRecorder`**; `reindex_note` neither. Edits, new files and removals made on the server filesystem never appear in `/api/changes`.) `NotesReconciler` now records `note` upsert/delete through `ChangeRecorder` in the reconcile transaction, only for rows it changed. | Every revision bump is recorded | Done |
+| Server restored from backup | **[FIXED by SYNC-01]** (was: `since > change_seq` returned an empty page with `next_since = since`; the client stayed "up to date"). Now `resync_required=true`, `resync_reason="cursor_ahead"`, `next_since = head`. The client-side handling (§7.4) is still unbuilt; the web engine treats it as any resync. | `resync_required(reason=cursor_ahead)` | Server done; client NEW |
 | Client-generated ids | `TaskCreateRequest`, project and note create have **no `id` field**; the server assigns UUIDs; notes are identified on create by *path*. ADR-0055 §3 says this "is already true of the API"; it is not. Idempotency keys cover retries of a create, but an offline client cannot reference an entity it created offline (subtask of a new task, link to a new note) without a temp-id mapping. | Optional client `id` on create, idempotent by id | **High** |
 | Field-level merge | `PATCH /tasks/{id}` with `base_revision` rejects *any* mismatch (409); with `base_revision` omitted it overwrites blindly (`TasksService.update`). No per-field change tracking, no base snapshot. | Rules 1–3 of ADR-0055 §4 | **High** |
 | Edit vs delete | Updating a soft-deleted task/project/note is `404` (`get` filters `deleted_at`), so the edit is rejected and a delete is never rejected for being stale (`DELETE` takes no revision). ADR-0055 §4 rule 4 says the edit wins. | Opposite behaviour | **High** |
@@ -47,7 +47,7 @@ its *buildable* scope; it is not a local-first sync layer.
 | Entities not in the feed | `reminder_policies` and the per-task reminder override, user preferences, display name, task tags (carried inside the task, fine), calendar projections, folders. `task_note_link` is recorded; `note_project_link` is recorded. | Policies and preferences yes; calendar read-only later; empty folders no | Medium |
 | Per-entity revision | `tasks.revision`, `projects.revision`, `notes.revision` (int, +1 per change; notes also +1 on external reconcile, rename, delete, revive). Links have **no** revision and no tombstone row (`note_projects` rows are deleted; the only record of the removal is the `change_log` delete row). | Links: presence set diffed on resync | Low |
 | Tombstones | Tasks/projects/notes: soft delete in own table, kept forever. Links: only in `change_log`. | OK; see retention | — |
-| Ordering | `users.change_seq` increment takes a row lock held until commit, so seq order = commit order, gap-free. Verified by reading `ChangeRecorder` and ADR-0032; **concurrency under real contention is not exercised by a test** (the feed tests are sequential HTTP). The lock also serialises all of a user's mutations, including note writes done while the transaction is open. | Keep; test it | Medium (test gap) |
+| Ordering | `users.change_seq` increment takes a row lock held until commit, so seq order = commit order, gap-free. Verified by reading `ChangeRecorder` and ADR-0032; **concurrency under real contention was not exercised by a test** — **now proven by SYNC-01** (`tests/integration/test_change_concurrency.py`: blocking observed in `pg_stat_activity`, rollback leaves no gap, seeded stress with a paging reader; a negative control shows an out-of-band allocator does let a reader skip). The lock also serialises all of a user's mutations, including note writes done while the transaction is open. | Keep | Done |
 | Pagination | `limit` 1–500, `has_more`, `next_since`; one row per entity so no duplicates in a page. Sound. | Keep | — |
 | Idempotency | `Idempotency-Key` on task/project POST/PATCH/DELETE/restore and `POST /notes/{id}/tasks`; per-user, request-fingerprint checked. **No key on note create/update/move/delete.** Keys are never purged (no job found) — grows unbounded but cannot expire under an offline client. | Keys on every write; TTL ≥ tombstone retention | Medium |
 | Client | Browser only. Queue (`offlineQueue.ts`) knows `task` and `project` only; **no production code enqueues**; the UI autosave engines (ADR-0053/0054) are online-only (R-22). `useReconciliation` is mounted only in Settings → Sync. The "cache" holds change metadata, not entities. | Shared sync core with a real local store | **High (by design: ADR-0055 is future work)** |
@@ -290,9 +290,10 @@ adapters where they already exist (`backoff` unit tests).
 ### 8.3 Limits (proposed, configurable)
 
 JSON write body ≤ 256 KiB except note content ≤ `MAX_NOTE_BYTES` (5 MiB, unchanged; JSON overhead means the
-proxy limit must be ≥ 6 MiB — **[UNVERIFIED]** that the shipped nginx/compose config allows it; no
-`client_max_body_size` was found in `apps/web/nginx.conf` or `deploy/`, so nginx's default of 1 MiB would reject
-large notes through the shipped web container: check in SYNC-04). Rate limits keyed by **device id** after
+proxy limit must be ≥ 6 MiB — **VERIFIED 2026-11-03 that it does not**: the shipped `apps/web/nginx.conf`
+sets no `client_max_body_size`, and a throwaway `nginx:1.27-alpine` with that exact file answered `200` to POST bodies
+of 0.5 and 0.99 MiB and `413` to 1.01, 2 and 6 MiB. A note above 1 MiB cannot be saved through the web container today
+(R-34); the fix is not applied yet, see RISKS R-34). Rate limits keyed by **device id** after
 authentication (not client IP, R-SEC-1): 120 writes/min, 60 feed pages/min, 10 snapshot starts/hour; auth
 endpoints keep the login limiter.
 

@@ -249,6 +249,9 @@ supported: roll the application image back together with the data.
 - Terminate TLS at the proxy; forward to `api`/`web` on the internal network.
 - Documented example configuration, including OAuth redirect URIs and any push webhook paths.
 - Do not expose `db` or `worker`. Do not expose the app over plain HTTP for remote access.
+- Request body size: the `web` container's nginx has no `client_max_body_size`, so its default of 1 MiB applies and a
+  note above about 1 MiB is rejected with `413` (verified 2026-11-03; RISKS R-34). Notes may be up to 5 MiB, so any proxy
+  in front of the API must allow at least 6 MiB for `/api/`. The shipped config is not changed yet.
 
 ## 8a. Dev stack on the tailnet (development only)
 

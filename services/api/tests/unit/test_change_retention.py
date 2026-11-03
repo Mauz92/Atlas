@@ -16,6 +16,8 @@ from atlas.changes import (
     DEFAULT_RETENTION_DAYS,
     ChangeSet,
     InvalidRetentionError,
+    ResyncReason,
+    resync_reason,
     resync_required,
     retention_cutoff,
 )
@@ -87,3 +89,34 @@ def test_the_changes_response_carries_the_resync_flag() -> None:
     properties = schemas["ChangesOut"]["properties"]
     assert "resync_required" in properties
     assert properties["resync_required"]["default"] is False
+
+
+# --- the resync reason (SYNC-01) -----------------------------------------------
+
+
+def test_a_cursor_beyond_the_head_is_cursor_ahead() -> None:
+    assert resync_reason(11, 0, 10) is ResyncReason.CURSOR_AHEAD
+    assert resync_reason(1, 0, 0) is ResyncReason.CURSOR_AHEAD  # even on an empty feed
+
+
+def test_a_cursor_below_the_floor_is_below_floor() -> None:
+    assert resync_reason(3, 5, 10) is ResyncReason.BELOW_FLOOR
+    assert resync_reason(0, 1, 10) is ResyncReason.BELOW_FLOOR
+
+
+def test_a_cursor_within_the_retained_range_needs_no_resync() -> None:
+    assert resync_reason(0, 0, 0) is None
+    assert resync_reason(5, 5, 10) is None  # at the floor
+    assert resync_reason(10, 5, 10) is None  # at the head
+    assert resync_reason(0, 0, 10) is None
+
+
+def test_the_reason_values_are_the_wire_values() -> None:
+    assert [reason.value for reason in ResyncReason] == ["below_floor", "cursor_ahead"]
+
+
+def test_the_changes_response_declares_the_resync_reason_as_optional() -> None:
+    schemas = create_app().openapi()["components"]["schemas"]
+    properties = schemas["ChangesOut"]["properties"]
+    assert "resync_reason" in properties
+    assert "resync_reason" not in schemas["ChangesOut"].get("required", [])

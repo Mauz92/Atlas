@@ -325,15 +325,46 @@ Report the actual command and a concise evidence line for release gates. Never i
 
 ## 10. Sync Testing (local-first clients; ADR-0055, ADR-0059, `SYNC_PROTOCOL.md`)
 
-Status: **planned** (SYNC-02 builds it; nothing below exists yet). Sync bugs are ordering and failure bugs, so the main
+Status: **layers A (partly), B and C exist for today's API since SYNC-02 (2026-11-03)**; the protocol-v1 scenarios of 10.3
+and layers D/E do not exist yet. Sync bugs are ordering and failure bugs, so the main
 evidence is a deterministic simulation, not example-based tests.
+
+### 10.0 What exists (SYNC-02) and how to run it
+
+Location `services/api/tests/sim/`, run by the ordinary `pytest` call (so `./scripts/verify.sh` runs it; about 13 s).
+**Language choice: Python, not TypeScript** (the first sketch in ROADMAP said TS/vitest): the real-API half needs the existing
+ASGI + PostgreSQL fixtures, the model server sits next to the code it models, and no dependency is added. Cost: the model
+clients are a Python model of the *intended* client protocol, not the shipped TS; SYNC-08 must run the same scenarios and
+invariants against the real TS core (the trace format is plain data). Files: `engine.py` (virtual clock, event queue,
+fault-injecting network), `model.py` (model server + `ServerBugs`), `client.py` (model client + `ClientBugs`), `runner.py`
+(world, schedule, invariants), `real.py` (real API behind the same port), and four test modules.
+
+| Command | Effect |
+|---|---|
+| `pytest services/api/tests/sim` | default: 100 model seeds (+40 purge, +40 clock-independence), 3 real-API seeds, planted bugs, conformance |
+| `ATLAS_SIM_SEEDS=2000 ATLAS_SIM_STEPS=300 ... -k test_sim_model` | model soak (1000 seeds take about 10 s) |
+| `ATLAS_SIM_REAL_SEEDS=30 ATLAS_SIM_STEPS=150 ... -k test_sim_real` | real-API soak (30 seeds took 82 s) |
+| `ATLAS_SIM_SEED=<n> pytest services/api/tests/sim -x` | re-run exactly one seed; every failure message prints `seed=<n>`, the invariant and the last 30 events |
+
+Faults: drop request, drop response after the server applied, duplicate (late second delivery), delay (reorder, because a
+retry can overtake a slow earlier attempt), timeout, 5xx after apply, offline periods, client restart at any step (volatile
+state lost, mid-pull included), per-client clock skew that jumps (sent as `X-Client-Time`, which must not matter), and
+(model) feed purge forcing `below_floor` resyncs. Invariants implemented: convergence, no acknowledged loss (a 2xx shows what
+was sent; model: applied exactly once), no duplicates, no resurrection, cursor safety (cursor never exceeds the applied page;
+model also checks every feed row below the cursor is held), revisions identify one state, clock independence (same seed with
+and without skew gives the identical final state), idempotence of an extra pull+push, bounded quiescence. Not yet: edit-wins,
+field merge, notes, links, subtasks/project membership, token revocation, server restore as a random action, crash points
+enumerated exhaustively (restarts are random). Conformance (`test_sim_conformance.py`): 8 sequential traces replayed against
+the model and the real API with normalised answers compared, one check that the comparison can fail, and real concurrency
+tests. Planted bugs (`test_sim_planted_bugs.py`): 11 flags in the model server and client, each must trip a named invariant
+and reproduce from its seed, plus convergence-alone, clock-dependence and a scripted stale-replay case.
 
 ### 10.1 Layers
 
 | Layer | What | Where | Runs |
 |---|---|---|---|
 | A. Server protocol | Multi-session HTTP tests: sync-mode writes, field merge, edit-vs-delete, note merge, idempotency replay, cursor ahead, snapshot, retention; **real concurrency** (asyncio, N transactions of one user) on real PostgreSQL | `services/api/tests/integration` | every CI run |
-| B. Simulation on a model server | N clients, one in-memory server model, seeded random schedule, fault transport, virtual time | `packages/sync-sim` (vitest) | CI: ≥ 200 seeds; nightly: ≥ 5 000 |
+| B. Simulation on a model server | N clients, one in-memory server model, seeded random schedule, fault transport, virtual time | `services/api/tests/sim` (pytest, SYNC-02) | verify: 100+ seeds; soak: env var |
 | C. Simulation on the real API | Same scenarios and invariant checker, real FastAPI + PostgreSQL; the model/real **conformance** suite replays identical traces and diffs responses | same harness, real server fixture | CI: ≥ 20 seeds; nightly: more |
 | D. Real-stack e2e | Browser (Playwright, existing `e2e-real`) and the desktop shell (WebDriver/`tauri-driver`, **UNVERIFIED** availability) doing two-device journeys | `apps/web/e2e-real`, desktop e2e | CI where possible |
 | E. Real devices | §10.5 | manual, recorded in `ACCEPTANCE.md` | per release |

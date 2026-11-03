@@ -6,6 +6,13 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Fixed (SYNC-01): **Notes edited, added or deleted outside Atlas now reach other devices.** When Atlas notices a change
+  made directly in the notes folder (the periodic scan or `Reconcile`), it now announces it on the change feed
+  (`GET /api/changes`) like any other edit; before, other devices never learned of it until they reloaded the note. The
+  feed also tells a device whose position is *ahead* of the server (for example after the server was restored from an
+  older backup) to resynchronise (`resync_required` with the new `resync_reason`: `cursor_ahead` or `below_floor`)
+  instead of reporting "nothing new". Known and not yet fixed: notes larger than about 1 MiB cannot be saved through
+  the bundled web container (its nginx limit is 1 MiB, notes may be 5 MiB); see `docs/DEPLOYMENT.md` section 8.
 - Changed (UX-08): **Settings is one page with sections.** A list on the left (**Account**, **Appearance**,
   **Notifications and reminders**, **Calendar**, **Sync**, **Data and backups**, **About**) and one section at a
   time on the right; the section is in the address (`/settings/sync`), so a link or a reload keeps it. Sync,

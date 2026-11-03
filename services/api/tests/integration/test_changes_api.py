@@ -13,11 +13,13 @@ import uuid
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 
 from atlas.auth import hash_password
 from atlas.changes import MAX_CURSOR
 from atlas.db import session_scope
 from atlas.models import ChangeLog, User
+from atlas.notes import NotesStorage
 from tests.conftest import create_user_via_setup, csrf_headers
 
 
@@ -290,8 +292,72 @@ async def test_a_cursor_at_the_high_water_mark_returns_nothing(client: AsyncClie
 
     high_water = (await _pull(client))["next_since"]
 
-    assert (await _pull(client, since=high_water))["changes"] == []
-    assert (await _pull(client, since=high_water + 10))["changes"] == []
+    at_head = await _pull(client, since=high_water)
+    assert at_head["changes"] == []
+    assert at_head["resync_required"] is False
+    assert at_head["resync_reason"] is None
+
+
+async def test_a_cursor_ahead_of_the_server_head_gets_an_explicit_resync_signal(
+    client: AsyncClient,
+) -> None:
+    """SYNC-01 (b): a restored server must not look "up to date" to a client that is ahead."""
+    headers = await _auth(client)
+    await _create_task(client, headers, title="A")
+    await _create_task(client, headers, title="B")
+    head = (await _pull(client))["next_since"]
+
+    for ahead in (head + 1, head + 10, MAX_CURSOR):
+        body = await _pull(client, since=ahead)
+        assert body["resync_required"] is True, ahead
+        assert body["resync_reason"] == "cursor_ahead", ahead
+        assert body["changes"] == []
+        assert body["has_more"] is False
+        assert body["since"] == ahead
+        assert body["next_since"] == head  # the head the client would resume from
+
+    # A cursor at the head, or any cursor below it, is still an ordinary incremental pull.
+    for ordinary in (0, head - 1, head):
+        body = await _pull(client, since=ordinary)
+        assert body["resync_required"] is False, ordinary
+        assert body["resync_reason"] is None, ordinary
+
+
+async def test_a_new_user_at_cursor_zero_is_not_ahead(client: AsyncClient) -> None:
+    await _auth(client)
+    body = await _pull(client, since=0)
+    assert body["resync_required"] is False
+    assert (await _pull(client, since=1))["resync_reason"] == "cursor_ahead"
+
+
+async def test_cursor_ahead_is_a_read_only_answer(client: AsyncClient) -> None:
+    headers = await _auth(client)
+    await _create_task(client, headers)
+    async with session_scope() as session:
+        before = await session.scalar(select(User.change_seq))
+    await _pull(client, since=500)
+    async with session_scope() as session:
+        assert await session.scalar(select(User.change_seq)) == before
+
+
+async def test_a_reconciled_external_edit_reaches_a_client_through_the_feed(
+    notes_client: AsyncClient, notes_storage: NotesStorage
+) -> None:
+    """SYNC-01 (a) end to end: edit a file on the server, run reconcile, pull the change."""
+    headers = await _auth(notes_client)
+    created = await notes_client.post(
+        "/api/notes", json={"path": "Ext.md", "content": "# One\n"}, headers=headers
+    )
+    note = created.json()
+    cursor = (await _pull(notes_client))["next_since"]
+
+    (notes_storage.root / "Ext.md").write_text("# Two\n", encoding="utf-8")
+    reconcile = await notes_client.post("/api/notes/reconcile", headers=headers)
+    assert reconcile.status_code == 200, reconcile.text
+
+    feed = await _pull(notes_client, since=cursor)
+    assert _operations(feed["changes"]) == {("note", note["id"]): "upsert"}
+    assert feed["next_since"] > cursor
 
 
 # --- validation and security --------------------------------------------------

@@ -242,6 +242,30 @@ describe("pullChanges", () => {
     expect(await cursor.get()).toBe(120);
   });
 
+  it("treats a cursor ahead of the server (restored backup) as a resync, not as up to date", async () => {
+    const cursor = new SyncCursorStore(new MemoryStore());
+    await cursor.set(500);
+    const fullResync = vi.fn(async () => {});
+    const listChanges = vi.fn(async () =>
+      feed({
+        since: 500,
+        next_since: 42,
+        has_more: false,
+        resync_required: true,
+        resync_reason: "cursor_ahead",
+      }),
+    );
+
+    const result = await pullChanges({ cursor, listChanges, fullResync });
+
+    expect(fullResync).toHaveBeenCalledTimes(1);
+    expect(result.resyncRequired).toBe(true);
+    expect(result.changes).toEqual([]);
+    // The cursor is moved back to the server's head: the client never keeps a cursor the server lacks.
+    expect(result.nextSince).toBe(42);
+    expect(await cursor.get()).toBe(42);
+  });
+
   it("does not advance the cursor when applying a page fails", async () => {
     const cursor = new SyncCursorStore(new MemoryStore());
     const listChanges = async () => feed({ since: 0, next_since: 5, has_more: true, changes: [] });

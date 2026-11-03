@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..changes import ChangeEntityType, ChangeOperation, ChangeRecorder, entity_id_for
 from ..models import NoteIndex
 from .service import NotesService
 from .storage import NoteFile, NotesStorage, NoteTooLargeError, UnsafePathError
@@ -39,6 +40,7 @@ class NotesReconciler:
         self.user_id = user_id
         self.storage = storage
         self.service = NotesService(session, user_id, storage)
+        self.recorder = ChangeRecorder(session, user_id)
 
     async def run(self) -> ReconcileSummary:
         summary = ReconcileSummary()
@@ -64,15 +66,18 @@ class NotesReconciler:
                 self.session.add(note)
                 await self.session.flush()
                 await self.service.reindex_note(note, file)
+                await self._announce(note, ChangeOperation.UPSERT)
                 summary.added += 1
             elif note.deleted_at is not None:
                 note.deleted_at = None
                 note.revision += 1
                 await self.service.reindex_note(note, file)
+                await self._announce(note, ChangeOperation.UPSERT)
                 summary.added += 1
             elif note.content_hash != file.content_hash:
                 note.revision += 1
                 await self.service.reindex_note(note, file)
+                await self._announce(note, ChangeOperation.UPSERT)
                 summary.updated += 1
             else:
                 summary.unchanged += 1
@@ -82,10 +87,22 @@ class NotesReconciler:
             if path not in files and note.deleted_at is None:
                 note.deleted_at = now
                 note.revision += 1
+                await self.session.flush()
+                await self._announce(note, ChangeOperation.DELETE)
                 summary.removed += 1
 
         await self.session.flush()
         return summary
+
+    async def _announce(self, note: NoteIndex, operation: ChangeOperation) -> None:
+        """Record the revision bump on the change feed, in this transaction (SYNC-01).
+
+        An external edit, addition, removal or revival is an ordinary note change: without this a
+        client pulling ``/api/changes`` would never learn of it. It is called only for rows the scan
+        actually changed, so a scan that finds nothing leaves the cursor untouched and repeated
+        scans are idempotent.
+        """
+        await self.recorder.record(ChangeEntityType.NOTE, entity_id_for(note.id), operation)
 
     def _read_all(self) -> dict[str, NoteFile]:
         found: dict[str, NoteFile] = {}

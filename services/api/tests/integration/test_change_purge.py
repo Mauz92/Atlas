@@ -155,6 +155,7 @@ async def test_a_cursor_that_predates_the_floor_gets_resync_required(client: Asy
     # since=0 predates the floor (1): the purged change can never be delivered, so resync.
     stale = await _pull(client, since=0)
     assert stale["resync_required"] is True
+    assert stale["resync_reason"] == "below_floor"
     assert stale["changes"] == []
     assert stale["next_since"] == 2  # the current high-water mark to resume from after resync
 

@@ -37,6 +37,8 @@ from .record import ChangeRecorder
 from .retention import (
     DEFAULT_RETENTION_DAYS,
     InvalidRetentionError,
+    ResyncReason,
+    resync_reason,
     resync_required,
     retention_cutoff,
 )
@@ -58,12 +60,14 @@ __all__ = [
     "InvalidChangeCursorError",
     "InvalidRetentionError",
     "PurgeSummary",
+    "ResyncReason",
     "entity_id_for",
     "merge_latest",
     "note_project_link_id",
     "parse_limit",
     "parse_since",
     "plan_change_page",
+    "resync_reason",
     "resync_required",
     "retention_cutoff",
     "task_note_link_id",

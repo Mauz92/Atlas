@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import ChangeLog, User
 from .feed import ChangeSet, FeedChange, merge_latest, plan_change_page
-from .retention import resync_required
+from .retention import resync_reason
 
 
 class ChangesService:
@@ -35,18 +35,23 @@ class ChangesService:
         A ``since`` that predates the retention floor cannot be served incrementally — the changes
         in ``(since, floor]`` were purged — so the result is a **resync signal**: no changes, and
         ``resync_required=True`` with ``next_since`` at the current high-water mark (M7-02).
-        Returning a partial set could let the client resurrect a purged delete.
+        Returning a partial set could let the client resurrect a purged delete. A ``since`` *above*
+        the head (the server was restored from an older backup, or is another server) is a resync
+        signal too, with ``resync_reason="cursor_ahead"`` (SYNC-01): an empty page there would make
+        the client believe it is current while the server lacks changes the client holds.
 
         The change store keeps a single row per entity, but :func:`merge_latest` collapses any
         duplicates defensively — so the ``limit + 1`` fetch bound is exact and ``has_more`` honest.
         """
         floor, head = await self._feed_bounds()
-        if resync_required(since, floor):
+        reason = resync_reason(since, floor, head)
+        if reason is not None:
             return ChangeSet(
                 changes=[],
                 next_since=max(head, floor),
                 has_more=False,
                 resync_required=True,
+                resync_reason=reason,
             )
         rows = list(
             await self.session.scalars(

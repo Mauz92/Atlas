@@ -1,5 +1,19 @@
 # Current Task
 
+- Task ID: none in progress. **SYNC-01 and SYNC-02 are `DONE` locally (2026-11-03, not committed, CI not run).**
+  SYNC-01: reconcile feeds `/api/changes`; `cursor_ahead`/`below_floor` `resync_reason`; cursor ordering proven by
+  `tests/integration/test_change_concurrency.py`; nginx 1 MiB body limit verified as a real defect (R-34, not fixed).
+  SYNC-02: Python simulation harness `services/api/tests/sim/` (docs/TESTING.md 10.0): model server/clients, fault network,
+  invariants, planted bugs, conformance, real-API runs; env `ATLAS_SIM_SEEDS`, `ATLAS_SIM_REAL_SEEDS`, `ATLAS_SIM_STEPS`,
+  `ATLAS_SIM_SEED`.
+- **Next:** SYNC-03 (protocol v1 server), starting with **R-37** (concurrent PATCH lost update, `xfail(strict)` test
+  `test_two_concurrent_patches_with_the_same_base_revision_cannot_both_win`) and the reconcile link-drop follow-up. Owner
+  decision pending: nginx `client_max_body_size 6m;` (R-34). SYNC-07 (Tauri spike) still open.
+
+---
+
+## Earlier state (SYNC design, then UX)
+
 - Task ID: none in progress. **SYNC design delivered 2026-11-03 (docs only, nothing implemented, not committed):**
   `docs/SYNC_PROTOCOL.md` (gap analysis of M7 vs ADR-0055, protocol spec), ADR-0059 (PROPOSED, decisions D1-D12 for the
   owner), SYNC milestone in `docs/ROADMAP.md` (SYNC-01..12, Tauri spike plan under SYNC-07), `docs/TESTING.md` section 10
