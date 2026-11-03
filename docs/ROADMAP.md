@@ -887,7 +887,7 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 
 ## Immediate Next Tasks
 
-**Next: close MU (CI run of `e2e-real` + release re-score; UX-01…UX-08 are all `DONE`, `AUTH-01` is the one open UX-adjacent item and needs the owner's approval of its recovery design) or resume calendar work. Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
+**Owner priority order (2026-11-03): 1. Sync (local-first, ADR-0055), 2. Auth (AUTH-01 plus device credentials for sync clients), 3. Calendar (M5-00 onward), 4. Core (close MU: CI run of `e2e-real` + release re-score). UX-01…UX-08 are all `DONE`. Next: the Sync design and backlog (gap analysis against M7, protocol, spikes). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
 editing) and `MU-02` (Projects UI), `MU-03` (Tasks page) and `MU-04` (recurrence, subtasks and reminders in the UI) and `MU-05` (command palette, quick switcher and unified search) and `MU-06` (note ↔ task ↔ project linking) and `MU-07` (daily note, templates and Today as home) and `MU-08` (settings and shell polish) are `DONE`; MU itself is not closed (CI run and release re-score outstanding, see the MU exit-criteria evaluation).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 
