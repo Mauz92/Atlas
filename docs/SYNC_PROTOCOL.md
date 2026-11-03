@@ -35,7 +35,8 @@ its *buildable* scope; it is not a local-first sync layer.
 
 | Area | Today [EXISTS] | Needed for ADR-0055 | Severity |
 |---|---|---|---|
-| Feed integrity for notes | **[FIXED by SYNC-01, 2026-11-03]** (was:  (external edit/add/remove, `POST /api/notes/reconcile`, the `notes.reconcile` job) bumps `revision` and tombstones but **never calls `ChangeRecorder`**; `reindex_note` neither. Edits, new files and removals made on the server filesystem never appear in `/api/changes`.) `NotesReconciler` now records `note` upsert/delete through `ChangeRecorder` in the reconcile transaction, only for rows it changed. | Every revision bump is recorded | Done |
+| Feed integrity for notes | **[FIXED by SYNC-01, 2026-11-03]** (was:  (external edit/add/remove, `POST /api/notes/reconcile`, the `notes.reconcile` job) bumps `revision` and tombstones but **never calls `ChangeRecorder`**; `reindex_note` neither. Edits, new files and removals made on the server filesystem never appear in `/api/changes`.) `NotesReconciler` now records `note` upsert/delete through `ChangeRecorder` in the reconcile transaction, only for rows it changed. **Also fixed by SYNC-03 pre-work (2026-11-03):** a removed file is now tombstoned by the same `NotesService.tombstone_index` as `DELETE /api/notes/{id}`, so its `note_projects` rows are dropped and each removal is announced as a `note_project_link` delete in the same transaction (task-note links stay, as for an API delete). | Every revision bump is recorded | Done |
+| Check-then-write race on `base_revision` | **[FIXED by SYNC-03 pre-work, 2026-11-03]** (was R-37: `update` compared `base_revision` against an unlocked read, two concurrent PATCHes with one base both returned 200 with the same revision). Task/project `PATCH` and note `PUT` (and their delete/restore/rename) now take `SELECT ... FOR UPDATE` before the check; loser gets `409` with `current_revision`. Lock order: entity rows (bulk task locks in id order), then the user's change cursor. Residual: task moved into a project that is being deleted (RISKS R-37). | Revision identifies state | Done |
 | Server restored from backup | **[FIXED by SYNC-01]** (was: `since > change_seq` returned an empty page with `next_since = since`; the client stayed "up to date"). Now `resync_required=true`, `resync_reason="cursor_ahead"`, `next_since = head`. The client-side handling (§7.4) is still unbuilt; the web engine treats it as any resync. | `resync_required(reason=cursor_ahead)` | Server done; client NEW |
 | Client-generated ids | `TaskCreateRequest`, project and note create have **no `id` field**; the server assigns UUIDs; notes are identified on create by *path*. ADR-0055 §3 says this "is already true of the API"; it is not. Idempotency keys cover retries of a create, but an offline client cannot reference an entity it created offline (subtask of a new task, link to a new note) without a temp-id mapping. | Optional client `id` on create, idempotent by id | **High** |
 | Field-level merge | `PATCH /tasks/{id}` with `base_revision` rejects *any* mismatch (409); with `base_revision` omitted it overwrites blindly (`TasksService.update`). No per-field change tracking, no base snapshot. | Rules 1–3 of ADR-0055 §4 | **High** |
@@ -268,7 +269,7 @@ action, and at most one resync is in flight per device; the server rate-limits s
 
 | Status / `error` | Meaning | Client action |
 |---|---|---|
-| 2xx | applied (or replayed) | remove op, store `sync` block |
+| 2xx | applied (or replayed) | remove op, store `sync` block. **A 2xx body is a historical snapshot, not current state**: a replay after a lost response returns the result of the *first* application, possibly many revisions and even a delete ago. The client may use it to fill a gap (id mapping, first copy) but must never let it overwrite newer or tombstoned local state, and must re-read the entity at its next pull (found by sim seed 482, SYNC-03 pre-work) |
 | 200 with `sync.conflicts` | partially applied | store applied fields, surface conflicts |
 | 401 `unauthenticated` / `token_revoked` | credential invalid | stop; keep queue; ask to sign in again (never retry blindly) |
 | 403 `forbidden_scope` | token cannot do this | permanent for the op |
@@ -290,10 +291,10 @@ adapters where they already exist (`backoff` unit tests).
 ### 8.3 Limits (proposed, configurable)
 
 JSON write body ≤ 256 KiB except note content ≤ `MAX_NOTE_BYTES` (5 MiB, unchanged; JSON overhead means the
-proxy limit must be ≥ 6 MiB — **VERIFIED 2026-11-03 that it does not**: the shipped `apps/web/nginx.conf`
-sets no `client_max_body_size`, and a throwaway `nginx:1.27-alpine` with that exact file answered `200` to POST bodies
-of 0.5 and 0.99 MiB and `413` to 1.01, 2 and 6 MiB. A note above 1 MiB cannot be saved through the web container today
-(R-34); the fix is not applied yet, see RISKS R-34). Rate limits keyed by **device id** after
+proxy limit must be ≥ 11 MiB (2 x 5 MiB for JSON escaping + envelope; the earlier "6 MiB" fits prose only) — verified 2026-11-03 that the shipped config did not allow it (default 1 MiB, `413` above;
+R-34). **Fixed in SYNC-03:** `apps/web/nginx.conf` now sets `client_max_body_size 11m;` in `location /api/` and 1 MiB
+elsewhere, checked by `tests/unit/test_nginx_config.py` against the shipped file and a throwaway container; the web image
+must be rebuilt to take effect. Only control characters other than tab/newline (6 bytes each) can still exceed it.) Rate limits keyed by **device id** after
 authentication (not client IP, R-SEC-1): 120 writes/min, 60 feed pages/min, 10 snapshot starts/hour; auth
 endpoints keep the login limiter.
 

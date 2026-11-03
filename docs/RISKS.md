@@ -322,10 +322,38 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   overwrites the first, and both responses report the same new revision for different states (8 of 8 attempts in
   `test_two_concurrent_patches_with_the_same_base_revision_cannot_both_win`, currently `xfail(strict)`). Projects use the same
   pattern (not tested). It breaks "revision identifies state", which every sync rule assumes.
-- **Mitigation (not applied: SYNC-02 changes no behaviour):** lock the row (`SELECT ... FOR UPDATE`) or add `AND revision = :base`
-  to the update and map zero rows to 409; add the same to projects and notes; remove the `xfail` marker. Schedule at the start
-  of SYNC-03.
-- **Owner milestone:** SYNC-03. **Status:** Open.
+- **Mitigation (applied 2026-11-03, SYNC-03):** every write that bumps a revision now loads its row with
+  `SELECT ... FOR UPDATE` (`get(..., for_update=True)`, `populate_existing`) before comparing `base_revision`, and holds the
+  lock to commit: `TasksService.update/delete/restore`, `ProjectsService.update/delete`, `NotesService.update/delete/rename`,
+  and the reconciler's revision bumps (it re-reads the row under lock first). A concurrent writer with the same base waits,
+  re-reads the bumped row and gets the existing `409` with `current_revision`. The row lock was chosen over
+  `UPDATE ... WHERE revision = :base` because the update path does much more than one `UPDATE` (series, tags, subtasks,
+  file write for notes), so the check must cover all of it. **Lock order** (no cycle): entity row(s) first, then the user's
+  change cursor (`ChangeRecorder`, taken last in every write); bulk task locks are taken in `id` order
+  (`delete` promoting children, `_unfile_tasks`); the reconciler records its feed entries after all row changes. Writers
+  never take the cursor and then wait for an entity row. A losing request writes nothing and does not advance the cursor.
+- **Evidence:** `tests/integration/test_revision_races.py` (7 tests, each fails before the fix, passes 3 of 3 runs after),
+  `tests/sim/test_sim_conformance.py` (the former `xfail(strict)` test passes strictly, plus a project variant),
+  `test_notes_reconcile.py::test_reconcile_and_concurrent_note_edits_do_not_deadlock`.
+- **Second race, also fixed (task moved into a project while it is deleted):** a task `PATCH`/create/restore that attaches a task
+  to project X checked X unlocked, so `ProjectsService.delete(X)` (which unfiles the tasks it can see) could commit in
+  between and leave a live task in a deleted project. Every path that attaches a task now **share-locks the project first**
+  (`TasksService._share_projects`, `FOR SHARE`), the project delete holds it exclusively, so they serialise: the task is
+  either rejected (`400 project does not exist`) or unfiled by the delete. **Lock order for these paths: project row(s) (id
+  order), then task row(s) (id order), then the user's change cursor.** A task update peeks at its current and target project
+  (the explicit `project_id`, or the new parent's) before locking the task; if the parent's project changed in between,
+  the late lock uses `NOWAIT` and the request fails with a retryable `400` rather than risk a cycle (rare; not tested).
+  The simpler order "task, then project" was rejected: it deadlocks when two tasks swap projects while both projects are deleted
+  (tested). Row locks are `FOR NO KEY UPDATE`, not `FOR UPDATE`: the first version used `FOR UPDATE`, which conflicts with the
+  foreign-key check of a new `task_links` row and deadlocked a note edit against "task from note" (found by test).
+- **Evidence for the second race:** `test_revision_races.py` (move vs project delete, create and restore vs project delete, four-way
+  swap with both projects deleted, note edit vs task-from-note; 16 rounds each; all fail with the project locks removed, 11 of 11
+  pass on 10 consecutive runs).
+- **Residual:** a `PATCH` without `base_revision` is still last-write-wins by design (it now serialises, so revisions stay
+  unique) until field merge. Audit: the only `base_revision` checks are task `PATCH`, project `PATCH` and note `PUT`; subtask
+  and parent changes go through task `PATCH`; reminders and links carry no revision. A tag or series write by two concurrent
+  updates of the same task is serialised by the task row lock.
+- **Owner milestone:** SYNC-03. **Status:** Fixed locally (2026-11-03; CI not run).
 
 ### R-33 — Desktop notes folder edited by other programs
 - **Severity/Likelihood:** High / High
@@ -342,11 +370,22 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   any request body above 1 MiB (0.99 MiB `200`, 1.01 / 2 / 6 MiB `413`), so **a note larger than about 1 MiB cannot be created or
   saved through the shipped web container today** (a user-visible defect that already exists, independent of sync); direct API
   access and a different reverse proxy are unaffected. Merge cost on large files; desktop files above the cap.
-- **Proposed fix (not applied: owner decision, deploy config):** `client_max_body_size 6m;` inside `location /api/` of
-  `apps/web/nginx.conf` (5 MiB content + JSON overhead), plus a note for operators whose own reverse proxy sits in front
-  (`DEPLOYMENT.md` §8). Needs a real-stack check that a 5 MiB note round-trips.
-- **Mitigation:** apply the fix above (can be done before SYNC-04); explicit "too large to sync" state; 413 handling; merge time bound.
-- **Owner milestone:** SYNC. **Status:** Open.
+- **Fix (applied 2026-11-03, SYNC-03):** `apps/web/nginx.conf` sets `client_max_body_size 11m;` in `location /api/` and an
+  explicit `1m` at server level (static files and SPA stay small). 11m = 2 x `MAX_NOTE_BYTES` + envelope: JSON writes a
+  newline, tab, quote or backslash as two bytes, so a 5 MiB note of nothing but those is 10 MiB on the wire (a first version
+  used 6m, which fits prose but not that worst case; raised at the owner's request). Operators whose own reverse proxy sits in
+  front of the web container must allow at least 11 MiB for `/api/` (`DEPLOYMENT.md` section 8).
+- **Evidence:** `services/api/tests/unit/test_nginx_config.py`: a static parse of the shipped file (directive covers
+  `2 * MAX_NOTE_BYTES + 64 KiB`, nothing else raised; always runs) and a live probe in a throwaway `nginx:1.27-alpine`
+  container (skipped when docker or the local image is missing; never pulls, never touches running containers): 5 MiB + 1 KiB
+  and 10 MiB + 64 KiB bodies are not `413` to `/api/`, 12 MiB is `413`, 2 MiB + 1 to `/` is `413`. Against the old file 3 of
+  the 4 tests fail. `test_notes_api.py::test_a_maximum_size_note_of_escaped_characters_round_trips` shows the API itself
+  accepts and returns a 5 MiB all-newline note (a ~10 MiB JSON body) and refuses one byte more. The owner's running `web`
+  container was **not** rebuilt, so it still enforces 1 MiB until the image is rebuilt.
+- **Residual:** control characters other than tab and newline cost 6 bytes in JSON (`\u0001`); a 5 MiB note made of those
+  would exceed 11 MiB. They are not text anyone writes, and the API still enforces the real limit on the decoded content.
+- **Mitigation:** apply the fix above (done); explicit "too large to sync" state; 413 handling; merge time bound.
+- **Owner milestone:** SYNC. **Status:** Fixed locally for the shipped config (2026-11-03; image not rebuilt, CI not run); operators with their own proxy must apply the same limit.
 
 ### R-35 — Device credential theft and revocation gaps
 - **Severity/Likelihood:** Medium / Low
@@ -390,5 +429,6 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 | 2026-11-02 | MU-02 | R-22 progress: Projects UI delivered (J3 passes in a browser); project mutations are online-only like task mutations. |
 | 2026-11-02 | MU-01 | R-22 progress: task detail/editing delivered (J1, J2 pass in a browser). Sub-risk recorded: UI task mutations are online-only (not via the offline queue). |
 | 2026-11-03 | SYNC design | R-28…R-36 added (sync data loss, clock skew, resync/restore, retention, partial apply, desktop folder, large notes, device credentials, Tauri maturity). Found while reading M7: reconcile does not feed the change log; purge removes the ability to bootstrap from cursor 0; a restored server is invisible to clients; ADR-0055's "client-generated ids" is not yet true. Detail `SYNC_PROTOCOL.md` §2. |
+| 2026-11-03 | SYNC-03 | R-37 mitigated (row lock before the revision check on tasks, projects, notes; lock order documented; tests). R-34 fixed in the shipped nginx config with a static and a live-container test; JSON-escaping worst case recorded. Reconcile now removes a note exactly like `NotesService.delete` (project links dropped and announced). New findings, all fixed: reconcile-vs-edit lock order, task-into-deleted-project race, `FOR UPDATE` vs foreign-key deadlock, nginx 6m too small for escaped notes (now 11m). Harness: model-sim seed 482 was a missing client rule (an acknowledgement, possibly a replay, is a historical snapshot), not a server flaw; fixed in the model client, protocol rule recorded in `SYNC_PROTOCOL.md` section 8.1. |
 | 2026-11-03 | SYNC-02 | R-37 added: concurrent PATCHes with one `base_revision` both succeed (lost update). Also learned: a retried request must be byte-identical including `base_revision`, because the server fingerprints the whole body; a client that re-reads the base revision on retry gets `409` on its own key. The production `fullResync` hook is still not supplied (model client implements it by listing). |
 | 2026-11-03 | SYNC-01 | R-34 verified as a real defect (shipped nginx rejects bodies above 1 MiB with `413`; fix proposed, not applied). R-32 ordering proven by a concurrency test. R-30: server side of `cursor_ahead` delivered. New finding: `NotesReconciler` tombstones a removed note but, unlike `NotesService.delete`, does not drop its `note_projects` rows or announce the link removal (pre-existing; recorded in `ROADMAP.md` SYNC-03 scope, not changed in SYNC-01). |

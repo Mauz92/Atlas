@@ -101,15 +101,20 @@ class ProjectsService:
         self.session = session
         self.user_id = user_id
 
-    async def get(self, project_id: uuid.UUID) -> Project:
-        """The caller's live project, or ``ProjectNotFoundError`` (including another user's)."""
-        project = await self.session.scalar(
-            select(Project).where(
-                Project.id == project_id,
-                Project.user_id == self.user_id,
-                Project.deleted_at.is_(None),
-            )
+    async def get(self, project_id: uuid.UUID, *, for_update: bool = False) -> Project:
+        """The caller's live project, or ``ProjectNotFoundError`` (including another user's).
+
+        ``for_update`` takes the row lock and re-reads the latest committed row (R-37); used by
+        every revision-bumping write.
+        """
+        stmt = select(Project).where(
+            Project.id == project_id,
+            Project.user_id == self.user_id,
+            Project.deleted_at.is_(None),
         )
+        if for_update:
+            stmt = stmt.with_for_update(key_share=True).execution_options(populate_existing=True)
+        project = await self.session.scalar(stmt)
         if project is None:
             raise ProjectNotFoundError(str(project_id))
         return project
@@ -303,7 +308,8 @@ class ProjectsService:
         changes: Mapping[str, Any],
         base_revision: int | None = None,
     ) -> Project:
-        project = await self.get(project_id)
+        # Row lock before the revision check (R-37); see TasksService.update for the lock order.
+        project = await self.get(project_id, for_update=True)
         if base_revision is not None and base_revision != project.revision:
             raise ProjectRevisionConflictError(project.revision)
         fields = {name: value for name, value in changes.items() if name in _WRITABLE}
@@ -341,7 +347,7 @@ class ProjectsService:
         link is a pure association, so leaving it behind would dangle from a note whose project is
         gone. No note is deleted.
         """
-        project = await self.get(project_id)
+        project = await self.get(project_id, for_update=True)
         unfiled = await self._unfile_tasks(project.id)
         unlinked = await self._remove_note_links(project.id)
         project.deleted_at = datetime.now(UTC)
@@ -399,11 +405,14 @@ class ProjectsService:
         """
         task_ids = list(
             await self.session.scalars(
-                select(Task.id).where(
+                select(Task.id)
+                .where(
                     Task.user_id == self.user_id,
                     Task.project_id == project_id,
                     Task.deleted_at.is_(None),
                 )
+                .order_by(Task.id)  # lock the tasks in the one global order (no deadlock cycle)
+                .with_for_update(key_share=True)
             )
         )
         await self.session.execute(

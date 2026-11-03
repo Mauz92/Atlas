@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,6 +43,12 @@ class NotesReconciler:
 
     async def run(self) -> ReconcileSummary:
         summary = ReconcileSummary()
+        # Announcements are collected and recorded after every row change, so this transaction
+        # takes its note-row locks first and the user's change cursor last. That is the same order
+        # as every API write (entity row, then cursor); announcing as we go would hold the cursor
+        # while still needing note rows and could deadlock with a concurrent note edit.
+        announce: list[tuple[NoteIndex, ChangeOperation]] = []
+        removals: list[tuple[NoteIndex, list[uuid.UUID]]] = []
         files = self._read_all()
         rows = {
             note.path: note
@@ -66,33 +71,47 @@ class NotesReconciler:
                 self.session.add(note)
                 await self.session.flush()
                 await self.service.reindex_note(note, file)
-                await self._announce(note, ChangeOperation.UPSERT)
+                announce.append((note, ChangeOperation.UPSERT))
                 summary.added += 1
             elif note.deleted_at is not None:
                 note.deleted_at = None
                 note.revision += 1
                 await self.service.reindex_note(note, file)
-                await self._announce(note, ChangeOperation.UPSERT)
+                announce.append((note, ChangeOperation.UPSERT))
                 summary.added += 1
-            elif note.content_hash != file.content_hash:
+            elif note.content_hash != file.content_hash and await self._still_differs(note, file):
                 note.revision += 1
                 await self.service.reindex_note(note, file)
-                await self._announce(note, ChangeOperation.UPSERT)
+                announce.append((note, ChangeOperation.UPSERT))
                 summary.updated += 1
             else:
                 summary.unchanged += 1
 
-        now = datetime.now(UTC)
         for path, note in rows.items():
             if path not in files and note.deleted_at is None:
-                note.deleted_at = now
-                note.revision += 1
-                await self.session.flush()
-                await self._announce(note, ChangeOperation.DELETE)
+                await self.session.refresh(note, with_for_update={"key_share": True})
+                if note.deleted_at is not None:
+                    continue  # removed through the API while this scan was running
+                # Same state as NotesService.delete: tombstone, links to the note dropped.
+                removals.append((note, await self.service.tombstone_index(note)))
                 summary.removed += 1
 
         await self.session.flush()
+        for note, operation in announce:
+            await self._announce(note, operation)
+        for note, project_ids in removals:
+            await self.service.announce_removal(note, project_ids)
         return summary
+
+    async def _still_differs(self, note: NoteIndex, file: NoteFile) -> bool:
+        """Lock the row and re-check, so a concurrent API write cannot lose its revision bump.
+
+        The scan reads rows without a lock; an API ``PUT`` that committed in between has already
+        written this content (its hash now matches) and bumped the revision, and bumping again
+        from the stale in-memory value would hand out the same revision for two states (R-37).
+        """
+        await self.session.refresh(note, with_for_update={"key_share": True})
+        return note.deleted_at is None and note.content_hash != file.content_hash
 
     async def _announce(self, note: NoteIndex, operation: ChangeOperation) -> None:
         """Record the revision bump on the change feed, in this transaction (SYNC-01).

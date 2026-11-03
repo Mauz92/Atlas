@@ -43,6 +43,9 @@ class ClientBugs:
     apply_stale_revisions: bool = False
     #: keep the queue sorted by the client's own (skewed) clock instead of FIFO
     queue_ordered_by_client_clock: bool = False
+    #: install an acknowledgement's body into the mirror as current state (the pre-fix behaviour):
+    #: a replayed or late acknowledgement is a *historical* snapshot (seed 482 at 300 steps)
+    trust_ack_state: bool = False
 
 
 @dataclass
@@ -81,6 +84,10 @@ class Durable:
     #: highest cursor whose page was fully applied (the invariant compares it with ``cursor``)
     applied_cursor: int = 0
     counter: int = 0
+    #: entities acknowledged by a write: the acknowledgement only proves the write was applied at
+    #: some past moment (a replay after a lost response returns the *original* result), so each is
+    #: read again at the next pull and the mirror is corrected from that, not from the ack
+    refetch: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -100,6 +107,8 @@ class PullJob:
     fetched: dict[tuple[str, str], dict[str, Any] | None] = field(default_factory=dict)
     lists: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     resync_head: int = 0
+    #: acknowledged entities read again in this pull (``Durable.refetch``), by id
+    refetch: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -375,14 +384,43 @@ class SimClient:
         )
         if op.action == "create":
             d.handles[op.target] = body["id"]
-            d.mirror[body["id"]] = Local(op.kind, self._fields(op.kind, body), body["revision"])
+            if self._trusts_acks:
+                d.mirror[body["id"]] = Local(op.kind, self._fields(op.kind, body), body["revision"])
+            else:
+                self._apply_ack(body, op.kind)
         elif op.action == "delete":
             server_id = self._resolve(op)
             if server_id in d.mirror:
                 d.mirror[server_id] = Local(op.kind, d.mirror[server_id].fields, None, True)
                 self.rec.observations.append((self.cid, server_id, "deleted"))
-        else:
+        elif self._trusts_acks:
             self._apply_entity(body)
+        else:
+            self._apply_ack(body, op.kind)
+
+    @property
+    def _trusts_acks(self) -> bool:
+        """Planted bugs that apply an acknowledgement as current state also skip the re-read."""
+        return self.bugs.trust_ack_state or self.bugs.apply_stale_revisions
+
+    def _apply_ack(self, body: dict[str, Any], kind: str) -> None:
+        """An acknowledgement is provisional: it never overwrites newer or tombstoned state.
+
+        The body of a replayed response is the result at the time of the *first* application. If
+        the response was lost, the client may have pulled later changes (even the entity's delete,
+        whose feed row is then below the cursor and never delivered again) before the retry was
+        answered; installing the old body would resurrect or regress the entity for good. So the
+        body only fills a gap in the mirror, and the entity is read again at the next pull.
+        """
+        d = self.durable
+        entity_id = body["id"]
+        local = d.mirror.get(entity_id)
+        if local is None:
+            d.mirror[entity_id] = Local(kind, self._fields(kind, body), body["revision"])
+            self.rec.observations.append((self.cid, entity_id, "live"))
+        elif not local.deleted:
+            self._apply_entity(body, kind)  # guarded by the revision comparison
+        d.refetch[entity_id] = kind
 
     @staticmethod
     def _fields(kind: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -424,6 +462,9 @@ class SimClient:
             for c in page["changes"]
             if c["operation"] == "upsert"
         ]
+        queued = {entity_id for _, entity_id in job.todo}
+        job.refetch = {i: k for i, k in self.durable.refetch.items() if i not in queued}
+        job.todo.extend((kind, entity_id) for entity_id, kind in job.refetch.items())
         job.stage = "get"
         if self.bugs.advance_cursor_before_apply:
             self.durable.cursor = page["next_since"]  # BUG: durable before the page is applied
@@ -456,8 +497,24 @@ class SimClient:
         page = job.page
         assert page is not None
         changed = False
+        for entity_id, kind in job.refetch.items():
+            # Current server state of an acknowledged entity; page rows below can only be as old
+            # or older than this read, and a later change reaches us through a later page.
+            body = job.fetched.get((kind, entity_id))
+            local = d.mirror.get(entity_id)
+            if body is None:
+                if local is None or not local.deleted:
+                    changed = True
+                d.mirror[entity_id] = Local(kind, (local.fields if local else {}), None, True)
+                self.rec.observations.append((self.cid, entity_id, "deleted"))
+            else:
+                changed |= self._apply_entity(body, kind)
+            d.refetch.pop(entity_id, None)
+        refreshed = set(job.refetch)
         for change in page["changes"]:
             key = (change["entity_type"], change["entity_id"])
+            if key[1] in refreshed:
+                continue  # the read above is newer than the page row for the same entity
             if change["operation"] == "delete":
                 if self.bugs.ignore_tombstones:
                     continue
@@ -498,6 +555,7 @@ class SimClient:
             if entity_id not in listed and not local.deleted:
                 d.mirror[entity_id] = Local(local.kind, local.fields, None, True)
         d.mirror.update(listed)
+        d.refetch.clear()  # the listing is the current state of everything
         d.cursor = d.applied_cursor = job.resync_head
         self.log(f"resync applied: {len(listed)} live entities, cursor {d.cursor}")
         self.job = None

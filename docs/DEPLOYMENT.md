@@ -249,9 +249,14 @@ supported: roll the application image back together with the data.
 - Terminate TLS at the proxy; forward to `api`/`web` on the internal network.
 - Documented example configuration, including OAuth redirect URIs and any push webhook paths.
 - Do not expose `db` or `worker`. Do not expose the app over plain HTTP for remote access.
-- Request body size: the `web` container's nginx has no `client_max_body_size`, so its default of 1 MiB applies and a
-  note above about 1 MiB is rejected with `413` (verified 2026-11-03; RISKS R-34). Notes may be up to 5 MiB, so any proxy
-  in front of the API must allow at least 6 MiB for `/api/`. The shipped config is not changed yet.
+- Request body size: notes may be up to 5 MiB and are sent as JSON, where a newline, tab, quote or backslash costs two bytes,
+  so the largest legitimate body is about 10 MiB. The shipped `apps/web/nginx.conf` allows `client_max_body_size 11m;` for
+  `/api/` and 1 MiB everywhere else (RISKS R-34; checked by `services/api/tests/unit/test_nginx_config.py`, which also probes a
+  throwaway nginx container when docker is available). **Rebuild the `web` image to pick this up**
+  (`docker compose -f deploy/docker-compose.yml build web`, then `up -d web`); until then an older image still answers `413`
+  above 1 MiB. Any reverse proxy in front of the web container or the API must also allow at least 11 MiB for `/api/`
+  (nginx `client_max_body_size 11m;` in the `/api/` location, Caddy `request_body { max_size 11MB }`, Traefik `buffering`
+  `maxRequestBodyBytes`). The API enforces the real per-note limit on the decoded content.
 
 ## 8a. Dev stack on the tailnet (development only)
 

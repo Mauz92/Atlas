@@ -6,6 +6,20 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Fixed (SYNC-03): **Two devices saving the same item at the same moment can no longer both "win".** When two edits to
+  one task, project or note were based on the same version and arrived together, both were accepted and the second
+  silently replaced the first while both reported the same new version. Now one is saved and the other gets the usual
+  "changed since it was read" conflict (`409`) with the current version, so no edit is lost without a warning.
+- Fixed (SYNC-03): **Notes up to 5 MiB can be saved through the bundled web container** (its nginx limited requests
+  to 1 MiB, so larger notes failed with `413`). Rebuild the `web` image to get the fix. The request limit is now 11 MiB, which
+  also covers a 5 MiB note made entirely of line breaks or quotation marks (each is sent as two bytes).
+- Fixed (SYNC-03): **A task can no longer end up inside a project that was deleted at the same moment.** Moving, creating
+  or restoring a task into a project while that project was being deleted could leave the task attached to the deleted
+  project (invisible in the project list, still counted by the task). The two requests are now ordered: the task is rejected
+  ("project does not exist") or is filed out of the project by the delete.
+- Fixed (SYNC-03): **A note deleted outside Atlas (removed from the notes folder) is now treated like a note deleted in
+  Atlas**: its project links are removed and other devices are told, instead of leaving the project listing a note that
+  no longer exists. Task links are kept, as for a deleted note, and return if the file reappears.
 - Fixed (SYNC-01): **Notes edited, added or deleted outside Atlas now reach other devices.** When Atlas notices a change
   made directly in the notes folder (the periodic scan or `Reconcile`), it now announces it on the change feed
   (`GET /api/changes`) like any other edit; before, other devices never learned of it until they reloaded the note. The

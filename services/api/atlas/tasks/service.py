@@ -38,6 +38,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import ColumnExpressionArgument, case, delete, func, or_, select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
@@ -238,14 +239,20 @@ class TasksService:
         self.session = session
         self.user_id = user_id
 
-    async def get(self, task_id: uuid.UUID) -> Task:
-        task = await self.session.scalar(
-            select(Task).where(
-                Task.id == task_id,
-                Task.user_id == self.user_id,
-                Task.deleted_at.is_(None),
-            )
+    async def get(self, task_id: uuid.UUID, *, for_update: bool = False) -> Task:
+        """The caller's live task, or ``TaskNotFoundError``.
+
+        ``for_update`` takes the row lock (``SELECT ... FOR UPDATE``) and re-reads the latest
+        committed row, which every revision-bumping write path uses: see :meth:`update`.
+        """
+        stmt = select(Task).where(
+            Task.id == task_id,
+            Task.user_id == self.user_id,
+            Task.deleted_at.is_(None),
         )
+        if for_update:
+            stmt = stmt.with_for_update(key_share=True).execution_options(populate_existing=True)
+        task = await self.session.scalar(stmt)
         if task is None:
             raise TaskNotFoundError(str(task_id))
         return task
@@ -442,12 +449,20 @@ class TasksService:
         Subtasks that were promoted to top level by the delete (ADR-0016) stay promoted. Restoring a
         task that is not deleted, or that is not the caller's, is a ``TaskNotFoundError``.
         """
+        deleted = (
+            Task.id == task_id,
+            Task.user_id == self.user_id,
+            Task.deleted_at.is_not(None),
+        )
+        # Project lock before task lock (see ``_share_projects``): peek at the project, share-lock
+        # it, then lock the task.
+        peek = await self.session.scalar(select(Task.project_id).where(*deleted))
+        await self._share_projects(peek)
         task = await self.session.scalar(
-            select(Task).where(
-                Task.id == task_id,
-                Task.user_id == self.user_id,
-                Task.deleted_at.is_not(None),
-            )
+            select(Task)
+            .where(*deleted)
+            .with_for_update(key_share=True)
+            .execution_options(populate_existing=True)
         )
         if task is None:
             raise TaskNotFoundError(str(task_id))
@@ -506,7 +521,13 @@ class TasksService:
         changes: Mapping[str, Any],
         base_revision: int | None = None,
     ) -> Task:
-        task = await self.get(task_id)
+        # Lock the row before the revision check (R-37): ``base_revision`` is compared with the
+        # latest committed revision and the lock is held to the end of the transaction, so a
+        # concurrent writer with the same base waits, then sees the bumped revision and gets a
+        # 409. Lock order is always entity row first, then the user's change cursor (taken in
+        # ``_record_change``); nothing holding the cursor ever waits for a task row.
+        await self._lock_projects_for_update(task_id, changes)
+        task = await self.get(task_id, for_update=True)
         if base_revision is not None and base_revision != task.revision:
             raise TaskRevisionConflictError(task.revision)
         fields = {name: value for name, value in changes.items() if name in _WRITABLE}
@@ -522,7 +543,7 @@ class TasksService:
             elif task.project_id != parent.project_id:
                 fields["project_id"] = parent.project_id
         if "project_id" in fields:
-            await self._ensure_project(fields["project_id"])
+            await self._ensure_project(fields["project_id"], nowait=True)
         previous_status = task.status
         if "status" in fields:
             validate_transition(previous_status, fields["status"])
@@ -554,17 +575,30 @@ class TasksService:
         return task
 
     async def delete(self, task_id: uuid.UUID) -> None:
-        task = await self.get(task_id)
+        # Lock the task and its live subtasks in ONE statement ordered by id. Taking the parent
+        # first and then the children would cycle with ``ProjectsService.delete`` (which locks a
+        # project's tasks in id order, a parent and its subtasks share the project) when the
+        # parent's id sorts after a child's: every bulk task lock uses the global id order.
+        rows = list(
+            await self.session.scalars(
+                select(Task)
+                .where(
+                    Task.user_id == self.user_id,
+                    Task.deleted_at.is_(None),
+                    or_(Task.id == task_id, Task.parent_task_id == task_id),
+                )
+                .order_by(Task.id)
+                .with_for_update(key_share=True)
+                .execution_options(populate_existing=True)
+            )
+        )
+        task = next((row for row in rows if row.id == task_id), None)
+        if task is None:
+            raise TaskNotFoundError(str(task_id))
         # Promote the task's direct, live subtasks to top level before hiding the parent. This
         # mirrors the FK's ON DELETE SET NULL intent: subtasks are never deleted or orphaned under
         # a parent that is no longer visible (ADR-0016).
-        children = await self.session.scalars(
-            select(Task).where(
-                Task.user_id == self.user_id,
-                Task.parent_task_id == task.id,
-                Task.deleted_at.is_(None),
-            )
-        )
+        children = [row for row in rows if row.id != task_id]
         promoted: list[uuid.UUID] = []
         for child in children:
             child.parent_task_id = None
@@ -582,24 +616,79 @@ class TasksService:
             for child_id in promoted
         )
 
-    async def _ensure_project(self, project_id: uuid.UUID | None) -> None:
+    async def _ensure_project(self, project_id: uuid.UUID | None, *, nowait: bool = False) -> None:
         """A task may only reference a live project owned by the caller (ADR-0020).
 
         The ``tasks.project_id`` foreign key would otherwise reject an unknown id at flush time
         with a database error; validating here turns that into an ordinary ``400`` and guarantees
         a user cannot attach a task to another user's project.
+
+        The check also **share-locks** the project to the end of the transaction, so a concurrent
+        ``ProjectsService.delete`` (which takes the row exclusively and then unfiles the tasks it
+        can see) cannot slip between the check and the write: either it commits first and the
+        check fails, or it waits for this transaction and then unfiles the task too (R-37).
         """
         if project_id is None:
             return
-        found = await self.session.scalar(
-            select(Project.id).where(
-                Project.id == project_id,
-                Project.user_id == self.user_id,
-                Project.deleted_at.is_(None),
+        await self._share_projects(project_id, live=project_id, nowait=nowait)
+
+    async def _share_projects(
+        self,
+        *project_ids: uuid.UUID | None,
+        live: uuid.UUID | None = None,
+        nowait: bool = False,
+    ) -> None:
+        """``SELECT ... FOR SHARE`` the caller's projects, in id order; ``live`` must be live.
+
+        **Lock order for everything that attaches a task to a project: project rows first, then
+        the task row, then the user's change cursor.** ``ProjectsService.delete`` takes the
+        project exclusively *before* it locks the project's tasks, so a task writer that held a
+        task lock and then waited for the project would close a cycle; taking the project first
+        removes the cycle. Shares do not conflict with each other. ``nowait`` is for the one case
+        where the target project is only known after the task is locked (a parent moved in
+        between): it fails fast instead of risking a cycle, and surfaces as a retryable error.
+        """
+        wanted = sorted({p for p in project_ids if p is not None}, key=str)
+        for project_id in wanted:
+            stmt = (
+                select(Project.id, Project.deleted_at)
+                .where(Project.id == project_id, Project.user_id == self.user_id)
+                .with_for_update(read=True, nowait=nowait)
+            )
+            try:
+                row = (await self.session.execute(stmt)).first()
+            except DBAPIError as exc:
+                if getattr(exc.orig, "sqlstate", None) == "55P03":  # lock_not_available
+                    raise TaskValidationError(
+                        "the project is being changed by another request; retry"
+                    ) from exc
+                raise
+            if project_id == live and (row is None or row.deleted_at is not None):
+                raise TaskValidationError("project does not exist")
+
+    async def _lock_projects_for_update(
+        self, task_id: uuid.UUID, changes: Mapping[str, Any]
+    ) -> None:
+        """Share-lock the projects an update may touch, before the task row is locked.
+
+        That is the task's current project (a completing recurring task creates its next
+        occurrence there) and the project the change moves it to: the explicit ``project_id`` or,
+        for a new parent, the parent's. Both are read without a lock; ``_ensure_project`` locks
+        again with ``nowait`` if the guess turns out wrong.
+        """
+        current = await self.session.scalar(
+            select(Task.project_id).where(
+                Task.id == task_id, Task.user_id == self.user_id, Task.deleted_at.is_(None)
             )
         )
-        if found is None:
-            raise TaskValidationError("project does not exist")
+        target = changes.get("project_id")
+        if target is None and changes.get("parent_task_id") is not None:
+            target = await self.session.scalar(
+                select(Task.project_id).where(
+                    Task.id == changes["parent_task_id"], Task.user_id == self.user_id
+                )
+            )
+        await self._share_projects(current, target)
 
     async def _resolve_parent(
         self, parent_id: uuid.UUID | None, *, itself: uuid.UUID | None = None

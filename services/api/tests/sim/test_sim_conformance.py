@@ -256,15 +256,6 @@ async def test_concurrent_requests_with_one_idempotency_key_create_one_entity(
     assert first.status == 201 or second.status == 201
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "FINDING SIM-F1 (SYNC-02): two concurrent PATCHes with the same base_revision can both be "
-        "applied; the second silently overwrites the first and both report the same revision. "
-        "TasksService.update checks base_revision on an unlocked read (no row lock, no revision "
-        "predicate in the UPDATE). Not fixed in SYNC-02 (no behaviour change); belongs to SYNC-03."
-    ),
-)
 async def test_two_concurrent_patches_with_the_same_base_revision_cannot_both_win(
     client: AsyncClient,
 ) -> None:
@@ -296,3 +287,27 @@ async def test_two_concurrent_patches_with_the_same_base_revision_cannot_both_wi
             f"both patches succeeded and report revision {revisions[0]} for different states"
         )
     assert outcomes == {(200, 409)}, f"observed status pairs: {sorted(outcomes)}"
+
+
+async def test_two_concurrent_project_patches_with_the_same_base_revision_cannot_both_win(
+    client: AsyncClient,
+) -> None:
+    """Same base revision, two writers: exactly one wins on the real API too (R-37)."""
+    await create_user_via_setup(client)
+    server = RealServer(client)
+    created = await server.handle(Req("POST", "/api/projects", body={"name": "base"}))
+    assert created.status == 201
+    path = f"/api/projects/{created.body['id']}"
+    for attempt in range(8):
+        base = (await server.handle(Req("GET", path))).body["revision"]
+        results = await asyncio.gather(
+            *(
+                server.handle(
+                    Req("PATCH", path, body={"name": f"{who}{attempt}", "base_revision": base})
+                )
+                for who in "ab"
+            )
+        )
+        assert sorted(r.status for r in results) == [200, 409]
+        winner = next(r for r in results if r.status == 200)
+        assert winner.body["revision"] == base + 1

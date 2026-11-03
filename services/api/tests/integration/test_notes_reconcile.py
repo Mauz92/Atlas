@@ -235,3 +235,186 @@ async def test_reconcile_feed_rows_roll_back_with_the_index(notes_storage: Notes
     assert await _feed(owner) == []
     async with session_scope() as session:
         assert await session.scalar(select(NoteIndex).where(NoteIndex.user_id == owner)) is None
+
+
+# --- removal behaves like NotesService.delete (SYNC-03) -------------------------------
+
+
+async def _linked_note(storage: NotesStorage, owner: uuid.UUID, path: str) -> tuple[str, str]:
+    """A note on disk and in the index, linked to a project and a task; returns (note, project)."""
+    from atlas.models import Project, Task, TaskLink
+    from atlas.notes import NotesService
+    from atlas.projects import NoteProjectLinks
+
+    async with session_scope() as session:
+        stem = path.removesuffix(".md")
+        await NotesService(session, owner, storage).create(f"{stem}Target.md", "# Target\n")
+        note = await NotesService(session, owner, storage).create(
+            path, f"# Linked\n\n[[{stem}Target]]\n"
+        )
+        # A second note whose wiki link points at the note under test.
+        await NotesService(session, owner, storage).create(
+            f"{stem}Pointer.md", f"# P\n\n[[{stem}]]\n"
+        )
+        project = Project(user_id=owner, name="P")
+        task = Task(user_id=owner, title="T")
+        session.add_all([project, task])
+        await session.flush()
+        await NoteProjectLinks(session, owner).link(project.id, note.id)
+        session.add(TaskLink(task_id=task.id, note_id=note.id))
+        return str(note.id), str(project.id)
+
+
+async def _state(owner: uuid.UUID, note_id: str) -> dict[str, object]:
+    from atlas.models import NoteLink, NoteProject, TaskLink
+
+    async with session_scope() as session:
+        note = await session.get(NoteIndex, uuid.UUID(note_id))
+        assert note is not None
+        return {
+            "deleted": note.deleted_at is not None,
+            "revision": note.revision,
+            "project_links": (
+                await session.scalars(
+                    select(NoteProject.project_id).where(NoteProject.note_id == note.id)
+                )
+            ).all(),
+            "task_links": (
+                await session.scalars(select(TaskLink.task_id).where(TaskLink.note_id == note.id))
+            ).all(),
+            "wiki_targets_pointing_here": (
+                await session.scalars(select(NoteLink.id).where(NoteLink.target_note_id == note.id))
+            ).all(),
+        }
+
+
+async def test_reconcile_removal_drops_project_links_like_an_api_delete(
+    notes_storage: NotesStorage,
+) -> None:
+    owner = await _owner()
+    note_id, project_id = await _linked_note(notes_storage, owner, "Linked.md")
+    before = await _state(owner, note_id)
+    assert len(before["project_links"]) == 1  # type: ignore[arg-type]
+    assert len(before["wiki_targets_pointing_here"]) == 1  # type: ignore[arg-type]
+    cursor = await _head(owner)
+
+    (notes_storage.root / "Linked.md").unlink()
+    assert await _run_reconciler(notes_storage, owner) == (0, 0, 1, 2)
+
+    state = await _state(owner, note_id)
+    assert state["deleted"] is True
+    assert list(state["project_links"]) == []  # type: ignore[call-overload]
+    # Task links are kept on a tombstoned note (they are restored if the note reappears).
+    assert len(state["task_links"]) == 1  # type: ignore[arg-type]
+
+    async with session_scope() as session:
+        page = await ChangesService(session, owner).changes(since=cursor, limit=100)
+    announced = sorted((c.entity_type, c.entity_id, c.operation) for c in page.changes)
+    assert announced == sorted(
+        [
+            ("note", note_id, "delete"),
+            ("note_project_link", f"{note_id}:{project_id}", "delete"),
+        ]
+    )
+
+
+async def test_reconcile_removal_matches_notes_service_delete_exactly(
+    notes_storage: NotesStorage,
+) -> None:
+    """Same resulting state whichever path removed the note (the shared tombstone helper)."""
+    from atlas.notes import NotesService
+
+    owner = await _owner()
+    via_api, _ = await _linked_note(notes_storage, owner, "ViaApi.md")
+    via_scan, _ = await _linked_note(notes_storage, owner, "ViaScan.md")
+    api_cursor = await _head(owner)
+
+    async with session_scope() as session:
+        await NotesService(session, owner, notes_storage).delete(uuid.UUID(via_api))
+    api_feed = await _feed(owner, since=api_cursor)
+    scan_cursor = await _head(owner)
+    (notes_storage.root / "ViaScan.md").unlink()
+    await _run_reconciler(notes_storage, owner)
+
+    def shape(state: dict[str, object]) -> tuple[object, ...]:
+        return (
+            state["deleted"],
+            len(state["project_links"]),  # type: ignore[arg-type]
+            len(state["task_links"]),  # type: ignore[arg-type]
+            len(state["wiki_targets_pointing_here"]),  # type: ignore[arg-type]
+        )
+
+    assert shape(await _state(owner, via_api)) == shape(await _state(owner, via_scan))
+    assert shape(await _state(owner, via_scan)) == (True, 0, 1, 0)
+    assert [(op) for _, op, _ in api_feed] == [op for _, op, _ in await _feed(owner, scan_cursor)]
+
+
+async def test_reconcile_removal_is_idempotent_across_scans(notes_storage: NotesStorage) -> None:
+    owner = await _owner()
+    note_id, _ = await _linked_note(notes_storage, owner, "Twice.md")
+    (notes_storage.root / "Twice.md").unlink()
+    await _run_reconciler(notes_storage, owner)
+    head = await _head(owner)
+    state = await _state(owner, note_id)
+
+    for _ in range(3):
+        assert await _run_reconciler(notes_storage, owner) == (0, 0, 0, 2)
+
+    assert await _head(owner) == head, "no further cursor churn"
+    assert await _state(owner, note_id) == state, "no further revision bumps"
+
+
+async def test_reconcile_removal_rolls_back_links_and_feed_together(
+    notes_storage: NotesStorage,
+) -> None:
+    owner = await _owner()
+    note_id, _ = await _linked_note(notes_storage, owner, "Atomic.md")
+    head = await _head(owner)
+    (notes_storage.root / "Atomic.md").unlink()
+
+    class _Boom(RuntimeError):
+        pass
+
+    with pytest.raises(_Boom):
+        async with session_scope() as session:
+            await NotesReconciler(session, owner, notes_storage).run()
+            raise _Boom
+
+    state = await _state(owner, note_id)
+    assert state["deleted"] is False and len(state["project_links"]) == 1  # type: ignore[arg-type]
+    assert await _head(owner) == head
+
+
+async def test_reconcile_and_concurrent_note_edits_do_not_deadlock(
+    notes_storage: NotesStorage,
+) -> None:
+    """The scan takes note rows before the change cursor, like every API write (lock order)."""
+    import asyncio
+
+    from atlas.notes import NoteConflictError, NotesService
+
+    owner = await _owner()
+    ids: list[uuid.UUID] = []
+    async with session_scope() as session:
+        for n in range(6):
+            ids.append(
+                (await NotesService(session, owner, notes_storage).create(f"N{n}.md", "# a\n")).id
+            )
+
+    async def api_edit(note_id: uuid.UUID, text: str) -> None:
+        try:
+            async with session_scope() as session:
+                service = NotesService(session, owner, notes_storage)
+                note = await service.get(note_id)
+                await service.update(note_id, text, note.revision)
+        except NoteConflictError:
+            pass  # the scan or another edit won; losing is fine, deadlocking is not
+
+    for round_ in range(5):
+        for n in range(0, 6, 2):  # external edits the scan will pick up
+            (notes_storage.root / f"N{n}.md").write_text(f"# ext {round_}\n", encoding="utf-8")
+        await asyncio.gather(
+            _run_reconciler(notes_storage, owner),
+            *(api_edit(ids[n], f"# api {round_}\n") for n in range(1, 6, 2)),
+            *(api_edit(ids[n], f"# api {round_}\n") for n in range(0, 6, 2)),
+        )

@@ -10,7 +10,8 @@ import os
 
 import pytest
 
-from .engine import SimConfig, env_int
+from .client import ClientBugs
+from .engine import SimConfig, SimFailure, env_int
 from .model import ModelServer
 from .runner import canonical, run_world
 
@@ -52,3 +53,31 @@ async def test_a_run_is_reproducible_from_its_seed() -> None:
     assert canonical(first) == canonical(second)
     other = await run_world(8, ModelServer(), SimConfig())
     assert other.trace != first.trace
+
+
+# --- named regression cases ----------------------------------------------------------------
+
+
+async def test_regression_seed_482_a_replayed_create_must_not_resurrect_a_deleted_project() -> None:
+    """Found by the 2000-seed/300-step soak (SYNC-03 pre-work); root cause was in the model client.
+
+    c1's ``POST /api/projects`` is applied but its response is lost; c2 then deletes the project
+    and c1 pulls past that tombstone; c1's retry (same idempotency key) is answered with the
+    *original* ``201`` body (revision 1). Installing that body as current state left c1 holding a
+    live project that the server had deleted, with the delete's feed row already below c1's
+    cursor, so nothing would ever correct it. An acknowledgement is historical: it may only fill a
+    gap, and the entity is read again at the next pull. The old behaviour is kept behind
+    ``ClientBugs.trust_ack_state`` so this test also proves the case can fail.
+    """
+    cfg = SimConfig(steps=300)
+    with pytest.raises(SimFailure) as failure:
+        await run_world(482, ModelServer(), cfg, ClientBugs(trust_ack_state=True))
+    assert failure.value.invariant == "cursor_safety"
+    assert "delete project" in str(failure.value)
+    await run_world(482, ModelServer(), cfg)
+
+
+@pytest.mark.parametrize("seed", range(300))
+async def test_long_runs_converge(seed: int) -> None:
+    """Fixed seeds at 300 steps (the soak shape) so a regression there fails the normal run."""
+    await run_world(seed, ModelServer(), SimConfig(steps=300))

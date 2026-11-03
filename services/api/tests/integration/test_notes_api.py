@@ -342,3 +342,24 @@ async def test_crlf_note_round_trips_and_autosave_does_not_conflict(
     )
     assert saved.status_code == 200, saved.text
     assert (notes_storage.root / "Win.md").read_bytes() == edited.encode("utf-8")
+
+
+async def test_a_maximum_size_note_of_escaped_characters_round_trips(
+    notes_client: AsyncClient,
+) -> None:
+    """5 MiB of newlines is a ~10 MiB JSON body: the API accepts what nginx lets through (R-34)."""
+    from atlas.notes.storage import MAX_NOTE_BYTES
+
+    await create_user_via_setup(notes_client)
+    headers = csrf_headers(notes_client)
+    content = "\n" * MAX_NOTE_BYTES
+    created = await notes_client.post(
+        "/api/notes", json={"path": "Big.md", "content": content}, headers=headers
+    )
+    assert created.status_code == 201, created.text[:200]
+    fetched = await notes_client.get(f"/api/notes/{created.json()['id']}")
+    assert fetched.json()["content"] == content
+    too_big = await notes_client.post(
+        "/api/notes", json={"path": "Bigger.md", "content": content + "x"}, headers=headers
+    )
+    assert too_big.status_code in (413, 422)  # refused by the API, not stored

@@ -938,8 +938,8 @@ none is `DONE` until its tests ran. WIP limit: one task at a time except the spi
 - **Tests.** `tests/integration/test_notes_reconcile.py` (feed assertions), `test_changes_api.py` (cursor ahead, reasons),
   new `test_change_concurrency.py`; unit `test_change_retention.py`; web unit for the engine (`syncEngine.test.ts`).
 - **Evidence.** `ACCEPTANCE.md` SYNC-01. **Status** `DONE` (2026-11-03, local; not committed; CI not run).
-- **Follow-up found (not fixed):** `NotesReconciler` tombstones a removed note without dropping its `note_projects` rows or
-  announcing the link removal (`NotesService.delete` does both). Add to SYNC-03/04 scope with a regression test.
+- **Follow-up found in SYNC-01, fixed in SYNC-03 (below):** `NotesReconciler` tombstoned a removed note without dropping its
+  `note_projects` rows or announcing the link removal (`NotesService.delete` does both).
 
 ### SYNC-02 — Simulation harness
 - **Problem.** There is no multi-client test; M7-06 e2e uses a mocked API. Sync correctness cannot be claimed without one.
@@ -971,14 +971,23 @@ none is `DONE` until its tests ran. WIP limit: one task at a time except the spi
   ordering) is a test that fails the named invariant; ≥ 20 real-API seeds are run once as a soak and recorded.
 - **Tests.** `tests/sim/test_sim_model.py`, `test_sim_planted_bugs.py`, `test_sim_real.py`, `test_sim_conformance.py`, harness
   self-tests. **Evidence.** `ACCEPTANCE.md` SYNC-02. **Status** `DONE` (2026-11-03, local, with the stated deviations: Python not TS; default 100 model / 3 real seeds, the 200/20 figures are soak runs).
-- **Found:** R-37 (lost update on concurrent PATCH, `xfail(strict)` test). Start SYNC-03 with it.
+- **Found:** R-37 (lost update on concurrent PATCH, `xfail(strict)` test). Fixed at the start of SYNC-03, see below.
 
 ### SYNC-03 … SYNC-06
 Scope, acceptance and tests follow `SYNC_PROTOCOL.md` §3–§10; each task gets its own plan section here when it becomes
 `READY` (after ADR-0059). Minimum acceptance common to all: the simulation scenarios named in `TESTING.md` §10.3 for that
 feature pass on the model and on the real API; old non-sync-mode behaviour is unchanged (existing suites untouched and green);
 migrations tested up/down on a clean DB and a populated one; `alembic check` clean.
-- **SYNC-03** first: fix R-37 (atomic `base_revision` check on tasks/projects/notes, remove the `xfail`) and make `NotesReconciler` drop and announce a removed note's project links. Also: `field_revisions` backfill; `Atlas-Sync` header; `426`; `include=data`, `types=`, snapshot, tombstone-only purge,
+- **SYNC-03 pre-work, `DONE` locally 2026-11-03 (not committed, CI not run; evidence `ACCEPTANCE.md` SYNC-03 pre-work):**
+  (1) R-37: row lock (`SELECT ... FOR UPDATE`) before the `base_revision` check on task/project `PATCH` and note `PUT`
+  (and on delete/restore/rename, which also bump revisions); lock order entity rows then change cursor, bulk task locks in `id`
+  order; `xfail` removed; (2) R-34: `client_max_body_size 11m` for `/api/` in `apps/web/nginx.conf`, with a static and a live
+  container test; (3) `NotesReconciler` removal shares `NotesService.tombstone_index/announce_removal` with `delete` (project
+  links dropped and announced, wiki-link targets cleared, task links kept), announcements recorded after all row changes
+  (lock order). **Moved out of scope of the remaining SYNC-03 list:** R-37, R-34 and the reconcile link-drop. Also fixed from this work: the
+  task-into-deleted-project race (project share lock before task lock, R-37), nginx 11m for JSON-escaped notes (R-34),
+  and model-sim seed 482 (client rule: an acknowledgement is a historical snapshot).
+  **Remaining SYNC-03 scope:** `field_revisions` backfill; `Atlas-Sync` header; `426`; `include=data`, `types=`, snapshot, tombstone-only purge,
   idempotency-key TTL job; `GET /api/instance` sync block; the task feed `GET /api/tasks/changes` marked deprecated.
 - **SYNC-04** also: nginx/compose body limit for 5 MiB notes verified; merge library licence/maintenance check recorded in
   `DEPENDENCIES.md`; history included in backup and export sets (ADR-0041/0042 amended).

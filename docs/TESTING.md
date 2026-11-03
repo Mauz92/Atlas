@@ -344,7 +344,15 @@ fault-injecting network), `model.py` (model server + `ServerBugs`), `client.py` 
 | `pytest services/api/tests/sim` | default: 100 model seeds (+40 purge, +40 clock-independence), 3 real-API seeds, planted bugs, conformance |
 | `ATLAS_SIM_SEEDS=2000 ATLAS_SIM_STEPS=300 ... -k test_sim_model` | model soak (1000 seeds take about 10 s) |
 | `ATLAS_SIM_REAL_SEEDS=30 ATLAS_SIM_STEPS=150 ... -k test_sim_real` | real-API soak (30 seeds took 82 s) |
+| `ATLAS_SIM_SEEDS=2000 ATLAS_SIM_STEPS=300 ... -k test_clients_converge_under_faults` | long-run model soak (2000 seeds take about 45 s); seed 482 is a named regression (`test_regression_seed_482_...`) and seeds 0-299 at 300 steps run in the normal suite |
 | `ATLAS_SIM_SEED=<n> pytest services/api/tests/sim -x` | re-run exactly one seed; every failure message prints `seed=<n>`, the invariant and the last 30 events |
+
+Concurrency tests that need real PostgreSQL row locks (not expressible as sequential traces): `tests/integration/test_revision_races.py`
+(same-`base_revision` races on tasks, projects and notes, delete-vs-patch, parent-delete vs project-delete lock order, feed
+consistency of a losing request), `test_change_concurrency.py` (cursor ordering) and the conformance test
+`test_two_concurrent_*_with_the_same_base_revision_cannot_both_win` in `tests/sim/test_sim_conformance.py`. Deploy-config
+check: `tests/unit/test_nginx_config.py` (static parse of `apps/web/nginx.conf` always; throwaway-container probe only when
+docker and a local `nginx:1.27-alpine` image exist, otherwise skipped, never pulling).
 
 Faults: drop request, drop response after the server applied, duplicate (late second delivery), delay (reorder, because a
 retry can overtake a slow earlier attempt), timeout, 5xx after apply, offline periods, client restart at any step (volatile

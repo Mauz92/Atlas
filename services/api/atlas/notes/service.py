@@ -8,6 +8,7 @@ the same transaction.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
@@ -87,14 +88,21 @@ class NotesService:
 
     # --- queries --------------------------------------------------------
 
-    async def get(self, note_id: uuid.UUID) -> NoteIndex:
-        note = await self.session.scalar(
-            select(NoteIndex).where(
-                NoteIndex.id == note_id,
-                NoteIndex.user_id == self.user_id,
-                NoteIndex.deleted_at.is_(None),
-            )
+    async def get(self, note_id: uuid.UUID, *, for_update: bool = False) -> NoteIndex:
+        """The caller's live note, or ``NoteNotFoundError``.
+
+        ``for_update`` takes the row lock and re-reads the latest committed row (R-37): every
+        write that bumps ``revision`` uses it so the revision check and the write are one atomic
+        step. Lock order is the note row first, then the user's change cursor (``_record_change``).
+        """
+        stmt = select(NoteIndex).where(
+            NoteIndex.id == note_id,
+            NoteIndex.user_id == self.user_id,
+            NoteIndex.deleted_at.is_(None),
         )
+        if for_update:
+            stmt = stmt.with_for_update(key_share=True).execution_options(populate_existing=True)
+        note = await self.session.scalar(stmt)
         if note is None:
             raise NoteNotFoundError(str(note_id))
         return note
@@ -265,7 +273,7 @@ class NotesService:
         return existing
 
     async def update(self, note_id: uuid.UUID, content: str, base_revision: int) -> NoteIndex:
-        note = await self.get(note_id)
+        note = await self.get(note_id, for_update=True)
         if note.revision != base_revision:
             raise NoteConflictError(note.revision, note.content_hash)
         current = self.storage.read(note.path)
@@ -296,16 +304,28 @@ class NotesService:
         return await self.create(candidate, content)
 
     async def delete(self, note_id: uuid.UUID) -> None:
-        note = await self.get(note_id)
+        note = await self.get(note_id, for_update=True)
         self.storage.delete(note.path)
+        project_ids = await self.tombstone_index(note)
+        await self.announce_removal(note, project_ids)
+
+    async def tombstone_index(self, note: NoteIndex) -> list[uuid.UUID]:
+        """Mark a note's index row removed and drop its links; returns the unlinked project ids.
+
+        The single definition of "a note was removed", shared by :meth:`delete` (the API) and the
+        reconciler (the file vanished outside Atlas), so both leave identical state. It does not
+        touch the file. The wiki-link targets that pointed at the note are cleared; a
+        note↔project link is a pure association and is dropped with the note so no dangling
+        project membership survives (M4-05, ADR-0024). Task↔note links are kept, so that a note
+        that reappears restores them (``atlas.tasks.note_links``). The note row stays as a
+        tombstone. The linked project ids are returned so each removal can be announced
+        (:meth:`announce_removal`, M7-01). Idempotent: a second call finds no links.
+        """
         note.deleted_at = datetime.now(UTC)
         note.revision += 1
         await self.session.execute(
             update(NoteLink).where(NoteLink.target_note_id == note.id).values(target_note_id=None)
         )
-        # A note↔project link is a pure association: drop it with the note so no dangling project
-        # membership survives (M4-05, ADR-0024). The note row itself is kept as a tombstone. The
-        # linked project ids are read first so each removal can be announced (M7-01).
         project_ids = list(
             await self.session.scalars(
                 select(NoteProject.project_id).where(NoteProject.note_id == note.id)
@@ -313,6 +333,10 @@ class NotesService:
         )
         await self.session.execute(delete(NoteProject).where(NoteProject.note_id == note.id))
         await self.session.flush()
+        return project_ids
+
+    async def announce_removal(self, note: NoteIndex, project_ids: Sequence[uuid.UUID]) -> None:
+        """Record the note tombstone and each dropped project link on the change feed."""
         recorder = ChangeRecorder(self.session, self.user_id)
         await recorder.record(ChangeEntityType.NOTE, entity_id_for(note.id), ChangeOperation.DELETE)
         await recorder.record_many(
@@ -325,7 +349,7 @@ class NotesService:
         )
 
     async def rename(self, note_id: uuid.UUID, new_path: str) -> NoteIndex:
-        note = await self.get(note_id)
+        note = await self.get(note_id, for_update=True)
         normalized = normalize_note_path(new_path)
         if normalized == note.path:
             return note

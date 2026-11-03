@@ -2,13 +2,24 @@
 
 - Task ID: none in progress. **SYNC-01 and SYNC-02 are `DONE` locally (2026-11-03, not committed, CI not run).**
   SYNC-01: reconcile feeds `/api/changes`; `cursor_ahead`/`below_floor` `resync_reason`; cursor ordering proven by
-  `tests/integration/test_change_concurrency.py`; nginx 1 MiB body limit verified as a real defect (R-34, not fixed).
+  `tests/integration/test_change_concurrency.py`; nginx 1 MiB body limit verified as a real defect (R-34, fixed in SYNC-03 pre-work).
   SYNC-02: Python simulation harness `services/api/tests/sim/` (docs/TESTING.md 10.0): model server/clients, fault network,
   invariants, planted bugs, conformance, real-API runs; env `ATLAS_SIM_SEEDS`, `ATLAS_SIM_REAL_SEEDS`, `ATLAS_SIM_STEPS`,
   `ATLAS_SIM_SEED`.
-- **Next:** SYNC-03 (protocol v1 server), starting with **R-37** (concurrent PATCH lost update, `xfail(strict)` test
-  `test_two_concurrent_patches_with_the_same_base_revision_cannot_both_win`) and the reconcile link-drop follow-up. Owner
-  decision pending: nginx `client_max_body_size 6m;` (R-34). SYNC-07 (Tauri spike) still open.
+- **SYNC-03 pre-work `DONE` locally (2026-11-03, not committed, CI not run):** R-37 fixed (row lock before the
+  `base_revision` check on task/project PATCH and note PUT, plus delete/restore/rename; lock order entity rows then change
+  cursor, bulk task locks by id), R-34 fixed in `apps/web/nginx.conf` (`11m` for `/api/`, `1m` elsewhere; web image NOT
+  rebuilt, owner must rebuild), reconcile removal now shares `NotesService.tombstone_index` (project links dropped and
+  announced). Evidence: `docs/ACCEPTANCE.md` "SYNC-03 pre-work". New tests: `test_revision_races.py`,
+  `test_nginx_config.py`, 5 in `test_notes_reconcile.py`.
+- **Also fixed before commit (owner asked for all findings):** sim seed 482 at 300 steps (root cause: the model client
+  installed a replayed create acknowledgement over a tombstone it had already pulled; a missing client rule, not a server
+  flaw; the rule is in `SYNC_PROTOCOL.md` section 8.1); nginx limit raised to 11m (covers escaped notes); the
+  task-into-deleted-project race (lock order project, task, cursor; `FOR NO KEY UPDATE` row locks). Nothing known is open
+  from this work except that the `web` image must be rebuilt and CI has not run.
+- **Next:** the rest of SYNC-03 (protocol v1 server: `field_revisions` backfill, `Atlas-Sync` header, `426`, `include=data`,
+  `types=`, snapshot, tombstone-only purge, idempotency-key TTL job, `GET /api/instance` sync block, deprecate
+  `GET /api/tasks/changes`). SYNC-07 (Tauri spike) still open.
 
 ---
 
