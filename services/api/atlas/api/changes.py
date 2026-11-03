@@ -28,7 +28,7 @@ from ..changes import (
     parse_types,
 )
 from ..sync.protocol import MAX_DATA_LIMIT
-from .deps import CurrentUser, DbSession
+from .deps import DbSession, SyncUser
 from .schemas import (
     ChangeOut,
     ChangesOut,
@@ -45,7 +45,7 @@ router = APIRouter(prefix="/api", tags=["sync"], dependencies=[Depends(epoch_che
 @router.get("/changes", response_model=ChangesOut)
 async def list_changes(
     request: Request,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     since: Annotated[
         int | None,

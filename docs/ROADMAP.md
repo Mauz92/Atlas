@@ -25,7 +25,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
 | **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `DONE` (local PASS; CI `e2e-real` NOT RUN) | UX-01…UX-03 `DONE` 2026-11-02, UX-04…UX-08 `DONE` 2026-11-03; J1–J7 and the axe sweep pass on the finished UI. The separate `AUTH-01` row (account recovery) stays `BACKLOG` and is not part of this exit |
-| **SYNC** | **Local-first sync** (ADR-0055, ADR-0059 ACCEPTED, `SYNC_PROTOCOL.md`) | `IN_PROGRESS` (SYNC-01…SYNC-05 `DONE` locally 2026-11-03: server protocol v1 for tasks, projects and notes incl. history/merge and the resolution log with undo; next SYNC-06 devices) | Worked **first** (owner priority order). Server protocol + deterministic multi-client simulation pass before any native-shell task; Tauri spike verdict before SYNC-09/10 |
+| **SYNC** | **Local-first sync** (ADR-0055, ADR-0059 ACCEPTED, `SYNC_PROTOCOL.md`) | `IN_PROGRESS` (SYNC-01…SYNC-06 `DONE` locally 2026-11-03: server protocol v1 for tasks, projects and notes incl. history/merge, the resolution log with undo and per-device bearer credentials; next SYNC-07 Tauri spike / SYNC-08 `sync-core`) | Worked **first** (owner priority order). Server protocol + deterministic multi-client simulation pass before any native-shell task; Tauri spike verdict before SYNC-09/10 |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -671,7 +671,7 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 | UX-09 | Readability tokens and the task row / section structure on Inbox, Today, Upcoming, Tasks lists, project list (phone first; evidence `UX_AUDIT.md` "Readability and mobile audit (2026-11)") | UX-08 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-09; ADR-0062; CI `e2e-real` NOT RUN; not committed) |
 | UX-10 | Week agenda layout and navigation, phone capture (FAB + sheet), phone menu as bottom sheet, 16 px inputs, viewport/safe-area | UX-09 | `DONE` (local, 2026-11-03; ADR-0063) |
 | UX-11 | Remaining phone pages: Tasks select mode and Filters sheet, project Board column tabs, Notes toolbar, Projects cards, palette sheet; standalone Board removed | UX-10 | `DONE` (local, 2026-11-03; ADR-0064; the UX series UX-01…UX-11 is complete) |
-| AUTH-01 | Account recovery in the UI: recovery code issued at setup/in Settings, "Forgot password?" on the sign-in page, reset without email (CLI `atlas-admin reset-password` exists since 2026-11-03) | UX-02 | `BACKLOG` (needs an ADR and the owner's approval of the recovery design: there is no email service in a self-hosted install, so a one-time recovery code shown once at setup and regenerable in Settings is proposed; reset must revoke all sessions, be rate limited, never log the code, and store only its hash) |
+| AUTH-01 | Account recovery in the UI: recovery code issued at setup/in Settings, "Forgot password?" on the sign-in page, reset without email (CLI `atlas-admin reset-password` exists since 2026-11-03) | UX-02 | `BACKLOG` (needs an ADR and the owner's approval of the recovery design: there is no email service in a self-hosted install, so a one-time recovery code shown once at setup and regenerable in Settings is proposed; reset must revoke all sessions **and all sync devices**, be rate limited, never log the code, and store only its hash). **Now shared with SYNC-06 (done):** `atlas.auth.devices.revoke_all_devices(session, user_id)` is the one function that signs every device out; `atlas-admin reset-password` already calls it (via `reset_password()`, which returns `(sessions, devices)`), so AUTH-01's reset endpoint must call `reset_password`-equivalent logic or that function directly, in the same transaction as the password change, and test it the way `test_the_operator_reset_revokes_every_device_token` does. Also available to AUTH-01: the shared login rate-limit pool (`_login_limiter`), the validation-error redaction prefix list in `main.py` (`_CREDENTIAL_PATH_PREFIXES`), the `CurrentUser` browser-only default (a recovery endpoint is unauthenticated, so it uses neither dependency) |
 
 ### UX-01 plan — Design tokens and base controls
 - **Scope.** Replace `:root` in `apps/web/src/styles.css` with the audit §3 tokens, using a neutral accent
@@ -1014,7 +1014,7 @@ none is `DONE` until its tests ran. WIP limit: one task at a time except the spi
 | SYNC-03 | Protocol v1 server: client ids, sync mode, field merge, `include=data`/`types`/snapshot/retention, versioning | SYNC-01, SYNC-02, ADR-0059 D1–D4, D6, D9, D11–D12 | `DONE` (2026-11-03, local, 7 sub-steps 03a-03g all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-03). Notes: identity/create/idempotency only, content semantics are SYNC-04 |
 | SYNC-04 | Note history and three-way merge, move/delete/revive rules, portable paths | SYNC-03, ADR-0059 D3, D5, D10 | `DONE` (2026-11-03, local, 7 sub-steps 04a-04g all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-04; ADR-0060) |
 | SYNC-05 | Resolution log, feed entity and undo | SYNC-03, ADR-0059 D7 | `DONE` (2026-11-03, local, 7 sub-steps 05a-05g all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-05; ADR-0061) |
-| SYNC-06 | Device credentials: table, bearer auth, rotation, revoke, Settings → Devices | SYNC-03, ADR-0059 D8; AUTH-01 consumes the revoke function | `BACKLOG` (ADR-0059 accepted) |
+| SYNC-06 | Device credentials: table, bearer auth, rotation, revoke, Settings → Devices | SYNC-03, ADR-0059 D8; AUTH-01 consumes the revoke function | `DONE` (2026-11-03, local, 8 sub-steps 06a-06h all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-06; ADR-0065) |
 | SYNC-07 | Tauri 2 spike (Linux, Windows, Android) and Electron-fallback decision | — (hardware: Windows machine, Android device) | `READY` for Linux; Windows/Android `BLOCKED` on hardware |
 | SYNC-08 | `packages/sync-core`: framework-free TS client core (queue, pull/apply, rebase, backoff, conflict states) over a `LocalStore` interface; web IndexedDB adapter keeps M7 behaviour | SYNC-03, SYNC-02 | `BACKLOG` |
 | SYNC-09 | Desktop client: Tauri shell, SQLite store, notes-folder engine, keystore, device sign-in | SYNC-04, SYNC-05, SYNC-06, SYNC-07 pass, SYNC-08 | `BACKLOG` |
@@ -1121,7 +1121,7 @@ token_revoked` (SYNC-06); `reminder_policy`/`preferences` feed entities (not sch
 - **SYNC-04** also: nginx/compose body limit for 5 MiB notes verified (SYNC-03 pre-work); merge library licence/maintenance check recorded in
   `DEPENDENCIES.md` (done); history is included in the backup set because the archive walks the notes root; the *export* set
   carries current notes only (history is operational data, `ACCEPTANCE.md` SYNC-04).
-- **SYNC-06** also: Settings → Devices; rate limit keyed by device; token never in logs/OpenAPI examples; revocation tested.
+- **SYNC-06** also: Settings → Devices; rate limit keyed by device; token never in logs/OpenAPI examples; revocation tested (all done, see the SYNC-06 section).
 
 ### SYNC-04 — Note history, three-way merge, move/delete/revive rules, portable paths (`DONE` locally 2026-11-03)
 
@@ -1187,6 +1187,45 @@ backup and restore; non-sync mode and the web app are unchanged.
 resolution (a client drops notices by age); retention reuses `CHANGE_RETENTION_DAYS` (no new setting, nothing for `OPERATOR_GUIDE`).
 **Not in SYNC-05:** which device made a write (`device_id` is `NULL`, SYNC-06), the notice/undo UI and the client cache of notices
 (SYNC-11, SYNC-08), a persisted resolve action for text conflicts, a redo of an undo (edit the field).
+
+### SYNC-06 — Device credentials (`DONE` locally 2026-11-03)
+
+Contract: `SYNC_PROTOCOL.md` 10.1; decisions: ADR-0065; data: `DATA_MODEL.md` `Device`; threats: `SECURITY.md` T13, T17, T22-T24.
+**Problem.** After SYNC-05 the only credential was the browser cookie session with double-submit CSRF: a native client would have had
+to fake a browser, could not be listed or revoked on its own, and the resolution log could not say which device wrote (`device_id`
+was `NULL`). **Plan as executed: ordered sub-steps, each verified before the next** (one uncommitted tree; targeted suites after each
+step, full `verify.sh` at the end):
+
+| Step | Content | Migration | Status |
+|---|---|---|---|
+| 06a | Table `devices` + model (hash-only token columns, grace columns, platform/name checks, unique token hash) and the foreign key of `sync_resolutions.device_id` (`ON DELETE SET NULL`). Tested clean, at the previous revision with a populated schema (user, session, task, resolution), constraints, cascade, `SET NULL`, down/up/up round trip | `b7c4d9e2a1f5` (reversible; downgrade drops `devices` and clears `device_id`) | `DONE` |
+| 06b | `atlas/auth/devices.py`: token generation (`atd_` + 256 bits), SHA-256, shape check, constant-time lookup, rotation, `revoke_device`, `revoke_all_devices`, idle expiry, `last_seen_at` in its own transaction at most every 5 min, per-device limiters; `RateLimiter.retry_after`; `SyncError.headers` | none | `DONE` |
+| 06c | Auth dependencies: `CurrentUser` stays browser-only (device = `403 forbidden_scope`), new `SyncUser` (session or device) applied to the sync/data routers; bearer-alone rule; CSRF skipped only for bearer requests and `POST /api/devices`; `request.state.device_id` and `session.info["device_id"]` | none | `DONE` |
+| 06d | Endpoints: `POST /api/devices` (sign-in, shared login limiter, `422` without echo), `GET`, `PATCH`, `DELETE`, `POST /revoke-all`, `GET /current`, `POST /current/rotate`, `DELETE /current`; schemas; `openapi.json` and `schema.d.ts` | none | `DONE` |
+| 06e | `revoke_all_devices` wired into `reset_password` (CLI; returns `(sessions, devices)`) and into `POST /api/auth/password` (`revoke_devices`, default off, decision in ADR-0065 point 5); `atlas-admin list-devices` / `revoke-device`; the hourly purge deletes devices revoked before the retention window | none | `DONE` |
+| 06f | `device_id` into the resolution log (list, feed `include=data`, undo) via the session; the integration tests of default deny (the exact set of open endpoints), scopes, rotation, expiry, `last_seen_at`, limits, theft, isolation, cookie/CSRF interaction, token hygiene, backup dump | none | `DONE` |
+| 06g | Simulation: clients as devices on the real API, invariants `resolution_device`, `revoked_never_served`, `stop_on_revoked`, a planted defect; model soak unchanged | none | `DONE` |
+| 06h | Web: Settings → Devices (list, rename, sign out, sign out all, last seen, empty state, current marker), the "Also sign out my devices" box, vitest, real-stack spec (bearer journey, layout, axe, 44 px), docs, soaks, `verify.sh` | none | `DONE` |
+
+**Acceptance (all verified, `ACCEPTANCE.md`):** a device signs in with e-mail and password and receives a 256-bit token once; only its
+hash is stored and the token appears in no log, URL, error or backup; the token syncs tasks, projects, notes, the feed and the
+resolution log, and cannot change the password, export, connect calendars or touch another device (the exact open set is a test);
+revoking is effective on the very next request and ends the grace window; rotation gives a new token and a 24 h window for the old
+one that ends when the new one is used; an idle device (90 days) must sign in again; a password reset (CLI) signs out every device and
+a password change does so when asked; a bearer request ignores cookies and needs no CSRF while every cookie request is checked as
+before; users are isolated; `last_seen_at` is the server's time and written at most every five minutes; resolutions name the device
+that wrote; a revoked device is never served again in the hostile simulation and its client stops; the web UI lists, renames and
+signs devices out under the touch rules with no axe findings.
+
+**Deviations from the sketch (ADR-0065):** no `app_version`/`protocol` columns; idle expiry is the retention window (no new setting);
+a general per-device limit instead of the per-endpoint numbers of 8.3 (R-53); `GET /api/devices` is open to devices (read-only, so
+a device can mark itself `current`); the Settings page has no "Add a device" dialog (devices sign in themselves).
+**Found by the work:** the
+simulation's `no_duplicates` invariant had to allow for creates a revoked device applied but never saw acknowledged; a restore brings
+back devices as the backup had them, so a device revoked after the backup works again until revoked once more (documented in
+`OPERATIONS.md` 2.2a and `OPERATOR_GUIDE.md`). **Not in SYNC-06:** the client side (keystore, HTTPS-only enforcement, sign-in screen,
+scheduled rotation: SYNC-07/09/10), a pairing flow, reuse detection (R-52), feed/snapshot limits (R-53), "changed on another device"
+UI (SYNC-11), AUTH-01 itself.
 
 ### SYNC-07 plan — Tauri 2 spike (throwaway code, in a scratch directory, not in the repo tree)
 Versions looked up on 2026-11-03 (GitHub releases API): `tauri` 2.12.5 (2026-10-21), `tauri-cli` 2.12.4, plugin `sql` 2.6.0

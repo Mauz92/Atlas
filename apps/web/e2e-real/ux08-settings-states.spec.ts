@@ -24,6 +24,7 @@ const SECTIONS = [
   ["notifications", "Notifications and reminders"],
   ["calendar", "Calendar"],
   ["sync", "Sync"],
+  ["devices", "Devices"],
   ["data", "Data and backups"],
   ["about", "About"],
 ] as const;

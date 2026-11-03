@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 from ..sync.epoch import get_epoch
 from ..sync.protocol import EPOCH_HEADER, SYNC_HEADER, SyncError, parse_protocol
-from .deps import CurrentUser, DbSession
+from .deps import DbSession, SyncUser
 
 
 async def sync_gate(request: Request) -> None:
@@ -22,7 +22,7 @@ async def sync_gate(request: Request) -> None:
     request.state.sync_protocol = parse_protocol(request.headers.get(SYNC_HEADER))
 
 
-async def epoch_check(request: Request, _user: CurrentUser, session: DbSession) -> None:
+async def epoch_check(request: Request, _user: SyncUser, session: DbSession) -> None:
     """On the sync-capable routers, after authentication: ``Atlas-Epoch`` must be the server's.
 
     A different epoch is ``409 epoch_mismatch`` carrying the current epoch: the server was
@@ -54,4 +54,4 @@ SyncMode = Annotated[bool, Depends(is_sync)]
 
 
 def sync_error_response(_request: Request, exc: SyncError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content=exc.body())
+    return JSONResponse(status_code=exc.status_code, content=exc.body(), headers=exc.headers)

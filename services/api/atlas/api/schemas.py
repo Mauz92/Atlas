@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import email_validator
 from email_validator import EmailNotValidError, validate_email
@@ -87,6 +87,69 @@ class ProfileUpdate(BaseModel):
 class PasswordChange(BaseModel):
     current_password: str = Field(min_length=1, max_length=1024)
     new_password: str = Field(min_length=12, max_length=1024)
+    revoke_devices: bool = Field(
+        default=False,
+        description=(
+            "Also sign out every sync device (ADR-0065). Off by default: a routine password "
+            "change signs out browsers only, so the desktop app keeps syncing; tick it when the "
+            "old password may have been exposed."
+        ),
+    )
+
+
+DevicePlatform = Literal["windows", "linux", "macos", "android", "ios", "web", "other"]
+
+
+def _clean_device_name(value: str) -> str:
+    value = " ".join(value.split())  # trims and collapses whitespace, newlines and tabs included
+    if not value or any(ord(c) < 32 or ord(c) == 127 for c in value):
+        msg = "Name must not be blank"
+        raise ValueError(msg)
+    return value
+
+
+DeviceName = Annotated[str, Field(min_length=1, max_length=80), AfterValidator(_clean_device_name)]
+
+
+class DeviceSignIn(BaseModel):
+    """Sign a sync device in with the account's e-mail and password (SYNC-06)."""
+
+    email: Email
+    password: str = Field(min_length=1, max_length=1024)
+    name: DeviceName
+    platform: DevicePlatform = "other"
+
+
+class DeviceRename(BaseModel):
+    name: DeviceName
+
+
+class DeviceInfo(BaseModel):
+    id: uuid.UUID
+    name: str
+    platform: DevicePlatform
+    created_at: datetime
+    last_seen_at: datetime | None = Field(
+        description="Server time of the last authenticated request (updated every few minutes)."
+    )
+    revoked_at: datetime | None
+    current: bool = Field(description="True when this request was authenticated by this device.")
+
+
+class DeviceInfoList(BaseModel):
+    items: list[DeviceInfo]
+
+
+class DeviceSignedIn(BaseModel):
+    """A device and its bearer token. The token is shown **once**: only its hash is stored, so a
+    lost token means signing the device in again."""
+
+    device: DeviceInfo
+    token: str = Field(description="`Authorization: Bearer <token>`. Keep it in the OS keystore.")
+
+
+class DeviceRevokeAllOut(BaseModel):
+    revoked: int
 
 
 class UserPublic(BaseModel):

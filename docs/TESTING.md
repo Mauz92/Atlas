@@ -507,6 +507,37 @@ Coverage of a default run (60 seeds, 4 clients, tasks+projects+notes): about 860
 `path_collision`, 60 `note_merged`, 45 `path_later_wins`, 680 undo entries (570 applied, 110 no-ops), refusals `already_undone`,
 `not_undoable`, `conflict` (about 590) and `path_exists`.
 
+#### 10.0d Device credentials (SYNC-06)
+
+Layer A (real PostgreSQL, `usefixtures("_db")`): `tests/integration/test_devices.py` - sign-in (token shape and entropy, hash-only
+storage, no cookie/CSRF, one `401` for every failure, the shared login rate limit, validation never echoing the password, inactive
+account, the 25-device bound), the data endpoints with a bearer token, **the exact set of endpoints open to devices** (walks every
+router; default deny), every account-level endpoint refused with `403 forbidden_scope`, list/rename/revoke/revoke-all (user scope,
+CSRF on the browser path, idempotent), rotation (grace window, lost response, the new token ends the old one's window, revocation
+ends the window), idle expiry (91 days refused, 89 allowed, never-used device expires from creation), `last_seen_at` (server clock,
+a forged `Date` header, no rewrite inside five minutes, written even when the request fails, never for a revoked device),
+per-device rate limits (`Retry-After`, other devices unaffected), password change with and without `revoke_devices`, the operator
+reset and `list-devices`/`revoke-device`, `device_id` in the resolution list, feed (`include=data`) and undo, the purge of old revoked
+devices. `tests/integration/test_device_security.py` - token theft and revocation, a thief's reach, cross-user isolation, the
+cookie/CSRF interaction (cookie requests still need CSRF with or without an `Authorization` header; a bad bearer is never rescued by a
+cookie; a cookie cannot ride a device token onto account endpoints; a session token is not a device token and the reverse; a device
+request sets no cookie), token hygiene (no token in any log record, error body or header of a full flow; hashes only in the
+database), malformed `Authorization` headers, deactivated and deleted accounts. `test_devices_migration.py` (clean schema, populated
+previous schema with resolutions, constraints, the `device_id` foreign key, downgrade and re-upgrade). Unit: `RateLimiter.retry_after`.
+
+Layer C (real API): `tests/sim/test_sim_devices.py` - every simulated client signs in as its own device and sends its bearer token
+through the same hostile schedule as the resolution simulation. New invariants: `resolution_device` (each log entry names the device
+of the client whose request produced it, undo entries the undoing client's, none anonymous), `revoked_never_served` (after the owner
+revokes a device mid-run the server never answers it 2xx again), `stop_on_revoked` (its client stops at the first `token_revoked` and
+sends nothing after; planted defect `ClientBugs.ignore_revoked` is caught as `stop_on_revoked` or `bounded_work`). `no_duplicates` allows
+for creates a revoked device had applied but never saw acknowledged. The model server has no devices (nothing to model: identity is
+not part of its state), so the model soak is unchanged.
+
+Layer D: `apps/web/e2e-real/sync06-devices.spec.ts` (the bearer journey: sign in with the password, sync, refused on account endpoints,
+rename and sign out from Settings, immediate `token_revoked`; the Devices section at 1440/390/360 px in both themes with axe on the
+list, rename, confirm and sign-out-all states, 44 px targets and no clipping); `ux08` and `ux11` sweeps include the new section.
+Unit (vitest): `DevicesSection.test.tsx`, the password-change flag in `Settings.test.tsx`.
+
 ### 10.1 Layers
 
 | Layer | What | Where | Runs |

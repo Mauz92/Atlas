@@ -42,6 +42,13 @@ export const SETTINGS_SECTIONS = [
       "Changes you make offline are stored on this device and sent automatically when the connection returns. If an item changed on the server in the meantime, your edit is kept so you can decide what to do.",
   },
   {
+    id: "devices",
+    label: "Devices",
+    palette: "Devices",
+    description:
+      "The desktop and phone apps that sync with this server. Sign one out here and it stops syncing at once.",
+  },
+  {
     id: "data",
     label: "Data and backups",
     palette: "Data and backups",

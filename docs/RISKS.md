@@ -514,6 +514,26 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
   listed with its overwritten value so the UI can offer "set it back by hand" (an ordinary edit); SYNC-11 must word this.
   **Status:** Open (UI task).
 
+### R-52 - Token rotation does not detect theft of the current token
+- **Severity/Likelihood:** Low / Low
+- **Description:** rotation (ADR-0065 point 6) gives a new token and keeps the old one for 24 hours or until the new one is first used.
+  It shortens the life of a leaked *old* token. It does not notice that two parties hold the *current* one: whoever presents it is the
+  device, and a thief who rotates first locks the owner's client out only until the owner signs the device in again. There is no
+  reuse detection (which would have to revoke the device on a presented, already-spent token and so would punish a client that merely
+  lost a response).
+- **Mitigation:** the owner sees `last_seen_at` and the device list and can revoke at once; a new sign-in needs the password; clients
+  are expected to hold the token in the OS keystore only. Reuse detection can be added later without a schema change if the owner wants
+  it. **Status:** Accepted.
+
+### R-53 - Per-device feed and snapshot limits are not built; limiters are in-process
+- **Severity/Likelihood:** Low / Low
+- **Description:** `SYNC_PROTOCOL.md` 8.3 proposed 60 feed pages a minute and 10 snapshot starts an hour per device. SYNC-06 built a
+  general 600 requests and 120 writes a minute per device and no feed-specific limit: a stolen token can read the whole account at
+  that rate (T17), and nothing yet shows what a real client needs. Like the login limiter the counters live in the API process
+  (single-process deployment) and reset on restart.
+- **Mitigation:** the general limit, the visible `last_seen_at`, immediate revocation; SYNC-08 should measure a real client's feed
+  use and then set the feed numbers (one constant each in `atlas/auth/devices.py` and the changes router). **Status:** Open.
+
 ### R-43 - Idempotency table growth and the purge scan
 - **Severity/Likelihood:** Low / Medium
 - **Description:** every sync-mode write stores a key; with 90-day retention at personal scale (tens of thousands of rows) the hourly
@@ -558,8 +578,12 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 - **Severity/Likelihood:** Medium / Low
 - **Description:** a bearer token outlives a password change; a lost laptop keeps syncing until revoked; keystore availability
   varies (Linux without Secret Service, Android).
-- **Mitigation:** SECURITY §12; recovery revokes all (AUTH-01 integration); idle expiry; device list; no file fallback for the token.
-- **Owner milestone:** SYNC-06 / AUTH-01. **Status:** Open.
+- **Mitigation (server side done by SYNC-06, ADR-0065):** hash-only storage, immediate revocation, device list with `last_seen_at`,
+  idle expiry, password reset revokes all (`atlas-admin reset-password`, AUTH-01 will call the same function), a password change can
+  revoke all (`revoke_devices`, off by default), scope limited to sync (T22). Still open: the OS keystore per platform and "no file
+  fallback for the token" are client work (SYNC-07 spike, SYNC-09/10); a password change *without* the box leaves devices signed
+  in on purpose (ADR-0065 point 5).
+- **Owner milestone:** SYNC-06 (server, done) / SYNC-07, SYNC-09 (client keystore) / AUTH-01. **Status:** Open (client side).
 
 ### R-36 — Tauri 2 platform maturity (WebKitGTK, WebView2, Android) and plugin churn
 - **Severity/Likelihood:** Medium / Medium
@@ -583,6 +607,7 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 | 2026-10-27 | M9-05 | Security review (threat model vs implementation). R-21 added (push endpoint not scheme/host-constrained; accepted for the single-user model). F1 (SPA missing security headers/CSP) found and fixed in `apps/web/nginx.conf`; R-SEC-1/2/4 re-confirmed, R-SEC-3 resolved. Detail in `docs/SECURITY.md` §"Milestone 9 security review". |
 | 2026-11-01 | Audit | Function audit: R-22 added (backend-heavy, interface-light); ADR-0043 re-prioritises to a usable core. |
 | 2026-11-02 | MU-08 | R-22 progress: Settings, shortcut help, mobile nav and an axe accessibility gate delivered (J7 passes). Sub-risks: password change signs out all other sessions (no per-device session list); the password limiter is in-process; backup status is only as visible as `BACKUP_DIR` is to the API and does not re-verify checksums; **`npm audit --include=dev` reports a moderate `minimatch` advisory (GHSA-g3hv-75wg-m249) in the eslint/typescript-eslint toolchain — present before MU-08, dev-only, not yet fixed (the fix needs a breaking tooling upgrade), so the 2026-10-27 "0 advisories" claim no longer holds**; no user time-zone setting; MU exit needs a CI run and a release re-score. |
+| 2026-11-03 | SYNC-06 (device credentials) | R-35 narrowed to the client keystore (server side done); R-52 (rotation does not detect theft of the current token) and R-53 (no per-device feed/snapshot limits; in-process limiters) added. Found while building: a `git checkout` of a generated schema file cost a re-edit (process, not product); the simulation needed a slack term in `no_duplicates` for creates a revoked device had applied but never saw acknowledged. |
 | 2026-11-03 | UX-11 | Remaining phone pages and removal of the standalone Board (ADR-0064): UI-only; R-51 added (emulation only; board-less tasks). |
 | 2026-11-03 | UX-10 | Week agenda, phone capture sheet, menu sheets, 16 px fields and safe areas (ADR-0063): UI-only; R-50 added (emulation only: keyboard, insets, screen readers). |
 | 2026-11-03 | UX-09 | Readability tokens, one row anatomy and section cards (ADR-0062): UI-only; R-49 added (CSS behaviours verified in Chromium only). |

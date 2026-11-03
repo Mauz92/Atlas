@@ -112,6 +112,23 @@ class SyncSimClient(SimClient):
             self.log("426 sync_version_unsupported: stop syncing, keep the queue, tell the user")
             self.rec.halts.append(self.cid)
             return
+        if (
+            resp is not None
+            and resp.status == 401
+            and isinstance(resp.body, dict)
+            and resp.body.get("error") == "token_revoked"
+            and inflight is not None
+            and inflight.attempt == attempt
+            and not self.bugs.ignore_revoked
+        ):
+            # SYNC_PROTOCOL.md 8.1: stop, keep the queue and the local data, ask the user to sign in
+            self.inflight = None
+            self.job = None
+            self.halted = True
+            self.sent_at_halt = self.sent
+            self.log("401 token_revoked: stop syncing, keep the queue, ask the user to sign in")
+            self.rec.revoked_halts.append(self.cid)
+            return
         super()._on_reply(attempt, resp)
 
     # --- user actions -----------------------------------------------------------------------

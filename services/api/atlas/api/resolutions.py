@@ -45,7 +45,7 @@ from ..sync.resolution_rules import (
     undo_status,
 )
 from ..tasks import InvalidTaskTransitionError, TaskNotFoundError, TasksService, TaskValidationError
-from .deps import CurrentUser, DbSession
+from .deps import DbSession, SyncUser
 from .notes import get_storage
 from .schemas import (
     ProjectUpdateRequest,
@@ -71,7 +71,7 @@ def _out(row: SyncResolution) -> ResolutionOut:
 
 @router.get("", response_model=ResolutionListOut)
 async def list_resolutions(
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     limit: Annotated[int | None, Query(description="Page size, 1 to 200 (default 50).")] = None,
     cursor: Annotated[
@@ -100,7 +100,7 @@ async def list_resolutions(
 
 @router.get("/{resolution_id}", response_model=ResolutionOut)
 async def get_resolution(
-    resolution_id: uuid.UUID, user: CurrentUser, session: DbSession
+    resolution_id: uuid.UUID, user: SyncUser, session: DbSession
 ) -> ResolutionOut:
     row = await ResolutionLog(session, user.id).get(resolution_id)
     if row is None:
@@ -124,7 +124,7 @@ def _changed_since(
 @router.post("/{resolution_id}/undo", response_model=ResolutionUndoOut)
 async def undo_resolution(
     resolution_id: uuid.UUID,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     storage: StorageDep,
     idempotency_key: IdempotencyKey = None,

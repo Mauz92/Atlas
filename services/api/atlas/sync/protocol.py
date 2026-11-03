@@ -40,6 +40,8 @@ class SyncError(Exception):
         self.error = error
         self.detail = detail
         self.extra = extra
+        #: extra response headers (``Retry-After``, ``WWW-Authenticate``)
+        self.headers: dict[str, str] = {}
 
     def body(self) -> dict[str, Any]:
         return {"error": self.error, "detail": self.detail, **self.extra}

@@ -48,6 +48,8 @@ class ClientBugs:
     trust_ack_state: bool = False
     #: protocol v1: keep retrying and writing after a ``426`` instead of stopping
     ignore_426: bool = False
+    #: SYNC-06: keep retrying and writing after ``401 token_revoked`` instead of stopping
+    ignore_revoked: bool = False
 
 
 @dataclass
@@ -142,6 +144,8 @@ class Recorder:
     refusals: list[tuple[str, Op, int, str | None]] = field(default_factory=list)
     #: protocol v1: clients that stopped on 426
     halts: list[str] = field(default_factory=list)
+    #: SYNC-06: clients that stopped on ``401 token_revoked``
+    revoked_halts: list[str] = field(default_factory=list)
     #: notes: every ``conflict_copy`` a client was told about, with the op whose text it holds
     conflict_copies: list[tuple[str, Op, dict[str, Any]]] = field(default_factory=list)
     #: SYNC-05: every resolution a response told a client about: id -> (op id, the response object)

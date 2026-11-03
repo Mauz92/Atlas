@@ -7,13 +7,14 @@ import {
 } from "./settingsSections";
 
 describe("settings sections", () => {
-  it("lists the seven sections in the approved order", () => {
+  it("lists the eight sections in the approved order", () => {
     expect(SETTINGS_SECTIONS.map((section) => section.label)).toEqual([
       "Account",
       "Appearance",
       "Notifications and reminders",
       "Calendar",
       "Sync",
+      "Devices",
       "Data and backups",
       "About",
     ]);

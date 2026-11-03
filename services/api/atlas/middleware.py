@@ -12,12 +12,15 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from .auth.csrf import validate_csrf_token
+from .auth.devices import bearer_token
 from .config import get_settings
 
 logger = logging.getLogger("atlas.http")
 
 _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
-_CSRF_EXEMPT_PATHS = frozenset({"/api/auth/login", "/api/auth/setup"})
+# ``/api/devices`` (POST) signs a device in with the account password, like login: it needs no
+# session, so there is no ambient credential to forge a request with.
+_CSRF_EXEMPT_PATHS = frozenset({"/api/auth/login", "/api/auth/setup", "/api/devices"})
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
@@ -72,7 +75,14 @@ class CsrfMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        if request.method in _UNSAFE_METHODS and request.url.path not in _CSRF_EXEMPT_PATHS:
+        # A request carrying a bearer token is authenticated by that token alone and its cookies
+        # are ignored by the auth dependencies (``deps.bearer_token``), so there is no ambient
+        # credential for a cross-site request to ride on. Anything else is checked as before.
+        if (
+            request.method in _UNSAFE_METHODS
+            and request.url.path not in _CSRF_EXEMPT_PATHS
+            and bearer_token(request) is None
+        ):
             settings = get_settings()
             session_token = request.cookies.get(settings.session_cookie_name)
             if session_token:  # only enforce when a session exists

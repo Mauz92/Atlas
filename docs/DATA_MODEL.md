@@ -37,6 +37,17 @@ SQLAlchemy models and Alembic migrations are produced per milestone.
 `id`, `user_id`, `token_hash`, `created_at`, `expires_at`, `revoked_at`,
 `user_agent`, `ip_hash`.
 
+**Device** (table `devices`) — owner: PostgreSQL (SYNC-06, ADR-0059 D8, ADR-0065; migration `b7c4d9e2a1f5`)
+`id`, `user_id` (`users.id ON DELETE CASCADE`), `name` (1-80 characters), `platform` (`windows|linux|macos|android|ios|web|other`; a
+check constraint), `created_at`, `last_seen_at` (server time of the last authenticated request, at most every five minutes; `NULL`
+until the first), `revoked_at`, `token_hash` (SHA-256 hex of the bearer token, **unique**), `prev_token_hash` +
+`prev_valid_until` (the token before the last rotation and the end of its 24 h grace; cleared when the new token is first used).
+> One row per signed-in sync client. The token (256 random bits, prefix `atd_`) is shown once and never stored; a backup holds
+> hashes only, so a restored database does not hand out working credentials. A revoked row stays so its token is answered
+> `token_revoked`; the hourly `changes.purge` job deletes devices revoked before the `change_retention_days` window. An idle,
+> never-revoked device is kept (the owner decides). `sync_resolutions.device_id` references this table (`ON DELETE SET NULL`).
+> Indexes: unique `token_hash`; partial `prev_token_hash`; `(user_id, created_at)`. At most 25 unrevoked rows per user.
+
 **ProviderCredential** (table `provider_credentials`) — owner: PostgreSQL (encrypted)
 `id`, `user_id`, `provider` (`google`|`microsoft`), `key_id` (encryption key version),
 `ciphertext` (AEAD seal of the token bundle: access/refresh token + token type), `scopes`
@@ -248,7 +259,7 @@ semantics, ADR-0044); the `Tag` row is per user and matched case-insensitively.
 `field` (the simple field decided; `path` for a note move), `kept_revision` (the revision the winning write produced; for
 `note_merged` the revision whose text was merged into), `loser` (JSONB `{"value": ...}` or `NULL`: the overwritten value of a
 simple field, at most 4 096 bytes; for `undo` the value it replaced), `detail` (paths only, at most 2 048 characters),
-`device_id` (always `NULL` until SYNC-06, no foreign key yet), `op_key` + `ordinal` (the `Idempotency-Key` of the causing request and
+`device_id` (`devices.id ON DELETE SET NULL`: the device that sent the write, `NULL` for a browser session; SYNC-06), `op_key` + `ordinal` (the `Idempotency-Key` of the causing request and
 the entry's position in it; **unique** per user when `op_key` is set), `undoes_id` (`sync_resolutions.id ON DELETE SET NULL`,
 **unique**: one undo entry per resolution), `undone_at`, `undone_by` (`ON DELETE SET NULL`), `created_at`.
 > The automatic-decision log of sync-mode writes. Rows are inserted in the same transaction as the write that caused them and

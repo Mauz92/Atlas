@@ -19,6 +19,7 @@ export function AccountSection() {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [revokeDevices, setRevokeDevices] = useState(false);
   const [passwordState, setPasswordState] = useState<FormState>({ kind: "idle" });
 
   async function saveName(event: FormEvent) {
@@ -40,10 +41,11 @@ export function AccountSection() {
     }
     setPasswordState({ kind: "saving" });
     try {
-      await api.changePassword(current, next);
+      await api.changePassword(current, next, revokeDevices);
       setCurrent("");
       setNext("");
       setConfirm("");
+      setRevokeDevices(false);
       setPasswordState({ kind: "saved" });
     } catch (err) {
       setPasswordState({ kind: "error", text: errorMessage(err, "Could not change the password") });
@@ -98,7 +100,7 @@ export function AccountSection() {
         <SettingsRow
           label="New password"
           htmlFor="settings-new-password"
-          description={`At least ${MIN_PASSWORD} characters. Changing it signs you out on your other devices.`}
+          description={`At least ${MIN_PASSWORD} characters. Changing it signs you out in your other browsers.`}
           descriptionId="settings-password-hint"
         >
           <input
@@ -122,12 +124,28 @@ export function AccountSection() {
             onChange={(event) => setConfirm(event.target.value)}
           />
         </SettingsRow>
+        <SettingsRow
+          label="Sync devices"
+          labelId="settings-revoke-devices-label"
+          description="Desktop and phone apps keep syncing unless you tick this. Tick it if you think your old password was exposed."
+          descriptionId="settings-revoke-devices-hint"
+        >
+          <label>
+            <input
+              type="checkbox"
+              checked={revokeDevices}
+              aria-describedby="settings-revoke-devices-hint"
+              onChange={(event) => setRevokeDevices(event.target.checked)}
+            />
+            Also sign out my devices
+          </label>
+        </SettingsRow>
         <div className="settings-feedback settings-submit">
           <button type="submit" disabled={passwordState.kind === "saving"}>
             Change password
           </button>
           {passwordState.kind === "saved" ? (
-            <span role="status">Password changed. Other devices were signed out.</span>
+            <span role="status">Password changed. Your other browsers were signed out.</span>
           ) : null}
           {passwordState.kind === "error" ? (
             <p className="error" role="alert">

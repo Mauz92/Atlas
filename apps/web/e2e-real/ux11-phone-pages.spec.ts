@@ -135,6 +135,7 @@ const PAGES = (ids: { projectId: string; noteId: string }) => [
   "/settings/appearance",
   "/settings/sync",
   "/settings/calendar",
+  "/settings/devices",
   "/settings/notifications",
   "/settings/data",
   "/settings/about",

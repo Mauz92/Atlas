@@ -5424,3 +5424,89 @@ button.task-subtask-title.done {
 .shortcut-list dd {
   margin: 0;
 }
+
+/* --- Settings > Devices (SYNC-06) --------------------------------------- */
+
+.device-list {
+  margin: 0 0 var(--s-3);
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.device-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-4);
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--border);
+}
+
+.device-main {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-2);
+  min-width: 0;
+}
+
+.device-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.device-current {
+  padding: 0 var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-radius: var(--r-md);
+}
+
+.device-facts {
+  flex-basis: 100%;
+  font-size: var(--fs-sm);
+}
+
+.device-actions,
+.device-rename,
+.device-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.device-rename {
+  flex: 1 1 auto;
+}
+
+.device-rename input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.device-confirm {
+  flex-basis: 100%;
+}
+
+.device-confirm p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.devices > .device-confirm {
+  margin-bottom: var(--s-3);
+}
+
+@media (pointer: coarse), (max-width: 720px) {
+  .device-row button,
+  .devices > button,
+  .devices > .device-confirm button,
+  .device-rename input {
+    min-height: 44px;
+  }
+}

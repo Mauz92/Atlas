@@ -27,6 +27,7 @@ export type CalendarCursorStatus = components["schemas"]["CalendarCursorStatusOu
 export type ProviderSyncResult = components["schemas"]["ProviderSyncOut"];
 export type ChangeFeed = components["schemas"]["ChangesOut"];
 export type ChangeItem = components["schemas"]["ChangeOut"];
+export type SyncDevice = components["schemas"]["DeviceInfo"];
 export type Device = components["schemas"]["DeviceOut"];
 export type DeviceList = components["schemas"]["DeviceListOut"];
 export type WebPushConfig = components["schemas"]["WebPushConfigOut"];
@@ -163,11 +164,28 @@ export const api = {
       body: JSON.stringify({ display_name: displayName }),
     }),
   /** Every other session is signed out by the server; this browser receives a fresh one. */
-  changePassword: (currentPassword: string, newPassword: string) =>
+  changePassword: (currentPassword: string, newPassword: string, revokeDevices = false) =>
     apiFetch<void>("/api/auth/password", {
       method: "POST",
-      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+        revoke_devices: revokeDevices,
+      }),
     }),
+};
+
+/**
+ * Sync devices (SYNC-06, ADR-0065): the desktop and phone apps signed in to this server. The
+ * browser only lists, renames and signs them out; a device signs *itself* in with the account
+ * password, so there is nothing here that shows or creates a token.
+ */
+export const devicesApi = {
+  list: () => apiFetch<{ items: SyncDevice[] }>("/api/devices"),
+  rename: (id: string, name: string) =>
+    apiFetch<SyncDevice>(`/api/devices/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+  revoke: (id: string) => apiFetch<void>(`/api/devices/${id}`, { method: "DELETE" }),
+  revokeAll: () => apiFetch<{ revoked: number }>("/api/devices/revoke-all", { method: "POST" }),
 };
 
 export const instanceApi = {

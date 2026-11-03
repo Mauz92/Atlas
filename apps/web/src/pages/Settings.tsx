@@ -4,6 +4,7 @@ import { AboutSection } from "../components/settings/AboutSection";
 import { AccountSection } from "../components/settings/AccountSection";
 import { AppearanceSection } from "../components/settings/AppearanceSection";
 import { DataSection } from "../components/settings/DataSection";
+import { DevicesSection } from "../components/settings/DevicesSection";
 import { CalendarSettings } from "../components/CalendarSettings";
 import { Icon } from "../components/Icon";
 import { NotificationSettings } from "../components/NotificationSettings";
@@ -28,6 +29,8 @@ function SectionBody({ id }: { id: SettingsSectionId }) {
       return <CalendarSettings />;
     case "sync":
       return <SyncSettings />;
+    case "devices":
+      return <DevicesSection />;
     case "data":
       return <DataSection />;
     case "about":

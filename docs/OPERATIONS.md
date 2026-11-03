@@ -232,7 +232,10 @@ docker compose exec api atlas-admin record-restore      # or: atlas-admin record
 
 It rotates the instance `epoch` (stored in `instance_meta`, so it is part of every backup and restore). A sync client that
 sends the old `Atlas-Epoch` gets `409 epoch_mismatch` and applies nothing until its user decides what to do (SYNC_PROTOCOL.md 7.4:
-re-create what the server lost, with the user's confirmation). Browser sessions are not affected. Skipping this step on a server
+re-create what the server lost, with the user's confirmation). Browser sessions are not affected. **Device tokens come back as the
+backup had them:** a device signed in after the backup is unknown to the restored server (it must sign in again), and a device
+signed out after the backup **works again** - run `atlas-admin revoke-device --email <email> --all` (or revoke the ones you know
+about) straight after a restore if you revoked anything since the backup. Skipping this step on a server
 that has sync clients risks silent divergence; it is harmless otherwise (idempotent, no data is touched).
 
 ### 2.3 Restore the notes
@@ -354,7 +357,8 @@ unchanged), calendar tokens (none exist yet).
 | Corrupted note file | Restore from conflict copy or backup; file is authoritative and recoverable |
 | Failed migration | Roll back image + restore pre-upgrade backup (`DEPLOYMENT.md` §7) |
 | Lost encryption key | OAuth credentials must be re-authorised (notes/tasks unaffected) |
-| Forgotten password | On the server: `atlas-admin list-users`, then `atlas-admin reset-password --email <email>` (hidden prompt, 12+ characters, or the password on stdin when piped; never an argument). Every session of the account is signed out. Source tree: `cd services/api && .venv/bin/python -m atlas.auth.cli …` with the usual `DATABASE_URL`; Docker: `docker compose exec api atlas-admin …` |
+| Lost or stolen laptop or phone with an Atlas app | Settings → Devices → **Sign out** (immediate), or on the server `atlas-admin list-devices --email <email>` then `atlas-admin revoke-device --email <email> --device <id>` (`--all` for every device). The token stops working on its next request; data already on the device stays there (disk encryption is the control, `SECURITY.md` T14). If the password may be known to others, also change it with "Also sign out my devices" ticked, or reset it with `atlas-admin reset-password` |
+| Forgotten password | On the server: `atlas-admin list-users`, then `atlas-admin reset-password --email <email>` (hidden prompt, 12+ characters, or the password on stdin when piped; never an argument). Every session **and every sync device** of the account is signed out. Source tree: `cd services/api && .venv/bin/python -m atlas.auth.cli …` with the usual `DATABASE_URL`; Docker: `docker compose exec api atlas-admin …` |
 
 ## 6. Operational Non-Negotiables
 

@@ -128,6 +128,11 @@ async def _faulty_phase(world: World) -> None:
             world.net.online[joiner.cid] = True
             joiner.retry_at = joiner.next_pull_at = world.events.now
             world.trace.append(f"t={world.events.now} {joiner.cid} JOINS with an empty store")
+        if cfg.revoke_device and step == int(cfg.steps * cfg.revoke_at):
+            await world.server.revoke_device(cfg.revoke_device)  # type: ignore[attr-defined]
+            world.trace.append(
+                f"t={world.events.now} OWNER revokes the device of {cfg.revoke_device}"
+            )
         world.events.now += rng.randint(1, 15)
         await world.events.run_due()
         for client in world.clients:
@@ -218,7 +223,13 @@ async def _quiescent(world: World) -> bool:
         return False
     head = await world.server.head()
     return all(
-        _halted(c) or (c.idle() and c.pulls_clean >= 2 and c.durable.cursor == head)
+        _halted(c)
+        or (
+            c.cid != world.cfg.revoke_device  # a revoked client is done only once it has been told
+            and c.idle()
+            and c.pulls_clean >= 2
+            and c.durable.cursor == head
+        )
         for c in world.clients
     )
 
@@ -385,7 +396,17 @@ async def _check_invariants(world: World) -> None:
     creates = {op.op_id for _c, op, _s, _b in rec.acks if op.action == "create"}
     copies = {copy["id"] for _c, _o, copy in rec.conflict_copies}
     announced = set(await world.server.all_entity_ids())
-    if announced is not None and len(announced) != len(creates) + len(copies):
+    # A revoked device may have had a create (or a note save that became a conflict copy) applied
+    # whose answer it never received: that entity is real but unacknowledged, never a duplicate.
+    slack = sum(
+        1
+        for client in world.clients
+        if client.cid in world.rec.revoked_halts
+        for op in client.durable.queue
+        if op.action in ("create", "put")
+    )
+    expected = len(creates) + len(copies)
+    if announced is not None and not expected <= len(announced) <= expected + slack:
         raise world.fail(
             "no_duplicates",
             f"{len(creates)} creates were acknowledged and {len(copies)} conflict copies were "
@@ -422,6 +443,8 @@ async def _check_invariants(world: World) -> None:
         await _check_notes(world, truth)
     if world.cfg.resolutions:
         await _check_resolutions(world)
+    if world.cfg.devices:
+        await _check_devices(world)
     model = world.model
     if model is not None:
         _check_model_history(world, model)
@@ -654,6 +677,14 @@ async def _check_notes(world: World, truth: dict[str, tuple[str, dict[str, Any],
             removed |= op.removed
     for _cid, op, _copy in rec.conflict_copies:
         added |= op.markers  # they live in the copy
+    # A revoked device may have had a save applied whose answer it never received: the server
+    # holds its removals, the harness never saw an acknowledgement (found by the SYNC-06 soak,
+    # seed 19 at 150 steps). Those lines were removed by a save, just not an acknowledged one.
+    for client in world.clients:
+        if client.cid in rec.revoked_halts:
+            for op in client.durable.queue:
+                if op.kind == "note" and op.action in ("create", "put"):
+                    removed |= op.removed
     lost = sorted(added - universe - removed)
     if lost:
         raise world.fail(
@@ -881,3 +912,52 @@ def check_log_matches_state(model: ModelServer) -> str | None:
                 f"{entry['entity_id']}, which is only at revision {entity.revision}"
             )
     return None
+
+
+async def _check_devices(world: World) -> None:
+    """SYNC-06: which device wrote, and what a revoked device may still do."""
+    server: Any = world.server
+    rec = world.rec
+    log = await fetch_log(world)
+    by_id = {e["id"]: e for e in log}
+    device_of = {cid: device_id for cid, (_c, device_id) in server.devices.items()}
+    # every entry names the device of the client whose request produced it ...
+    for rid, (op_id, _out) in rec.seen_resolutions.items():
+        cid = op_id.rsplit("-", 1)[0]
+        entry = by_id.get(rid)
+        if entry is not None and entry["device_id"] != device_of[cid]:
+            raise world.fail(
+                "resolution_device",
+                f"resolution {rid} was produced by {op_id} of {cid} (device {device_of[cid]}) but "
+                f"the log names device {entry['device_id']}",
+            )
+    for cid, op, _status, body in rec.undos:
+        entry = by_id.get(body["undo"]["id"]) if body["undo"].get("id") else None
+        if entry is not None and entry["device_id"] != device_of[cid]:
+            raise world.fail(
+                "resolution_device",
+                f"undo {op.op_id} of {cid} (device {device_of[cid]}) is logged for "
+                f"device {entry['device_id']}",
+            )
+    # ... and none is anonymous: every client in this world is a device
+    for entry in log:
+        if entry["device_id"] not in device_of.values():
+            raise world.fail(
+                "resolution_device", f"entry {entry['id']} names device {entry['device_id']!r}"
+            )
+    # a revoked device is never served again, and its client stops at the first refusal
+    if server.served_after_revoke:
+        raise world.fail(
+            "revoked_never_served",
+            f"requests of a revoked device were answered 2xx: {server.served_after_revoke[:3]}",
+        )
+    for cid in server.revoked:
+        client = next(c for c in world.clients if c.cid == cid)
+        sent = getattr(client, "sent", -1)
+        if cid not in rec.revoked_halts or sent != getattr(client, "sent_at_halt", -2):
+            raise world.fail(
+                "stop_on_revoked",
+                f"{cid} sent {sent} requests, halted={cid in rec.revoked_halts} (sent "
+                f"{getattr(client, 'sent_at_halt', None)} at the halt): it must stop at the first "
+                "token_revoked and send nothing after",
+            )

@@ -126,7 +126,25 @@ describe("Settings", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Change password" }));
     expect(await screen.findByText("Current password is incorrect")).toBeInTheDocument();
-    expect(api.changePassword).toHaveBeenCalledWith("old", "twelve chars!!");
+    expect(api.changePassword).toHaveBeenCalledWith("old", "twelve chars!!", false);
+  });
+
+  it("signs the devices out with the password change only when asked", async () => {
+    vi.mocked(api.changePassword).mockResolvedValue(undefined);
+    renderAt("/settings/account");
+    const box = screen.getByRole("checkbox", { name: "Also sign out my devices" });
+    expect(box).not.toBeChecked();
+    expect(box).toHaveAccessibleDescription(/keep syncing unless you tick this/);
+    fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "old" } });
+    fireEvent.change(screen.getByLabelText("New password"), { target: { value: "twelve chars!!" } });
+    fireEvent.change(screen.getByLabelText("Confirm new password"), {
+      target: { value: "twelve chars!!" },
+    });
+    fireEvent.click(box);
+    fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+    await screen.findByText(/Your other browsers were signed out/);
+    expect(api.changePassword).toHaveBeenCalledWith("old", "twelve chars!!", true);
+    expect(screen.getByRole("checkbox", { name: "Also sign out my devices" })).not.toBeChecked();
   });
 
   it("clears the password fields after a successful change", async () => {
@@ -136,7 +154,7 @@ describe("Settings", () => {
       fireEvent.change(screen.getByLabelText(label), { target: { value: "twelve chars!!" } });
     }
     fireEvent.click(screen.getByRole("button", { name: "Change password" }));
-    expect(await screen.findByText(/Other devices were signed out/)).toBeInTheDocument();
+    expect(await screen.findByText(/Your other browsers were signed out/)).toBeInTheDocument();
     expect(screen.getByLabelText("Current password")).toHaveValue("");
   });
 
@@ -162,6 +180,7 @@ describe("Settings", () => {
       "Notifications and reminders",
       "Calendar",
       "Sync",
+      "Devices",
       "Data and backups",
       "About",
     ]);

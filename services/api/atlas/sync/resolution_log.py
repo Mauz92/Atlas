@@ -94,8 +94,9 @@ class ResolutionLog:
     ) -> None:
         self.session = session
         self.user_id = user_id
-        #: ``None`` until device credentials exist (SYNC-06); the column and this argument stay
-        self.device_id = device_id
+        #: the device behind the request (SYNC-06): explicit, else what the authentication
+        #: dependency stored on the request's session; ``None`` for a browser session
+        self.device_id = device_id if device_id is not None else session.info.get("device_id")
 
     async def record(
         self, entries: Iterable[NewResolution], *, op_key: str | None

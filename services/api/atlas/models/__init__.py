@@ -4,6 +4,7 @@ from .base import TimestampMixin
 from .calendar import ExternalEvent, SyncCursor
 from .change import ChangeLog
 from .credential import CredentialProvider, ProviderCredential
+from .device import Device
 from .idempotency import IdempotencyKey
 from .instance import InstanceMeta
 from .job import Job, JobStatus
@@ -26,6 +27,7 @@ __all__ = [
     "AuthSession",
     "ChangeLog",
     "CredentialProvider",
+    "Device",
     "ExternalEvent",
     "IdempotencyKey",
     "InstanceMeta",

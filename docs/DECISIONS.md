@@ -3253,3 +3253,103 @@ are gone; the Board's heading/region per column exists on desktop only (on a pho
 "Inbox, 3 tasks"); the phone Tasks page has no `Select <title>` / "Select all" until "Select tasks" is chosen from "Filter options",
 and "Filters" replaces the chips (`Status`, `Priority`, `Project`, `Due`, `Sort` buttons, desktop unchanged). Kept: every other
 ADR-0062/0063 selector. Limitations are in R-51.
+
+## ADR-0065 — Device credentials: per-device bearer tokens, a default-deny scope and one revoke function (SYNC-06)
+
+**Status:** ACCEPTED as the implementation of ADR-0059 D8 (2026-11-03, local, not committed, CI not run). Where this ADR narrows or
+decides something D8 left open, it says so; the one owner-visible decision is point 5 (what a password *change* does to devices).
+Contract: `SYNC_PROTOCOL.md` section 10.1; data: `DATA_MODEL.md` `Device`; threats: `SECURITY.md` T13/T17/T22-T24; evidence:
+`ACCEPTANCE.md` SYNC-06; risks R-52, R-53.
+
+**1. A device signs itself in with the account password; there is no pairing flow.** `POST /api/devices` takes e-mail, password, a name
+and a platform and answers the bearer token **once**. A pairing code shown in a signed-in browser is what a phone without a keyboard
+would want; the Tauri client has a keyboard, the owner's order is Sync then Auth, and a second credential-exchange flow doubles the
+attack surface. It can be added later without a schema change. The endpoint shares the **login** rate-limit pool (one budget of
+password guesses, not two), answers an unknown account, a wrong password and an inactive account with the same `401`, equalises
+timing with the dummy hash, and its validation errors never echo the body (the `422` redaction covers `/api/devices`).
+
+**2. Token and table.** 256 random bits (`secrets.token_urlsafe(32)`) behind the prefix `atd_` (a secret scanner can find a leaked
+one; a session value is never mistaken for it). Only the SHA-256 is stored (`devices.token_hash`, unique): the token has 256 bits of
+entropy, so a fast hash is enough (a password hash would add latency to every request for nothing); the comparison after the indexed
+lookup is `hmac.compare_digest`. Anything that is not exactly `atd_` + 43 URL-safe characters is refused without a lookup. The token
+appears in no log, URL, error body or OpenAPI example. Columns: `id`, `user_id`, `name`, `platform`, `created_at`, `last_seen_at`,
+`revoked_at`, `token_hash`, `prev_token_hash`, `prev_valid_until`. No IP address, user agent or app version is stored (privacy; the
+protocol's `app_version`/`protocol` columns of the sketch were dropped as unused). A revoked row is kept (so its token is answered
+`token_revoked`, not "unknown", and resolutions still name it) until the hourly purge deletes devices revoked before the
+`CHANGE_RETENTION_DAYS` window; a resolution then keeps its text and loses only the device (`ON DELETE SET NULL`).
+
+**3. Two authentication paths that cannot be mixed.** `Authorization: Bearer <token>` is looked at **first**. If a bearer header is
+present the request is authenticated by it alone: a bad, revoked or unknown token is a `401` even when the browser also sent a valid
+session cookie, and the cookie is never consulted. Only the `Bearer` scheme counts (another scheme, such as a reverse proxy's Basic
+auth, is ignored and the cookie path is unchanged). The CSRF middleware skips the check **only** for requests that present a bearer
+header, because those requests ignore cookies, so there is no ambient credential for a cross-site request to ride; every other unsafe
+request is checked as before. `POST /api/devices` is exempt from CSRF like login (it needs no session, it needs the password).
+
+**4. Default deny.** `CurrentUser` (the dependency every existing endpoint already used) now means "browser session": a device token
+on such an endpoint is `403 forbidden_scope`. A new dependency `SyncUser` (session **or** device) is applied to exactly: tasks,
+projects, notes and folders, the change feed (`/api/changes`, `/api/tasks/changes`), search, `/api/sync/resolutions`,
+`GET /api/instance`, `GET /api/auth/me`, and the device endpoints a device needs for itself (`GET /api/devices`,
+`GET /api/devices/current`, `POST /api/devices/current/rotate`, `DELETE /api/devices/current`). Everything else is closed to devices:
+change password, edit profile, rename or revoke devices, revoke all, export, calendar credentials and sync, the push-notification
+registry. A new endpoint is therefore closed to devices until someone opens it on purpose, and `test_the_set_of_endpoints_open_to_devices_is_exactly_this`
+walks every router and fails when the set changes. A device may read the device list (read-only; it marks itself `current`) and
+sign **itself** out; it cannot touch another device. `GET /api/instance` is open because a client needs the `sync` block to negotiate
+(it holds no secret, path or key). The notification registry is closed for now (SYNC-10 will decide how an Android client registers
+push); the export is closed because "everything the account has" is an account-level act, not sync.
+
+**5. Password change and devices (the open question of D8): a change keeps devices unless asked; a reset always revokes them.**
+D8 (accepted) says a password *change* revokes browser sessions only and the recovery reset revokes all. Kept, with one addition:
+`POST /api/auth/password` takes `revoke_devices` (default `false`) and Settings shows "Also sign out my devices". Trade-off: with the
+default a person who changes their password because it leaked leaves a stolen *device token* working (an attacker who also knew the
+password could simply sign a new device in, so ticking the box matters exactly then); with the opposite default every routine
+change would silently break the desktop and phone apps and send the user to four sign-in screens, which trains people to avoid
+changing passwords. The explicit box states the consequence at the moment of choice and the Settings text says it twice. The reset
+paths (`atlas-admin reset-password` now, AUTH-01's recovery flow later) call the same `revoke_all_devices(session, user_id)` as the
+Settings button and the checkbox; the function is the only place that sets `revoked_at` in bulk.
+
+**6. Rotation: a previous-token grace window, no refresh tokens.** `POST /api/devices/current/rotate` (bearer) issues a new token and
+moves the current hash to `prev_token_hash`, valid for 24 hours (`prev_valid_until`). The first request made with the **new** token
+deletes the previous hash (the client has proved it holds the new one), so the window is as short as the client allows and only
+stays open while a response was lost. A client that lost the rotation response retries with the old token (accepted for rotation too)
+and gets a fresh token; the token issued in between falls out of the chain. Rejected: a refresh-token pair (two secrets, two stores
+in the keystore, a refresh endpoint with its own rate limit) for the same property. **Limit (R-52):** rotation shortens the life of a
+leaked *old* token; it does not detect theft of the current one (no reuse detection), which is what revocation and the visible
+`last_seen_at` are for. Clients rotate when they choose (SYNC-09 will rotate on a schedule); the server never forces it.
+
+**7. Idle expiry = the change-retention window, no new setting.** A device unseen for `CHANGE_RETENTION_DAYS` (default 90, minimum
+30) gets `401 token_expired`; past that window it could not resume incrementally anyway (`resync_required`). `last_seen_at` (or
+`created_at` before the first request) is the reference. A device that was never revoked is not purged: it stays in Settings so the
+owner decides. Up to 25 unrevoked devices per account (a constant; `409` at sign-in beyond it, revoking one makes room).
+
+**8. Clock independence (D11).** Every expiry, grace window and `last_seen_at` is decided by the server (`now()` in the database or
+the API host's UTC clock). No request field, header or device timestamp is read; a forged `Date` header changes nothing (tested).
+
+**9. `last_seen_at` is cheap.** Written at most once per five minutes per device: an in-process memo avoids even the query, and the
+`UPDATE ... WHERE last_seen_at IS NULL OR last_seen_at < now() - 5 min` makes a second API process harmless. It runs in its **own
+short transaction** (a request that fails or rolls back still records the sighting, and a revoked device never gets one), is best
+effort (a failure is a warning with the device id, never an error), and is the only write on the read path. The same call deletes a
+spent previous token (point 6).
+
+**10. Per-device rate limits, after authentication.** 600 requests and 120 writes per minute per device id (in-process sliding window
+like the login limiter; `429` `rate_limited` with `Retry-After`), keyed by device, not address, so devices behind one proxy address
+do not share a budget (R-SEC-1). **Not built:** the per-device feed-page limit (60/min) and snapshot-start limit (10/hour) of
+`SYNC_PROTOCOL.md` 8.3; the 600/min request budget bounds the feed for now (R-53), and SYNC-08 will show what a real client needs
+before tighter numbers are chosen.
+
+**11. `device_id` in the resolution log.** The authentication dependency stores the device id on the request's database session
+(`session.info["device_id"]`); `ResolutionLog` reads it, so every write site, the conflict response of a revive and the undo endpoint
+record it without a signature change (explicit argument still wins). `sync_resolutions.device_id` gets its foreign key
+(`ON DELETE SET NULL`); a browser session writes `NULL`. A client compares the id of an entry with its own device id (from
+`GET /api/devices/current`) to show "changed on another device" only for others (SYNC-11).
+
+**12. Errors.** Sync-shaped bodies `{error, detail}` with `WWW-Authenticate: Bearer` on `401`: `unauthenticated` (unknown or
+malformed token, inactive account), `token_revoked`, `token_expired`; `403 forbidden_scope`; `429 rate_limited`. A client stops and
+asks the user to sign in on any `401` (never retries blindly) and keeps its local data; the simulation's client does this and the
+`stop_on_revoked` invariant checks that it sends nothing afterwards.
+
+**Consequences.** One table, one migration (`b7c4d9e2a1f5`, reversible), one module (`atlas/auth/devices.py`), one router, no
+dependency, no setting, no change for the browser except a checkbox and a Settings section. `CurrentUser` keeps its name and its
+meaning for the browser, so no existing endpoint's behaviour changed. Rollback: downgrade drops the table (devices must sign in
+again) and clears `sync_resolutions.device_id`. **Not decided here:** HTTPS-only enforcement for native clients (client side,
+SYNC-09; the server is behind the operator's TLS), the keystore mechanism per platform (SYNC-07), a pairing flow, per-endpoint
+token scopes finer than "sync", reuse detection on rotation (R-52).

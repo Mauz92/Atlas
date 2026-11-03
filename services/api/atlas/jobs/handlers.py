@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth.devices import purge_revoked_devices
 from ..changes import ChangePurgeService
 from ..changes.retention import retention_cutoff
 from ..config import get_settings
@@ -121,7 +122,8 @@ async def purge_change_log(session: AsyncSession, _payload: dict[str, Any]) -> N
     Removes deletion tombstones older than ``change_retention_days`` from ``change_log`` (upserts
     are kept, SYNC-03e), advances each affected user's purge floor, and deletes idempotency keys
     older than the same window, deletes resolution-log rows (SYNC-05) older than the same window
-    with their feed rows, and prunes the note history past its retention (SYNC-04) - never a
+    with their feed rows, deletes devices revoked before the window (SYNC-06), and prunes the
+    note history past its retention (SYNC-04) - never a
     user's entity rows. Safe to run at any time and
     idempotent: a second pass over the same window removes nothing and leaves the floors
     unchanged. The handler
@@ -134,6 +136,9 @@ async def purge_change_log(session: AsyncSession, _payload: dict[str, Any]) -> N
     resolutions = await purge_resolutions(session, cutoff=cutoff)
     if resolutions:
         logger.info("resolution log purged", extra={"purged": resolutions})
+    devices = await purge_revoked_devices(session, cutoff=cutoff)
+    if devices:
+        logger.info("revoked devices purged", extra={"purged": devices})
     keys = await purge_expired(session, cutoff=cutoff)
     if keys:
         logger.info("idempotency keys purged", extra={"purged": keys})

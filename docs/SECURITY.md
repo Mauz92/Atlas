@@ -44,9 +44,10 @@ a security property. This document defines the threat model and the controls Atl
 - Optional OIDC via Authlib for users who prefer an identity provider.
 - Authorisation enforced on the server for **every** protected operation; clients are never the
   authority.
-- **Password change (MU-08, ADR-0050).** `POST /api/auth/password` requires the current password,
+- **Password change (MU-08, ADR-0050; SYNC-06, ADR-0065).** `POST /api/auth/password` requires the current password,
   enforces the 12-character minimum, is CSRF-protected and rate limited per account with the login
-  budget, revokes **all** the account's sessions and issues a fresh one to the caller. Passwords are
+  budget, revokes **all** the account's sessions and issues a fresh one to the caller; with `revoke_devices: true` it also
+  signs out every sync device (default off). It is a browser-only endpoint: a device token gets `403`. Passwords are
   never logged and validation errors on every `/api/auth/*` path omit the submitted value. The
   limiter is in-process (single-process deployment, as for login). Verified by
   `tests/integration/test_account_settings.py` and the J7 journey.
@@ -271,20 +272,23 @@ proxied `/api`/`/health` responses keep the API's own headers (scoping intact). 
 
 See `ACCEPTANCE.md` (M9-05) for the exact commands and results.
 
-## 12. Sync clients and device credentials (ADR-0059 D8; protocol server SYNC-03, note merge SYNC-04 and resolution log SYNC-05 implemented, device credentials SYNC-06 not)
+## 12. Sync clients and device credentials (ADR-0059 D8, ADR-0065; protocol server SYNC-03, note merge SYNC-04, resolution log SYNC-05 and device credentials SYNC-06 implemented; native clients are SYNC-09/10)
 
 Applies when local-first desktop/Android clients exist (ADR-0055). Design: `SYNC_PROTOCOL.md` §10.
 
-| # | Threat | Control (planned) |
+| # | Threat | Control |
 |---|---|---|
-| T13 | Stolen or leaked device token | 256-bit random, shown once, only its SHA-256 stored; 24 h rotation grace; 90-day idle expiry; list and revoke in Settings; recovery reset revokes all; token held in the OS keystore and attached by native code, never exposed to the webview or logs |
+| T13 | Stolen or leaked device token | 256-bit random, shown once, only its SHA-256 stored (`devices.token_hash`); constant-time comparison; 24 h rotation grace that ends when the new token is first used; idle expiry (`CHANGE_RETENTION_DAYS`); list and revoke in Settings (immediate, tested); a password reset revokes all, a password change can; token held in the OS keystore and attached by native code, never exposed to the webview or logs (client side: SYNC-09). **Implemented (SYNC-06):** everything except the client keystore. A *currently* stolen token works until revoked (rotation does not detect reuse, R-52) |
 | T14 | Lost/stolen laptop with local data | Atlas does not encrypt the local database or notes folder (ADR-0055 §6): OS disk encryption is the control; revoking the device stops sync; documented to the owner |
 | T15 | Malicious or old client writing wrongly | Sync mode requires protocol version, idempotency key and base revision; unknown fields rejected; `426` outside the supported range; all rules server-side |
 | T16 | Cross-user id collision with client-chosen UUIDs | `409 id_exists` for another user's id, indistinguishable from own-id mismatch; every query user-scoped |
-| T17 | Sync as an exfiltration path (compromised token pulls everything) | Per-device rate limits keyed by device id, `last_seen_at`/device list visible, snapshot starts limited per hour |
+| T17 | Sync as an exfiltration path (compromised token pulls everything) | Per-device rate limits keyed by device id (600 requests, 120 writes a minute; **implemented**), `last_seen_at`/device list visible (**implemented**); the feed-page and snapshot-start limits are **not built** (R-53); a device token cannot call export, calendar or password endpoints (T22) |
 | T18 | Note content in logs/resolution log | Application logs carry ids, rule and field names only; the resolution table stores simple-field values only (never text or note content) - **implemented and tested by SYNC-05** |
 | T20 | The resolution log as a way to read another user's data or to rewrite it (list, feed, undo by id) | every query filters on `user_id`; another user's id is `404 not_found` for read and undo (byte-identical to an unknown id); undo writes only through the entity's own user-scoped service |
 | T21 | Undo used (or raced) to destroy newer data | strict write: any change of the field after the resolution is a `409 conflict`, never an overwrite; never revives a deleted entity; idempotent by key; one undo per resolution by a unique index |
+| T22 | A device token used for account-level actions (change the password, export everything, connect calendars, revoke other devices) | default deny: `CurrentUser` is browser-only and answers a device `403 forbidden_scope`; `SyncUser` is applied to an explicit list; `test_the_set_of_endpoints_open_to_devices_is_exactly_this` walks every router and fails when the set changes; each closed endpoint is tested with a real device token |
+| T23 | Confusion between the two credentials (a browser cookie riding a bearer request to skip CSRF, or a bad token rescued by a cookie) | a bearer header is authenticated alone and cookies are ignored; CSRF is skipped only for requests that carry one; a non-bearer `Authorization` header (reverse-proxy Basic auth) changes nothing; a session token is not a device token and vice versa; all tested in `test_device_security.py` |
+| T24 | Token in logs, URLs, errors or backups | the token travels only in the `Authorization` header and the one `201`/rotation response; access logs carry path, status and duration; the `422` handler strips input on `/api/devices*`; errors never echo a token; the database holds hashes only (a stored hash presented as a token is refused); `test_no_token_reaches_the_logs_or_an_error` captures every log record of a full flow |
 | T19 | Malicious Markdown in a synced folder | Unchanged (T3/T6): content is untrusted; the desktop renderer uses the same sanitised preview |
 
 **Verified by SYNC-03 (server, 2026-11-03)** - T15: sync mode requires the idempotency key and base revision (`422`), refuses unknown
@@ -337,5 +341,25 @@ conflict copy and the path rules.
 - *SQL/XSS/path:* parameterised ORM queries only; the cursor is parsed strictly (`422` otherwise); stored paths are never used to
   touch the file system (an undo calls the ordinary rename, which validates its target as every move).
 
+**Verified by SYNC-06 (device credentials, 2026-11-03)** - new surface: a second authentication path, a credential table and eight endpoints.
+- *Token handling:* `secrets.token_urlsafe(32)` behind `atd_`; the shape is checked before any lookup (a 5 000-character header is a
+  plain `401`); SHA-256 stored, never the token (`test_sign_in_returns_the_token_once_and_stores_only_its_hash`, a dump of the row
+  contains neither the token nor the prefix, a stored hash used as a token is refused); `hmac.compare_digest` after the indexed lookup;
+  shown once by sign-in and rotation only; absent from every log record, error body and header of a full flow.
+- *The two paths:* see T23. The only CSRF-exempt additions are `POST /api/devices` (like login: it needs the password, creates no
+  session and sets no cookie) and requests that present a bearer header.
+- *Immediate revocation:* every request re-reads the device row (no cache), so a revoked device's next request is `401 token_revoked`;
+  the grace token of a revoked device is cleared at the same time; `revoke_all_devices` is the single bulk path (Settings button, the
+  password-change flag, `atlas-admin reset-password`, later AUTH-01).
+- *Isolation:* every device query filters on `user_id`; another user's device id is `404` for rename and revoke, `revoke-all` touches only
+  the caller's rows, a device token of user A reads nothing of user B (`test_devices_and_data_are_user_scoped`).
+- *Enumeration and brute force:* sign-in shares the login limiter and answers all failures alike, with the dummy-hash timing
+  equaliser; tokens cannot be guessed (256 bits) so the bearer path needs no lockout, only the per-device rate limit.
+- *Clock:* no device clock is read; a forged `Date` header changes nothing.
+- *Residual:* an attacker who knows the password can sign in as a new device (as they could log in): ticking "also sign out my devices"
+  on a password change, or `atlas-admin reset-password`, ends every existing token, but the attacker's *new* device needs the new
+  password; limiters are in-process (single API process, R-SEC-1); a stolen current token works until revoked (R-52); the OS keystore
+  and HTTPS-only enforcement are client obligations (SYNC-09).
+
 Open: keystore mechanism per platform (spike), HTTPS-only enforcement and the tailnet dev override, rate limiting behind a proxy
-(R-SEC-1 keys on IP; device limits key on device id).
+(R-SEC-1 keys on IP for sign-in; device limits key on device id).

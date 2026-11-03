@@ -142,14 +142,130 @@ export interface paths {
          *
          *     The current password is required and rate limited like login. On success **every** session of
          *     the account is revoked (a stolen session must not survive a password change) and a fresh one is
-         *     issued to the caller, so this browser stays signed in while other devices must sign in again.
-         *     Neither password is ever logged or echoed (see the validation handler in ``main.py``).
+         *     issued to the caller, so this browser stays signed in while other browsers must sign in again.
+         *     Sync **devices** (desktop and mobile apps) keep their tokens unless ``revoke_devices`` is set
+         *     (ADR-0059 D8, ADR-0065): a routine change must not break a working client, while someone who
+         *     fears the old password was exposed ticks the box. A stolen individual device is revoked in
+         *     Settings; a password *reset* always revokes every device. Neither password is ever logged or
+         *     echoed (see the validation handler in ``main.py``).
          */
         post: operations["change_password_api_auth_password_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Devices */
+        get: operations["list_devices_api_devices_get"];
+        put?: never;
+        /**
+         * Register Device
+         * @description Sign a device in: the account's e-mail and password, a name and a platform.
+         *
+         *     Answers the bearer token **once**. Wrong credentials, an unknown account and an inactive one
+         *     are the same `401`; the same rate limit as login applies (shared, per client address).
+         */
+        post: operations["register_device_api_devices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Current Device
+         * @description The device behind this request (a client checks its own state without a list).
+         */
+        get: operations["current_device_api_devices_current_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Sign Out Current Device
+         * @description The device signs itself out (its token stops working at once; local data is the client's).
+         */
+        delete: operations["sign_out_current_device_api_devices_current_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/current/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Current Device
+         * @description Issue this device a new token; the old one keeps working for 24 hours.
+         *
+         *     The grace window covers a lost response: the client retries with the old token and gets a new
+         *     one. As soon as the new token is used, the old one is gone. The new token is shown once.
+         */
+        post: operations["rotate_current_device_api_devices_current_rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/revoke-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke All
+         * @description Sign every device of the account out now (browser sessions are not touched).
+         */
+        post: operations["revoke_all_api_devices_revoke_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke One Device
+         * @description Sign one device out; effective for its very next request. Revoking twice is fine.
+         */
+        delete: operations["revoke_one_device_api_devices__device_id__delete"];
+        options?: never;
+        head?: never;
+        /** Rename Device */
+        patch: operations["rename_device_api_devices__device_id__patch"];
         trace?: never;
     };
     "/api/notes": {
@@ -1504,6 +1620,43 @@ export interface components {
             /** Date */
             date: string;
         };
+        /** DeviceInfo */
+        DeviceInfo: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "windows" | "linux" | "macos" | "android" | "ios" | "web" | "other";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Last Seen At
+             * @description Server time of the last authenticated request (updated every few minutes).
+             */
+            last_seen_at: string | null;
+            /** Revoked At */
+            revoked_at: string | null;
+            /**
+             * Current
+             * @description True when this request was authenticated by this device.
+             */
+            current: boolean;
+        };
+        /** DeviceInfoList */
+        DeviceInfoList: {
+            /** Items */
+            items: components["schemas"]["DeviceInfo"][];
+        };
         /**
          * DeviceListOut
          * @description The caller's registered push destinations, oldest first.
@@ -1562,6 +1715,47 @@ export interface components {
             auth?: string | null;
             /** Platform */
             platform?: string | null;
+        };
+        /** DeviceRename */
+        DeviceRename: {
+            /** Name */
+            name: string;
+        };
+        /** DeviceRevokeAllOut */
+        DeviceRevokeAllOut: {
+            /** Revoked */
+            revoked: number;
+        };
+        /**
+         * DeviceSignIn
+         * @description Sign a sync device in with the account's e-mail and password (SYNC-06).
+         */
+        DeviceSignIn: {
+            /** Email */
+            email: string;
+            /** Password */
+            password: string;
+            /** Name */
+            name: string;
+            /**
+             * Platform
+             * @default other
+             * @enum {string}
+             */
+            platform: "windows" | "linux" | "macos" | "android" | "ios" | "web" | "other";
+        };
+        /**
+         * DeviceSignedIn
+         * @description A device and its bearer token. The token is shown **once**: only its hash is stored, so a
+         *     lost token means signing the device in again.
+         */
+        DeviceSignedIn: {
+            device: components["schemas"]["DeviceInfo"];
+            /**
+             * Token
+             * @description `Authorization: Bearer <token>`. Keep it in the OS keystore.
+             */
+            token: string;
         };
         /**
          * DueState
@@ -1896,6 +2090,12 @@ export interface components {
             current_password: string;
             /** New Password */
             new_password: string;
+            /**
+             * Revoke Devices
+             * @description Also sign out every sync device (ADR-0065). Off by default: a routine password change signs out browsers only, so the desktop app keeps syncing; tick it when the old password may have been exposed.
+             * @default false
+             */
+            revoke_devices: boolean;
         };
         /** ProfileUpdate */
         ProfileUpdate: {
@@ -3288,6 +3488,213 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_devices_api_devices_get: {
+        parameters: {
+            query?: {
+                /** @description Also list signed-out devices (newest first). */
+                include_revoked?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceInfoList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_device_api_devices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceSignIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceSignedIn"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    current_device_api_devices_current_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceInfo"];
+                };
+            };
+        };
+    };
+    sign_out_current_device_api_devices_current_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rotate_current_device_api_devices_current_rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceSignedIn"];
+                };
+            };
+        };
+    };
+    revoke_all_api_devices_revoke_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceRevokeAllOut"];
+                };
+            };
+        };
+    };
+    revoke_one_device_api_devices__device_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_device_api_devices__device_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceRename"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceInfo"];
+                };
             };
             /** @description Validation Error */
             422: {

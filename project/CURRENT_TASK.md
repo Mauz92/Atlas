@@ -1,3 +1,42 @@
+- **SYNC-06 (device credentials) is `DONE` locally (2026-11-04, not committed, CI not run).** Eight verified sub-steps 06a-06h
+  (`docs/ROADMAP.md` SYNC-06, evidence `docs/ACCEPTANCE.md` SYNC-06, decisions **ADR-0065**, contract `docs/SYNC_PROTOCOL.md` 10.1,
+  data `docs/DATA_MODEL.md` `Device`, threats `docs/SECURITY.md` T13/T17/T22-T24, risks R-35 (narrowed), R-52, R-53).
+  Verification: `./scripts/verify.sh` PASS (pytest 4251 passed / 14 skipped, vitest 908), model soak 5753 passed, real soak 108 + the
+  41 device sims, real-stack browser 71 passed, mocked e2e 7 passed, restore drill on scratch databases. New migration `b7c4d9e2a1f5`
+  (reversible; **not applied to the owner's `atlas` database**; the owner's next `atlas-migrate`/stack start applies it after
+  `a1f0c3d2b4e6`..`f4a8b2c6d1e3` if pending). No new dependency, setting, icon or environment variable.
+- **How devices work (read before touching auth):** `POST /api/devices` (email+password+name+platform) returns a token once
+  (`atd_` + 256 bits; SHA-256 stored). `Authorization: Bearer` is authenticated **alone** (cookies ignored, no CSRF); other requests are
+  browser requests as before. **Default deny:** `deps.CurrentUser` = browser session only (a device gets `403 forbidden_scope`);
+  `deps.SyncUser` = session or device and is used only by tasks, projects, notes/folders, changes, search, resolutions, instance,
+  `auth/me` and the self-service device endpoints. `test_the_set_of_endpoints_open_to_devices_is_exactly_this` fails when that set
+  changes: opening a route to devices is a deliberate edit of that test. `session.info["device_id"]` carries the device to
+  `ResolutionLog` (so `sync_resolutions.device_id` is filled without signature changes). Rotation: previous hash valid 24 h, cleared on
+  first use of the new token. Idle expiry = `CHANGE_RETENTION_DAYS`. `atlas.auth.devices.revoke_all_devices(session, user_id)` is the
+  one bulk-revoke function.
+- **For AUTH-01 (next in the owner's order after Sync):** its reset/recovery endpoint must call `revoke_all_devices` (or
+  `atlas.auth.cli.reset_password`, which returns `(sessions, devices)`) in the same transaction as the password change. `/api/auth/` and
+  `/api/devices` are already in the `422` redaction prefixes (`main.py`); share `_login_limiter` for the recovery rate limit. A password *change* revokes devices only when `revoke_devices` is set (ADR-0065 point 5).
+- **For SYNC-08/09 (clients):** compare a resolution's `device_id` with `GET /api/devices/current`; on any `401` stop, keep the queue and
+  local data, ask the user to sign in (`token_revoked`, `token_expired`, `unauthenticated`); rotate with `POST /api/devices/current/rotate`
+  (retry with the old token if the response was lost); the token goes in the OS keystore only; HTTPS only (client-enforced). Measure a real
+  client's feed use before choosing the feed-page and snapshot-start limits (R-53). The notification registry is closed to devices
+  (SYNC-10 decides how Android registers push).
+- **Operator facts to remember:** after a restore, re-revoke any device revoked since the backup (`atlas-admin revoke-device --all`);
+  documented in `OPERATIONS.md` 2.2a and `OPERATOR_GUIDE.md` section 9.
+- **Found by the work:** the simulation invariants `no_duplicates` and `no_acknowledged_note_loss` assumed every applied write is eventually
+  acknowledged (not true for a revoked device; harness fixed); twenty parallel requests of one device would each have opened a second
+  pool connection for `last_seen_at` (claimed once now); FastAPI 0.154 hides endpoints inside `_IncludedRouter` (walk `atlas.api.__all__`).
+- **Next (smallest logical step):** SYNC-07 (Tauri spike, Linux first, independent) or SYNC-08 (`packages/sync-core`); then AUTH-01 (owner
+  priority Sync, Auth, Calendar, Core). Not built: pairing flow, rotation reuse detection, feed/snapshot limits, "changed on another
+  device" UI (SYNC-11).
+- Commands: `./scripts/verify.sh`; sim soaks `docs/TESTING.md` 10.0d (`ATLAS_SIM_REAL_SEEDS=20 ATLAS_SIM_STEPS=150 pytest tests/sim/test_sim_devices.py`);
+  `cd apps/web && npm run test:e2e:real` (includes `sync06-devices.spec.ts`).
+
+---
+
+## Previous state (before SYNC-06)
+
 - **UX-11 (remaining phone pages; standalone Board removed) is `DONE` locally (2026-11-03, not committed, CI not run). The UX series UX-01...UX-11 is complete.**
   ADR-0064, evidence `docs/ACCEPTANCE.md` UX-11 (verify.sh PASS: pytest 4172, vitest 896; real-stack 69 passed incl. 8 new in
   `e2e-real/ux11-phone-pages.spec.ts`; mocked e2e 7 passed), R-51. Next work is outside the UX series (SYNC-06 and later, see below / `ROADMAP.md`).

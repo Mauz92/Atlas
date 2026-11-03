@@ -28,3 +28,13 @@ def test_reset_clears_state() -> None:
     assert limiter.allow("k", now=0) is True
     limiter.reset()
     assert limiter.allow("k", now=0) is True
+
+
+def test_retry_after_is_the_wait_for_the_oldest_hit() -> None:
+    limiter = RateLimiter(limit=2, per_seconds=60)
+    assert limiter.retry_after("k", now=0) == 1  # nothing recorded: the minimum
+    limiter.allow("k", now=10)
+    limiter.allow("k", now=20)
+    assert limiter.allow("k", now=30) is False
+    assert limiter.retry_after("k", now=30) == 40  # the hit at t=10 leaves the window at t=70
+    assert limiter.retry_after("k", now=69.5) == 1

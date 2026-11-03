@@ -18,7 +18,7 @@ import heapq
 import os
 import random
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 
@@ -103,6 +103,13 @@ class SimConfig:
     #: notices they now hold (and still edit a little), with faults back on, then quiesce again.
     #: Notices are learned late in a faulty run, so without this wave undo would rarely run.
     undo_rounds: int = 40
+    #: SYNC-06 (real API only): every client signs in as its own device and sends its bearer token
+    #: (the network adds ``X-Sim-Client``; the real server swaps it for the client's token)
+    devices: bool = False
+    #: SYNC-06 (needs ``devices``): the owner revokes this client's device after ``revoke_at`` of
+    #: the steps; from then on the client must stop and the server must never serve it again
+    revoke_device: str | None = None
+    revoke_at: float = 0.5
 
 
 class EventQueue:
@@ -165,6 +172,8 @@ class Network:
         duplicate = edge <= roll < edge + cfg.p_duplicate
         error = edge + cfg.p_duplicate <= roll < edge + cfg.p_duplicate + cfg.p_server_error
         label = f"{client_id} {req.method} {req.path}"
+        if cfg.devices:
+            req = replace(req, headers={**req.headers, "X-Sim-Client": client_id})
         if drop_req:
             self.trace.append(f"t={self.events.now} net DROP-REQUEST {label}")
             return

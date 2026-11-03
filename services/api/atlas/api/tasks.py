@@ -56,7 +56,7 @@ from ..tasks import (
     preview_occurrences,
 )
 from ..tasks.note_links import TaskNoteLinks
-from .deps import CurrentUser, DbSession
+from .deps import DbSession, SyncUser
 from .schemas import (
     NoteSummaryOut,
     RecurrencePreviewOut,
@@ -193,7 +193,7 @@ def _change_out(
 
 
 @router.post("/recurrence/preview", response_model=RecurrencePreviewOut)
-async def preview_recurrence(payload: RecurrencePreviewRequest, user: CurrentUser) -> Any:
+async def preview_recurrence(payload: RecurrencePreviewRequest, user: SyncUser) -> Any:
     """What an RRULE means for a task anchored at ``anchor`` (MU-04); read-only.
 
     Uses the same validation and RFC 5545 engine as creating or completing a recurring task, so the
@@ -216,7 +216,7 @@ async def create_task(
     payload: TaskCreateRequest,
     request: Request,
     response: Response,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     sync: SyncMode,
     idempotency_key: IdempotencyKey = None,
@@ -270,7 +270,7 @@ async def create_task(
 
 @router.get("", response_model=TaskListOut)
 async def list_tasks(
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     parent_task_id: Annotated[uuid.UUID | None, Query()] = None,
     view: Annotated[TaskView | None, Query()] = None,
@@ -417,7 +417,7 @@ async def list_tasks(
 
 @router.get("/changes", response_model=TaskChangesOut, deprecated=True)
 async def task_changes(
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     since: Annotated[
         int | None,
@@ -480,7 +480,7 @@ async def task_changes(
 
 
 @router.get("/{task_id}/notes", response_model=TaskNotesOut)
-async def list_task_notes(task_id: uuid.UUID, user: CurrentUser, session: DbSession) -> Any:
+async def list_task_notes(task_id: uuid.UUID, user: SyncUser, session: DbSession) -> Any:
     """The caller's notes linked to one task (MU-06), in path order. The link survives renames."""
     try:
         notes = await TaskNoteLinks(session, user.id).notes_for_task(task_id)
@@ -503,7 +503,7 @@ async def list_task_notes(task_id: uuid.UUID, user: CurrentUser, session: DbSess
 
 @router.delete("/{task_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def unlink_task_note(
-    task_id: uuid.UUID, note_id: uuid.UUID, user: CurrentUser, session: DbSession
+    task_id: uuid.UUID, note_id: uuid.UUID, user: SyncUser, session: DbSession
 ) -> None:
     """Remove the link between a task and a note (idempotent); neither is deleted."""
     try:
@@ -516,7 +516,7 @@ async def unlink_task_note(
 
 
 @router.get("/{task_id}", response_model=TaskOut)
-async def get_task(task_id: uuid.UUID, user: CurrentUser, session: DbSession) -> TaskOut:
+async def get_task(task_id: uuid.UUID, user: SyncUser, session: DbSession) -> TaskOut:
     service = TasksService(session, user.id)
     try:
         task = await service.get(task_id)
@@ -535,7 +535,7 @@ async def update_task(
     task_id: uuid.UUID,
     payload: TaskUpdateRequest,
     request: Request,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     sync: SyncMode,
     idempotency_key: IdempotencyKey = None,
@@ -628,7 +628,7 @@ async def update_task(
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(
     task_id: uuid.UUID,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     sync: SyncMode,
     idempotency_key: IdempotencyKey = None,
@@ -691,7 +691,7 @@ async def delete_task(
 @router.post("/{task_id}/restore", response_model=TaskOut)
 async def restore_task(
     task_id: uuid.UUID,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     sync: SyncMode,
     idempotency_key: IdempotencyKey = None,
@@ -748,7 +748,7 @@ def _task_reminder_out(state: TaskReminderState) -> TaskReminderOut:
 
 @router.get("/{task_id}/reminder", response_model=TaskReminderOut)
 async def get_task_reminder(
-    task_id: uuid.UUID, user: CurrentUser, session: DbSession
+    task_id: uuid.UUID, user: SyncUser, session: DbSession
 ) -> TaskReminderOut:
     """One of the caller's tasks' reminder timing (M8-05): override, effective timing and fire time.
 
@@ -765,7 +765,7 @@ async def get_task_reminder(
 async def set_task_reminder(
     payload: TaskReminderRequest,
     task_id: uuid.UUID,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
 ) -> TaskReminderOut:
     """Set (or clear) a per-entity reminder override and reschedule that task's durable reminder.

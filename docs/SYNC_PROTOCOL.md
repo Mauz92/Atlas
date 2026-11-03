@@ -1,8 +1,8 @@
 # Atlas — Local-first Sync Protocol
 
-**Status:** design ACCEPTED (ADR-0059, 2026-11-03). **Server protocol v1 is implemented by SYNC-03, SYNC-04 and SYNC-05 (2026-11-03, local,
-not committed, CI not run)** except the parts marked **[PLANNED]** below, which belong to SYNC-06
-(device credentials) and SYNC-08 (clients). The table "Implementation status" says, section by section, what is behaviour today
+**Status:** design ACCEPTED (ADR-0059, 2026-11-03). **Server protocol v1 is implemented by SYNC-03, SYNC-04, SYNC-05 and SYNC-06 (2026-11-03, local,
+not committed, CI not run)** except the parts marked **[PLANNED]** below, which belong to SYNC-08 (clients)
+and later tasks. The table "Implementation status" says, section by section, what is behaviour today
 and what is still a target; everything else in this file is the contract.
 **Scope:** how a local-first client (Tauri desktop, Tauri Android; ADR-0055) and the existing web app keep
 tasks, projects, notes and their links converged with the self-hosted server. Calendar-provider sync is
@@ -12,7 +12,7 @@ Legend: **[EXISTS]** verified by reading code/tests on 2026-11-03; **[GAP]** nee
 wrong at the time of the analysis (§2 is a historical baseline); **[NEW]** specified; **[DONE]** implemented and tested by
 SYNC-03; **[PLANNED]** specified, owned by a later task; **[UNVERIFIED]** not checked.
 
-### Implementation status (SYNC-03 to SYNC-05, 2026-11-03)
+### Implementation status (SYNC-03 to SYNC-06, 2026-11-03)
 
 | Section | Status | Notes |
 |---|---|---|
@@ -24,9 +24,9 @@ SYNC-03; **[PLANNED]** specified, owned by a later task; **[UNVERIFIED]** not ch
 | §6.3 note history, `base_hash`, three-way merge, conflict copies, stale-delete `edit_wins`, revive on `PUT`, move rules, portable paths, replay with content, `GET .../history` | **[DONE]** SYNC-04 | ADR-0060; `resolution` objects are logged by SYNC-05 (R-41 closed); `ETag`/`If-None-Match` on `GET /api/notes/{id}` is **not** implemented (not needed by any client yet) |
 | §6.4 links, §6.5 ordering | unchanged | |
 | §7 resync and restore: server side (`below_floor`, `cursor_ahead`, snapshot, `epoch`, `atlas-admin record-restore`) | **[DONE]** | client behaviour (7.3 shadow walk, 7.4 confirmation, 7.5 storm control) is modelled by the simulation client, **[PLANNED]** in `sync-core` (SYNC-08); per-device rate limits need device ids (SYNC-06) |
-| §8 errors | **[DONE]** for the codes in §8.1 reachable without devices | `401 token_revoked`, `403 forbidden_scope`, `429` per device: SYNC-06 |
-| §9 resolution log, `resolution` feed entity, list, undo | **[DONE]** SYNC-05 | ADR-0061; table `sync_resolutions`; refused deletes are not logged (nothing was written); `device_id` stays `NULL` until SYNC-06 |
-| §10.1 devices | **[PLANNED]** SYNC-06 | |
+| §8 errors | **[DONE]** | `401 unauthenticated`/`token_revoked`/`token_expired`, `403 forbidden_scope`, `429 rate_limited` per device (SYNC-06) |
+| §9 resolution log, `resolution` feed entity, list, undo | **[DONE]** SYNC-05 | ADR-0061; table `sync_resolutions`; refused deletes are not logged (nothing was written); `device_id` is filled from SYNC-06 on (`NULL` for a browser session) |
+| §10.1 devices | **[DONE]** SYNC-06 | ADR-0065; table `devices`; per-device rate limits are 600 requests and 120 writes a minute; the feed-page (60/min) and snapshot-start (10/hour) limits of §8.3 are **not built** (R-53) |
 | §10.2 versioning: `Atlas-Sync`, `426`, `GET /api/instance` `sync` block, `Atlas-Epoch` | **[DONE]** | |
 | §11 desktop folder rules | client obligations, **[PLANNED]** SYNC-09 | |
 
@@ -75,7 +75,7 @@ its *buildable* scope; it is not a local-first sync layer.
 | Client | Browser only. Queue (`offlineQueue.ts`) knows `task` and `project` only; **no production code enqueues**; the UI autosave engines (ADR-0053/0054) are online-only (R-22). `useReconciliation` is mounted only in Settings → Sync. The "cache" holds change metadata, not entities. | Shared sync core with a real local store | **High (by design: ADR-0055 is future work)** |
 | Attachments / binary files | `NotesStorage.list_notes` walks only `*.md`; other files in the notes root are ignored (never indexed, never deleted). MARKDOWN_STORAGE §2 allows relative-path attachments, but the server neither stores nor serves them via the API. | Decide (ADR-0059 D10) | Medium |
 | Rename / move | `POST /notes/{id}/move` keeps the id, bumps revision, takes **no base revision**; folder rename = N note moves, each recorded. An *external* rename is reconcile's "tombstone old path + new id at new path". Empty folders are not entities and not recorded. `uq_notes_user_id_path` includes tombstones, and `create` revives a tombstone at the same path (same id). | Move as a "simple field"; partial unique index on live paths | Medium |
-| Auth for non-browser clients | Cookie session + double-submit CSRF only (`get_current_user`, `CsrfMiddleware`). No bearer/device credential. `notification_devices` is push registry only. In-process, IP-keyed rate limiter (R-SEC-1). | Device credentials | **High** |
+| Auth for non-browser clients | (baseline, closed by SYNC-06) Cookie session + double-submit CSRF only (`get_current_user`, `CsrfMiddleware`). No bearer/device credential. `notification_devices` is push registry only. In-process, IP-keyed rate limiter (R-SEC-1). | Device credentials | **High** |
 | Versioning | None. No protocol/schema negotiation; `GET /api/instance` has app version + migration revision only. | Negotiation | **High** (blocker for shipping a desktop binary) |
 | Resolution log | None. | Required by ADR-0055 §4 | Medium |
 | Tests | Feed paging/retention/tombstones covered; no multi-client, no fault injection, no concurrency, no restore. M7-06 e2e uses a mocked API. | `TESTING.md` §10 | **High** |
@@ -359,8 +359,8 @@ action, and at most one resync is in flight per device; the server rate-limits s
 |---|---|---|
 | 2xx | applied (or replayed) | remove op, store `sync` block. **A 2xx body is a historical snapshot, not current state**: a replay after a lost response returns the result of the *first* application, possibly many revisions and even a delete ago. The client may use it to fill a gap (id mapping, first copy) but must never let it overwrite newer or tombstoned local state, and must re-read the entity at its next pull (found by sim seed 482, SYNC-03 pre-work) |
 | 200 with `sync.conflicts` | partially applied | store applied fields, surface conflicts |
-| 401 `unauthenticated` / `token_revoked` | credential invalid | stop; keep queue; ask to sign in again (never retry blindly) |
-| 403 `forbidden_scope` | token cannot do this | permanent for the op |
+| 401 `unauthenticated` / `token_revoked` / `token_expired` | credential invalid, signed out, or idle too long | stop; keep queue and local data; ask to sign in again (never retry blindly) |
+| 403 `forbidden_scope` | a device token cannot do this (account-level endpoint) | permanent for the op |
 | 404 `not_found` | unknown id (tombstoned entities are not 404, §6.2) | permanent |
 | 409 `stale` / `conflict` / `edit_wins` / `path_exists` / `note_deleted` / `id_exists` | structured, never overwritten (`conflict` on a note: the incoming text is saved in `conflict_copy`) | resolve per §6; do not blind-retry |
 | 422 `invalid_path` (`reason`: `reserved_name`, `forbidden_character`, `trailing_dot_or_space`, `too_long`, `name_too_long`), `base_hash_required` | the request cannot be honoured as sent | permanent for the op; keep the user's text, rename |
@@ -369,7 +369,7 @@ action, and at most one resync is in flight per device; the server rate-limits s
 | 422 | validation | permanent; keep the user's text, show the server message |
 | 426 `sync_version_unsupported` | `{min,max}` | stop syncing, keep the queue, send nothing more; "update required" (§10) |
 | 409 `epoch_mismatch` | `{epoch}` | stop; ask the user (restored server or another server); nothing was applied |
-| 429 | rate limited | honour `Retry-After`, then retry same request |
+| 429 (`rate_limited` for a device) | rate limited | honour `Retry-After`, then retry same request |
 | 5xx, timeout, connection loss, aborted response | outcome unknown | retry the **same** request (same key) with backoff |
 
 ### 8.2 Backoff
@@ -394,7 +394,7 @@ endpoints keep the login limiter.
 
 Decisions: ADR-0059 D7, ADR-0061. Table `sync_resolutions` (migration `f4a8b2c6d1e3`, reversible): `id`, `user_id`, `entity_type`
 (`task|project|note`), `entity_id`, `rule`, `field`, `kept_revision`, `loser` (JSONB, `{"value": ...}`, `NULL` = not stored),
-`detail` (paths only, 2 048 characters at most), `device_id` (always `NULL` until SYNC-06; no foreign key yet), `op_key` +
+`detail` (paths only, 2 048 characters at most), `device_id` (the device behind the request, `NULL` for a browser session; `devices.id ON DELETE SET NULL`, SYNC-06), `op_key` +
 `ordinal` (the request's `Idempotency-Key` and the entry's position in it), `undoes_id`, `undone_at`, `undone_by`, `created_at`.
 Unique `(user_id, op_key, ordinal)` makes "a retry logs nothing more" a database fact; unique `undoes_id` allows one undo entry per
 resolution.
@@ -433,8 +433,8 @@ client applies it by revision like any entity. Visibility: a request in sync mod
 like over any filtered row. `GET /api/instance` lists `resolution: 1` in `sync.entities`. There is no `delete` row for a resolution:
 retention (below) removes the log row **and** its feed row, so a client drops a notice by itself when it is older than
 `sync.tombstone_retention_days` (or absent from a fresh snapshot). A device shows "changed on another device" for entries it did not
-originate (`device_id` differs; compared by SYNC-06/11, until then every entry is "other" for a client that knows its own writes
-by `kept_revision`).
+originate: `device_id` differs from the client's own device id (`GET /api/devices/current`). Entries written from a browser
+session have `device_id` `NULL`, which is "another device" for every native client.
 
 **Endpoints** (all under the `epoch_check` gate, strictly user-scoped, another user's id is `404 not_found`):
 - `GET /api/sync/resolutions?limit=&cursor=&entity_id=&rule=`: newest first (by `created_at`, then the entry's position in its request, so the entries of one write list last decision first), `limit` 1-200 (default 50), opaque `cursor`
@@ -470,28 +470,47 @@ they describe.
 
 ## 10. Devices, credentials, versioning
 
-### 10.1 Device credentials [NEW] (coordinate with AUTH-01)
+### 10.1 Device credentials [DONE, SYNC-06; ADR-0065]
 
-- `devices(id, user_id, name, platform, app_version, protocol, created_at, last_seen_at, revoked_at,
-  token_hash, prev_token_hash, prev_valid_until)`.
-- `POST /api/devices` with `{email, password, name, platform}` (same limiter and no-enumeration behaviour as
-  login) creates a device and returns a 256-bit random token **once**; only its SHA-256 is stored (same pattern as
-  session tokens, `auth/tokens.py`). A QR/pairing-code flow from a signed-in browser is a later alternative.
-- `Authorization: Bearer <token>` is accepted on the data endpoints and the sync endpoints; **not** on password
-  change, device management, export or backup endpoints (scope `sync`). Bearer requests carry no ambient
-  credentials, so CSRF does not apply to them; cookie requests are unchanged.
-- Rotation: `POST /api/devices/rotate` returns a new token; the old one stays valid for 24 h (lost response).
-  Idle tokens expire after 90 days (configurable). `GET /api/devices`, `DELETE /api/devices/{id}` (Settings →
-  Devices). A revoked token gets `401 token_revoked`; the client keeps local data, stops syncing and offers
-  sign-in (local data is not wiped without the user asking).
-- AUTH-01 interplay: the recovery-code reset (and `atlas-admin reset-password`) must **revoke all device
-  tokens** through the same revoke function; a routine password change revokes browser sessions only (D8).
-- Client storage: token in the OS keystore only (Windows Credential Manager/DPAPI, Secret Service on Linux,
-  Android Keystore-backed storage); never in the SQLite file, logs, or the webview's storage. The webview does
-  not receive the token: Rust attaches it (so XSS in a note preview cannot read it). The mechanism per platform is
-  **[UNVERIFIED]** and is a spike criterion.
-- Transport: HTTPS only. `http://` is refused except `localhost`/`127.0.0.1`/`[::1]` and an explicit
-  developer override (the tailnet dev stack, DEPLOYMENT §8a).
+- Table `devices(id, user_id, name, platform, created_at, last_seen_at, revoked_at, token_hash, prev_token_hash,
+  prev_valid_until)` (`DATA_MODEL.md`). No address, user agent or app version is stored.
+- **Sign-in.** `POST /api/devices` `{email, password, name (1-80), platform}` (`platform`: `windows|linux|macos|android|ios|web|other`)
+  answers `201 {device, token}`. The token is `atd_` + 43 URL-safe characters (256 random bits), **shown once**; only its SHA-256 is
+  stored. Wrong password, unknown account and inactive account are the same `401 {"detail": "Invalid credentials"}`; the endpoint shares
+  the login rate limit (`429`); no cookie is set and no CSRF header is needed (it needs the password). `409` beyond 25 unrevoked
+  devices (revoke one in Settings).
+- **Using it.** `Authorization: Bearer <token>` on the endpoints below; a request that carries a bearer header is authenticated by it
+  **alone** (cookies are ignored, so a session cookie can neither rescue a bad token nor widen a good one) and needs no CSRF header; a
+  request without one is a browser request and is checked exactly as before. Only the `Bearer` scheme counts.
+- **Scope `sync`.** Open to a device: tasks, projects, notes and folders, `/api/changes`, `/api/tasks/changes`, `/api/search`,
+  `/api/sync/resolutions` (list, get, undo), `GET /api/instance`, `GET /api/auth/me`, `GET /api/devices`, `GET /api/devices/current`,
+  `POST /api/devices/current/rotate`, `DELETE /api/devices/current`. **Closed** (`403 forbidden_scope`, checked after the token is
+  validated, so a bad token is still `401`): password change, profile edit, rename or revoke devices, revoke all, export, calendar
+  credentials and sync, the push-notification registry. A new endpoint is closed to devices until it is opened on purpose
+  (`test_the_set_of_endpoints_open_to_devices_is_exactly_this`).
+- **Errors** (`{error, detail}`; `401` carries `WWW-Authenticate: Bearer`): `unauthenticated` (unknown or malformed token, or the
+  account is inactive), `token_revoked`, `token_expired` (idle for `CHANGE_RETENTION_DAYS`, default 90), `forbidden_scope`,
+  `rate_limited` (`Retry-After`). On any `401` a client stops, keeps its queue and local data, and asks the user to sign in; it does
+  not retry blindly and does not wipe local data unasked.
+- **Rotation.** `POST /api/devices/current/rotate` answers `{device, token}` with a new token; the previous one keeps working for 24
+  hours, or until the first request with the new one, whichever is first. A client that lost the response retries with the old token
+  and gets another new token. Rotation does not detect theft of the current token (R-52).
+- **Management (browser session).** `GET /api/devices[?include_revoked=true]` (newest first; `current` is true for the device that
+  asked), `PATCH /api/devices/{id}` `{name}`, `DELETE /api/devices/{id}` (revoke, immediate, idempotent), `POST /api/devices/revoke-all`
+  `{revoked: n}`. Another user's device id is `404`. A device can sign itself out (`DELETE /api/devices/current`).
+- **`last_seen_at`** is the server's time of the last authenticated request, written at most every five minutes.
+- **Revoke-all is one function** (`revoke_all_devices`), called by the Settings button, the optional `revoke_devices` flag of
+  `POST /api/auth/password` (**default off**: a routine change signs out browsers only, ADR-0065 point 5), `atlas-admin reset-password`
+  (always) and, later, AUTH-01's recovery reset (always). `atlas-admin list-devices` and `revoke-device` exist for the operator.
+- **Retention.** The hourly purge deletes devices revoked before the `CHANGE_RETENTION_DAYS` window; resolutions keep their text and
+  lose the device. An idle, never-revoked device stays listed.
+- **Rate limits** (after authentication, keyed by device id): 600 requests and 120 writes per minute.
+- Client storage: token in the OS keystore only (Windows Credential Manager/DPAPI, Secret Service on Linux, Android
+  Keystore-backed storage); never in the SQLite file, logs, or the webview's storage. The webview does not receive the token:
+  Rust attaches it (so XSS in a note preview cannot read it). The mechanism per platform is **[UNVERIFIED]** and is a spike criterion
+  (SYNC-07).
+- Transport: HTTPS only. `http://` is refused except `localhost`/`127.0.0.1`/`[::1]` and an explicit developer override (the tailnet
+  dev stack, DEPLOYMENT §8a). Enforced by the client (SYNC-09); the server sits behind the operator's TLS.
 
 ### 10.2 Versioning
 

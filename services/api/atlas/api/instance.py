@@ -19,7 +19,7 @@ from ..jobs import BACKUP_TASK
 from ..models import Job
 from ..sync.epoch import get_epoch
 from ..sync.protocol import ENTITY_SCHEMAS, MAX_DATA_LIMIT, PROTOCOL_MAX, PROTOCOL_MIN
-from .deps import CurrentUser, DbSession
+from .deps import DbSession, SyncUser
 from .schemas import (
     BackupLatest,
     BackupStatus,
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/api/instance", tags=["instance"])
 
 
 @router.get("", response_model=InstanceInfo)
-async def instance_info(_user: CurrentUser, session: DbSession) -> InstanceInfo:
+async def instance_info(_user: SyncUser, session: DbSession) -> InstanceInfo:
     settings = get_settings()
     database = "ok"
     revision: str | None = None

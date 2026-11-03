@@ -46,7 +46,7 @@ from ..reminders import ReminderService
 from ..sync.protocol import SyncError
 from ..tasks import TasksService, TaskValidationError
 from ..tasks.note_links import TaskNoteLinks
-from .deps import CurrentUser, DbSession
+from .deps import DbSession, SyncUser
 from .projects import project_out
 from .schemas import (
     DailyNoteRequest,
@@ -323,7 +323,7 @@ async def _detail(service: NotesService, note: NoteIndex) -> NoteDetailOut:
 
 @router.get("", response_model=NoteListOut)
 async def list_notes(
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     storage: StorageDep,
     folder: Annotated[str | None, Query(max_length=1024)] = None,
@@ -342,7 +342,7 @@ async def list_notes(
 
 @router.get("/search", response_model=list[NoteSummaryOut])
 async def search_notes(
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     storage: StorageDep,
     q: Annotated[str, Query(min_length=1, max_length=256)],
@@ -354,7 +354,7 @@ async def search_notes(
 
 
 @router.post("/reconcile", response_model=ReconcileOut)
-async def reconcile(user: CurrentUser, session: DbSession, storage: StorageDep) -> ReconcileOut:
+async def reconcile(user: SyncUser, session: DbSession, storage: StorageDep) -> ReconcileOut:
     summary = await NotesReconciler(session, user.id, storage).run()
     await session.commit()
     return ReconcileOut(
@@ -370,7 +370,7 @@ async def create_note(
     payload: NoteCreateRequest,
     request: Request,
     response: Response,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     storage: StorageDep,
     sync: SyncMode,
@@ -440,7 +440,7 @@ async def create_note(
 async def open_daily_note(
     payload: DailyNoteRequest,
     response: Response,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     storage: StorageDep,
 ) -> NoteDetailOut:
@@ -462,7 +462,7 @@ async def open_daily_note(
 
 @router.post("/from-template", response_model=NoteDetailOut, status_code=status.HTTP_201_CREATED)
 async def create_note_from_template(
-    payload: NoteFromTemplateRequest, user: CurrentUser, session: DbSession, storage: StorageDep
+    payload: NoteFromTemplateRequest, user: SyncUser, session: DbSession, storage: StorageDep
 ) -> NoteDetailOut:
     """Create a note from a note in ``templates/``, substituting ``{{date}}`` and ``{{title}}``."""
     service = NotesService(session, user.id, storage)
@@ -477,7 +477,7 @@ async def create_note_from_template(
 
 @router.get("/{note_id}", response_model=NoteDetailOut)
 async def get_note(
-    note_id: uuid.UUID, user: CurrentUser, session: DbSession, storage: StorageDep
+    note_id: uuid.UUID, user: SyncUser, session: DbSession, storage: StorageDep
 ) -> NoteDetailOut:
     service = NotesService(session, user.id, storage)
     try:
@@ -488,7 +488,7 @@ async def get_note(
 
 @router.get("/{note_id}/history", response_model=NoteHistoryOut)
 async def note_history(
-    note_id: uuid.UUID, user: CurrentUser, session: DbSession, storage: StorageDep
+    note_id: uuid.UUID, user: SyncUser, session: DbSession, storage: StorageDep
 ) -> NoteHistoryOut:
     """The retained revisions of one of the caller's notes, newest first (deleted notes too: this
     is how the last text of a deleted note is recovered). `available` is false once the text of a
@@ -506,7 +506,7 @@ async def note_history(
 async def note_revision(
     note_id: uuid.UUID,
     revision: int,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     storage: StorageDep,
 ) -> NoteRevisionOut:
@@ -534,7 +534,7 @@ async def note_revision(
 
 @router.get("/{note_id}/projects", response_model=ProjectListOut)
 async def list_note_projects(
-    note_id: uuid.UUID, user: CurrentUser, session: DbSession
+    note_id: uuid.UUID, user: SyncUser, session: DbSession
 ) -> ProjectListOut:
     """List the caller's projects linked to one note (M4-05).
 
@@ -562,7 +562,7 @@ async def list_note_projects(
 async def create_task_from_note(
     note_id: uuid.UUID,
     payload: TaskCreateRequest,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=200)] = None,
 ) -> TaskOut:
@@ -607,7 +607,7 @@ async def update_note(
     note_id: uuid.UUID,
     payload: NoteUpdateRequest,
     request: Request,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     storage: StorageDep,
     sync: SyncMode,
@@ -675,7 +675,7 @@ async def update_note(
 async def create_conflict_copy(
     note_id: uuid.UUID,
     payload: NoteConflictCopyRequest,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     storage: StorageDep,
 ) -> NoteSummaryOut:
@@ -693,7 +693,7 @@ async def move_note(
     note_id: uuid.UUID,
     payload: NoteMoveRequest,
     request: Request,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     storage: StorageDep,
     sync: SyncMode,
@@ -749,7 +749,7 @@ async def move_note(
 async def delete_note(
     note_id: uuid.UUID,
     request: Request,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     storage: StorageDep,
     sync: SyncMode,
@@ -804,7 +804,7 @@ async def delete_note(
 
 @folders_router.post("", status_code=status.HTTP_201_CREATED)
 async def create_folder(
-    payload: FolderCreateRequest, user: CurrentUser, session: DbSession, storage: StorageDep
+    payload: FolderCreateRequest, user: SyncUser, session: DbSession, storage: StorageDep
 ) -> dict[str, str]:
     service = NotesService(session, user.id, storage)
     try:
@@ -816,7 +816,7 @@ async def create_folder(
 
 @folders_router.post("/rename")
 async def rename_folder(
-    payload: FolderRenameRequest, user: CurrentUser, session: DbSession, storage: StorageDep
+    payload: FolderRenameRequest, user: SyncUser, session: DbSession, storage: StorageDep
 ) -> dict[str, int | str]:
     service = NotesService(session, user.id, storage)
     try:
@@ -829,7 +829,7 @@ async def rename_folder(
 
 @folders_router.delete("", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_folder(
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     storage: StorageDep,
     path: Annotated[str, Query(min_length=1, max_length=1024)],

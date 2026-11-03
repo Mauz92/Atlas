@@ -62,8 +62,11 @@ class SyncResolution(Base):
     loser: Mapped[Any | None] = mapped_column(JSONB(none_as_null=True))
     #: short machine-written explanation (paths only, never text), bounded
     detail: Mapped[str | None] = mapped_column(String(2048))
-    #: the device that sent the write; ``NULL`` until device credentials exist (SYNC-06)
-    device_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    #: the device that sent the write (SYNC-06); ``NULL`` for a browser session, and for a device
+    #: that was purged after revocation
+    device_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("devices.id", ondelete="SET NULL")
+    )
     #: the ``Idempotency-Key`` of the causing request and the position within it: the tripwire that
     #: makes "a retry logs nothing more" a database fact, not only a code path
     op_key: Mapped[str | None] = mapped_column(String(200))

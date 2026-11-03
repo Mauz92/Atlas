@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from ..search import MAX_QUERY_LENGTH, SearchService
-from .deps import CurrentUser, DbSession
+from .deps import DbSession, SyncUser
 from .schemas import SearchNoteOut, SearchOut, SearchProjectOut, SearchTaskOut
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -18,7 +18,7 @@ MAX_LIMIT = 50
 
 @router.get("", response_model=SearchOut)
 async def search(
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     q: Annotated[str, Query(min_length=1, max_length=MAX_QUERY_LENGTH)],
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,

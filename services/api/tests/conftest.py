@@ -54,10 +54,14 @@ def _schema() -> Iterator[None]:
 async def _db(_schema: None) -> AsyncIterator[None]:
     """Per-test database isolation, requested only by DB-backed fixtures."""
     from atlas.api.auth import _login_limiter, _password_limiter
+    from atlas.auth.devices import device_request_limiter, device_write_limiter, reset_touch_cache
     from atlas.db import dispose_engine, session_scope
 
     _login_limiter.reset()
     _password_limiter.reset()
+    device_request_limiter.reset()
+    device_write_limiter.reset()
+    reset_touch_cache()
     yield
     async with session_scope() as session:
         await session.execute(text(_TRUNCATE))

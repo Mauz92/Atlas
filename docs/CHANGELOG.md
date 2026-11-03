@@ -6,6 +6,19 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (SYNC-06): **Devices can now sign in to your server on their own, for the coming desktop and Android apps.** An app signs
+  in once with your email and password and receives its own key (shown once to the app, never stored by the server, which keeps
+  only a fingerprint). With it the app can sync tasks, projects and notes, but it cannot change your password, export your data,
+  connect calendars or sign out your other devices. New in **Settings → Devices**: the list of signed-in devices with their
+  platform and when they last connected, **Rename**, **Sign out** (effective on the device's very next request) and **Sign out all
+  devices**. Changing your password signs out your other browsers as before; the new box **Also sign out my devices** also ends the
+  apps' keys (off by default so a routine change does not break your apps; tick it if you think the old password was exposed).
+  `atlas-admin reset-password` signs out every device too, and `atlas-admin list-devices` / `revoke-device` exist for the server
+  operator. The record of automatic decisions (SYNC-05) now says which device made each change. Keys unused for 90 days
+  (`CHANGE_RETENTION_DAYS`) expire; devices signed out more than 90 days ago are forgotten. A restore from a backup brings devices
+  back as the backup had them: sign out again any device you revoked since (`docs/OPERATIONS.md` 2.2a). Browsers are unchanged
+  (ADR-0065, `docs/SYNC_PROTOCOL.md` 10.1).
+
 - Changed (UX-11): **The remaining pages fit a phone, and the standalone Board page is gone.** On a phone, Tasks has one round box per
   row (the select boxes appear only after **…** → **Select tasks**) and the filter chips are one **Filters** button that opens a sheet;
   a project's **Board** tab shows one column at a time with a tab strip and counts (the help is behind a **?**); Notes shows the note's

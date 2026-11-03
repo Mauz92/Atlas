@@ -18,6 +18,7 @@ from .api import (
     auth_router,
     calendar_router,
     changes_router,
+    devices_router,
     export_router,
     folders_router,
     health_router,
@@ -38,7 +39,7 @@ from .sync.protocol import SyncError
 
 #: Requests under this prefix carry OAuth token material, so their validation errors must not echo
 #: the submitted value (SECURITY.md T2); the auth endpoints carry passwords.
-_CREDENTIAL_PATH_PREFIXES = ("/api/calendar/credentials", "/api/auth/")
+_CREDENTIAL_PATH_PREFIXES = ("/api/calendar/credentials", "/api/auth/", "/api/devices")
 
 
 @asynccontextmanager
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(devices_router)
     app.include_router(notes_router)
     app.include_router(folders_router)
     app.include_router(tasks_router)

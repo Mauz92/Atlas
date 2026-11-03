@@ -16,8 +16,10 @@ async def test_reset_sets_a_new_password_and_signs_every_session_out(client: Asy
     assert (await client.get("/api/auth/me")).status_code == 200
 
     async with session_scope() as session:
-        revoked = await reset_password(session, "Owner@Example.com", "brand new password 456")
-    assert revoked >= 1
+        revoked, devices = await reset_password(
+            session, "Owner@Example.com", "brand new password 456"
+        )
+    assert revoked >= 1 and devices == 0
 
     assert (await client.get("/api/auth/me")).status_code == 401
     assert await _login(client, "owner@example.com", "old password 123") == 401

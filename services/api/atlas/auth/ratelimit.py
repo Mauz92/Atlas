@@ -6,6 +6,7 @@ this must move to a shared store; the limitation is noted in ``docs/SECURITY.md`
 
 from __future__ import annotations
 
+import math
 import time
 from collections import defaultdict, deque
 
@@ -26,6 +27,14 @@ class RateLimiter:
             return False
         bucket.append(moment)
         return True
+
+    def retry_after(self, key: str, now: float | None = None) -> int:
+        """Whole seconds (at least 1) until ``key`` may try again; for a ``Retry-After`` header."""
+        moment = time.monotonic() if now is None else now
+        bucket = self._hits.get(key)
+        if not bucket:
+            return 1
+        return max(1, math.ceil(bucket[0] + self._per_seconds - moment))
 
     def reset(self) -> None:
         self._hits.clear()

@@ -393,8 +393,14 @@ are separate concepts (`CALENDAR_SYNC.md` §7).
 Open **Settings** for:
 
 - **Account.** Change your **display name**. **Change password** asks for your current password and a new one
-  of at least 12 characters; afterwards you stay signed in here and are **signed out everywhere else**. The
-  email cannot be changed.
+  of at least 12 characters; afterwards you stay signed in here and are **signed out in your other browsers**.
+  Your desktop and phone apps keep syncing unless you tick **Also sign out my devices** (tick it if you think the old
+  password was exposed). The email cannot be changed.
+- **Devices.** The desktop and phone apps that sync with this server (coming in a later release; the list is empty until
+  one signs in). Each app signs in once with your email and password and then holds its own key, which is never shown
+  here. For every device you see its name, platform and when it last connected; **Rename** it, or **Sign out** a lost or
+  retired one (it stops syncing at its very next request and asks for your password; what is already on it stays there).
+  **Sign out all devices** ends them all. Browsers are not listed: they end when you sign out or change your password.
 - **Appearance.** Light or Dark (remembered in this browser).
 - **Reminders and notifications.** Notification status for this browser and the default reminder timing (§8).
 - **Export your data.** **Download export** saves a zip with your notes (the real Markdown files), tasks and

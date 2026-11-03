@@ -16,10 +16,11 @@ from ..auth import (
     issue_csrf_token,
     verify_password,
 )
+from ..auth.devices import revoke_all_devices
 from ..auth.ratelimit import RateLimiter
 from ..config import get_settings
 from ..models import AuthSession, User
-from .deps import CurrentUser, DbSession
+from .deps import CurrentUser, DbSession, SyncUser
 from .schemas import (
     LoginRequest,
     PasswordChange,
@@ -175,7 +176,7 @@ async def logout(request: Request, response: Response, session: DbSession) -> Re
 
 
 @router.get("/api/auth/me", response_model=UserPublic)
-async def me(user: CurrentUser) -> UserPublic:
+async def me(user: SyncUser) -> UserPublic:
     return UserPublic(id=user.id, email=user.email, display_name=user.display_name)
 
 
@@ -199,8 +200,12 @@ async def change_password(
 
     The current password is required and rate limited like login. On success **every** session of
     the account is revoked (a stolen session must not survive a password change) and a fresh one is
-    issued to the caller, so this browser stays signed in while other devices must sign in again.
-    Neither password is ever logged or echoed (see the validation handler in ``main.py``).
+    issued to the caller, so this browser stays signed in while other browsers must sign in again.
+    Sync **devices** (desktop and mobile apps) keep their tokens unless ``revoke_devices`` is set
+    (ADR-0059 D8, ADR-0065): a routine change must not break a working client, while someone who
+    fears the old password was exposed ticks the box. A stolen individual device is revoked in
+    Settings; a password *reset* always revokes every device. Neither password is ever logged or
+    echoed (see the validation handler in ``main.py``).
     """
     if not _password_limiter.allow(str(user.id)):
         raise HTTPException(
@@ -221,6 +226,8 @@ async def change_password(
         .where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
         .values(revoked_at=datetime.now(UTC))
     )
+    if payload.revoke_devices:
+        await revoke_all_devices(session, user.id)
     await _issue_session(session, user, request, response)
     await session.commit()
     response.status_code = status.HTTP_204_NO_CONTENT

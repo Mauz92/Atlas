@@ -3,6 +3,7 @@
 from .auth import router as auth_router
 from .calendar import router as calendar_router
 from .changes import router as changes_router
+from .devices import router as devices_router
 from .export import router as export_router
 from .health import router as health_router
 from .instance import router as instance_router
@@ -18,6 +19,7 @@ __all__ = [
     "auth_router",
     "calendar_router",
     "changes_router",
+    "devices_router",
     "export_router",
     "folders_router",
     "health_router",

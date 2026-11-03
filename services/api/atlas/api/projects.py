@@ -60,7 +60,7 @@ from ..tasks import (
     TaskFilters,
     TasksService,
 )
-from .deps import CurrentUser, DbSession
+from .deps import DbSession, SyncUser
 from .schemas import (
     NoteSummaryOut,
     ProjectCreateRequest,
@@ -176,7 +176,7 @@ async def create_project(
     payload: ProjectCreateRequest,
     request: Request,
     response: Response,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     sync: SyncMode,
     idempotency_key: IdempotencyKey = None,
@@ -222,7 +222,7 @@ async def create_project(
 
 @router.get("", response_model=ProjectListOut)
 async def list_projects(
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     limit: Annotated[
         int | None,
@@ -252,7 +252,7 @@ async def list_projects(
 
 @router.get("/export", response_model=ProjectsExportOut)
 async def export_projects(
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     limit: Annotated[
         int | None,
@@ -289,7 +289,7 @@ async def export_projects(
 
 
 @router.get("/{project_id}/export", response_model=ProjectsExportOut)
-async def export_project(project_id: uuid.UUID, user: CurrentUser, session: DbSession) -> Any:
+async def export_project(project_id: uuid.UUID, user: SyncUser, session: DbSession) -> Any:
     """Export a single project, its tasks and linked notes (M4-07, REQ-015).
 
     Returns the same versioned document as ``GET /api/projects/export`` with exactly one entry in
@@ -307,7 +307,7 @@ async def export_project(project_id: uuid.UUID, user: CurrentUser, session: DbSe
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
-async def get_project(project_id: uuid.UUID, user: CurrentUser, session: DbSession) -> ProjectOut:
+async def get_project(project_id: uuid.UUID, user: SyncUser, session: DbSession) -> ProjectOut:
     service = ProjectsService(session, user.id)
     try:
         project = await service.get(project_id)
@@ -319,7 +319,7 @@ async def get_project(project_id: uuid.UUID, user: CurrentUser, session: DbSessi
 @router.get("/{project_id}/tasks", response_model=TaskListOut)
 async def list_project_tasks(
     project_id: uuid.UUID,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     limit: Annotated[
         int | None,
@@ -363,7 +363,7 @@ async def list_project_tasks(
 
 @router.get("/{project_id}/notes", response_model=ProjectNotesOut)
 async def list_project_notes(
-    project_id: uuid.UUID, user: CurrentUser, session: DbSession
+    project_id: uuid.UUID, user: SyncUser, session: DbSession
 ) -> ProjectNotesOut:
     """List the caller's notes linked to one project (M4-05).
 
@@ -382,7 +382,7 @@ async def list_project_notes(
 
 @router.put("/{project_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def link_project_note(
-    project_id: uuid.UUID, note_id: uuid.UUID, user: CurrentUser, session: DbSession
+    project_id: uuid.UUID, note_id: uuid.UUID, user: SyncUser, session: DbSession
 ) -> Response:
     """Link a note to a project (**idempotent**).
 
@@ -401,7 +401,7 @@ async def link_project_note(
 
 @router.delete("/{project_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def unlink_project_note(
-    project_id: uuid.UUID, note_id: uuid.UUID, user: CurrentUser, session: DbSession
+    project_id: uuid.UUID, note_id: uuid.UUID, user: SyncUser, session: DbSession
 ) -> Response:
     """Remove a note↔project link (**idempotent**).
 
@@ -422,7 +422,7 @@ async def update_project(
     project_id: uuid.UUID,
     payload: ProjectUpdateRequest,
     request: Request,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     sync: SyncMode,
     idempotency_key: IdempotencyKey = None,
@@ -504,7 +504,7 @@ async def update_project(
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(
     project_id: uuid.UUID,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     sync: SyncMode,
     idempotency_key: IdempotencyKey = None,

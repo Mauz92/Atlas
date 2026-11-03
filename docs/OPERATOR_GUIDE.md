@@ -116,7 +116,7 @@ on its next write ([`SECURITY.md`](SECURITY.md) R-SEC-3).
 | `DATABASE_URL` | PostgreSQL DSN (e.g. `postgresql+psycopg://atlas:…@db:5432/atlas`). |
 | `NOTES_ROOT` | Absolute path to the Markdown notes root (in the container: `/data/atlas/notes`). |
 | `NOTES_RECONCILE_SECONDS` | How often the worker re-scans the notes root (default `300`). |
-| `CHANGE_RETENTION_DAYS` | How far back the per-user change feed keeps deletion history (default `90`, minimum `30`); a device older than this is told to full-resync. The same window applies to saved-request keys and to the automatic-resolution log (the "changed on another device" notices and their undo; they keep the overwritten status, date or path of a simple field, never text). **It never purges your task/project/note rows.** |
+| `CHANGE_RETENTION_DAYS` | How far back the per-user change feed keeps deletion history (default `90`, minimum `30`); a device older than this is told to full-resync. The same window applies to saved-request keys and to the automatic-resolution log (the "changed on another device" notices and their undo; they keep the overwritten status, date or path of a simple field, never text). It is also how long a sync device may stay unseen before it must sign in again, and how long a signed-out device is remembered. **It never purges your task/project/note rows.** |
 | `CHANGE_PURGE_INTERVAL_SECONDS` | How often the purge job runs (default `3600`). |
 | `NOTE_HISTORY_KEEP_REVISIONS` / `NOTE_HISTORY_KEEP_DAYS` | Note history for sync clients (SYNC-04): a note keeps its newest N revisions (default `20`) and everything younger than D days (default `90`). The text lives in `<notes root>/.atlas/history` and is in every backup; it keeps the text of overwritten and **deleted** notes for that long. |
 | `NOTE_HISTORY_MAX_REVISIONS` / `NOTE_HISTORY_MAX_BYTES` | Hard bounds per note on top of the above (defaults `200` revisions, `67108864` bytes of distinct text); the newest N revisions are always kept. A merge base that was pruned makes a stale save a conflict copy, never a guess. |
@@ -265,6 +265,15 @@ Available today:
 - **App status surfaces**: the **Sync** page (queue/conflicts) and **Calendar** page (per-provider sync
   state) reflect the server's state ([`USER_GUIDE.md`](USER_GUIDE.md) §7/§9).
 - **Backups**: run `atlas-backup verify` on a schedule (§6).
+- **Sync devices** (desktop and phone apps; SYNC-06): each signs in with the account password and holds its own key. The owner
+  lists, renames and signs them out in **Settings → Devices**. On the server (the same container and database as
+  `atlas-admin reset-password`):
+  `docker compose -f deploy/docker-compose.yml exec api atlas-admin list-devices --email you@example.com` prints id, state, platform,
+  last seen and name; `... atlas-admin revoke-device --email you@example.com --device <id>` (or `--all`) signs devices out at once.
+  `reset-password` also signs out **every** device. No key is ever printed or logged; the database holds only hashes. A device
+  unseen for `CHANGE_RETENTION_DAYS` (default 90) must sign in again; devices signed out longer ago than that are deleted by the
+  hourly purge. **After restoring a backup, sign out again any device you revoked since that backup was taken** (the restore brings
+  back the state of the backup; when unsure, `revoke-device --all`).
 
 There is **no dedicated job-queue dashboard** in this release; inspect the `jobs` table / worker logs
 directly. Remediation guidance and the recovery-scenario table are in [`OPERATIONS.md`](OPERATIONS.md)
