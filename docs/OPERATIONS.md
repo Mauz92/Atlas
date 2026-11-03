@@ -280,6 +280,7 @@ needs the M5-00 real accounts (AR-001) and is `NOT RUN` here, recorded not waive
 | Corrupted note file | Restore from conflict copy or backup; file is authoritative and recoverable |
 | Failed migration | Roll back image + restore pre-upgrade backup (`DEPLOYMENT.md` §7) |
 | Lost encryption key | OAuth credentials must be re-authorised (notes/tasks unaffected) |
+| Forgotten password | On the server: `atlas-admin list-users`, then `atlas-admin reset-password --email <email>` (hidden prompt, 12+ characters, or the password on stdin when piped; never an argument). Every session of the account is signed out. Source tree: `cd services/api && .venv/bin/python -m atlas.auth.cli …` with the usual `DATABASE_URL`; Docker: `docker compose exec api atlas-admin …` |
 
 ## 6. Operational Non-Negotiables
 

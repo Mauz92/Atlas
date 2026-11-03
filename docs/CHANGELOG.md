@@ -6,6 +6,8 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- **Account recovery.** New operator command `atlas-admin reset-password --email <email>` (and `list-users`) resets a forgotten password on the server and signs the account out everywhere. Not reachable over the network.
+
 - Added (UX-06): **Live editing mode for notes.** The note header has a new **Source | Live** switch next to
   **Preview**. In **Live**, Markdown is shown the way it reads while you keep typing in the same text: headings
   are large, `**bold**`, `*italic*`, `~~strikethrough~~` and `` `code` `` lose their marks, links show only their

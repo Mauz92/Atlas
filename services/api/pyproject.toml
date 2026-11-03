@@ -39,6 +39,7 @@ atlas-worker = "atlas.worker:main"
 atlas-migrate = "atlas.migrations:main"
 atlas-backup = "atlas.backups.cli:main"
 atlas-export = "atlas.export.cli:main"
+atlas-admin = "atlas.auth.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["atlas"]
