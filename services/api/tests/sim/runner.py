@@ -12,8 +12,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .client import ClientBugs, Recorder, SimClient
+from .client_v1 import SyncSimClient
 from .engine import EventQueue, Network, Req, ServerPort, SimConfig, SimFailure
-from .model import LABEL, ModelServer
+from .model import FLAG, LABEL, ModelServer
 
 _PLURAL = {"task": "tasks", "project": "projects"}
 
@@ -56,25 +57,29 @@ def build_world(
     rec = Recorder()
     offsets: dict[str, list[int]] = {}
     clients: list[SimClient] = []
-    for index in range(cfg.clients):
-        cid = f"c{index + 1}"
+    names = [f"c{index + 1}" for index in range(cfg.clients)]
+    if cfg.old_client:
+        names.append("old")
+    for cid in names:
         offsets[cid] = [
             clock_rng.randint(-cfg.max_clock_skew, cfg.max_clock_skew) if cfg.skew else 0
         ]
         net.online[cid] = True
-        clients.append(
-            SimClient(
-                cid,
-                events,
-                net,
-                random.Random(f"{seed}:{cid}"),
-                offsets[cid],
-                rec,
-                trace,
-                client_bugs or ClientBugs(),
-                cfg.timeout,
-            )
+        factory = SyncSimClient if cfg.sync else SimClient
+        client = factory(
+            cid,
+            events,
+            net,
+            random.Random(f"{seed}:{cid}"),
+            offsets[cid],
+            rec,
+            trace,
+            client_bugs or ClientBugs(),
+            cfg.timeout,
         )
+        if cid == "old":
+            client.protocol = 2  # type: ignore[attr-defined]
+        clients.append(client)
     return World(seed, cfg, port, events, net, rng, clock_rng, offsets, clients, rec, trace)
 
 
@@ -101,14 +106,25 @@ async def run_world(
 
 async def _faulty_phase(world: World) -> None:
     cfg, rng = world.cfg, world.rng
+    joiner = world.clients[cfg.clients - 1] if cfg.late_joiner else None
+    if joiner is not None:
+        world.net.online[joiner.cid] = False  # not yet installed: no actions, no requests
+        joiner.active = False  # type: ignore[attr-defined]
     for step in range(cfg.steps):
         world.steps_run = step
+        if joiner is not None and step == int(cfg.steps * 0.6):
+            joiner.active = True  # type: ignore[attr-defined]
+            world.net.online[joiner.cid] = True
+            joiner.retry_at = joiner.next_pull_at = world.events.now
+            world.trace.append(f"t={world.events.now} {joiner.cid} JOINS with an empty store")
         world.events.now += rng.randint(1, 15)
         await world.events.run_due()
         for client in world.clients:
             if rng.random() < cfg.action_p:
                 client.user_action(cfg.kinds)
         for client in world.clients:
+            if client is joiner and not joiner.active:  # type: ignore[attr-defined]
+                continue
             if rng.random() < cfg.p_toggle_online:
                 online = not world.net.online[client.cid]
                 world.net.online[client.cid] = online
@@ -166,7 +182,14 @@ async def _quiescent(world: World) -> bool:
     if world.events.pending():
         return False
     head = await world.server.head()
-    return all(c.idle() and c.pulls_clean >= 2 and c.durable.cursor == head for c in world.clients)
+    return all(
+        _halted(c) or (c.idle() and c.pulls_clean >= 2 and c.durable.cursor == head)
+        for c in world.clients
+    )
+
+
+def _halted(client: SimClient) -> bool:
+    return bool(getattr(client, "halted", False))
 
 
 # --- invariants ----------------------------------------------------------------------------
@@ -186,6 +209,12 @@ def _check_cursor_safety(world: World, client: SimClient) -> None:
         return
     for row in model.feed.values():
         if row.seq > d.cursor:
+            continue
+        if row.entity_id in d.refetch:
+            # An acknowledged write of this client brought the entity into the mirror after its
+            # cursor had passed the row (a snapshot omits tombstones, a replayed create answers
+            # with the first result): the entity is queued to be read again at the next pull
+            # (SYNC_PROTOCOL.md 8.1), which is the correction.
             continue
         local = d.mirror.get(row.entity_id)
         if row.operation == "delete":
@@ -213,28 +242,14 @@ async def server_truth(world: World) -> dict[str, tuple[str, dict[str, Any], int
         for row in resp.body[plural]:
             truth[row["id"]] = (
                 kind,
-                {LABEL[kind]: row.get(LABEL[kind]), "description": row.get("description")},
+                {
+                    LABEL[kind]: row.get(LABEL[kind]),
+                    "description": row.get("description"),
+                    FLAG[kind]: row.get(FLAG[kind]),
+                },
                 row["revision"],
             )
     return truth
-
-
-async def all_server_entities(world: World) -> list[str]:
-    """Every entity id the feed has ever announced (live and deleted), from cursor 0."""
-    seen: list[str] = []
-    since = 0
-    for _ in range(10_000):
-        resp = await world.server.handle(
-            Req("GET", "/api/changes", params={"since": since, "limit": 500})
-        )
-        body = resp.body
-        if body["resync_required"]:
-            break
-        seen.extend(c["entity_id"] for c in body["changes"])
-        if not body["has_more"]:
-            break
-        since = body["next_since"]
-    return seen
 
 
 async def _check_invariants(world: World) -> None:
@@ -245,6 +260,8 @@ async def _check_invariants(world: World) -> None:
         raise world.fail("idempotency_key_stability", "; ".join(rec.self_inflicted[:3]))
     # 1. convergence
     for client in world.clients:
+        if _halted(client):
+            continue
         _check_cursor_safety(world, client)
         live = {i: e for i, e in client.durable.mirror.items() if not e.deleted}
         for entity_id, (kind, fields, revision) in truth.items():
@@ -265,8 +282,10 @@ async def _check_invariants(world: World) -> None:
     # 2. what the server acknowledged was applied: the response shows exactly what was sent
     for cid, op, status, body in rec.acks:
         if op.action in ("create", "patch") and isinstance(body, dict):
+            sync = body.get("sync") if world.cfg.sync else None
+            held_back = {c["field"] for c in sync["conflicts"]} if sync else set()
             for name, value in op.fields.items():
-                if body.get(name) != value:
+                if name not in held_back and body.get(name) != value:
                     raise world.fail(
                         "no_acknowledged_loss",
                         f"{cid} was acknowledged for {op.op_id} ({op.action}, {status}) but the "
@@ -280,6 +299,7 @@ async def _check_invariants(world: World) -> None:
             fields = {
                 LABEL[op.kind]: body.get(LABEL[op.kind]),
                 "description": body.get("description"),
+                FLAG[op.kind]: body.get(FLAG[op.kind]),
             }
             previous = seen_states.setdefault((body["id"], body["revision"]), fields)
             if previous != fields:
@@ -291,7 +311,7 @@ async def _check_invariants(world: World) -> None:
                 )
     # 4. no duplicates on retry
     creates = {op.op_id for _c, op, _s, _b in rec.acks if op.action == "create"}
-    announced = set(await all_server_entities(world)) if not _purged(world) else None
+    announced = set(await world.server.all_entity_ids())
     if announced is not None and len(announced) != len(creates):
         raise world.fail(
             "no_duplicates",
@@ -310,16 +330,56 @@ async def _check_invariants(world: World) -> None:
     restored_acked = {
         _server_id(world, op) for _c, op, _s, _b in rec.acks if op.action == "restore"
     }
+    edited_acked = {
+        _server_id(world, op) for _c, op, _s, _b in rec.acks if op.action in ("patch", "restore")
+    }
     for entity_id in deleted_acked:
+        if world.cfg.sync and entity_id in edited_acked:
+            continue  # edit wins over delete (rule 4): an acknowledged edit may bring it back
         if entity_id in truth and entity_id not in restored_acked:
             raise world.fail(
                 "no_resurrection",
                 f"{entity_id} was deleted (acknowledged) and never restored, but the server "
                 "lists it live",
             )
+    if world.cfg.sync:
+        _check_sync_world(world)
     model = world.model
     if model is not None:
         _check_model_history(world, model)
+
+
+def _check_sync_world(world: World) -> None:
+    """Invariants that only exist in protocol v1 (TESTING.md section 10.2)."""
+    rec = world.rec
+    # the only refusals an honest client may meet are the two designed ones (and a restore of a
+    # task that is no longer deleted); a 404 on a patch of a
+    # known entity would mean edit-wins-over-delete is broken, a 422 a client/server mismatch
+    for cid, op, status, code in rec.refusals:
+        if op.action == "restore" and status == 404:
+            continue  # nothing to restore: another device's edit already brought the task back
+        if code not in ("conflict", "edit_wins"):
+            raise world.fail(
+                "unexpected_rejection",
+                f"{cid} was refused {op.action} {op.op_id} with {status} {code!r}: only a text "
+                "conflict and a stale delete (edit wins) are expected",
+            )
+        if code == "conflict" and op.action != "patch":
+            raise world.fail("unexpected_rejection", f"{op.op_id}: conflict on {op.action}")
+    # a client speaking an unsupported protocol stops at the first 426 and writes nothing
+    for client in world.clients:
+        if client.cid != "old":
+            continue
+        sent = getattr(client, "sent", -1)
+        if client.cid not in rec.halts or sent != getattr(client, "sent_at_halt", -2):
+            raise world.fail(
+                "stop_on_426",
+                f"the unsupported client sent {sent} requests, halted={client.cid in rec.halts} "
+                f"(sent {getattr(client, 'sent_at_halt', None)} when it halted); it must stop "
+                "at the first 426 it receives and send nothing after",
+            )
+        if any(o.op_id.startswith("old-") for _c, o, _s, _b in rec.acks):
+            raise world.fail("stop_on_426", "an unsupported client had a write acknowledged")
 
 
 def _purged(world: World) -> bool:
@@ -355,7 +415,11 @@ def _check_model_history(world: World, model: ModelServer) -> None:
             state[event.entity_id] = "live"
         elif event.event == "delete":
             state[event.entity_id] = "deleted"
+    if world.cfg.sync:
+        _check_model_sync_history(world, model)
     for cid, op, status, _body in world.rec.acks:
+        if world.cfg.sync and op.action != "create" and applied.get(op.op_id, 0) <= 1:
+            continue  # a merged patch may be a no-op (equal values), a repeated delete a no-op
         if applied.get(op.op_id, 0) != 1:
             raise world.fail(
                 "no_acknowledged_loss",
@@ -395,3 +459,28 @@ def canonical(world: World) -> Any:
     model = world.model
     assert model is not None
     return model.canonical()
+
+
+def _check_model_sync_history(world: World, model: ModelServer) -> None:
+    """Merge safety, read from the model's ground truth (never available on the real API)."""
+    text = {"title", "name", "description"}
+    for event in model.history:
+        if event.event in ("patch", "revive"):
+            for name, changed_at, _equal in event.writes:
+                if name in text and event.base is not None and changed_at > event.base:
+                    raise world.fail(
+                        "no_silent_text_loss",
+                        f"{event.op_id} overwrote text field {name} of {event.entity_id}, which "
+                        f"changed at revision {changed_at} after its base {event.base}",
+                    )
+        if (
+            event.event == "delete"
+            and event.base is not None
+            and event.revision_before is not None
+            and event.base < event.revision_before
+        ):
+            raise world.fail(
+                "edit_wins",
+                f"{event.op_id} deleted {event.entity_id} on base {event.base} although it was "
+                f"edited up to revision {event.revision_before}",
+            )

@@ -14,6 +14,8 @@ from typing import Annotated
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+MIN_RETENTION_DAYS = 30  # mirrors atlas.changes.retention (config must not import the app)
+
 _DEV_SECRET = "dev-insecure-change-me"
 
 
@@ -50,11 +52,13 @@ class Settings(BaseSettings):
     # the next scan re-runs the calendar.
     calendar_sync_stale_seconds: int = 900
 
-    # How far back (days) the per-user change feed keeps its history (M7-02). Change-log rows older
-    # than this are purged by a durable job; a client whose cursor is older than the retained
-    # history is told to full-resync rather than handed a partial feed. It does not bound the user's
-    # own entity rows — a soft-deleted entity stays a tombstone.
-    change_retention_days: int = 30
+    # How long (days, at least 30) the change feed keeps *deletion tombstones* (M7-02, changed by
+    # SYNC-03e / ADR-0059 D2: upsert rows are never purged, so a new device can always bootstrap
+    # from cursor 0). A tombstone older than this is purged by a durable job; a client whose cursor
+    # is older than the highest purged tombstone is told to resync rather than handed a feed that
+    # could hide a deletion. Idempotency keys are kept for the same period. It does not bound the
+    # user's own entity rows - a soft-deleted entity stays a tombstone in its own table.
+    change_retention_days: int = 90
     # How often (seconds) the worker runs the change-feed purge.
     change_purge_interval_seconds: int = 3600
     # How long (seconds) a purge job's lock may stay set before it is treated as stale — a worker
@@ -138,6 +142,14 @@ class Settings(BaseSettings):
     def _must_be_positive(cls, value: int) -> int:
         if value < 1:
             msg = "retention/interval and backup settings must be positive"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("change_retention_days")
+    @classmethod
+    def _retention_at_least_a_month(cls, value: int) -> int:
+        if value < MIN_RETENTION_DAYS:
+            msg = f"CHANGE_RETENTION_DAYS must be at least {MIN_RETENTION_DAYS}"
             raise ValueError(msg)
         return value
 

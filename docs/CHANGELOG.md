@@ -6,6 +6,20 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (SYNC-03): **The server now speaks sync protocol v1 for the coming desktop and Android apps.** Nothing changes for the
+  web app. Apps that send `Atlas-Sync: 1` get: ids they choose themselves (a retry never duplicates), field-by-field merging of
+  edits made on two devices (a title on one and a due date on the other both survive; the same text changed on both is reported as
+  a conflict that keeps both versions; for other fields the later one wins and is reported), an edit made on one device beating a
+  delete on another, and a feed that lets a brand-new device download everything. Unsupported apps are told to update (`426`).
+  Details and what is still to come (note merge, undo log, device tokens): `docs/SYNC_PROTOCOL.md`.
+- Changed (SYNC-03): **Deletion history is kept 90 days instead of 30** (`CHANGE_RETENTION_DAYS`, minimum 30; update `.env` if you
+  set it), and only deletions are forgotten after that: a device can always download everything from scratch, and a device away
+  longer than 90 days is told to resynchronise instead of silently missing deletions. Saved-request keys expire with it.
+- Added (SYNC-03): **`atlas-admin record-restore`**: run it after restoring a backup so that apps which synced with the old
+  server stop and ask before syncing again (`docs/OPERATIONS.md` section 2.2a).
+- Changed (SYNC-03): an API user can now give a new task, project or note its own id (`id` in the create request); a note may be
+  created at the path of a deleted note under a new identity when it has an `id`. Existing behaviour without `id` is unchanged.
+
 - Fixed (SYNC-03): **Two devices saving the same item at the same moment can no longer both "win".** When two edits to
   one task, project or note were based on the same version and arrived together, both were accepted and the second
   silently replaced the first while both reported the same new version. Now one is saved and the other gets the usual

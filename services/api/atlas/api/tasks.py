@@ -14,7 +14,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any, NoReturn
 
-from fastapi import APIRouter, Header, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 
 from ..idempotency import IdempotencyConflictError, IdempotencyStore, fingerprint
@@ -28,6 +28,7 @@ from ..reminders import (
 from ..reminders import (
     ReminderTiming as DomainTiming,
 )
+from ..sync.protocol import SyncError
 from ..tasks import (
     DEFAULT_CHANGE_LIMIT,
     DEFAULT_LIMIT,
@@ -40,6 +41,8 @@ from ..tasks import (
     InvalidTimeZoneError,
     NonexistentWallTimeError,
     SubtaskRollup,
+    TaskEditWinsError,
+    TaskIdExistsError,
     TaskNotFoundError,
     TaskRevisionConflictError,
     TasksService,
@@ -59,6 +62,7 @@ from .schemas import (
     RecurrencePreviewOut,
     RecurrencePreviewRequest,
     ReminderTiming,
+    SyncResolutionOut,
     TaskChangeOut,
     TaskChangesOut,
     TaskCreateRequest,
@@ -69,17 +73,43 @@ from .schemas import (
     TaskReminderRequest,
     TaskUpdateRequest,
 )
+from .sync_gate import SyncMode, epoch_check
+from .syncio import (
+    REPLAYED_HEADER,
+    entity_json,
+    reject_unknown_fields,
+    require_base,
+    require_key,
+    sync_result,
+)
 
-router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+router = APIRouter(prefix="/api/tasks", tags=["tasks"], dependencies=[Depends(epoch_check)])
 
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key", max_length=200)]
 
 
-def _translate(exc: Exception) -> NoReturn:
-    """Map domain errors onto HTTP responses; re-raise anything unexpected."""
+def _translate(exc: Exception, sync: bool = False) -> NoReturn:
+    """Map domain errors onto HTTP responses; re-raise anything unexpected.
+
+    In sync mode the errors a sync client acts on carry a machine-readable ``error`` code
+    (SYNC_PROTOCOL.md section 8.1); outside it the historical bodies are unchanged.
+    """
+    if isinstance(exc, TaskIdExistsError):
+        raise SyncError(
+            409, "id_exists", "that id is already in use by a different record"
+        ) from exc
     if isinstance(exc, TaskNotFoundError):
+        if sync:
+            raise SyncError(404, "not_found", "Not found") from exc
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     if isinstance(exc, TaskRevisionConflictError):
+        if sync:
+            raise SyncError(
+                409,
+                "stale",
+                "task changed since it was read",
+                current_revision=exc.current_revision,
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -88,6 +118,12 @@ def _translate(exc: Exception) -> NoReturn:
             },
         ) from exc
     if isinstance(exc, IdempotencyConflictError):
+        if sync:
+            raise SyncError(
+                409,
+                "idempotency_mismatch",
+                "idempotency key reused with a different request",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="idempotency key reused with a different request",
@@ -177,10 +213,18 @@ async def preview_recurrence(payload: RecurrencePreviewRequest, user: CurrentUse
 @router.post("", response_model=TaskOut, status_code=status.HTTP_201_CREATED)
 async def create_task(
     payload: TaskCreateRequest,
+    request: Request,
+    response: Response,
     user: CurrentUser,
     session: DbSession,
+    sync: SyncMode,
     idempotency_key: IdempotencyKey = None,
 ) -> Any:
+    """Create a task. Sync mode (`Atlas-Sync: 1`) requires an `Idempotency-Key`; an optional
+    client-generated `id` makes the create idempotent by id as well (SYNC_PROTOCOL.md 6.1)."""
+    if sync:
+        require_key(sync, idempotency_key)
+        await reject_unknown_fields(request, TaskCreateRequest)
     store = IdempotencyStore(session, user.id)
     if idempotency_key:
         try:
@@ -188,25 +232,38 @@ async def create_task(
                 idempotency_key, "task.create", fingerprint(payload.model_dump(mode="json"))
             )
         except Exception as exc:
-            _translate(exc)
+            _translate(exc, sync)
         if stored is not None:
-            return JSONResponse(status_code=stored.status_code, content=stored.body)
+            return JSONResponse(
+                status_code=stored.status_code, content=stored.body, headers=REPLAYED_HEADER
+            )
+    data = payload.model_dump()
+    client_id = data.pop("id")
+    replayed = False
     try:
         service = TasksService(session, user.id)
-        task = await service.create(payload.model_dump())
+        task = await service.claim_id(client_id, data) if client_id else None
+        replayed = task is not None
+        if task is None:
+            task = await service.create(data, client_id=client_id)
     except Exception as exc:
-        _translate(exc)
-    # Materialise/reschedule the task's durable reminder in the same transaction (M8-01).
-    await ReminderService(session, user.id).sync_for_task(task.id)
+        _translate(exc, sync)
+    if not replayed:
+        # Materialise/reschedule the task's durable reminder in the same transaction (M8-01).
+        await ReminderService(session, user.id).sync_for_task(task.id)
     out = task_out(
         task,
         await service.subtask_rollup(task.id),
         now=datetime.now(UTC),
         tags=(await service.tags_for([task.id])).get(task.id, []),
     )
+    if sync:
+        out.sync = sync_result(task.revision)
     if idempotency_key:
         await store.remember(idempotency_key, status_code=201, body=out.model_dump(mode="json"))
     await session.commit()
+    if replayed:
+        response.headers.update(REPLAYED_HEADER)
     return out
 
 
@@ -357,7 +414,7 @@ async def list_tasks(
     )
 
 
-@router.get("/changes", response_model=TaskChangesOut)
+@router.get("/changes", response_model=TaskChangesOut, deprecated=True)
 async def task_changes(
     user: CurrentUser,
     session: DbSession,
@@ -380,7 +437,11 @@ async def task_changes(
         ),
     ] = None,
 ) -> TaskChangesOut:
-    """Incremental change feed for the calling user's tasks (M3-09).
+    """Incremental change feed for the calling user's tasks (M3-09). **Deprecated (SYNC-03).**
+
+    `GET /api/changes?include=data&types=task` is the one feed (ADR-0059 D2): it has a total order
+    across entities, a snapshot for a new device and the entity payloads. This endpoint is frozen
+    (no new behaviour) and stays until the web client stops using it.
 
     Returns the tasks whose ``revision`` is strictly greater than ``since``, ordered by ``revision``
     ascending, **including soft-deleted tombstones** (a non-null ``deleted_at``) so a client
@@ -472,10 +533,26 @@ async def get_task(task_id: uuid.UUID, user: CurrentUser, session: DbSession) ->
 async def update_task(
     task_id: uuid.UUID,
     payload: TaskUpdateRequest,
+    request: Request,
     user: CurrentUser,
     session: DbSession,
+    sync: SyncMode,
     idempotency_key: IdempotencyKey = None,
 ) -> Any:
+    """Update a task.
+
+    Default mode: ``base_revision`` (optional) rejects any stale write with `409`; without it the
+    write is blind. **Sync mode** (`Atlas-Sync: 1`): `Idempotency-Key` and `base_revision` are
+    required and the body carries only the changed fields, which are merged field by field against
+    the base (SYNC_PROTOCOL.md 6.2): different fields merge, the same simple field takes the later
+    value (reported in `sync.resolution`), the same text field is a conflict that keeps both
+    (`409 conflict`, or `sync.conflicts` when other fields were applied), and an edit of a deleted
+    task brings it back.
+    """
+    if sync:
+        require_key(sync, idempotency_key)
+        require_base(sync, payload.base_revision)
+        await reject_unknown_fields(request, TaskUpdateRequest)
     store = IdempotencyStore(session, user.id)
     changes = payload.model_dump(exclude_unset=True)
     request_payload = {
@@ -488,22 +565,49 @@ async def update_task(
                 idempotency_key, "task.update", fingerprint(request_payload)
             )
         except Exception as exc:
-            _translate(exc)
+            _translate(exc, sync)
         if stored is not None:
-            return JSONResponse(status_code=stored.status_code, content=stored.body)
+            return JSONResponse(
+                status_code=stored.status_code, content=stored.body, headers=REPLAYED_HEADER
+            )
+    service = TasksService(session, user.id)
+    outcome = None
     try:
-        service = TasksService(session, user.id)
-        task = await service.update(task_id, changes, payload.base_revision)
+        if sync:
+            assert payload.base_revision is not None
+            outcome = await service.update_sync(task_id, changes, payload.base_revision)
+            task = outcome.task
+        else:
+            task = await service.update(task_id, changes, payload.base_revision)
     except Exception as exc:
-        _translate(exc)
-    # An edited due date/time-zone/policy/status reschedules (or cancels) the reminder (M8-01).
-    await ReminderService(session, user.id).sync_for_task(task.id)
+        _translate(exc, sync)
+    if outcome is not None and outcome.conflicts and not outcome.applied and not outcome.revived:
+        raise SyncError(
+            409,
+            "conflict",
+            "the same text field was changed on the server; nothing was applied",
+            current_revision=task.revision,
+            conflicts=[
+                c.model_dump(mode="json")
+                for c in sync_result(0, conflicts=outcome.conflicts).conflicts
+            ],
+        )
+    if outcome is None or outcome.applied or outcome.revived:
+        # An edited due date/time-zone/policy/status reschedules (or cancels) the reminder (M8-01).
+        await ReminderService(session, user.id).sync_for_task(task.id)
     out = task_out(
         task,
         await service.subtask_rollup(task.id),
         now=datetime.now(UTC),
         tags=(await service.tags_for([task.id])).get(task.id, []),
     )
+    if outcome is not None:
+        out.sync = sync_result(
+            task.revision,
+            conflicts=outcome.conflicts,
+            resolutions=outcome.resolutions,
+            revived=outcome.revived,
+        )
     if idempotency_key:
         await store.remember(idempotency_key, status_code=200, body=out.model_dump(mode="json"))
     await session.commit()
@@ -515,8 +619,22 @@ async def delete_task(
     task_id: uuid.UUID,
     user: CurrentUser,
     session: DbSession,
+    sync: SyncMode,
     idempotency_key: IdempotencyKey = None,
+    base_revision: Annotated[
+        int | None,
+        Query(
+            ge=0,
+            description=(
+                "Sync mode (required): the revision the delete was based on. A task edited after "
+                "it is not deleted: `409 edit_wins` carries the live task (ADR-0055 rule 4)."
+            ),
+        ),
+    ] = None,
 ) -> Response:
+    if sync:
+        require_key(sync, idempotency_key)
+        require_base(sync, base_revision)
     store = IdempotencyStore(session, user.id)
     if idempotency_key:
         try:
@@ -524,15 +642,35 @@ async def delete_task(
                 idempotency_key, "task.delete", fingerprint({"task_id": str(task_id)})
             )
         except Exception as exc:
-            _translate(exc)
+            _translate(exc, sync)
         if stored is not None:
-            return Response(status_code=stored.status_code)
+            return Response(status_code=stored.status_code, headers=REPLAYED_HEADER)
+    service = TasksService(session, user.id)
     try:
-        await TasksService(session, user.id).delete(task_id)
+        if sync and await service.is_deleted(task_id):
+            pass  # already deleted: an idempotent no-op (SYNC_PROTOCOL.md 6.2)
+        else:
+            await service.delete(task_id, base_revision=base_revision, edit_wins=sync)
+            # A deleted task must not be reminded; cancel any pending reminder (M8-01).
+            await ReminderService(session, user.id).cancel_for_task(task_id)
+    except TaskEditWinsError as exc:
+        live = await service.get(task_id)
+        entity = task_out(
+            live,
+            await service.subtask_rollup(live.id),
+            now=datetime.now(UTC),
+            tags=(await service.tags_for([live.id])).get(live.id, []),
+        )
+        raise SyncError(
+            409,
+            "edit_wins",
+            "the task was edited after the delete was based; the edit wins and the task stays",
+            current_revision=exc.current_revision,
+            entity=entity_json(entity),
+            resolution=[SyncResolutionOut(rule="edit_wins_over_delete").model_dump(mode="json")],
+        ) from exc
     except Exception as exc:
-        _translate(exc)
-    # A deleted task must not be reminded; cancel any pending reminder (M8-01).
-    await ReminderService(session, user.id).cancel_for_task(task_id)
+        _translate(exc, sync)
     if idempotency_key:
         await store.remember(idempotency_key, status_code=204, body={})
     await session.commit()
@@ -544,6 +682,7 @@ async def restore_task(
     task_id: uuid.UUID,
     user: CurrentUser,
     session: DbSession,
+    sync: SyncMode,
     idempotency_key: IdempotencyKey = None,
 ) -> Any:
     """Undo a delete: bring a soft-deleted task of the caller's back (the "undo" of ``DELETE``).
@@ -552,6 +691,7 @@ async def restore_task(
     restoration through the change feed. A task that is not deleted (or not the caller's) is a
     ``404``. Subtasks promoted to top level by the delete stay promoted.
     """
+    require_key(sync, idempotency_key)
     store = IdempotencyStore(session, user.id)
     if idempotency_key:
         try:
@@ -559,14 +699,16 @@ async def restore_task(
                 idempotency_key, "task.restore", fingerprint({"task_id": str(task_id)})
             )
         except Exception as exc:
-            _translate(exc)
+            _translate(exc, sync)
         if stored is not None:
-            return JSONResponse(status_code=stored.status_code, content=stored.body)
+            return JSONResponse(
+                status_code=stored.status_code, content=stored.body, headers=REPLAYED_HEADER
+            )
     try:
         service = TasksService(session, user.id)
         task = await service.restore(task_id)
     except Exception as exc:
-        _translate(exc)
+        _translate(exc, sync)
     await ReminderService(session, user.id).sync_for_task(task.id)
     out = task_out(
         task,
@@ -574,6 +716,8 @@ async def restore_task(
         now=datetime.now(UTC),
         tags=(await service.tags_for([task.id])).get(task.id, []),
     )
+    if sync:
+        out.sync = sync_result(task.revision)
     if idempotency_key:
         await store.remember(idempotency_key, status_code=200, body=out.model_dump(mode="json"))
     await session.commit()

@@ -4,6 +4,8 @@ from .markdown import ParsedNote, extract_links, extract_tags, extract_title, pa
 from .reconcile import NotesReconciler, ReconcileSummary
 from .service import (
     NoteConflictError,
+    NoteCreated,
+    NoteIdExistsError,
     NoteNotFoundError,
     NotePathConflictError,
     NotesService,
@@ -28,7 +30,9 @@ __all__ = [
     "NOTE_SUFFIX",
     "TEMPLATES_DIR",
     "NoteConflictError",
+    "NoteCreated",
     "NoteFile",
+    "NoteIdExistsError",
     "NoteNotFoundError",
     "NotePathConflictError",
     "NoteSummary",

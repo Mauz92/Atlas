@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 import email_validator
 from email_validator import EmailNotValidError, validate_email
@@ -130,6 +130,35 @@ class BackupStatus(BaseModel):
     last_job_at: datetime | None
 
 
+class SyncProtocolRange(BaseModel):
+    min: int
+    max: int
+
+
+class SyncLimits(BaseModel):
+    max_note_bytes: int
+    feed_page_max: int
+    feed_page_max_with_data: int
+
+
+class InstanceSync(BaseModel):
+    """What a sync client needs to know before it syncs (SYNC_PROTOCOL.md section 10.2).
+
+    ``protocol`` is the range of ``Atlas-Sync`` majors this server accepts (anything else is
+    ``426``). ``entities`` gives the schema number of each feed entity type, so a client can tell
+    which types it understands. ``epoch`` names this database's history: send it back as
+    ``Atlas-Epoch``; a different value means the server was restored from a backup or is another
+    server, and the client must ask its user before it syncs again.
+    """
+
+    protocol: SyncProtocolRange
+    entities: dict[str, int]
+    limits: SyncLimits
+    tombstone_retention_days: int
+    idempotency_retention_days: int
+    epoch: str
+
+
 class InstanceInfo(BaseModel):
     version: str
     environment: str
@@ -137,12 +166,47 @@ class InstanceInfo(BaseModel):
     migration_revision: str | None
     web_push_configured: bool
     backups: BackupStatus
+    sync: InstanceSync
+
+
+# --- Sync (SYNC-03) ------------------------------------------------------
+
+
+class SyncConflictOut(BaseModel):
+    """A field of a sync-mode ``PATCH`` that was not applied (SYNC_PROTOCOL.md section 6.2)."""
+
+    field: str
+    reason: str = Field(description="`text_conflict` or `invalid_transition`.")
+    server_revision: int = Field(description="Revision at which the server's value was set.")
+    server_value: Any = Field(default=None, description="The server's current value.")
+
+
+class SyncResolutionOut(BaseModel):
+    """An automatic resolution applied by the server. In SYNC-03 it is reported in the response
+    only; SYNC-05 stores it (`sync_resolutions`) and adds undo."""
+
+    rule: str = Field(description="`simple_later_wins`, `edit_wins_over_delete`, `path_collision`.")
+    field: str | None = None
+    kept_revision: int | None = None
+    loser: Any = Field(default=None, description="The overwritten value of a simple field.")
+    detail: str | None = None
+
+
+class SyncResult(BaseModel):
+    """The `sync` block of a write response in sync mode (`Atlas-Sync: 1`); `null` otherwise."""
+
+    revision: int
+    resolution: list[SyncResolutionOut] = Field(default_factory=list)
+    conflicts: list[SyncConflictOut] = Field(default_factory=list)
 
 
 # --- Notes ---------------------------------------------------------------
 
 
 class NoteCreateRequest(BaseModel):
+    id: uuid.UUID | None = Field(
+        default=None, description="Optional client-generated id (UUID); see task creation."
+    )
     path: str = Field(min_length=1, max_length=1024)
     content: str = Field(default="", max_length=5 * 1024 * 1024)
 
@@ -170,6 +234,9 @@ class NoteConflictCopyRequest(BaseModel):
 
 class NoteMoveRequest(BaseModel):
     path: str = Field(min_length=1, max_length=1024)
+    base_revision: int | None = Field(
+        default=None, ge=0, description="Sync mode (required). Not yet checked; see SYNC-04."
+    )
 
 
 class FolderCreateRequest(BaseModel):
@@ -227,6 +294,7 @@ class NoteDetailOut(NoteSummaryOut):
     #: Tasks and projects that link to this note: the non-note part of its backlinks (MU-06).
     tasks: list[NoteTaskOut]
     projects: list[NoteProjectOut]
+    sync: SyncResult | None = None
 
 
 class TaskNotesOut(BaseModel):
@@ -267,6 +335,13 @@ def _validate_recurrence_rule(value: str | None) -> str | None:
 
 
 class TaskCreateRequest(BaseModel):
+    id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Optional client-generated id (UUID). Idempotent: the same id with the same body "
+            "replays the create; a taken id is `409 id_exists`. Without it the server assigns one."
+        ),
+    )
     title: str = Field(min_length=1, max_length=512)
     description: str | None = Field(default=None, max_length=20000)
     status: TaskStatus = TaskStatus.INBOX
@@ -347,8 +422,16 @@ class TaskOut(BaseModel):
     external_id: str | None
     tags: list[str] = Field(default_factory=list)
     revision: int
+    field_revisions: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Field name -> the revision at which that field last changed (SYNC-03). Used by "
+            "sync-mode clients to merge; informational otherwise."
+        ),
+    )
     created_at: datetime
     updated_at: datetime
+    sync: SyncResult | None = None
 
 
 class RecurrencePreviewRequest(BaseModel):
@@ -399,6 +482,72 @@ class TaskChangesOut(BaseModel):
 # --- Change feed (M7-01) -------------------------------------------------
 
 
+class TaskSyncData(BaseModel):
+    """A task as stored, in the feed with `include=data` (SYNC-03e): persisted columns, `tags` and
+    `field_revisions`; no derived values (`due_state`, subtask counts). A tombstone has
+    `deleted_at`."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    revision: int
+    field_revisions: dict[str, int]
+    deleted_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    title: str
+    description: str | None
+    status: str
+    priority: str
+    project_id: uuid.UUID | None
+    parent_task_id: uuid.UUID | None
+    start_at: datetime | None
+    due_at: datetime | None
+    time_zone: str | None
+    duration_minutes: int | None
+    completed_at: datetime | None
+    recurrence_rule: str | None
+    recurrence_parent_id: uuid.UUID | None
+    external_provider: str | None
+    external_id: str | None
+    reminder_policy_id: uuid.UUID | None
+    tags: list[str]
+
+
+class ProjectSyncData(BaseModel):
+    """A project as stored (no derived `progress`), in the feed with `include=data`."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    revision: int
+    field_revisions: dict[str, int]
+    deleted_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    name: str
+    description: str | None
+    status: str
+    start_date: date | None
+    target_date: date | None
+
+
+class NoteSyncData(BaseModel):
+    """A note's metadata (never its content) in the feed with `include=data`."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    revision: int
+    deleted_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    path: str
+    title: str
+    content_hash: str
+    size_bytes: int
+
+
 class ChangeOut(BaseModel):
     """One item of the per-user change feed (M7-01).
 
@@ -416,6 +565,17 @@ class ChangeOut(BaseModel):
     operation: str
     cursor: int
     changed_at: datetime
+    revision: int | None = Field(
+        default=None, description="With `include=data`: the entity's current revision."
+    )
+    data: TaskSyncData | ProjectSyncData | NoteSyncData | None = Field(
+        default=None,
+        description=(
+            "With `include=data`: the entity's stored state as of this response, which may be "
+            "newer than `cursor`; apply by `revision`. Links carry no data; `null` also when the "
+            "entity no longer exists."
+        ),
+    )
 
 
 class ChangesOut(BaseModel):
@@ -436,6 +596,10 @@ class ChangesOut(BaseModel):
     cursor predates the purge floor) or ``cursor_ahead`` (the cursor is beyond the server's head,
     e.g. the server was restored from an older backup: the server has lost changes the client holds,
     so the client must not assume it is up to date and must not silently discard local state).
+
+    SYNC-03e: `since=0` is a **snapshot** (every live entity, no tombstones on its first page);
+    `types=` limits the entity types (the cursor still advances over the others); `include=data`
+    adds `revision` and `data` to each item; `head` and `floor` report the feed's bounds.
     """
 
     changes: list[ChangeOut]
@@ -444,12 +608,19 @@ class ChangesOut(BaseModel):
     has_more: bool
     resync_required: bool = False
     resync_reason: ResyncReason | None = None
+    head: int = Field(default=0, description="The user's last allocated cursor (SYNC-03e).")
+    floor: int = Field(
+        default=0, description="The highest purged tombstone cursor; 0 when none was purged."
+    )
 
 
 # --- Projects ------------------------------------------------------------
 
 
 class ProjectCreateRequest(BaseModel):
+    id: uuid.UUID | None = Field(
+        default=None, description="Optional client-generated id (UUID); see task creation."
+    )
     name: str = Field(min_length=1, max_length=512)
     description: str | None = Field(default=None, max_length=20000)
     status: ProjectStatus = ProjectStatus.ACTIVE
@@ -492,8 +663,13 @@ class ProjectOut(BaseModel):
     target_date: date | None
     progress: ProjectProgressOut
     revision: int
+    field_revisions: dict[str, int] = Field(
+        default_factory=dict,
+        description="Field name -> the revision at which that field last changed (SYNC-03).",
+    )
     created_at: datetime
     updated_at: datetime
+    sync: SyncResult | None = None
 
 
 class ProjectListOut(BaseModel):

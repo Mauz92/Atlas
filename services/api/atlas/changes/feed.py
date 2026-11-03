@@ -26,6 +26,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from .retention import ResyncReason
 
@@ -87,6 +88,9 @@ class FeedChange:
     operation: str
     cursor: int
     changed_at: datetime
+    #: ``include=data`` only: the entity's current revision and stored state (SYNC-03e)
+    revision: int | None = None
+    data: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +123,21 @@ class ChangeSet:
     has_more: bool
     resync_required: bool = False
     resync_reason: ResyncReason | None = None
+    #: the user's last allocated cursor and the purge floor when the page was read (SYNC-03e)
+    head: int = 0
+    floor: int = 0
+
+
+def parse_types(raw: str | None) -> frozenset[str] | None:
+    """Validate ``types=task,project,...``: only known entity types; ``None`` means all."""
+    if raw is None or not raw.strip():
+        return None
+    names = {part.strip() for part in raw.split(",") if part.strip()}
+    known = {member.value for member in ChangeEntityType}
+    unknown = sorted(names - known)
+    if unknown:
+        raise InvalidChangeCursorError(f"unknown entity type(s): {', '.join(unknown)}")
+    return frozenset(names)
 
 
 def parse_since(value: int | None) -> int:
@@ -135,12 +154,13 @@ def parse_since(value: int | None) -> int:
     return value
 
 
-def parse_limit(value: int | None) -> int:
-    """Validate the page size, defaulting to :data:`DEFAULT_CHANGE_LIMIT` and bounding ``limit``."""
+def parse_limit(value: int | None, *, maximum: int = MAX_CHANGE_LIMIT) -> int:
+    """Validate the page size, defaulting to :data:`DEFAULT_CHANGE_LIMIT` (capped at ``maximum``)
+    and bounding ``limit``. ``include=data`` pages use the smaller maximum."""
     if value is None:
-        return DEFAULT_CHANGE_LIMIT
-    if value < 1 or value > MAX_CHANGE_LIMIT:
-        raise InvalidChangeCursorError(f"limit must be an integer between 1 and {MAX_CHANGE_LIMIT}")
+        return min(DEFAULT_CHANGE_LIMIT, maximum)
+    if value < 1 or value > maximum:
+        raise InvalidChangeCursorError(f"limit must be an integer between 1 and {maximum}")
     return value
 
 

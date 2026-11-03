@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .engine import EventQueue, Network, Req, Resp
-from .model import LABEL
+from .model import FLAG, LABEL
 
 _PLURAL = {"task": "tasks", "project": "projects"}
 
@@ -46,6 +46,8 @@ class ClientBugs:
     #: install an acknowledgement's body into the mirror as current state (the pre-fix behaviour):
     #: a replayed or late acknowledgement is a *historical* snapshot (seed 482 at 300 steps)
     trust_ack_state: bool = False
+    #: protocol v1: keep retrying and writing after a ``426`` instead of stopping
+    ignore_426: bool = False
 
 
 @dataclass
@@ -109,6 +111,8 @@ class PullJob:
     resync_head: int = 0
     #: acknowledged entities read again in this pull (``Durable.refetch``), by id
     refetch: dict[str, str] = field(default_factory=dict)
+    #: protocol v1: the snapshot walked so far during a resync (id -> (kind, data|None))
+    shadow: dict[str, tuple[str, dict[str, Any] | None]] | None = None
 
 
 @dataclass
@@ -121,6 +125,10 @@ class Recorder:
         default_factory=list
     )  # client, entity, live|deleted
     self_inflicted: list[str] = field(default_factory=list)
+    #: protocol v1: every refused write as (client, op, status, error code)
+    refusals: list[tuple[str, Op, int, str | None]] = field(default_factory=list)
+    #: protocol v1: clients that stopped on 426
+    halts: list[str] = field(default_factory=list)
 
 
 class SimClient:
@@ -424,7 +432,11 @@ class SimClient:
 
     @staticmethod
     def _fields(kind: str, body: dict[str, Any]) -> dict[str, Any]:
-        return {LABEL[kind]: body.get(LABEL[kind]), "description": body.get("description")}
+        return {
+            LABEL[kind]: body.get(LABEL[kind]),
+            "description": body.get("description"),
+            FLAG[kind]: body.get(FLAG[kind]),
+        }
 
     # --- pull -------------------------------------------------------------------------------
 

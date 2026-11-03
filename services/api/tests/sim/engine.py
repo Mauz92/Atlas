@@ -42,6 +42,8 @@ class ServerPort(Protocol):
 
     async def head(self) -> int: ...
 
+    async def all_entity_ids(self) -> list[str]: ...
+
 
 class SimFailure(AssertionError):
     """An invariant failed. The message always carries the seed and the tail of the trace."""
@@ -87,6 +89,13 @@ class SimConfig:
     kinds: tuple[str, ...] = ("task", "project")
     #: model server only: check that a client holds every feed row at or below its cursor
     check_cursor_rows: bool = True
+    #: protocol v1 (SYNC-03): clients use ``Atlas-Sync: 1`` (client ids, field merge, edit wins,
+    #: ``include=data`` pulls, snapshot resync)
+    sync: bool = False
+    #: the last client joins only after 60 % of the steps, with an empty store (snapshot bootstrap)
+    late_joiner: bool = False
+    #: one extra client speaks an unsupported protocol (must be refused with 426 and stop)
+    old_client: bool = False
 
 
 class EventQueue:

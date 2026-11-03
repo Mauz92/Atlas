@@ -162,7 +162,15 @@ export interface paths {
         /** List Notes */
         get: operations["list_notes_api_notes_get"];
         put?: never;
-        /** Create Note */
+        /**
+         * Create Note
+         * @description Create a note.
+         *
+         *     An optional client-generated `id` makes the create idempotent by id. **Sync mode**
+         *     (`Atlas-Sync: 1`) requires an `Idempotency-Key`; a path already taken by a live note becomes
+         *     `name (2).md` and the response reports `sync.resolution` `path_collision` with the final path
+         *     (a replay of a note write returns the note summary and `sync` block, not the content).
+         */
         post: operations["create_note_api_notes_post"];
         delete?: never;
         options?: never;
@@ -437,7 +445,11 @@ export interface paths {
          */
         get: operations["list_tasks_api_tasks_get"];
         put?: never;
-        /** Create Task */
+        /**
+         * Create Task
+         * @description Create a task. Sync mode (`Atlas-Sync: 1`) requires an `Idempotency-Key`; an optional
+         *     client-generated `id` makes the create idempotent by id as well (SYNC_PROTOCOL.md 6.1).
+         */
         post: operations["create_task_api_tasks_post"];
         delete?: never;
         options?: never;
@@ -454,7 +466,12 @@ export interface paths {
         };
         /**
          * Task Changes
-         * @description Incremental change feed for the calling user's tasks (M3-09).
+         * @deprecated
+         * @description Incremental change feed for the calling user's tasks (M3-09). **Deprecated (SYNC-03).**
+         *
+         *     `GET /api/changes?include=data&types=task` is the one feed (ADR-0059 D2): it has a total order
+         *     across entities, a snapshot for a new device and the entity payloads. This endpoint is frozen
+         *     (no new behaviour) and stays until the web client stops using it.
          *
          *     Returns the tasks whose ``revision`` is strictly greater than ``since``, ordered by ``revision``
          *     ascending, **including soft-deleted tombstones** (a non-null ``deleted_at``) so a client
@@ -532,7 +549,18 @@ export interface paths {
         delete: operations["delete_task_api_tasks__task_id__delete"];
         options?: never;
         head?: never;
-        /** Update Task */
+        /**
+         * Update Task
+         * @description Update a task.
+         *
+         *     Default mode: ``base_revision`` (optional) rejects any stale write with `409`; without it the
+         *     write is blind. **Sync mode** (`Atlas-Sync: 1`): `Idempotency-Key` and `base_revision` are
+         *     required and the body carries only the changed fields, which are merged field by field against
+         *     the base (SYNC_PROTOCOL.md 6.2): different fields merge, the same simple field takes the later
+         *     value (reported in `sync.resolution`), the same text field is a conflict that keeps both
+         *     (`409 conflict`, or `sync.conflicts` when other fields were applied), and an edit of a deleted
+         *     task brings it back.
+         */
         patch: operations["update_task_api_tasks__task_id__patch"];
         trace?: never;
     };
@@ -610,7 +638,11 @@ export interface paths {
          */
         get: operations["list_projects_api_projects_get"];
         put?: never;
-        /** Create Project */
+        /**
+         * Create Project
+         * @description Create a project; sync mode requires an `Idempotency-Key`; an optional client `id` makes
+         *     the create idempotent by id (SYNC_PROTOCOL.md 6.1).
+         */
         post: operations["create_project_api_projects_post"];
         delete?: never;
         options?: never;
@@ -697,7 +729,9 @@ export interface paths {
          * @description Update a project, optionally guarded by ``base_revision``.
          *
          *     A stale ``base_revision`` — the project has a newer revision — returns ``409`` and changes
-         *     nothing. Fields not present in the request are left untouched.
+         *     nothing. Fields not present in the request are left untouched. **Sync mode**
+         *     (`Atlas-Sync: 1`): `Idempotency-Key` and `base_revision` are required and fields merge as for
+         *     tasks (`name` and `description` are the text fields); an edit of a deleted project revives it.
          */
         patch: operations["update_project_api_projects__project_id__patch"];
         trace?: never;
@@ -1243,6 +1277,16 @@ export interface components {
              * Format: date-time
              */
             changed_at: string;
+            /**
+             * Revision
+             * @description With `include=data`: the entity's current revision.
+             */
+            revision?: number | null;
+            /**
+             * Data
+             * @description With `include=data`: the entity's stored state as of this response, which may be newer than `cursor`; apply by `revision`. Links carry no data; `null` also when the entity no longer exists.
+             */
+            data?: components["schemas"]["TaskSyncData"] | components["schemas"]["ProjectSyncData"] | components["schemas"]["NoteSyncData"] | null;
         };
         /**
          * ChangesOut
@@ -1263,6 +1307,10 @@ export interface components {
          *     cursor predates the purge floor) or ``cursor_ahead`` (the cursor is beyond the server's head,
          *     e.g. the server was restored from an older backup: the server has lost changes the client holds,
          *     so the client must not assume it is up to date and must not silently discard local state).
+         *
+         *     SYNC-03e: `since=0` is a **snapshot** (every live entity, no tombstones on its first page);
+         *     `types=` limits the entity types (the cursor still advances over the others); `include=data`
+         *     adds `revision` and `data` to each item; `head` and `floor` report the feed's bounds.
          */
         ChangesOut: {
             /** Changes */
@@ -1279,6 +1327,18 @@ export interface components {
              */
             resync_required: boolean;
             resync_reason?: components["schemas"]["ResyncReason"] | null;
+            /**
+             * Head
+             * @description The user's last allocated cursor (SYNC-03e).
+             * @default 0
+             */
+            head: number;
+            /**
+             * Floor
+             * @description The highest purged tombstone cursor; 0 when none was purged.
+             * @default 0
+             */
+            floor: number;
         };
         /**
          * CredentialProvider
@@ -1401,6 +1461,31 @@ export interface components {
             /** Web Push Configured */
             web_push_configured: boolean;
             backups: components["schemas"]["BackupStatus"];
+            sync: components["schemas"]["InstanceSync"];
+        };
+        /**
+         * InstanceSync
+         * @description What a sync client needs to know before it syncs (SYNC_PROTOCOL.md section 10.2).
+         *
+         *     ``protocol`` is the range of ``Atlas-Sync`` majors this server accepts (anything else is
+         *     ``426``). ``entities`` gives the schema number of each feed entity type, so a client can tell
+         *     which types it understands. ``epoch`` names this database's history: send it back as
+         *     ``Atlas-Epoch``; a different value means the server was restored from a backup or is another
+         *     server, and the client must ask its user before it syncs again.
+         */
+        InstanceSync: {
+            protocol: components["schemas"]["SyncProtocolRange"];
+            /** Entities */
+            entities: {
+                [key: string]: number;
+            };
+            limits: components["schemas"]["SyncLimits"];
+            /** Tombstone Retention Days */
+            tombstone_retention_days: number;
+            /** Idempotency Retention Days */
+            idempotency_retention_days: number;
+            /** Epoch */
+            epoch: string;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -1416,6 +1501,11 @@ export interface components {
         };
         /** NoteCreateRequest */
         NoteCreateRequest: {
+            /**
+             * Id
+             * @description Optional client-generated id (UUID); see task creation.
+             */
+            id?: string | null;
             /** Path */
             path: string;
             /**
@@ -1455,6 +1545,7 @@ export interface components {
             tasks: components["schemas"]["NoteTaskOut"][];
             /** Projects */
             projects: components["schemas"]["NoteProjectOut"][];
+            sync?: components["schemas"]["SyncResult"] | null;
         };
         /** NoteFromTemplateRequest */
         NoteFromTemplateRequest: {
@@ -1486,6 +1577,11 @@ export interface components {
         NoteMoveRequest: {
             /** Path */
             path: string;
+            /**
+             * Base Revision
+             * @description Sync mode (required). Not yet checked; see SYNC-04.
+             */
+            base_revision?: number | null;
         };
         /**
          * NoteProjectOut
@@ -1514,6 +1610,39 @@ export interface components {
             title: string;
             /** Revision */
             revision: number;
+            /** Content Hash */
+            content_hash: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /**
+         * NoteSyncData
+         * @description A note's metadata (never its content) in the feed with `include=data`.
+         */
+        NoteSyncData: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revision */
+            revision: number;
+            /** Deleted At */
+            deleted_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Path */
+            path: string;
+            /** Title */
+            title: string;
             /** Content Hash */
             content_hash: string;
             /** Size Bytes */
@@ -1559,6 +1688,11 @@ export interface components {
         };
         /** ProjectCreateRequest */
         ProjectCreateRequest: {
+            /**
+             * Id
+             * @description Optional client-generated id (UUID); see task creation.
+             */
+            id?: string | null;
             /** Name */
             name: string;
             /** Description */
@@ -1707,6 +1841,13 @@ export interface components {
             /** Revision */
             revision: number;
             /**
+             * Field Revisions
+             * @description Field name -> the revision at which that field last changed (SYNC-03).
+             */
+            field_revisions?: {
+                [key: string]: number;
+            };
+            /**
              * Created At
              * Format: date-time
              */
@@ -1716,6 +1857,7 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            sync?: components["schemas"]["SyncResult"] | null;
         };
         /**
          * ProjectProgressOut
@@ -1741,6 +1883,45 @@ export interface components {
          * @enum {string}
          */
         ProjectStatus: "active" | "completed" | "archived";
+        /**
+         * ProjectSyncData
+         * @description A project as stored (no derived `progress`), in the feed with `include=data`.
+         */
+        ProjectSyncData: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revision */
+            revision: number;
+            /** Field Revisions */
+            field_revisions: {
+                [key: string]: number;
+            };
+            /** Deleted At */
+            deleted_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /** Status */
+            status: string;
+            /** Start Date */
+            start_date: string | null;
+            /** Target Date */
+            target_date: string | null;
+        };
         /** ProjectUpdateRequest */
         ProjectUpdateRequest: {
             /** Name */
@@ -2058,6 +2239,80 @@ export interface components {
             setup_required: boolean;
         };
         /**
+         * SyncConflictOut
+         * @description A field of a sync-mode ``PATCH`` that was not applied (SYNC_PROTOCOL.md section 6.2).
+         */
+        SyncConflictOut: {
+            /** Field */
+            field: string;
+            /**
+             * Reason
+             * @description `text_conflict` or `invalid_transition`.
+             */
+            reason: string;
+            /**
+             * Server Revision
+             * @description Revision at which the server's value was set.
+             */
+            server_revision: number;
+            /**
+             * Server Value
+             * @description The server's current value.
+             */
+            server_value?: unknown;
+        };
+        /** SyncLimits */
+        SyncLimits: {
+            /** Max Note Bytes */
+            max_note_bytes: number;
+            /** Feed Page Max */
+            feed_page_max: number;
+            /** Feed Page Max With Data */
+            feed_page_max_with_data: number;
+        };
+        /** SyncProtocolRange */
+        SyncProtocolRange: {
+            /** Min */
+            min: number;
+            /** Max */
+            max: number;
+        };
+        /**
+         * SyncResolutionOut
+         * @description An automatic resolution applied by the server. In SYNC-03 it is reported in the response
+         *     only; SYNC-05 stores it (`sync_resolutions`) and adds undo.
+         */
+        SyncResolutionOut: {
+            /**
+             * Rule
+             * @description `simple_later_wins`, `edit_wins_over_delete`, `path_collision`.
+             */
+            rule: string;
+            /** Field */
+            field?: string | null;
+            /** Kept Revision */
+            kept_revision?: number | null;
+            /**
+             * Loser
+             * @description The overwritten value of a simple field.
+             */
+            loser?: unknown;
+            /** Detail */
+            detail?: string | null;
+        };
+        /**
+         * SyncResult
+         * @description The `sync` block of a write response in sync mode (`Atlas-Sync: 1`); `null` otherwise.
+         */
+        SyncResult: {
+            /** Revision */
+            revision: number;
+            /** Resolution */
+            resolution?: components["schemas"]["SyncResolutionOut"][];
+            /** Conflicts */
+            conflicts?: components["schemas"]["SyncConflictOut"][];
+        };
+        /**
          * SyncState
          * @description The derived sync state of a provider or one of its calendars.
          *
@@ -2125,6 +2380,13 @@ export interface components {
             /** Revision */
             revision: number;
             /**
+             * Field Revisions
+             * @description Field name -> the revision at which that field last changed (SYNC-03). Used by sync-mode clients to merge; informational otherwise.
+             */
+            field_revisions?: {
+                [key: string]: number;
+            };
+            /**
              * Created At
              * Format: date-time
              */
@@ -2134,6 +2396,7 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            sync?: components["schemas"]["SyncResult"] | null;
             /** Deleted At */
             deleted_at?: string | null;
         };
@@ -2157,6 +2420,11 @@ export interface components {
         };
         /** TaskCreateRequest */
         TaskCreateRequest: {
+            /**
+             * Id
+             * @description Optional client-generated id (UUID). Idempotent: the same id with the same body replays the create; a taken id is `409 id_exists`. Without it the server assigns one.
+             */
+            id?: string | null;
             /** Title */
             title: string;
             /** Description */
@@ -2253,6 +2521,13 @@ export interface components {
             /** Revision */
             revision: number;
             /**
+             * Field Revisions
+             * @description Field name -> the revision at which that field last changed (SYNC-03). Used by sync-mode clients to merge; informational otherwise.
+             */
+            field_revisions?: {
+                [key: string]: number;
+            };
+            /**
              * Created At
              * Format: date-time
              */
@@ -2262,6 +2537,7 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            sync?: components["schemas"]["SyncResult"] | null;
         };
         /**
          * TaskPriority
@@ -2298,6 +2574,71 @@ export interface components {
          * @enum {string}
          */
         TaskStatus: "inbox" | "next" | "in_progress" | "completed" | "archived";
+        /**
+         * TaskSyncData
+         * @description A task as stored, in the feed with `include=data` (SYNC-03e): persisted columns, `tags` and
+         *     `field_revisions`; no derived values (`due_state`, subtask counts). A tombstone has
+         *     `deleted_at`.
+         */
+        TaskSyncData: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revision */
+            revision: number;
+            /** Field Revisions */
+            field_revisions: {
+                [key: string]: number;
+            };
+            /** Deleted At */
+            deleted_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string | null;
+            /** Status */
+            status: string;
+            /** Priority */
+            priority: string;
+            /** Project Id */
+            project_id: string | null;
+            /** Parent Task Id */
+            parent_task_id: string | null;
+            /** Start At */
+            start_at: string | null;
+            /** Due At */
+            due_at: string | null;
+            /** Time Zone */
+            time_zone: string | null;
+            /** Duration Minutes */
+            duration_minutes: number | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Recurrence Rule */
+            recurrence_rule: string | null;
+            /** Recurrence Parent Id */
+            recurrence_parent_id: string | null;
+            /** External Provider */
+            external_provider: string | null;
+            /** External Id */
+            external_id: string | null;
+            /** Reminder Policy Id */
+            reminder_policy_id: string | null;
+            /** Tags */
+            tags: string[];
+        };
         /** TaskUpdateRequest */
         TaskUpdateRequest: {
             /** Title */
@@ -2654,7 +2995,9 @@ export interface operations {
     create_note_api_notes_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2836,7 +3179,9 @@ export interface operations {
     update_note_api_notes__note_id__put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 note_id: string;
             };
@@ -2870,8 +3215,13 @@ export interface operations {
     };
     delete_note_api_notes__note_id__delete: {
         parameters: {
-            query?: never;
-            header?: never;
+            query?: {
+                /** @description Sync mode (required). Edit-wins for notes arrives with SYNC-04. */
+                base_revision?: number | null;
+            };
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 note_id: string;
             };
@@ -3003,7 +3353,9 @@ export interface operations {
     move_note_api_notes__note_id__move_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 note_id: string;
             };
@@ -3381,7 +3733,10 @@ export interface operations {
     };
     delete_task_api_tasks__task_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Sync mode (required): the revision the delete was based on. A task edited after it is not deleted: `409 edit_wins` carries the live task (ADR-0055 rule 4). */
+                base_revision?: number | null;
+            };
             header?: {
                 "Idempotency-Key"?: string | null;
             };
@@ -3709,7 +4064,10 @@ export interface operations {
     };
     delete_project_api_projects__project_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Sync mode (required): the revision the delete was based on. A project edited after it is not deleted: `409 edit_wins` carries the live project. */
+                base_revision?: number | null;
+            };
             header?: {
                 "Idempotency-Key"?: string | null;
             };
@@ -4140,6 +4498,12 @@ export interface operations {
                 since?: number | null;
                 /** @description Maximum number of changes per page (default 200, max 500). */
                 limit?: number | null;
+                /** @description `data`: add each entity's `revision` and stored state to its item (max 200 items per page). Notes carry metadata only. */
+                include?: "data" | null;
+                /** @description Comma-separated entity types to return (`task`, `project`, `note`, `note_project_link`, `task_note_link`). The cursor still advances over the rest. */
+                types?: string | null;
+                /** @description Send `true` on every page of a snapshot walk after the first (the one at `since=0`): a purge floor above the walk's position then cannot interrupt it. */
+                snapshot?: boolean;
             };
             header?: never;
             path?: never;

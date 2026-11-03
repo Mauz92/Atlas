@@ -271,7 +271,7 @@ proxied `/api`/`/health` responses keep the API's own headers (scoping intact). 
 
 See `ACCEPTANCE.md` (M9-05) for the exact commands and results.
 
-## 12. Sync clients and device credentials (PROPOSED, ADR-0059 D8; not implemented)
+## 12. Sync clients and device credentials (ADR-0059 D8; protocol server SYNC-03 implemented, device credentials SYNC-06 not)
 
 Applies when local-first desktop/Android clients exist (ADR-0055). Design: `SYNC_PROTOCOL.md` §10.
 
@@ -284,6 +284,18 @@ Applies when local-first desktop/Android clients exist (ADR-0055). Design: `SYNC
 | T17 | Sync as an exfiltration path (compromised token pulls everything) | Per-device rate limits keyed by device id, `last_seen_at`/device list visible, snapshot starts limited per hour |
 | T18 | Note content in logs/resolution log | Application logs carry ids, rule and field names only; the resolution table stores simple-field values only (never text or note content) |
 | T19 | Malicious Markdown in a synced folder | Unchanged (T3/T6): content is untrusted; the desktop renderer uses the same sanitised preview |
+
+**Verified by SYNC-03 (server, 2026-11-03)** - T15: sync mode requires the idempotency key and base revision (`422`), refuses unknown
+fields (`422 unknown_fields`) and answers `426` outside the supported range *before authentication*, so an old client stops
+without a session; the field merge, edit-wins and every id rule run on the server (`tests/integration/test_sync_writes.py`,
+`test_sync_protocol.py`). T16: `409 id_exists` for another user's id is byte-identical to the answer for an own taken id
+(`test_another_users_id_is_indistinguishable_from_a_taken_one`); every new query is user-scoped (`load_entity_data` filters on
+`user_id`). T18: `sync.resolution` carries overwritten simple-field values to the caller who made the write (a response to an
+authenticated user about their own data); no value is logged, and the new code logs nothing about entities. The **epoch** is only
+revealed to authenticated callers (the check runs after authentication; an unauthenticated caller with a wrong epoch gets `401`
+and no epoch). New attack surface reviewed: `Atlas-Sync`/`Atlas-Epoch` headers are parsed with a strict ASCII-digit rule and a
+length bound; `types=` is validated against a closed vocabulary (`422` otherwise); `include=data` reads are batched `IN` queries
+bound to the user id. Limits unchanged: 200 items per data page; no per-device rate limit until SYNC-06.
 
 Open: keystore mechanism per platform (spike), HTTPS-only enforcement and the tailnet dev override, rate limiting behind a proxy
 (R-SEC-1 keys on IP; device limits key on device id).

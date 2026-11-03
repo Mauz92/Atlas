@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     Uuid,
+    text,
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
@@ -41,7 +42,15 @@ class NoteIndex(Base, TimestampMixin):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("user_id", "path", name="uq_notes_user_id_path"),
+        # Paths are unique among *live* notes only (SYNC-03c, ADR-0059 D3): a tombstone keeps its
+        # row (and id) but no longer reserves the path, so another note may be created there.
+        Index(
+            "uq_notes_user_id_path_live",
+            "user_id",
+            "path",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
         Index("ix_notes_search_vector", "search_vector", postgresql_using="gin"),
     )
 

@@ -5,9 +5,11 @@ application on PostgreSQL; the normalised responses must be identical. This is w
 the model for thousands of seeds: wherever the model and the real API differ, the model is wrong (or
 the API has a defect worth knowing about), and a test here says which.
 
-Only behaviour that exists today is covered: task and project create / patch / delete, task restore,
-idempotency keys, ``base_revision``, the list endpoints and the change feed (paging, tombstones,
-``cursor_ahead``). Ids are replaced by stable symbols (``$1``, ``$2`` ...) in order of appearance.
+Covered: task and project create / patch / delete, task restore, idempotency keys,
+``base_revision``, the list endpoints and the change feed (paging, snapshot, tombstones,
+``cursor_ahead``), and protocol v1 (SYNC-03): ``Atlas-Sync`` negotiation and ``426``, client ids,
+the field-level merge, edit-wins-over-delete and the feed's ``types``/``include=data``. Ids are
+replaced by stable symbols (``$1``, ``$2`` ...) in order of appearance.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from httpx import AsyncClient
 from tests.conftest import create_user_via_setup
 
 from .engine import Req, Resp
-from .model import ModelServer
+from .model import FLAG, LABEL, ModelServer, all_fields
 from .real import RealServer
 
 pytestmark = pytest.mark.usefixtures("_db")
@@ -30,10 +32,26 @@ pytestmark = pytest.mark.usefixtures("_db")
 KEY_A, KEY_B, KEY_C = (f"00000000-0000-4000-8000-00000000000{n}" for n in (1, 2, 3))
 
 
+UUID_1, UUID_2 = ("00000000-0000-4000-8000-0000000000b1", "00000000-0000-4000-8000-0000000000b2")
+
+
 def step(
+    method: str,
+    path: str,
+    body: dict | None = None,
+    *,
+    key: str | None = None,
+    headers: dict[str, str] | None = None,
+    **params: Any,
+) -> tuple:
+    return (method, path, body, key, params, headers or {})
+
+
+def sync_step(
     method: str, path: str, body: dict | None = None, *, key: str | None = None, **params: Any
 ) -> tuple:
-    return (method, path, body, key, params)
+    """A request in sync mode (``Atlas-Sync: 1``)."""
+    return step(method, path, body, key=key, headers={"Atlas-Sync": "1"}, **params)
 
 
 class Recorder:
@@ -55,8 +73,8 @@ class Recorder:
 
     async def run(self, trace: Sequence[tuple]) -> list[Any]:
         out: list[Any] = []
-        for method, path, body, key, params in trace:
-            headers = {"Idempotency-Key": key} if key else {}
+        for method, path, body, key, params, extra in trace:
+            headers = {**extra, **({"Idempotency-Key": key} if key else {})}
             resp = await self.server.handle(
                 Req(method, self.real_path(path), params=params, body=body, headers=headers)
             )
@@ -69,18 +87,30 @@ class Recorder:
             return None
         if "changes" in body:  # the feed
             return {
-                "changes": [
-                    (c["entity_type"], self.sym(c["entity_id"]), c["operation"], c["cursor"])
-                    for c in body["changes"]
-                ],
+                "changes": [self.feed_item(c) for c in body["changes"]],
                 "next_since": body["next_since"],
                 "has_more": body["has_more"],
                 "resync_required": body["resync_required"],
                 "resync_reason": body.get("resync_reason"),
+                "head": body.get("head"),
+                "floor": body.get("floor"),
             }
         for plural in ("tasks", "projects"):
             if plural in body:
                 return [self.entity(row) for row in body[plural]]
+        if "error" in body:  # a sync-mode error
+            return {
+                "error": body["error"],
+                "current_revision": body.get("current_revision"),
+                "fields": body.get("fields"),
+                "min_max": (body.get("min"), body.get("max")),
+                "conflicts": [
+                    (c["field"], c["reason"], c["server_revision"], c["server_value"])
+                    for c in body.get("conflicts", [])
+                ],
+                "entity": self.entity(body["entity"]) if "entity" in body else None,
+                "resolution": [r["rule"] for r in body.get("resolution", [])],
+            }
         if "id" in body:
             return self.entity(body)
         detail = body.get("detail")
@@ -88,14 +118,39 @@ class Recorder:
             return {"current_revision": detail["current_revision"]}
         return None
 
+    def feed_item(self, change: dict[str, Any]) -> tuple:
+        item = (change["entity_type"], self.sym(change["entity_id"]), change["operation"])
+        data = change.get("data")
+        if data is None:
+            return (*item, change["cursor"])
+        kind = change["entity_type"]
+        return (
+            *item,
+            change["cursor"],
+            change.get("revision"),
+            data["deleted_at"] is not None,
+            {name: data[name] for name in all_fields(kind)},
+            {name: data["field_revisions"][name] for name in all_fields(kind)},
+        )
+
     def entity(self, row: dict[str, Any]) -> dict[str, Any]:
-        label = "title" if "title" in row else "name"
-        return {
+        kind = "task" if "title" in row else "project"
+        out: dict[str, Any] = {
             "id": self.sym(row["id"]),
-            label: row[label],
+            LABEL[kind]: row[LABEL[kind]],
             "description": row.get("description"),
             "revision": row["revision"],
         }
+        if "sync" in row and row["sync"] is not None:  # sync mode adds the flag and the block
+            out[FLAG[kind]] = row[FLAG[kind]]
+            out["field_revisions"] = {n: row["field_revisions"][n] for n in all_fields(kind)}
+            sync = row["sync"]
+            out["sync"] = (
+                sync["revision"],
+                [(r["rule"], r.get("field"), r.get("loser")) for r in sync["resolution"]],
+                [(c["field"], c["reason"], c["server_value"]) for c in sync["conflicts"]],
+            )
+        return out
 
 
 def _link(trace: list[tuple]) -> list[tuple]:
@@ -190,6 +245,169 @@ TRACES: dict[str, list[tuple]] = {
         step("GET", "/api/changes", since=-1),
         step("GET", "/api/changes", limit=0),
         step("GET", "/api/changes", limit=501),
+    ],
+    # --- protocol v1 ---------------------------------------------------------------------
+    "protocol negotiation": [
+        step("GET", "/api/tasks", headers={"Atlas-Sync": "1"}),
+        step("GET", "/api/tasks", headers={"Atlas-Sync": "2"}),
+        step("GET", "/api/tasks", headers={"Atlas-Sync": "0"}),
+        step("GET", "/api/tasks", headers={"Atlas-Sync": "abc"}),
+        step("POST", "/api/tasks", {"title": "x"}, key=KEY_A, headers={"Atlas-Sync": "9"}),
+        step("GET", "/api/tasks"),
+    ],
+    "client ids and sync-mode requirements": [
+        sync_step("POST", "/api/tasks", {"id": UUID_1, "title": "A"}, key=KEY_A),
+        sync_step("POST", "/api/tasks", {"id": UUID_1, "title": "A"}, key=KEY_A),  # key replay
+        sync_step("POST", "/api/tasks", {"id": UUID_1, "title": "A"}, key=KEY_B),  # id replay
+        sync_step("POST", "/api/tasks", {"id": UUID_1, "title": "B"}, key=KEY_C),  # id taken
+        sync_step("POST", "/api/tasks", {"id": UUID_2, "title": "A"}, key=KEY_A),  # key, new body
+        sync_step("POST", "/api/projects", {"id": UUID_2, "name": "P"}, key=KEY_B),
+        sync_step("POST", "/api/projects", {"name": "no key"}),
+        sync_step("POST", "/api/tasks", {"title": "x", "colour": "red"}, key=KEY_C),
+        sync_step("PATCH", f"/api/tasks/{UUID_1}", {"title": "x"}, key=KEY_C),  # no base
+        sync_step("DELETE", f"/api/tasks/{UUID_1}", key=KEY_C),  # no base
+        sync_step("GET", "/api/tasks"),
+        sync_step("GET", "/api/changes"),
+    ],
+    "field-level merge": [
+        sync_step("POST", "/api/tasks", {"id": UUID_1, "title": "t"}, key=KEY_A),
+        sync_step("PATCH", f"/api/tasks/{UUID_1}", {"base_revision": 1, "title": "A"}, key=KEY_B),
+        sync_step(  # a different field merges
+            "PATCH", f"/api/tasks/{UUID_1}", {"base_revision": 1, "priority": "high"}, key=KEY_C
+        ),
+        sync_step(  # the same simple field: later wins, reported
+            "PATCH",
+            f"/api/tasks/{UUID_1}",
+            {"base_revision": 1, "priority": "low"},
+            key="00000000-0000-4000-8000-000000000004",
+        ),
+        sync_step(  # the same text field: conflict, nothing applied
+            "PATCH",
+            f"/api/tasks/{UUID_1}",
+            {"base_revision": 1, "title": "B"},
+            key="00000000-0000-4000-8000-000000000005",
+        ),
+        sync_step(  # conflict in one field, another applied
+            "PATCH",
+            f"/api/tasks/{UUID_1}",
+            {"base_revision": 1, "title": "B", "description": "d"},
+            key="00000000-0000-4000-8000-000000000006",
+        ),
+        sync_step(  # equal value: no-op, no bump
+            "PATCH",
+            f"/api/tasks/{UUID_1}",
+            {"base_revision": 1, "title": "A"},
+            key="00000000-0000-4000-8000-000000000007",
+        ),
+        sync_step(  # a base from the future
+            "PATCH",
+            f"/api/tasks/{UUID_1}",
+            {"base_revision": 99, "title": "Z"},
+            key="00000000-0000-4000-8000-000000000008",
+        ),
+        sync_step(  # replay of the merged write: same answer, nothing applied again
+            "PATCH", f"/api/tasks/{UUID_1}", {"base_revision": 1, "priority": "high"}, key=KEY_C
+        ),
+        sync_step("GET", f"/api/tasks/{UUID_1}"),
+        step("PATCH", f"/api/tasks/{UUID_1}", {"title": "legacy", "base_revision": 3}),
+    ],
+    "edit wins over delete": [
+        sync_step("POST", "/api/tasks", {"id": UUID_1, "title": "t"}, key=KEY_A),
+        sync_step("DELETE", f"/api/tasks/{UUID_1}", key=KEY_B, base_revision=1),
+        sync_step(  # an edit based before the delete revives
+            "PATCH", f"/api/tasks/{UUID_1}", {"base_revision": 1, "title": "back"}, key=KEY_C
+        ),
+        sync_step(  # a stale delete is refused with the live entity
+            "DELETE",
+            f"/api/tasks/{UUID_1}",
+            key="00000000-0000-4000-8000-000000000004",
+            base_revision=1,
+        ),
+        sync_step(
+            "DELETE",
+            f"/api/tasks/{UUID_1}",
+            key="00000000-0000-4000-8000-000000000005",
+            base_revision=3,
+        ),
+        sync_step(  # deleting a deleted entity is a no-op
+            "DELETE",
+            f"/api/tasks/{UUID_1}",
+            key="00000000-0000-4000-8000-000000000006",
+            base_revision=3,
+        ),
+        sync_step(
+            "DELETE",
+            "/api/tasks/00000000-0000-4000-8000-0000000000aa",
+            key="00000000-0000-4000-8000-000000000007",
+            base_revision=1,
+        ),
+        sync_step("GET", "/api/tasks"),
+        sync_step("GET", "/api/changes", since=2),
+    ],
+    "project merge and revive": [
+        sync_step("POST", "/api/projects", {"id": UUID_2, "name": "P"}, key=KEY_A),
+        sync_step("PATCH", f"/api/projects/{UUID_2}", {"base_revision": 1, "name": "Q"}, key=KEY_B),
+        sync_step(
+            "PATCH",
+            f"/api/projects/{UUID_2}",
+            {"base_revision": 1, "status": "completed"},
+            key=KEY_C,
+        ),
+        sync_step(
+            "PATCH",
+            f"/api/projects/{UUID_2}",
+            {"base_revision": 1, "status": "archived"},
+            key="00000000-0000-4000-8000-000000000004",
+        ),
+        sync_step(
+            "PATCH",
+            f"/api/projects/{UUID_2}",
+            {"base_revision": 1, "name": "R"},
+            key="00000000-0000-4000-8000-000000000005",
+        ),
+        sync_step(
+            "DELETE",
+            f"/api/projects/{UUID_2}",
+            key="00000000-0000-4000-8000-000000000006",
+            base_revision=1,
+        ),
+        sync_step(
+            "DELETE",
+            f"/api/projects/{UUID_2}",
+            key="00000000-0000-4000-8000-000000000007",
+            base_revision=3,
+        ),
+        sync_step(
+            "PATCH",
+            f"/api/projects/{UUID_2}",
+            {"base_revision": 1, "description": "alive"},
+            key="00000000-0000-4000-8000-000000000008",
+        ),
+        sync_step("GET", "/api/projects"),
+    ],
+    "feed v1: snapshot, types, data, head and floor": [
+        sync_step("POST", "/api/tasks", {"id": UUID_1, "title": "A"}, key=KEY_A),
+        sync_step("POST", "/api/projects", {"id": UUID_2, "name": "P"}, key=KEY_B),
+        sync_step("POST", "/api/tasks", {"title": "B"}, key=KEY_C),
+        sync_step(
+            "DELETE", "/api/tasks/$3", key="00000000-0000-4000-8000-000000000004", base_revision=1
+        ),
+        sync_step(
+            "PATCH",
+            f"/api/tasks/{UUID_1}",
+            {"base_revision": 1, "priority": "high"},
+            key="00000000-0000-4000-8000-000000000005",
+        ),
+        step("GET", "/api/changes"),  # the snapshot: no tombstone
+        step("GET", "/api/changes", since=0, limit=1),
+        step("GET", "/api/changes", since=1, limit=1),  # later pages carry the deletion
+        step("GET", "/api/changes", types="project"),
+        step("GET", "/api/changes", since=1, types="project"),  # only filtered rows remain
+        step("GET", "/api/changes", include="data"),
+        step("GET", "/api/changes", since=2, include="data", types="task"),
+        step("GET", "/api/changes", include="data", limit=200),
+        step("GET", "/api/changes", include="data", limit=201),
+        step("GET", "/api/changes", limit=500),
     ],
 }
 

@@ -21,9 +21,11 @@ from datetime import date, datetime
 from enum import StrEnum
 
 from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Text, Uuid, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
+from ..sync.fields import project_initial
 from .base import TimestampMixin
 
 #: The text-search expression the unified search (MU-05, ADR-0047) and ``ix_projects_search_fts``.
@@ -60,6 +62,10 @@ class Project(Base, TimestampMixin):
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     target_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    #: field -> revision at which it last changed (SYNC-03, D4); see ``atlas.sync.fields``.
+    field_revisions: Mapped[dict[str, int]] = mapped_column(
+        JSONB, nullable=False, default=project_initial, server_default=text("'{}'::jsonb")
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (

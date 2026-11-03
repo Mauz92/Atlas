@@ -325,8 +325,8 @@ Report the actual command and a concise evidence line for release gates. Never i
 
 ## 10. Sync Testing (local-first clients; ADR-0055, ADR-0059, `SYNC_PROTOCOL.md`)
 
-Status: **layers A (partly), B and C exist for today's API since SYNC-02 (2026-11-03)**; the protocol-v1 scenarios of 10.3
-and layers D/E do not exist yet. Sync bugs are ordering and failure bugs, so the main
+Status: **layers A, B and C exist for the task/project/feed API since SYNC-02 and for protocol v1 (tasks, projects, note identity)
+since SYNC-03 (2026-11-03)**; the note, resolution-log, device and client scenarios of 10.3 and layers D/E do not exist yet. Sync bugs are ordering and failure bugs, so the main
 evidence is a deterministic simulation, not example-based tests.
 
 ### 10.0 What exists (SYNC-02) and how to run it
@@ -366,6 +366,34 @@ enumerated exhaustively (restarts are random). Conformance (`test_sim_conformanc
 the model and the real API with normalised answers compared, one check that the comparison can fail, and real concurrency
 tests. Planted bugs (`test_sim_planted_bugs.py`): 11 flags in the model server and client, each must trip a named invariant
 and reproduce from its seed, plus convergence-alone, clock-dependence and a scripted stale-replay case.
+
+#### 10.0a Protocol v1 additions (SYNC-03)
+
+Files: `model.py` (sync mode in the model server: `Atlas-Sync`, `426`, client ids, field merge, edit wins, `include=data`/`types`/
+snapshot/`snapshot=true`, tombstone-only purge; `ServerBugs` gained five flags), `client_v1.py` (`SyncSimClient`: client ids,
+`base_revision` fixed when the user acts, `include=data` pulls, shadow-copy snapshot resync, stop on `426`; `ClientBugs.ignore_426`),
+`test_sim_v1.py`, and the `SimConfig` switches `sync`, `late_joiner` (the last client installs at 60 % of the steps with an empty
+store: snapshot bootstrap) and `old_client` (an extra client speaks protocol 2). New invariants (`runner.py`): `unexpected_rejection`
+(only a text `conflict` and a stale-delete `edit_wins` may be met; a `404` on a known entity would mean edit-wins is broken),
+`no_silent_text_loss` and `edit_wins` (model ground truth: no text field overwritten after its base, no delete accepted on a stale
+base), `stop_on_426`, plus the existing ones adapted (acknowledged loss ignores fields reported in `sync.conflicts`; resurrection
+allows an acknowledged edit to revive; exactly-once applies to creates, a merged patch may be a no-op). Conformance
+(`test_sim_conformance.py`) has 6 more traces (negotiation, client ids and requirements, field merge, edit-wins, project merge, feed
+v1) replayed against the model and the real API; the model had to be corrected to match the real answers only in one place (the
+`edit_wins` resolution list), which is the point of the suite. Integration tests (layer A): `test_sync_protocol.py`,
+`test_sync_writes.py`, `test_sync_notes.py`, `test_changes_feed_v1.py`, `test_field_revisions.py` and the three migration tests.
+
+| Command | Effect |
+|---|---|
+| `pytest services/api/tests/sim/test_sim_v1.py` | default: 100 model seeds, +60 late joiner, +60 purge, +40 old client, +40 clock independence, 7 planted defects, 3 real-API seeds |
+| `ATLAS_SIM_SEEDS=1000 ATLAS_SIM_STEPS=300 ... -k "not real and not planted"` | model soak (1000 seeds x 300 steps, about 70 s with the legacy tests) |
+| `ATLAS_SIM_REAL_SEEDS=30 ATLAS_SIM_STEPS=150 ... -k real` | real-API soak (v1 and legacy, 62 tests, about 170 s) |
+
+What the simulation found while it was being built: **seed 29** (a multi-page snapshot bootstrap restarted forever once the floor
+rose above its first page; fixed by `snapshot=true`, R-38) and **seed 681** (a replayed create acknowledgement brought back an
+entity whose delete the client's cursor had already passed because the snapshot omits tombstones; a client rule, R-40, plus the
+`cursor_safety` check now excuses entities queued for re-read). Not yet simulated: notes, links, subtasks/project membership as
+fields, server restore as a random action, `epoch` mismatch, token revocation (SYNC-04/06/08).
 
 ### 10.1 Layers
 

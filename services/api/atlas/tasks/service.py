@@ -38,7 +38,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import ColumnExpressionArgument, case, delete, func, or_, select
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
@@ -50,6 +50,17 @@ from ..changes import (
     entity_id_for,
 )
 from ..models import Project, RecurrenceSeries, Tag, Task, TaskStatus, TaskTag
+from ..sync.fields import (
+    TASK_FIELDS,
+    TASK_TEXT_FIELDS,
+    FieldConflict,
+    FieldResolution,
+    Reason,
+    changed_fields,
+    plan_merge,
+    snapshot,
+    stamp,
+)
 from .changes import plan_change_page
 from .filters import DEFAULT_LIMIT, LIKE_ESCAPE, TaskFilters, search_pattern
 from .priority import PRIORITY_ORDER
@@ -59,7 +70,7 @@ from .recurrence import (
     build_spec,
     next_occurrence,
 )
-from .state import COMPLETED, transition_fields, validate_transition
+from .state import COMPLETED, InvalidTaskTransitionError, transition_fields, validate_transition
 from .subtasks import (
     ParentRef,
     SubtaskError,
@@ -100,6 +111,7 @@ MAX_TAG_LENGTH = 64
 
 #: Alias so annotations inside ``TasksService`` are not confused with its ``list`` method.
 TagNames = list[str]
+FieldNames = list[str]
 
 
 def normalize_tags(names: Iterable[str]) -> list[str]:
@@ -136,6 +148,42 @@ class TaskRevisionConflictError(RuntimeError):
     def __init__(self, current_revision: int) -> None:
         super().__init__("task has changed since it was read")
         self.current_revision = current_revision
+
+
+class TaskIdExistsError(RuntimeError):
+    """A client-chosen id is already taken by a different task (or by another user's)."""
+
+
+class TaskEditWinsError(RuntimeError):
+    """A sync-mode delete was based on a revision older than the task's: the edit wins (rule 4)."""
+
+    def __init__(self, current_revision: int) -> None:
+        super().__init__("task was edited after the delete was based")
+        self.current_revision = current_revision
+
+
+def _tag_key(names: Iterable[str]) -> tuple[str, ...]:
+    """Tags compare as a case-insensitive set (their stored order is not meaningful)."""
+    return tuple(sorted(name.casefold() for name in names))
+
+
+def _same_value(name: str, stored: Any, incoming: Any) -> bool:
+    if name == "tags":
+        return _tag_key(stored or []) == _tag_key(incoming or [])
+    return bool(stored == incoming)
+
+
+@dataclass(slots=True)
+class TaskSyncUpdate:
+    """The outcome of a sync-mode ``PATCH`` (SYNC_PROTOCOL.md section 6.2)."""
+
+    task: Task
+    #: fields written by this request (empty when everything was a no-op or a conflict)
+    applied: list[str]
+    conflicts: list[FieldConflict]
+    resolutions: list[FieldResolution]
+    #: the task was soft-deleted and the edit brought it back (rule 4)
+    revived: bool = False
 
 
 #: SQL rank of a task's priority (``0`` = ``none`` … ``4`` = ``urgent``), derived from the
@@ -239,23 +287,33 @@ class TasksService:
         self.session = session
         self.user_id = user_id
 
-    async def get(self, task_id: uuid.UUID, *, for_update: bool = False) -> Task:
+    async def get(
+        self, task_id: uuid.UUID, *, for_update: bool = False, include_deleted: bool = False
+    ) -> Task:
         """The caller's live task, or ``TaskNotFoundError``.
 
         ``for_update`` takes the row lock (``SELECT ... FOR UPDATE``) and re-reads the latest
         committed row, which every revision-bumping write path uses: see :meth:`update`.
+        ``include_deleted`` also returns a tombstone (sync-mode edit-wins, rule 4).
         """
-        stmt = select(Task).where(
-            Task.id == task_id,
-            Task.user_id == self.user_id,
-            Task.deleted_at.is_(None),
-        )
+        stmt = select(Task).where(Task.id == task_id, Task.user_id == self.user_id)
+        if not include_deleted:
+            stmt = stmt.where(Task.deleted_at.is_(None))
         if for_update:
             stmt = stmt.with_for_update(key_share=True).execution_options(populate_existing=True)
         task = await self.session.scalar(stmt)
         if task is None:
             raise TaskNotFoundError(str(task_id))
         return task
+
+    async def is_deleted(self, task_id: uuid.UUID) -> bool:
+        """Whether the caller has a soft-deleted task with this id (a delete is then a no-op)."""
+        found = await self.session.scalar(
+            select(Task.id).where(
+                Task.id == task_id, Task.user_id == self.user_id, Task.deleted_at.is_not(None)
+            )
+        )
+        return found is not None
 
     async def list(
         self,
@@ -466,22 +524,31 @@ class TasksService:
         )
         if task is None:
             raise TaskNotFoundError(str(task_id))
-        if task.project_id is not None:
-            project_alive = await self.session.scalar(
-                select(Project.id).where(
-                    Project.id == task.project_id,
-                    Project.user_id == self.user_id,
-                    Project.deleted_at.is_(None),
-                )
-            )
-            if project_alive is None:
-                task.project_id = None
+        before = snapshot(task, TASK_FIELDS)
+        await self._detach_dead_project(task)
         task.deleted_at = None
         task.revision += 1
+        task.field_revisions = stamp(
+            task.field_revisions, changed_fields(before, snapshot(task, TASK_FIELDS)), task.revision
+        )
         await self.session.flush()
         await self._record_change(task.id, ChangeOperation.UPSERT)
         await self.session.refresh(task)
         return task
+
+    async def _detach_dead_project(self, task: Task) -> None:
+        """A task coming back from a delete must not point at a project that is gone."""
+        if task.project_id is None:
+            return
+        project_alive = await self.session.scalar(
+            select(Project.id).where(
+                Project.id == task.project_id,
+                Project.user_id == self.user_id,
+                Project.deleted_at.is_(None),
+            )
+        )
+        if project_alive is None:
+            task.project_id = None
 
     async def _record_change(self, task_id: uuid.UUID, operation: ChangeOperation) -> None:
         """Announce a task change on the caller's personal change feed (M7-01)."""
@@ -489,7 +556,41 @@ class TasksService:
             ChangeEntityType.TASK, entity_id_for(task_id), operation
         )
 
-    async def create(self, data: Mapping[str, Any]) -> Task:
+    async def claim_id(self, client_id: uuid.UUID, data: Mapping[str, Any]) -> Task | None:
+        """Idempotency by client id (D3): ``None`` if the id is free, the task if this exact create
+        already happened, :class:`TaskIdExistsError` otherwise.
+
+        A replay is only recognised for an untouched task (revision 1, not deleted) whose stored
+        fields equal the request: once the task has been edited the original create's result is no
+        longer reconstructible from the row, so the id is simply taken. An id owned by another user
+        is reported the same way as one owned by this user (no disclosure).
+        """
+        existing = await self.session.get(Task, client_id)
+        if existing is None:
+            return None
+        if existing.user_id != self.user_id or existing.deleted_at is not None:
+            raise TaskIdExistsError(str(client_id))
+        if existing.revision != 1:
+            raise TaskIdExistsError(str(client_id))
+        wanted = {name: value for name, value in data.items() if name in _WRITABLE}
+        try:
+            _normalize_instants(wanted, wanted.get("time_zone"))
+        except TaskValidationError as exc:
+            raise TaskIdExistsError(str(client_id)) from exc
+        if wanted.get("parent_task_id") is not None and existing.parent_task_id is not None:
+            wanted["project_id"] = existing.project_id  # inherited from the parent on create
+        for name, value in snapshot(existing, wanted).items():
+            if name in ("completed_at",):
+                continue
+            if value != wanted[name]:
+                raise TaskIdExistsError(str(client_id))
+        if "tags" in data and data["tags"] is not None:
+            current = (await self.tags_for([existing.id])).get(existing.id, [])
+            if _tag_key(current) != _tag_key(normalize_tags(data["tags"])):
+                raise TaskIdExistsError(str(client_id))
+        return existing
+
+    async def create(self, data: Mapping[str, Any], *, client_id: uuid.UUID | None = None) -> Task:
         fields = {name: value for name, value in data.items() if name in _WRITABLE}
         tags = data.get("tags")
         if tags is not None:
@@ -500,13 +601,20 @@ class TasksService:
         _normalize_instants(fields, fields.get("time_zone"))
         await self._ensure_project(fields.get("project_id"))
         task = Task(user_id=self.user_id)
+        if client_id is not None:
+            task.id = client_id
         for name, value in fields.items():
             setattr(task, name, value)
         for name, value in transition_fields(None, task.status, now=datetime.now(UTC)).items():
             setattr(task, name, value)
         spec = self._head_spec(task)
         self.session.add(task)
-        await self.session.flush()
+        try:
+            await self.session.flush()
+        except IntegrityError as exc:  # a concurrent create with the same client id won
+            if client_id is None:
+                raise
+            raise TaskIdExistsError(str(client_id)) from exc
         if tags:
             await self._set_tags(task.id, tags)
         await self._record_change(task.id, ChangeOperation.UPSERT)
@@ -534,6 +642,78 @@ class TasksService:
         new_tags: TagNames | None = None
         if "tags" in changes:
             new_tags = normalize_tags(changes["tags"] or [])
+        await self._write(task, fields, new_tags)
+        return task
+
+    async def update_sync(
+        self, task_id: uuid.UUID, changes: Mapping[str, Any], base_revision: int
+    ) -> TaskSyncUpdate:
+        """Sync-mode ``PATCH``: field-level merge against ``base_revision`` (ADR-0055 section 4).
+
+        ``changes`` holds only the fields the client changed. Per field (see
+        :func:`atlas.sync.fields.plan_merge`): unchanged on the server since the base -> applied;
+        already equal -> no-op; changed on both sides -> a simple field's incoming value wins (it
+        is later in server order) and is reported, a text field is a conflict and is not applied.
+        A stale base is never an error by itself. A soft-deleted task is brought back by the edit
+        (rule 4, D6). Nothing here reads a client clock (D11).
+        """
+        await self._lock_projects_for_update(task_id, changes, include_deleted=True)
+        task = await self.get(task_id, for_update=True, include_deleted=True)
+        if base_revision > task.revision:
+            raise TaskRevisionConflictError(task.revision)  # a base this server never issued
+        revived = task.deleted_at is not None
+        fields = {name: value for name, value in changes.items() if name in _WRITABLE}
+        new_tags: TagNames | None = None
+        if "tags" in changes:
+            new_tags = normalize_tags(changes["tags"] or [])
+        incoming: dict[str, Any] = dict(fields)
+        _normalize_instants(incoming, incoming.get("time_zone", task.time_zone))
+        stored: dict[str, Any] = snapshot(task, TASK_FIELDS)
+        if new_tags is not None:
+            incoming["tags"] = new_tags
+            stored["tags"] = (await self.tags_for([task.id])).get(task.id, [])
+        plan = plan_merge(
+            incoming=incoming,
+            stored=stored,
+            field_revisions=task.field_revisions,
+            base_revision=base_revision,
+            revision=task.revision,
+            text_fields=TASK_TEXT_FIELDS,
+            equal=_same_value,
+        )
+        conflicts = list(plan.conflicts)
+        resolutions = list(plan.resolutions)
+        # Last-writer-wins may never produce an invalid state (SYNC_PROTOCOL.md section 6.2).
+        lww = {resolution.field for resolution in resolutions}
+        if "status" in lww:
+            try:
+                validate_transition(task.status, plan.apply["status"])
+            except InvalidTaskTransitionError:
+                del plan.apply["status"]
+                resolutions = [r for r in resolutions if r.field != "status"]
+                conflicts.append(
+                    FieldConflict("status", Reason.INVALID_TRANSITION, task.revision, task.status)
+                )
+        apply_tags = plan.apply.pop("tags", None)
+        if not plan.apply and apply_tags is None and not revived:
+            return TaskSyncUpdate(task, [], conflicts, resolutions)
+        # ``fields`` (not ``plan.apply``) carries the client's raw values; _write normalises again,
+        # so hand it the original values of exactly the applied fields.
+        to_write = {name: fields[name] for name in plan.apply if name in fields}
+        changed = await self._write(task, to_write, apply_tags, revive=revived)
+        return TaskSyncUpdate(task, changed, conflicts, resolutions, revived)
+
+    async def _write(
+        self,
+        task: Task,
+        fields: dict[str, Any],
+        new_tags: TagNames | None,
+        *,
+        revive: bool = False,
+    ) -> FieldNames:
+        """Validate and apply ``fields``, bump the revision once, stamp ``field_revisions`` and
+        announce the change. Shared by :meth:`update` and :meth:`update_sync`; returns the names of
+        the fields whose value actually changed."""
         parent = await self._resolve_parent(
             fields.get("parent_task_id", task.parent_task_id), itself=task.id
         )
@@ -550,6 +730,10 @@ class TasksService:
         _normalize_instants(fields, fields.get("time_zone", task.time_zone))
         if fields.get("recurrence_rule") is not None:
             self._anchor(task, fields)  # a recurrence needs an anchor instant
+        before: dict[str, Any] = snapshot(task, TASK_FIELDS)
+        if revive:
+            task.deleted_at = None
+            await self._detach_dead_project(task)
         for name, value in fields.items():
             setattr(task, name, value)
         if "status" in fields:
@@ -566,15 +750,29 @@ class TasksService:
         )
         if completing:
             await self._advance_series(task)
+        changed = changed_fields(before, snapshot(task, TASK_FIELDS))
+        if new_tags is not None:
+            current = (await self.tags_for([task.id])).get(task.id, [])
+            if _tag_key(current) != _tag_key(new_tags):
+                changed.append("tags")
         task.revision += 1
+        task.field_revisions = stamp(task.field_revisions, changed, task.revision)
         await self.session.flush()
         if new_tags is not None:
             await self._set_tags(task.id, new_tags)
         await self._record_change(task.id, ChangeOperation.UPSERT)
         await self.session.refresh(task)
-        return task
+        return changed
 
-    async def delete(self, task_id: uuid.UUID) -> None:
+    async def delete(
+        self,
+        task_id: uuid.UUID,
+        *,
+        base_revision: int | None = None,
+        edit_wins: bool = False,
+    ) -> None:
+        """Soft-delete the task. In sync mode (``edit_wins``) a delete based on a revision older
+        than the task's is refused with :class:`TaskEditWinsError` (ADR-0055 rule 4, D6)."""
         # Lock the task and its live subtasks in ONE statement ordered by id. Taking the parent
         # first and then the children would cycle with ``ProjectsService.delete`` (which locks a
         # project's tasks in id order, a parent and its subtasks share the project) when the
@@ -598,11 +796,14 @@ class TasksService:
         # Promote the task's direct, live subtasks to top level before hiding the parent. This
         # mirrors the FK's ON DELETE SET NULL intent: subtasks are never deleted or orphaned under
         # a parent that is no longer visible (ADR-0016).
+        if edit_wins and base_revision is not None and base_revision < task.revision:
+            raise TaskEditWinsError(task.revision)
         children = [row for row in rows if row.id != task_id]
         promoted: list[uuid.UUID] = []
         for child in children:
             child.parent_task_id = None
             child.revision += 1
+            child.field_revisions = stamp(child.field_revisions, ["parent_task_id"], child.revision)
             promoted.append(child.id)
         task.deleted_at = datetime.now(UTC)
         task.revision += 1
@@ -667,7 +868,7 @@ class TasksService:
                 raise TaskValidationError("project does not exist")
 
     async def _lock_projects_for_update(
-        self, task_id: uuid.UUID, changes: Mapping[str, Any]
+        self, task_id: uuid.UUID, changes: Mapping[str, Any], *, include_deleted: bool = False
     ) -> None:
         """Share-lock the projects an update may touch, before the task row is locked.
 
@@ -676,11 +877,12 @@ class TasksService:
         for a new parent, the parent's. Both are read without a lock; ``_ensure_project`` locks
         again with ``nowait`` if the guess turns out wrong.
         """
-        current = await self.session.scalar(
-            select(Task.project_id).where(
-                Task.id == task_id, Task.user_id == self.user_id, Task.deleted_at.is_(None)
-            )
+        current_stmt = select(Task.project_id).where(
+            Task.id == task_id, Task.user_id == self.user_id
         )
+        if not include_deleted:
+            current_stmt = current_stmt.where(Task.deleted_at.is_(None))
+        current = await self.session.scalar(current_stmt)
         target = changes.get("project_id")
         if target is None and changes.get("parent_task_id") is not None:
             target = await self.session.scalar(

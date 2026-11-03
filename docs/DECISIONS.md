@@ -1426,6 +1426,14 @@ directions are reversible.
 
 ## ADR-0033 — Change-feed retention: a bounded window, a purge floor and the resync signal
 
+**Status note (2026-11-03, SYNC-03e): PARTLY SUPERSEDED by ADR-0059 D2 (accepted).** What changed: (1) the purge removes only
+**`delete` rows**, never `upsert` rows, so the log stays one row per existing entity and a device with no state can bootstrap
+from cursor 0; (2) the default window is **90 days** (minimum 30, `CHANGE_RETENTION_DAYS`) instead of 30; (3) `since = 0` is a
+snapshot and is never `below_floor` (nor is a `snapshot=true` continuation page); (4) idempotency keys expire with the tombstones.
+What stays: the durable purge job, the per-user `change_purge_floor`, entity tombstones never purged, and `resync_required`
+for `0 < since < floor`. The floor is now "the highest purged tombstone", not "the highest purged row". The text below is the
+original decision and is kept as history.
+
 **Context.** M7-02. The M7-01 per-user change feed (`change_log`) keeps one row per changed entity,
 including a `delete` tombstone for a soft-deleted entity, so an offline client observes deletions
 (AGENTS.md §9, "deletions must propagate safely to offline clients"). Tombstones must be retained
@@ -2933,6 +2941,16 @@ notes merge, resolution log, devices) with the simulation harness as the main ev
 `Atlas-Sync`. Costs: several migrations (`field_revisions`, `sync_resolutions`, `devices`, partial path index,
 `revision` on reminder policies/preferences), history storage, a merge dependency, and a permanent
 compatibility burden (two protocol majors). Rollback: all schema changes are additive; sync mode is opt-in.
+
+**Implementation (SYNC-03, 2026-11-03, local).** D1-D4, D6 (tasks/projects), D9, D11 and D12 are implemented on the server with the
+tests in `ACCEPTANCE.md` SYNC-03; D3 for tasks, projects and notes (client ids, partial live-path index). D5, D6 for notes,
+D7, D8, D10 (client side) remain with SYNC-04/05/06/09. Four refinements discovered while implementing, none of which changes a
+decision: (a) a snapshot walk sends `snapshot=true` after its first page, otherwise a floor above its position makes a
+multi-page bootstrap restart forever (simulation seed 29); (b) D12 is made concrete as an `epoch` in `instance_meta`
+that `atlas-admin record-restore` rotates, plus an `Atlas-Epoch` request header answered `409 epoch_mismatch` (without it a
+restored server whose cursor has regrown past a client's looks normal); (c) note-write idempotency records store the summary, not
+the 5 MiB body; (d) `DELETE` carries `base_revision` as a query parameter. The idempotency-key TTL equals the tombstone window
+(`CHANGE_RETENTION_DAYS`), the setting keeps its name.
 
 **Not decided here (spike / later):** the Tauri verdict and Electron fallback (SYNC-07, criteria in `ROADMAP.md`),
 the merge library, the batch endpoint, pairing flow, Android background-sync mechanism.

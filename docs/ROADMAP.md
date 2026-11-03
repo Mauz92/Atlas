@@ -25,7 +25,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
 | **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `DONE` (local PASS; CI `e2e-real` NOT RUN) | UX-01…UX-03 `DONE` 2026-11-02, UX-04…UX-08 `DONE` 2026-11-03; J1–J7 and the axe sweep pass on the finished UI. The separate `AUTH-01` row (account recovery) stays `BACKLOG` and is not part of this exit |
-| **SYNC** | **Local-first sync** (ADR-0055, ADR-0059 PROPOSED, `SYNC_PROTOCOL.md`) | `IN_PROGRESS` (design done 2026-11-03; SYNC-01 `READY`; nothing implemented) | Worked **first** (owner priority order). Server protocol + deterministic multi-client simulation pass before any native-shell task; Tauri spike verdict before SYNC-09/10 |
+| **SYNC** | **Local-first sync** (ADR-0055, ADR-0059 ACCEPTED, `SYNC_PROTOCOL.md`) | `IN_PROGRESS` (SYNC-01, SYNC-02, SYNC-03 `DONE` locally 2026-11-03: server protocol v1 for tasks, projects and note identity; next SYNC-04 note history/merge, SYNC-05 resolution log, SYNC-06 devices) | Worked **first** (owner priority order). Server protocol + deterministic multi-client simulation pass before any native-shell task; Tauri spike verdict before SYNC-09/10 |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -901,7 +901,7 @@ none is `DONE` until its tests ran. WIP limit: one task at a time except the spi
 |---|---|---|---|
 | SYNC-01 | Feed correctness fixes (no protocol change) | — | `DONE` (2026-11-03) |
 | SYNC-02 | Simulation harness: model server, fault transport, invariants, conformance vs real server | — (uses current API) | `DONE` (2026-11-03) |
-| SYNC-03 | Protocol v1 server: client ids, sync mode, field merge, `include=data`/`types`/snapshot/retention, versioning | SYNC-01, SYNC-02, ADR-0059 D1–D4, D6, D9, D11–D12 | `BACKLOG` (ADR-0059 accepted 2026-11-03; starts after SYNC-01/02) |
+| SYNC-03 | Protocol v1 server: client ids, sync mode, field merge, `include=data`/`types`/snapshot/retention, versioning | SYNC-01, SYNC-02, ADR-0059 D1–D4, D6, D9, D11–D12 | `DONE` (2026-11-03, local, 7 sub-steps 03a-03g all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-03). Notes: identity/create/idempotency only, content semantics are SYNC-04 |
 | SYNC-04 | Note history and three-way merge, move/delete/revive rules, portable paths | SYNC-03, ADR-0059 D3, D5, D10 | `BACKLOG` (ADR-0059 accepted) |
 | SYNC-05 | Resolution log, feed entity and undo | SYNC-03, ADR-0059 D7 | `BACKLOG` (ADR-0059 accepted) |
 | SYNC-06 | Device credentials: table, bearer auth, rotation, revoke, Settings → Devices | SYNC-03, ADR-0059 D8; AUTH-01 consumes the revoke function | `BACKLOG` (ADR-0059 accepted) |
@@ -973,22 +973,41 @@ none is `DONE` until its tests ran. WIP limit: one task at a time except the spi
   self-tests. **Evidence.** `ACCEPTANCE.md` SYNC-02. **Status** `DONE` (2026-11-03, local, with the stated deviations: Python not TS; default 100 model / 3 real seeds, the 200/20 figures are soak runs).
 - **Found:** R-37 (lost update on concurrent PATCH, `xfail(strict)` test). Fixed at the start of SYNC-03, see below.
 
-### SYNC-03 … SYNC-06
-Scope, acceptance and tests follow `SYNC_PROTOCOL.md` §3–§10; each task gets its own plan section here when it becomes
-`READY` (after ADR-0059). Minimum acceptance common to all: the simulation scenarios named in `TESTING.md` §10.3 for that
-feature pass on the model and on the real API; old non-sync-mode behaviour is unchanged (existing suites untouched and green);
-migrations tested up/down on a clean DB and a populated one; `alembic check` clean.
-- **SYNC-03 pre-work, `DONE` locally 2026-11-03 (not committed, CI not run; evidence `ACCEPTANCE.md` SYNC-03 pre-work):**
-  (1) R-37: row lock (`SELECT ... FOR UPDATE`) before the `base_revision` check on task/project `PATCH` and note `PUT`
-  (and on delete/restore/rename, which also bump revisions); lock order entity rows then change cursor, bulk task locks in `id`
-  order; `xfail` removed; (2) R-34: `client_max_body_size 11m` for `/api/` in `apps/web/nginx.conf`, with a static and a live
-  container test; (3) `NotesReconciler` removal shares `NotesService.tombstone_index/announce_removal` with `delete` (project
-  links dropped and announced, wiki-link targets cleared, task links kept), announcements recorded after all row changes
-  (lock order). **Moved out of scope of the remaining SYNC-03 list:** R-37, R-34 and the reconcile link-drop. Also fixed from this work: the
-  task-into-deleted-project race (project share lock before task lock, R-37), nginx 11m for JSON-escaped notes (R-34),
-  and model-sim seed 482 (client rule: an acknowledgement is a historical snapshot).
-  **Remaining SYNC-03 scope:** `field_revisions` backfill; `Atlas-Sync` header; `426`; `include=data`, `types=`, snapshot, tombstone-only purge,
-  idempotency-key TTL job; `GET /api/instance` sync block; the task feed `GET /api/tasks/changes` marked deprecated.
+### SYNC-03 — Protocol v1 server (`DONE` locally 2026-11-03)
+
+Scope, acceptance and tests follow `SYNC_PROTOCOL.md` section 4-10 (the "Implementation status" table there says what is behaviour).
+Common acceptance for SYNC-03..06: the simulation scenarios of `TESTING.md` 10.3 for the feature pass on the model and on the real
+API; non-sync-mode behaviour is unchanged (existing suites green, only the tests listed below were adjusted, each for a documented
+contract change); migrations tested up/down on a clean DB and a populated one; `alembic check` clean (`test_migrations_match_models`).
+
+**Pre-work (earlier, `DONE`):** R-37 row locks before the `base_revision` check; R-34 `client_max_body_size 11m`; reconcile
+removal shares `NotesService.tombstone_index`; task-into-deleted-project race; sim seed 482.
+
+**Plan as executed: ordered, independently shippable sub-steps** (each with its own verification; `verify.sh` was run on the
+cumulative state at the end because the steps were landed in one uncommitted working tree, with targeted suites after each step;
+the full-suite numbers are in `ACCEPTANCE.md`):
+
+| Step | Content | Migration (reversible, tested) | Status |
+|---|---|---|---|
+| 03a | `field_revisions` on tasks and projects: column, **idempotent backfill to the current revision**, upkeep on every write path (create, patch, restore, delete promotion, project-delete unfiling, recurrence); `field_revisions` in `TaskOut`/`ProjectOut` | `a1f0c3d2b4e6` (tested at the previous revision with representative rows: backfill values, no revision bump, no feed rows, re-run changes nothing, down/up round trip) | `DONE` |
+| 03b | `Atlas-Sync` negotiation and `426` (global, before auth), `GET /api/instance` `sync` block, `epoch` + `Atlas-Epoch` (`409 epoch_mismatch`, after auth), `atlas-admin record-restore` (D9, D12); D11 test | `c3b7d9e1f2a8` (`instance_meta`, epoch generated in SQL) | `DONE` |
+| 03c | Optional client `id` on create for tasks, projects, notes (idempotent by id, `id_exists`), partial unique index on live note paths and its call-site fixes (create, adopt, rename folder, reconcile), sync-mode note idempotency + path-collision rename (D3) | `d5e8a2f1c4b9` (downgrade renames colliding tombstone *index rows* so the old constraint can return; tested with a live note and two tombstones on one path) | `DONE` |
+| 03d | Sync-mode writes: required key/base, unknown fields `422`, structured errors, `sync` block, field-level merge (rules 1-4), invalid-transition guard, text conflict `409`/partial `200`, `DELETE` edit-wins, revive on `PATCH` | none | `DONE` |
+| 03e | Feed: `include=data`, `types=`, snapshot at `since=0`, `head`/`floor`, `snapshot=true` continuation (**found by the simulation**), retention to tombstones only (default 90 d, minimum 30), idempotency-key TTL in the same job; ADR-0033 status note | none | `DONE` |
+| 03f | Simulation: model server and a v1 client, conformance traces vs the real API, planted defects, late joiner, old client, purge, soaks | none | `DONE` |
+| 03g | Docs, `openapi.json`/`schema.d.ts`, web test fixtures, real-stack and mocked e2e | none | `DONE` |
+
+**Interfaces left for later tasks (as the spec requires):** `sync.resolution` objects are the wire shape of SYNC-05's
+`sync_resolutions` rows (rule/field/kept_revision/loser); `PATCH`/`PUT` bodies reject unknown fields so SYNC-04 can add
+`base_hash` without a silent half-write; note `DELETE`/`move` already require `base_revision`; `Atlas-Epoch` and the per-user
+cursor are the hooks for SYNC-06 device scoping; `ChangeOut.data` is a typed union ready for `resolution` and `device` types
+(clients send `types=`).
+
+**Not in SYNC-03 (by plan):** note content merge/history/`base_hash`/stale-delete `edit_wins`/revive-on-`PUT`/move rules/portable
+paths (SYNC-04); `sync_resolutions` table, feed entity and undo (SYNC-05); device tokens, per-device rate limits, `401
+token_revoked` (SYNC-06); `reminder_policy`/`preferences` feed entities (not scheduled: no owner decision on timing; tracked in
+`SYNC_PROTOCOL.md` section 3 as [NEW]).
+`GET /api/tasks/changes` is marked `deprecated` in OpenAPI and its docstring (frozen; the web engine still uses it, removal waits for SYNC-08).
 - **SYNC-04** also: nginx/compose body limit for 5 MiB notes verified; merge library licence/maintenance check recorded in
   `DEPENDENCIES.md`; history included in backup and export sets (ADR-0041/0042 amended).
 - **SYNC-06** also: Settings → Devices; rate limit keyed by device; token never in logs/OpenAPI examples; revocation tested.

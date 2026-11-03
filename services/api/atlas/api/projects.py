@@ -30,7 +30,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any, NoReturn
 
-from fastapi import APIRouter, Header, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 
 from ..idempotency import IdempotencyConflictError, IdempotencyStore, fingerprint
@@ -40,6 +40,8 @@ from ..projects import (
     MAX_LIMIT,
     ZERO_PROGRESS,
     NoteProjectLinks,
+    ProjectEditWinsError,
+    ProjectIdExistsError,
     ProjectNotFoundError,
     ProjectProgress,
     ProjectRevisionConflictError,
@@ -47,6 +49,7 @@ from ..projects import (
     ProjectValidationError,
     build_document,
 )
+from ..sync.protocol import SyncError
 from ..tasks import (
     DEFAULT_LIMIT as TASKS_DEFAULT_LIMIT,
 )
@@ -67,20 +70,43 @@ from .schemas import (
     ProjectProgressOut,
     ProjectsExportOut,
     ProjectUpdateRequest,
+    SyncResolutionOut,
     TaskListOut,
+)
+from .sync_gate import SyncMode, epoch_check
+from .syncio import (
+    REPLAYED_HEADER,
+    entity_json,
+    reject_unknown_fields,
+    require_base,
+    require_key,
+    sync_result,
 )
 from .tasks import task_out
 
-router = APIRouter(prefix="/api/projects", tags=["projects"])
+router = APIRouter(prefix="/api/projects", tags=["projects"], dependencies=[Depends(epoch_check)])
 
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key", max_length=200)]
 
 
-def _translate(exc: Exception) -> NoReturn:
-    """Map domain errors onto HTTP responses; re-raise anything unexpected."""
+def _translate(exc: Exception, sync: bool = False) -> NoReturn:
+    """Map domain errors onto HTTP responses; re-raise anything unexpected (see tasks API)."""
+    if isinstance(exc, ProjectIdExistsError):
+        raise SyncError(
+            409, "id_exists", "that id is already in use by a different record"
+        ) from exc
     if isinstance(exc, (ProjectNotFoundError, NoteNotFoundError)):
+        if sync:
+            raise SyncError(404, "not_found", "Not found") from exc
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     if isinstance(exc, ProjectRevisionConflictError):
+        if sync:
+            raise SyncError(
+                409,
+                "stale",
+                "project changed since it was read",
+                current_revision=exc.current_revision,
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -89,6 +115,10 @@ def _translate(exc: Exception) -> NoReturn:
             },
         ) from exc
     if isinstance(exc, IdempotencyConflictError):
+        if sync:
+            raise SyncError(
+                409, "idempotency_mismatch", "idempotency key reused with a different request"
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="idempotency key reused with a different request",
@@ -117,6 +147,7 @@ def project_out(project: Any, progress: ProjectProgress | None = None) -> Projec
             total=value.total, completed=value.completed, percent=value.percent
         ),
         revision=project.revision,
+        field_revisions=project.field_revisions,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
@@ -142,10 +173,18 @@ def note_summary(note: Any) -> NoteSummaryOut:
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 async def create_project(
     payload: ProjectCreateRequest,
+    request: Request,
+    response: Response,
     user: CurrentUser,
     session: DbSession,
+    sync: SyncMode,
     idempotency_key: IdempotencyKey = None,
 ) -> Any:
+    """Create a project; sync mode requires an `Idempotency-Key`; an optional client `id` makes
+    the create idempotent by id (SYNC_PROTOCOL.md 6.1)."""
+    if sync:
+        require_key(sync, idempotency_key)
+        await reject_unknown_fields(request, ProjectCreateRequest)
     store = IdempotencyStore(session, user.id)
     if idempotency_key:
         try:
@@ -153,18 +192,30 @@ async def create_project(
                 idempotency_key, "project.create", fingerprint(payload.model_dump(mode="json"))
             )
         except Exception as exc:
-            _translate(exc)
+            _translate(exc, sync)
         if stored is not None:
-            return JSONResponse(status_code=stored.status_code, content=stored.body)
+            return JSONResponse(
+                status_code=stored.status_code, content=stored.body, headers=REPLAYED_HEADER
+            )
+    data = payload.model_dump()
+    client_id = data.pop("id")
+    replayed = False
     try:
         service = ProjectsService(session, user.id)
-        project = await service.create(payload.model_dump())
+        project = await service.claim_id(client_id, data) if client_id else None
+        replayed = project is not None
+        if project is None:
+            project = await service.create(data, client_id=client_id)
     except Exception as exc:
-        _translate(exc)
+        _translate(exc, sync)
     out = project_out(project, await _progress_for(service, project.id))
+    if sync:
+        out.sync = sync_result(project.revision)
     if idempotency_key:
         await store.remember(idempotency_key, status_code=201, body=out.model_dump(mode="json"))
     await session.commit()
+    if replayed:
+        response.headers.update(REPLAYED_HEADER)
     return out
 
 
@@ -369,15 +420,23 @@ async def unlink_project_note(
 async def update_project(
     project_id: uuid.UUID,
     payload: ProjectUpdateRequest,
+    request: Request,
     user: CurrentUser,
     session: DbSession,
+    sync: SyncMode,
     idempotency_key: IdempotencyKey = None,
 ) -> Any:
     """Update a project, optionally guarded by ``base_revision``.
 
     A stale ``base_revision`` — the project has a newer revision — returns ``409`` and changes
-    nothing. Fields not present in the request are left untouched.
+    nothing. Fields not present in the request are left untouched. **Sync mode**
+    (`Atlas-Sync: 1`): `Idempotency-Key` and `base_revision` are required and fields merge as for
+    tasks (`name` and `description` are the text fields); an edit of a deleted project revives it.
     """
+    if sync:
+        require_key(sync, idempotency_key)
+        require_base(sync, payload.base_revision)
+        await reject_unknown_fields(request, ProjectUpdateRequest)
     store = IdempotencyStore(session, user.id)
     changes = payload.model_dump(exclude_unset=True)
     request_payload = {
@@ -390,15 +449,41 @@ async def update_project(
                 idempotency_key, "project.update", fingerprint(request_payload)
             )
         except Exception as exc:
-            _translate(exc)
+            _translate(exc, sync)
         if stored is not None:
-            return JSONResponse(status_code=stored.status_code, content=stored.body)
+            return JSONResponse(
+                status_code=stored.status_code, content=stored.body, headers=REPLAYED_HEADER
+            )
     service = ProjectsService(session, user.id)
+    outcome = None
     try:
-        project = await service.update(project_id, changes, payload.base_revision)
+        if sync:
+            assert payload.base_revision is not None
+            outcome = await service.update_sync(project_id, changes, payload.base_revision)
+            project = outcome.project
+        else:
+            project = await service.update(project_id, changes, payload.base_revision)
     except Exception as exc:
-        _translate(exc)
+        _translate(exc, sync)
+    if outcome is not None and outcome.conflicts and not outcome.applied and not outcome.revived:
+        raise SyncError(
+            409,
+            "conflict",
+            "the same text field was changed on the server; nothing was applied",
+            current_revision=project.revision,
+            conflicts=[
+                c.model_dump(mode="json")
+                for c in sync_result(0, conflicts=outcome.conflicts).conflicts
+            ],
+        )
     out = project_out(project, await _progress_for(service, project.id))
+    if outcome is not None:
+        out.sync = sync_result(
+            project.revision,
+            conflicts=outcome.conflicts,
+            resolutions=outcome.resolutions,
+            revived=outcome.revived,
+        )
     if idempotency_key:
         await store.remember(idempotency_key, status_code=200, body=out.model_dump(mode="json"))
     await session.commit()
@@ -410,9 +495,23 @@ async def delete_project(
     project_id: uuid.UUID,
     user: CurrentUser,
     session: DbSession,
+    sync: SyncMode,
     idempotency_key: IdempotencyKey = None,
+    base_revision: Annotated[
+        int | None,
+        Query(
+            ge=0,
+            description=(
+                "Sync mode (required): the revision the delete was based on. A project edited "
+                "after it is not deleted: `409 edit_wins` carries the live project."
+            ),
+        ),
+    ] = None,
 ) -> Response:
     """Soft delete (tombstone) a project."""
+    if sync:
+        require_key(sync, idempotency_key)
+        require_base(sync, base_revision)
     store = IdempotencyStore(session, user.id)
     if idempotency_key:
         try:
@@ -420,13 +519,27 @@ async def delete_project(
                 idempotency_key, "project.delete", fingerprint({"project_id": str(project_id)})
             )
         except Exception as exc:
-            _translate(exc)
+            _translate(exc, sync)
         if stored is not None:
-            return Response(status_code=stored.status_code)
+            return Response(status_code=stored.status_code, headers=REPLAYED_HEADER)
+    service = ProjectsService(session, user.id)
     try:
-        await ProjectsService(session, user.id).delete(project_id)
+        if sync and await service.is_deleted(project_id):
+            pass  # already deleted: an idempotent no-op
+        else:
+            await service.delete(project_id, base_revision=base_revision, edit_wins=sync)
+    except ProjectEditWinsError as exc:
+        live = await service.get(project_id)
+        raise SyncError(
+            409,
+            "edit_wins",
+            "the project was edited after the delete was based; the edit wins and it stays",
+            current_revision=exc.current_revision,
+            entity=entity_json(project_out(live, await _progress_for(service, live.id))),
+            resolution=[SyncResolutionOut(rule="edit_wins_over_delete").model_dump(mode="json")],
+        ) from exc
     except Exception as exc:
-        _translate(exc)
+        _translate(exc, sync)
     if idempotency_key:
         await store.remember(idempotency_key, status_code=204, body={})
     await session.commit()

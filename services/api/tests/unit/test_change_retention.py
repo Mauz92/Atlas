@@ -30,8 +30,12 @@ _NOW = datetime(2026, 10, 27, 12, 0, tzinfo=UTC)
 # --- the retention window -----------------------------------------------------
 
 
-def test_the_default_retention_window_is_thirty_days() -> None:
-    assert DEFAULT_RETENTION_DAYS == 30
+def test_the_default_retention_window_is_ninety_days_and_the_minimum_thirty() -> None:
+    # ADR-0059 D2 raised the default from 30 (ADR-0033) now that only tombstones are purged.
+    assert DEFAULT_RETENTION_DAYS == 90
+    assert Settings(change_retention_days=30).change_retention_days == 30
+    with pytest.raises(ValueError, match="at least 30"):
+        Settings(change_retention_days=29)
     assert Settings.model_fields["change_retention_days"].default == DEFAULT_RETENTION_DAYS
 
 
@@ -101,7 +105,13 @@ def test_a_cursor_beyond_the_head_is_cursor_ahead() -> None:
 
 def test_a_cursor_below_the_floor_is_below_floor() -> None:
     assert resync_reason(3, 5, 10) is ResyncReason.BELOW_FLOOR
-    assert resync_reason(0, 1, 10) is ResyncReason.BELOW_FLOOR
+    assert resync_reason(1, 3, 10) is ResyncReason.BELOW_FLOOR
+
+
+def test_cursor_zero_is_a_snapshot_request_and_never_below_the_floor() -> None:
+    # Upserts are never purged (ADR-0059 D2), so a device with no state can always bootstrap.
+    assert resync_reason(0, 1, 10) is None
+    assert resync_reason(0, 9_999, 10_000) is None
 
 
 def test_a_cursor_within_the_retained_range_needs_no_resync() -> None:
@@ -120,3 +130,11 @@ def test_the_changes_response_declares_the_resync_reason_as_optional() -> None:
     properties = schemas["ChangesOut"]["properties"]
     assert "resync_reason" in properties
     assert "resync_reason" not in schemas["ChangesOut"].get("required", [])
+
+
+def test_a_snapshot_walk_is_never_below_the_floor() -> None:
+    """Found by the simulation (seed 29): page 2 of a bootstrap walk is at ``0 < since < floor``."""
+    assert resync_reason(5, 9_999, 10_000) is ResyncReason.BELOW_FLOOR
+    assert resync_reason(5, 9_999, 10_000, snapshot=True) is None
+    # but a snapshot request never hides a cursor that is ahead of the server
+    assert resync_reason(10_001, 9_999, 10_000, snapshot=True) is ResyncReason.CURSOR_AHEAD

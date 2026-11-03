@@ -116,7 +116,7 @@ async def test_task_create_update_delete_appear_with_the_right_operation(
     ).status_code == 200
     assert (await client.delete(f"/api/tasks/{task['id']}", headers=headers)).status_code == 204
 
-    after = await _pull(client)
+    after = await _pull(client, since=created["next_since"])
     # One row for the task, at its latest operation (the soft delete).
     assert _keys(after["changes"]) == [("task", task["id"])]
     assert after["changes"][0]["operation"] == "delete"
@@ -139,7 +139,7 @@ async def test_project_create_update_delete_appear_with_the_right_operation(
     deleted = await client.delete(f"/api/projects/{project['id']}", headers=headers)
     assert deleted.status_code == 204
 
-    after = await _pull(client)
+    after = await _pull(client, since=created["next_since"])
     assert _keys(after["changes"]) == [("project", project["id"])]
     assert after["changes"][0]["operation"] == "delete"
 
@@ -166,7 +166,7 @@ async def test_note_create_update_delete_appear_with_the_right_operation(
     deleted = await notes_client.delete(f"/api/notes/{note['id']}", headers=headers)
     assert deleted.status_code == 204
 
-    after = await _pull(notes_client)
+    after = await _pull(notes_client, since=feed["next_since"])
     assert _keys(after["changes"]) == [("note", note["id"])]
     assert after["changes"][0]["operation"] == "delete"
 
@@ -192,7 +192,7 @@ async def test_note_project_links_appear_as_upsert_then_delete(notes_client: Asy
             f"/api/projects/{project['id']}/notes/{note['id']}", headers=headers
         )
     ).status_code == 204
-    unlinked = await _pull(notes_client)
+    unlinked = await _pull(notes_client, since=linked["next_since"])
     assert _operations(unlinked["changes"])[link_key] == "delete"
 
 
@@ -234,10 +234,11 @@ async def test_deleting_a_project_announces_the_unfiled_task_and_the_link(
         await notes_client.put(f"/api/projects/{project['id']}/notes/{note['id']}", headers=headers)
     ).status_code == 204
 
+    before = (await _pull(notes_client))["next_since"]
     removed = await notes_client.delete(f"/api/projects/{project['id']}", headers=headers)
     assert removed.status_code == 204
 
-    operations = _operations((await _pull(notes_client))["changes"])
+    operations = _operations((await _pull(notes_client, since=before))["changes"])
     assert operations[("project", project["id"])] == "delete"
     assert operations[("task", task["id"])] == "upsert"  # the task was un-filed
     assert operations[("note_project_link", f"{note['id']}:{project['id']}")] == "delete"

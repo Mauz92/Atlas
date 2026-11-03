@@ -20,9 +20,12 @@ from .progress import (
 from .service import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
+    ProjectEditWinsError,
+    ProjectIdExistsError,
     ProjectNotFoundError,
     ProjectRevisionConflictError,
     ProjectsService,
+    ProjectSyncUpdate,
     ProjectValidationError,
 )
 
@@ -34,10 +37,13 @@ __all__ = [
     "ZERO_PROGRESS",
     "NoteProjectLinks",
     "ProgressTask",
+    "ProjectEditWinsError",
     "ProjectExport",
+    "ProjectIdExistsError",
     "ProjectNotFoundError",
     "ProjectProgress",
     "ProjectRevisionConflictError",
+    "ProjectSyncUpdate",
     "ProjectValidationError",
     "ProjectsService",
     "build_document",

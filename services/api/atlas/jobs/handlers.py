@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..changes import ChangePurgeService
 from ..changes.retention import retention_cutoff
 from ..config import get_settings
+from ..idempotency import purge_expired
 from ..models import Job, JobStatus, User
 from ..notes import NotesReconciler, NotesStorage
 from ..reminders.constants import REMINDER_DELIVER_TASK, REMINDERS_SCAN_TASK
@@ -115,15 +116,20 @@ async def schedule_next_calendar_reconcile(
 async def purge_change_log(session: AsyncSession, _payload: dict[str, Any]) -> None:
     """Bound the change feed's history, then queue the next purge (M7-02).
 
-    Removes ``change_log`` rows older than ``change_retention_days`` and advances each affected
-    user's purge floor — never a user's entity rows. Safe to run at any time and idempotent: a
-    second pass over the same window removes nothing and leaves the floors unchanged. The handler
+    Removes deletion tombstones older than ``change_retention_days`` from ``change_log`` (upserts
+    are kept, SYNC-03e), advances each affected user's purge floor, and deletes idempotency keys
+    older than the same window - never a user's entity rows. Safe to run at any time and
+    idempotent: a second pass over the same window removes nothing and leaves the floors
+    unchanged. The handler
     runs in the caller's transaction, so a crash either purges the whole batch or none of it
     (restart-safe), and re-queues the next purge so the chain survives a worker restart together
     with :func:`ensure_change_purge_job`.
     """
     cutoff = retention_cutoff(datetime.now(UTC), get_settings().change_retention_days)
     summary = await ChangePurgeService(session).purge(cutoff=cutoff)
+    keys = await purge_expired(session, cutoff=cutoff)
+    if keys:
+        logger.info("idempotency keys purged", extra={"purged": keys})
     if summary.purged:
         logger.info(
             "change log purged",

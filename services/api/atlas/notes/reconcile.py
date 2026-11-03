@@ -50,12 +50,15 @@ class NotesReconciler:
         announce: list[tuple[NoteIndex, ChangeOperation]] = []
         removals: list[tuple[NoteIndex, list[uuid.UUID]]] = []
         files = self._read_all()
-        rows = {
-            note.path: note
-            for note in await self.session.scalars(
-                select(NoteIndex).where(NoteIndex.user_id == self.user_id)
-            )
-        }
+        # Paths are unique among *live* rows only (D3): a path may also have tombstones. The live
+        # row wins; otherwise the newest tombstone, which is what a reappearing file revives.
+        rows: dict[str, NoteIndex] = {}
+        for row in await self.session.scalars(
+            select(NoteIndex)
+            .where(NoteIndex.user_id == self.user_id)
+            .order_by(NoteIndex.deleted_at.is_not(None).desc(), NoteIndex.updated_at.asc())
+        ):
+            rows[row.path] = row
 
         for path, file in files.items():
             note = rows.get(path)

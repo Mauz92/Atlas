@@ -1,5 +1,32 @@
 # Current Task
 
+- Task ID: none in progress. **SYNC-01, SYNC-02 and SYNC-03 are `DONE` locally (2026-11-03, not committed, CI not run).**
+  **SYNC-03 (protocol v1 server) delivered in seven verified sub-steps** (`docs/ROADMAP.md` SYNC-03, evidence
+  `docs/ACCEPTANCE.md` SYNC-03): 03a `field_revisions` (+ backfill), 03b `Atlas-Sync`/`426`/instance `sync` block/`epoch`/
+  `atlas-admin record-restore`, 03c client ids + live-path unique index + note sync-mode idempotency, 03d field merge and edit-wins,
+  03e feed (`include=data`, `types=`, snapshot, `snapshot=true`, tombstone-only retention 90 d, idempotency TTL), 03f simulation
+  v1 + conformance, 03g docs/openapi/e2e. Three new migrations (`a1f0c3d2b4e6`, `c3b7d9e1f2a8`, `d5e8a2f1c4b9`); **none was
+  applied to the owner's `atlas` database** - the owner's next `atlas-migrate`/stack start applies them (tested only on `atlas_test`);
+  the `web` image still needs a rebuild for the 11m nginx limit.
+- **What the simulation found (read `RISKS.md` R-38, R-40):** a multi-page snapshot bootstrap restarted forever once the purge
+  floor passed its first page (fixed: `snapshot=true`); a late create acknowledgement can resurrect an entity the cursor already
+  passed as deleted (client rule for SYNC-08: re-read acknowledged entities, remember tombstones for unknown ids).
+- **Next (smallest logical step): SYNC-05 (resolution log, feed entity, undo)** or **SYNC-04 (note history + three-way merge)**;
+  SYNC-04 first if notes are the priority (`RISKS.md` R-42: note writes in sync mode are idempotent but not merge/delete safe).
+  Both depend only on SYNC-03. SYNC-06 (devices) meets AUTH-01 at the revoke function. SYNC-07 (Tauri spike, Linux first) is
+  independent. Not built from the SYNC-03 spec list: `reminder_policy`/`preferences` feed entities (need an owner decision on
+  reminder sync timing).
+- Interfaces SYNC-04/05/06 must honour: `sync.resolution` (response-only today) is SYNC-05's row shape; note `PUT` rejects unknown
+  fields in sync mode until `base_hash` is added; `Atlas-Epoch` is checked after authentication in `api/sync_gate.py`
+  (`epoch_check`, a dependency on the tasks/projects/notes/changes routers - add it to any new sync-capable router);
+  `field_revisions` must be stamped by any new code path that changes a task/project field (`atlas/sync/fields.py`).
+- Commands: `./scripts/verify.sh`; sim soaks in `docs/TESTING.md` 10.0/10.0a (`ATLAS_SIM_SEEDS`, `ATLAS_SIM_REAL_SEEDS`,
+  `ATLAS_SIM_STEPS`, `ATLAS_SIM_SEED`); `cd apps/web && npm run test:e2e:real`.
+
+---
+
+## Earlier state (SYNC-03 pre-work, SYNC-01/02)
+
 - Task ID: none in progress. **SYNC-01 and SYNC-02 are `DONE` locally (2026-11-03, not committed, CI not run).**
   SYNC-01: reconcile feeds `/api/changes`; `cursor_ahead`/`below_floor` `resync_reason`; cursor ordering proven by
   `tests/integration/test_change_concurrency.py`; nginx 1 MiB body limit verified as a real defect (R-34, fixed in SYNC-03 pre-work).

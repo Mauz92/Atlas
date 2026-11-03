@@ -1,13 +1,33 @@
 # Atlas — Local-first Sync Protocol
 
-**Status:** PROPOSED design (2026-11-03). Nothing in §3 onward is implemented. Decisions that need the owner
-are in `DECISIONS.md` ADR-0059 (PROPOSED); until it is accepted this file describes a target, not behaviour.
+**Status:** design ACCEPTED (ADR-0059, 2026-11-03). **Server protocol v1 is implemented by SYNC-03 (2026-11-03, local, not
+committed, CI not run)** except the parts marked **[PLANNED]** below, which belong to SYNC-04 (note history/merge/edit-wins for
+notes), SYNC-05 (resolution log, undo), SYNC-06 (device credentials) and SYNC-08 (clients). The table "Implementation status"
+says, section by section, what is behaviour today and what is still a target; everything else in this file is the contract.
 **Scope:** how a local-first client (Tauri desktop, Tauri Android; ADR-0055) and the existing web app keep
 tasks, projects, notes and their links converged with the self-hosted server. Calendar-provider sync is
 `CALENDAR_SYNC.md`; note file rules are `MARKDOWN_STORAGE.md`; entity fields are `DATA_MODEL.md`.
 
 Legend: **[EXISTS]** verified by reading code/tests on 2026-11-03; **[GAP]** needed by ADR-0055 and missing or
-wrong today; **[NEW]** proposed; **[UNVERIFIED]** not checked.
+wrong at the time of the analysis (§2 is a historical baseline); **[NEW]** specified; **[DONE]** implemented and tested by
+SYNC-03; **[PLANNED]** specified, owned by a later task; **[UNVERIFIED]** not checked.
+
+### Implementation status (SYNC-03, 2026-11-03)
+
+| Section | Status | Notes |
+|---|---|---|
+| §4 feed: `include=data`, `types=`, snapshot at `since=0`, `head`/`floor`, `resync_reason` | **[DONE]** | plus the `snapshot=true` continuation parameter (§4.3a, found by the simulation) |
+| §5 retention (upserts kept, tombstones 90 days, floor) and idempotency-key TTL | **[DONE]** | `CHANGE_RETENTION_DAYS` default 90, minimum 30; keys expire with the tombstones |
+| §6.1 sync mode: header, required key/base, unknown fields `422`, client ids, `sync` block, `Idempotency-Replayed` | **[DONE]** for tasks, projects, notes | notes: summary replay, see §6.3 |
+| §6.2 task/project field merge, edit-wins on `DELETE`, revive on `PATCH` | **[DONE]** | resolutions are returned in the response only; storage and undo are SYNC-05 |
+| §6.3 note create (client id, collision rename), idempotent note writes | **[DONE]** | `base_hash`, three-way merge, history, stale-delete `edit_wins`, revive on `PUT`, move rules, portable paths: **[PLANNED]** SYNC-04 |
+| §6.4 links, §6.5 ordering | unchanged | |
+| §7 resync and restore: server side (`below_floor`, `cursor_ahead`, snapshot, `epoch`, `atlas-admin record-restore`) | **[DONE]** | client behaviour (7.3 shadow walk, 7.4 confirmation, 7.5 storm control) is modelled by the simulation client, **[PLANNED]** in `sync-core` (SYNC-08); per-device rate limits need device ids (SYNC-06) |
+| §8 errors | **[DONE]** for the codes in §8.1 reachable without devices | `401 token_revoked`, `403 forbidden_scope`, `429` per device: SYNC-06 |
+| §9 resolution log | **[PLANNED]** SYNC-05 | the response-only `sync.resolution` is its wire shape |
+| §10.1 devices | **[PLANNED]** SYNC-06 | |
+| §10.2 versioning: `Atlas-Sync`, `426`, `GET /api/instance` `sync` block, `Atlas-Epoch` | **[DONE]** | |
+| §11 desktop folder rules | client obligations, **[PLANNED]** SYNC-09 | |
 
 ---
 
@@ -100,11 +120,14 @@ are unaffected:
 | Parameter | Meaning |
 |---|---|
 | `include=data` | Each item gets `revision` and `data` (current entity state as of the read; tombstones carry `deleted_at`). `limit` max 200 in this mode. |
-| `types=task,project,…` | Only these entity types are returned. The cursor still advances over filtered-out items. The client lists the types it understands; see §10 for why. |
+| `types=task,project,…` | Only these entity types are returned. The cursor still advances over filtered-out items (the last page reports `head` as `next_since`). An unknown type name is `422`. The client lists the types it understands; see §10 for why. |
+| `snapshot=true` | Sent on every page of a snapshot walk after the first (§4.3a). |
 
 Response (additions in bold): `changes[] {entity_type, entity_id, operation, cursor, changed_at, **revision?**, **data?**}`,
 `since`, `next_since`, `has_more`, `resync_required`, **`resync_reason?`** (`below_floor` | `cursor_ahead`),
-**`head`** (current `users.change_seq`), **`floor`**.
+**`head`** (current `users.change_seq`), **`floor`** (highest purged tombstone cursor, 0 if none).
+`next_since` of the last page (`has_more=false`) is `max(last cursor, head read at the start of the page)`: rows a `types=`
+filter skipped are considered, and a row committed while the page was built is delivered by the next page, never skipped.
 
 Semantics:
 
@@ -114,9 +137,16 @@ Semantics:
 2. **State-based, not log-based.** One item per entity at its latest cursor. `data` is read at response time and
    may be newer than `cursor`; the entity then appears again later with a higher cursor and the same or newer
    `revision`. Clients apply by revision: `incoming.revision <= local_server_revision` ⇒ no-op.
-3. **`since = 0` is a snapshot** [NEW, changes ADR-0033]: it returns every live entity (upserts) and **no**
+3. **`since = 0` is a snapshot** [DONE, changes ADR-0033]: its first page returns live entities (upserts) and **no**
    tombstones, because a client with no state has nothing to delete. This requires that `upsert` rows are never
-   purged (§5). A device bootstraps by paging from `0` to `has_more=false`; no separate bootstrap endpoint.
+   purged (§5). A device bootstraps by paging from `0` to `has_more=false`; no separate bootstrap endpoint. Later pages
+   (`since > 0`) are ordinary: they also carry the deletions that happened during the walk (an entity delivered live
+   on page 1 and deleted before page 3 reappears as a `delete`), which a client with no copy of that entity ignores.
+   3a. **A snapshot walk is never "below the floor".** Page 2 of a walk is at `0 < since`, and once the floor has risen above
+   that cursor a plain request would be `resync_required(below_floor)`: the walk would restart from 0 forever. Found by
+   simulation seed 29 (SYNC-03e). A client therefore sends `snapshot=true` on every page after the first; the floor check is
+   skipped for such a request (cursor-ahead is not). This is safe because the walk holds nothing from before it began and a
+   deletion made during the walk is recent, hence retained.
 4. **Snapshot under concurrent writes.** An entity changed during the walk moves to a higher cursor and is
    delivered again before the client reaches `head`; so "walk until `has_more=false`" is complete.
 5. **Cursor ahead** [NEW]: `since > head` ⇒ `resync_required`, `resync_reason=cursor_ahead` (server restored from
@@ -126,19 +156,21 @@ Semantics:
 7. **No foreign keys on the client** between synced entities; a task may reference a project that arrives in a
    later page.
 
-## 5. Retention [NEW, supersedes ADR-0033's purge scope if ADR-0059 D2 is accepted]
+## 5. Retention [DONE, supersedes ADR-0033's purge scope (ADR-0059 D2 accepted)]
 
 - `change_log` keeps **one row per entity** for as long as the entity exists, so upsert rows are bounded by the
   number of entities and are never purged.
-- Only `delete` rows older than `change_tombstone_retention_days` (proposed default **90**, configurable,
-  ≥ 30) are purged; `change_purge_floor` is raised to the highest purged tombstone seq.
+- Only `delete` rows older than `change_retention_days` (default **90**, configurable, ≥ 30; the setting kept its name) are
+  purged; `change_purge_floor` is raised to the highest purged tombstone seq. Idempotency keys older than the same window are
+  deleted by the same job, so a retried write finds its key for as long as a tombstone is retained.
 - A client with `0 < since < floor` gets `resync_required (below_floor)`. A client with `since = 0` is always served.
 - Entity tombstones in their own tables are never purged (unchanged).
 
 ## 6. Push: existing write endpoints in *sync mode* [NEW]
 
 A client opts in per request with the header `Atlas-Sync: 1` (the protocol major, §10). Without it every
-endpoint behaves exactly as today (the web app is unaffected). In sync mode:
+endpoint behaves exactly as before (the web app is unaffected; its only visible differences are additive response fields and the
+snapshot/retention changes of §4/§5). In sync mode:
 
 ### 6.1 Common
 
@@ -150,15 +182,29 @@ endpoint behaves exactly as today (the web app is unaffected). In sync mode:
 - Creates accept an optional client `id` (UUID; version 4 or 7). Same `id` + same body ⇒ replay; same `id` +
   different body ⇒ `409 id_exists`; an `id` owned by another user ⇒ `409 id_exists` (no disclosure). Without `id`
   the server assigns one as today.
-- Every write response adds `sync: {revision, resolution?: Resolution[]}`; a merged or auto-resolved write
-  returns the full resulting entity so the client can replace its base.
-- Errors use `{error: <code>, detail, current_revision?, conflicts?}`. Codes in §8.
+- Every write response adds `sync: {revision, resolution: Resolution[], conflicts: Conflict[]}` (`null` outside sync mode); a
+  merged or auto-resolved write returns the full resulting entity so the client can replace its base. `Resolution` is
+  `{rule, field?, kept_revision?, loser?, detail?}` and, until SYNC-05, exists **only in the response**. `Conflict` is
+  `{field, reason: text_conflict|invalid_transition, server_revision, server_value}`.
+- Errors use `{error: <code>, detail, current_revision?, conflicts?, entity?, resolution?}`. Codes in §8. Implemented codes:
+  `idempotency_key_required`, `base_revision_required`, `unknown_fields` (`fields`), `idempotency_mismatch`, `id_exists`,
+  `stale` (also: a base from the future), `conflict`, `edit_wins`, `not_found`, `path_exists`, `sync_version_unsupported`,
+  `epoch_mismatch`. Validation errors other than the above keep the framework's `422`/`400` bodies.
+- `DELETE` carries its base as the query parameter `base_revision` (it has no body). `Idempotency-Replayed: true` marks a replay.
+- Creates also accept `id` outside sync mode (additive; the web app does not send it). Replay by id is recognised only for an
+  *untouched* entity (revision 1, live, equal fields): once edited, the original result cannot be reconstructed and the id is
+  simply taken (`409 id_exists`); a deleted entity keeps its id reserved. An id owned by another user answers exactly like a
+  taken one.
 
 ### 6.2 Tasks and projects (field-level merge)
 
-New column `field_revisions jsonb` on `tasks` and `projects`: `{field: revision at which the field last changed}`
+Column `field_revisions jsonb` on `tasks` and `projects` [DONE]: `{field: revision at which the field last changed}`
 (fields are the writable columns plus `tags`). Maintained by the service on every write; backfilled to the
-current `revision` for existing rows (so an old base never merges silently across a pre-migration change).
+current `revision` for existing rows (so an old base never merges silently across a pre-migration change). Every write path
+stamps the fields whose value actually changed, including server-side effects (`completed_at` with `status`, `project_id` when a
+project is deleted or a deleted task returns into a deleted project, `parent_task_id` when a parent is deleted); a task created by
+recurrence starts with every field at revision 1. A field with no stamp counts as changed *now*, so a missing history can only
+produce a conflict, never a silent merge. `tags` is one field, compared as a case-insensitive set.
 
 `PATCH` body in sync mode carries **only the fields the client changed** plus `base_revision`. For each field
 `f`:
@@ -192,6 +238,16 @@ Recurring completion on two devices: the second `status → completed` is a no-o
 simulation scenario, not assumed.
 
 ### 6.3 Notes
+
+**SYNC-03 delivered** the identity and create rules, idempotent note writes and the live-path index; everything about content
+(`base_hash`, merge, history), stale-delete `edit_wins`, revive-on-`PUT`, move rules and portable paths is **[PLANNED]** SYNC-04.
+In sync mode today: a note write needs an `Idempotency-Key`; `PUT`/`move`/`DELETE` need `base_revision` (not yet checked for
+move/delete); unknown body fields are `422` (so `base_hash` is not accepted until SYNC-04 adds it); a path taken by a live note
+becomes `name (2).md` on create with a `path_collision` entry in `sync.resolution`; a create with a client `id` is always a new
+row (the partial unique index `uq_notes_user_id_path_live`, D3, lets it share a path with a tombstone), while a create without
+one still revives a tombstone at that path under its old id (task links come back). The idempotency record of a note write holds
+the note **summary and `sync` block, not the content** (a body can be 5 MiB and keys live 90 days): a replay returns that
+summary with `Idempotency-Replayed: true`, which is a historical snapshot like every 2xx body (§8.1).
 
 Identity: the note `id` (client-generated allowed) is the identity; `path` is a mutable simple field.
 
@@ -255,8 +311,11 @@ restore it when pushed; (d) replace server-state, set cursor to `head`. Links ar
 7.4 **`cursor_ahead`** (server restored from an older backup): the server lost changes. The client keeps its
 local state, marks all entities whose local `revision` exceeds the snapshot's (or are absent from it) as
 "server lost these", shows a blocking notice, and on confirmation re-creates them with their own ids through the
-normal create path (client ids make that idempotent). Never automatic. An operator command to record that a
-restore happened (and to warn connected devices) is a SYNC-01 deliverable; the exact UX is open (ADR-0059 D12).
+normal create path (client ids make that idempotent). Never automatic. **Server side [DONE]:** a restored server whose cursor has since grown past the client's would look normal, so
+the operator runs `atlas-admin record-restore` after a restore (OPERATIONS.md): it rotates the instance `epoch`. A sync-mode
+request carrying `Atlas-Epoch: <old>` to an authenticated sync router (tasks, projects, notes, changes) is answered
+`409 epoch_mismatch` with the new epoch and **nothing is applied**; the client must ask its user before adopting it. The
+client UX is open (ADR-0059 D12).
 
 7.5 **Storm control**: after a `resync_required` a client may not resync again within 10 minutes without user
 action, and at most one resync is in flight per device; the server rate-limits snapshot pages per device (§8.3).
@@ -278,7 +337,8 @@ action, and at most one resync is in flight per device; the server rate-limits s
 | 409 `idempotency_mismatch` | key reused with another body | permanent, report a bug |
 | 413 `too_large` | body > limit | permanent; mark item "too large to sync" |
 | 422 | validation | permanent; keep the user's text, show the server message |
-| 426 `sync_version_unsupported` | `{min,max}` | stop syncing; "update required" (§10) |
+| 426 `sync_version_unsupported` | `{min,max}` | stop syncing, keep the queue, send nothing more; "update required" (§10) |
+| 409 `epoch_mismatch` | `{epoch}` | stop; ask the user (restored server or another server); nothing was applied |
 | 429 | rate limited | honour `Retry-After`, then retry same request |
 | 5xx, timeout, connection loss, aborted response | outcome unknown | retry the **same** request (same key) with backoff |
 
@@ -344,7 +404,9 @@ normal pull).
 ### 10.2 Versioning
 
 - **Protocol major** `Atlas-Sync: <int>` header (§6) and `GET /api/instance` gains
-  `sync: {protocol: {min, max}, entities: {<type>: <schema int>}, limits, tombstone_retention_days, epoch}`.
+  `sync: {protocol: {min, max}, entities: {<type>: <schema int>}, limits: {max_note_bytes, feed_page_max,
+  feed_page_max_with_data}, tombstone_retention_days, idempotency_retention_days, epoch}` [DONE]. The `426` is raised before
+  authentication (it reveals only the range); the epoch check after it.
   The server accepts `min..max`; it raises `max` for additive changes and `min` only for breaking changes, with
   a deprecation note in `instance` one release earlier. Outside the range ⇒ `426`.
 - **Client** stores `protocol` and a local `schema_version`; a local database newer than the app ⇒ the app refuses
@@ -354,8 +416,9 @@ normal pull).
   on it. This is why the cursor can safely advance over filtered items and why an old client never silently
   drops new data. Unknown **fields** are ignored by clients; servers ignore unknown request fields only in
   non-sync mode (sync mode rejects them with 422 so an old client cannot half-write).
-- `epoch` (a UUID created at first run, stored in the database) lets a client detect that it is talking to a
-  different server than its data came from; a mismatch is a blocking prompt, never an automatic resync.
+- `epoch` (a UUID in `instance_meta`, created by the migration, rotated by `atlas-admin record-restore`) lets a client detect
+  that it is talking to a different server or a restored one; a mismatch is a blocking prompt, never an automatic resync. A
+  database restored from a backup keeps the epoch stored in the backup until the operator rotates it.
 
 ## 11. Desktop notes folder rules (client obligations, specified here because they affect the protocol)
 
@@ -375,6 +438,13 @@ normal pull).
 - Deletes go to a client trash folder. Files > 5 MiB are listed as "too large to sync".
 
 ---
+
+## 11a. Clocks (D11) [DONE]
+
+No server decision reads a device clock: order is the arrival order of the request at the server and the entity revision. The
+server never reads `X-Client-Time` (a test sends absurd values in both directions); server-set times (`completed_at`, conflict
+names, history) use the server clock. The simulation gives each client a jumping offset of up to a day and compares the final state
+of a run with and without skew (identical), and a planted "order by client time" bug fails it.
 
 ## 12. Open items (not decided by this document)
 

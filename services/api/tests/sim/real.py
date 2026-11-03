@@ -38,3 +38,15 @@ class RealServer:
         response = await self.handle(Req("GET", "/api/changes", params={"since": 2**62}))
         assert response.status == 200 and response.body["resync_reason"] == "cursor_ahead"
         return int(response.body["next_since"])
+
+    async def all_entity_ids(self) -> list[str]:
+        """Every task and project id the (single-user) test database holds, live or deleted."""
+        from sqlalchemy import text
+
+        from atlas.db import session_scope
+
+        async with session_scope() as session:
+            rows = await session.execute(
+                text("SELECT id::text FROM tasks UNION ALL SELECT id::text FROM projects")
+            )
+            return [row[0] for row in rows]

@@ -13,11 +13,21 @@ from sqlalchemy import select, text
 
 from .. import __version__
 from ..backups.status import read_destination_status
+from ..changes.feed import MAX_CHANGE_LIMIT
 from ..config import get_settings
 from ..jobs import BACKUP_TASK
 from ..models import Job
+from ..sync.epoch import get_epoch
+from ..sync.protocol import ENTITY_SCHEMAS, MAX_DATA_LIMIT, PROTOCOL_MAX, PROTOCOL_MIN
 from .deps import CurrentUser, DbSession
-from .schemas import BackupLatest, BackupStatus, InstanceInfo
+from .schemas import (
+    BackupLatest,
+    BackupStatus,
+    InstanceInfo,
+    InstanceSync,
+    SyncLimits,
+    SyncProtocolRange,
+)
 
 router = APIRouter(prefix="/api/instance", tags=["instance"])
 
@@ -41,6 +51,8 @@ async def instance_info(_user: CurrentUser, session: DbSession) -> InstanceInfo:
     ).first()
     destination = await asyncio.to_thread(read_destination_status, settings.backup_dir)
     latest = destination.latest
+    epoch = await get_epoch(session)
+    await session.commit()  # a first read may have created the epoch row
     return InstanceInfo(
         version=__version__,
         environment=settings.atlas_env,
@@ -48,6 +60,18 @@ async def instance_info(_user: CurrentUser, session: DbSession) -> InstanceInfo:
         migration_revision=revision,
         web_push_configured=bool(
             settings.vapid_public_key and settings.vapid_private_key and settings.vapid_subject
+        ),
+        sync=InstanceSync(
+            protocol=SyncProtocolRange(min=PROTOCOL_MIN, max=PROTOCOL_MAX),
+            entities=dict(ENTITY_SCHEMAS),
+            limits=SyncLimits(
+                max_note_bytes=5 * 1024 * 1024,
+                feed_page_max=MAX_CHANGE_LIMIT,
+                feed_page_max_with_data=MAX_DATA_LIMIT,
+            ),
+            tombstone_retention_days=settings.change_retention_days,
+            idempotency_retention_days=settings.change_retention_days,
+            epoch=epoch,
         ),
         backups=BackupStatus(
             destination_available=destination.available,

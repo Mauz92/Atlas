@@ -45,6 +45,7 @@ TASK_COLUMNS = {
     "external_provider",
     "external_id",
     "revision",
+    "field_revisions",
     "deleted_at",
     "created_at",
     "updated_at",

@@ -14,9 +14,9 @@ decision record is ``DECISIONS.md`` ADR-0032; the pure cursor/ordering rules are
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..changes import (
     DEFAULT_CHANGE_LIMIT,
@@ -25,11 +25,14 @@ from ..changes import (
     InvalidChangeCursorError,
     parse_limit,
     parse_since,
+    parse_types,
 )
+from ..sync.protocol import MAX_DATA_LIMIT
 from .deps import CurrentUser, DbSession
-from .schemas import ChangeOut, ChangesOut
+from .schemas import ChangeOut, ChangesOut, NoteSyncData, ProjectSyncData, TaskSyncData
+from .sync_gate import epoch_check
 
-router = APIRouter(prefix="/api", tags=["sync"])
+router = APIRouter(prefix="/api", tags=["sync"], dependencies=[Depends(epoch_check)])
 
 
 @router.get("/changes", response_model=ChangesOut)
@@ -56,6 +59,34 @@ async def list_changes(
             ),
         ),
     ] = None,
+    include: Annotated[
+        Literal["data"] | None,
+        Query(
+            description=(
+                "`data`: add each entity's `revision` and stored state to its item (max "
+                f"{MAX_DATA_LIMIT} items per page). Notes carry metadata only."
+            ),
+        ),
+    ] = None,
+    types: Annotated[
+        str | None,
+        Query(
+            max_length=200,
+            description=(
+                "Comma-separated entity types to return (`task`, `project`, `note`, "
+                "`note_project_link`, `task_note_link`). The cursor still advances over the rest."
+            ),
+        ),
+    ] = None,
+    snapshot: Annotated[
+        bool,
+        Query(
+            description=(
+                "Send `true` on every page of a snapshot walk after the first (the one at "
+                "`since=0`): a purge floor above the walk's position then cannot interrupt it."
+            ),
+        ),
+    ] = False,
 ) -> ChangesOut:
     """Incremental change feed for the calling user (M7-01).
 
@@ -80,12 +111,19 @@ async def list_changes(
     """
     try:
         cursor = parse_since(since)
-        page_size = parse_limit(limit)
+        page_size = parse_limit(limit, maximum=MAX_DATA_LIMIT if include else MAX_CHANGE_LIMIT)
+        wanted_types = parse_types(types)
     except InvalidChangeCursorError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
-    page = await ChangesService(session, user.id).changes(since=cursor, limit=page_size)
+    page = await ChangesService(session, user.id).changes(
+        since=cursor,
+        limit=page_size,
+        types=wanted_types,
+        include_data=include == "data",
+        snapshot=snapshot,
+    )
     return ChangesOut(
         changes=[
             ChangeOut(
@@ -94,6 +132,8 @@ async def list_changes(
                 operation=change.operation,
                 cursor=change.cursor,
                 changed_at=change.changed_at,
+                revision=change.revision,
+                data=_data_out(change.entity_type, change.data),
             )
             for change in page.changes
         ],
@@ -102,4 +142,16 @@ async def list_changes(
         has_more=page.has_more,
         resync_required=page.resync_required,
         resync_reason=page.resync_reason,
+        head=page.head,
+        floor=page.floor,
     )
+
+
+def _data_out(entity_type: str, data: dict[str, Any] | None) -> Any:
+    if data is None:
+        return None
+    if entity_type == "task":
+        return TaskSyncData.model_validate(data)
+    if entity_type == "project":
+        return ProjectSyncData.model_validate(data)
+    return NoteSyncData.model_validate(data)

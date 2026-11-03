@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,10 +28,12 @@ from .api import (
     search_router,
     tasks_router,
 )
+from .api.sync_gate import sync_error_response, sync_gate
 from .config import get_settings
 from .db import dispose_engine
 from .logging import configure_logging
 from .middleware import CsrfMiddleware, RequestContextMiddleware, SecurityHeadersMiddleware
+from .sync.protocol import SyncError
 
 #: Requests under this prefix carry OAuth token material, so their validation errors must not echo
 #: the submitted value (SECURITY.md T2); the auth endpoints carry passwords.
@@ -58,6 +60,7 @@ def create_app() -> FastAPI:
         docs_url=None if settings.is_production else "/api/docs",
         redoc_url=None,
         lifespan=lifespan,
+        dependencies=[Depends(sync_gate)],
     )
 
     # Added last runs first: request context is outermost, CSRF innermost.
@@ -89,6 +92,8 @@ def create_app() -> FastAPI:
     app.include_router(notifications_router)
     app.include_router(export_router)
     app.include_router(instance_router)
+
+    app.add_exception_handler(SyncError, sync_error_response)  # type: ignore[arg-type]
 
     @app.exception_handler(RequestValidationError)
     async def _redact_credential_validation_errors(

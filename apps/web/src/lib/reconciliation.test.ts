@@ -24,6 +24,8 @@ function feed(overrides: Partial<ChangeFeed> = {}): ChangeFeed {
     next_since: 0,
     has_more: false,
     resync_required: false,
+    head: 0,
+    floor: 0,
     ...overrides,
   };
 }

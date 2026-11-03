@@ -17,9 +17,10 @@ import json
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,3 +111,18 @@ class IdempotencyStore:
             .where(IdempotencyKey.user_id == self.user_id, IdempotencyKey.key == key)
             .values(response_status=status_code, response_body=body)
         )
+
+
+async def purge_expired(session: AsyncSession, *, cutoff: datetime) -> int:
+    """Delete idempotency keys created before ``cutoff``; returns how many.
+
+    Keys are kept at least as long as deletion tombstones (``change_retention_days``): an offline
+    client may retry a write long after it was first sent, and a replay must still find its key.
+    Safe to repeat. Only the key table is touched, never the entities the keys produced.
+    """
+    removed = await session.execute(
+        delete(IdempotencyKey)
+        .where(IdempotencyKey.created_at < cutoff)
+        .returning(IdempotencyKey.id)
+    )
+    return len(removed.all())

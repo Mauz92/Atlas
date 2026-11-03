@@ -191,6 +191,21 @@ docker exec -i atlas-db-1 psql -U atlas -d atlas_restore -v ON_ERROR_STOP=1 < "$
 `-v ON_ERROR_STOP=1` makes `psql` fail on the first error instead of continuing. Expected: exit 0 and
 no `ERROR`/`FATAL` lines; the dump recreates the schema and loads the rows.
 
+### 2.2a Tell sync clients about the restore (required once sync clients exist)
+
+A restored database is older than what a sync client may already hold. The server cannot tell: if it has since accepted new
+writes its change cursor may exceed the client's again and the client would silently skip changes. After the restored instance
+is up, run once:
+
+```bash
+docker compose exec api atlas-admin record-restore      # or: atlas-admin record-restore
+```
+
+It rotates the instance `epoch` (stored in `instance_meta`, so it is part of every backup and restore). A sync client that
+sends the old `Atlas-Epoch` gets `409 epoch_mismatch` and applies nothing until its user decides what to do (SYNC_PROTOCOL.md 7.4:
+re-create what the server lost, with the user's confirmation). Browser sessions are not affected. Skipping this step on a server
+that has sync clients risks silent divergence; it is harmless otherwise (idempotent, no data is touched).
+
 ### 2.3 Restore the notes
 
 ```bash

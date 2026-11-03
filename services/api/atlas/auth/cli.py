@@ -2,6 +2,7 @@
 
     atlas-admin list-users
     atlas-admin reset-password --email EMAIL
+    atlas-admin record-restore
 
 An **operator** tool (like ``atlas-backup``): it runs on the server with access to the database,
 so it is not reachable over the network. The new password is read from a hidden prompt (or from
@@ -56,6 +57,10 @@ def _build_parser() -> argparse.ArgumentParser:
     commands.add_parser("list-users", help="list account emails")
     reset = commands.add_parser("reset-password", help="set a new password for an account")
     reset.add_argument("--email", required=True, help="the account email")
+    commands.add_parser(
+        "record-restore",
+        help="run after restoring a backup: tell sync clients the server went back in time",
+    )
     return parser
 
 
@@ -87,11 +92,26 @@ async def _reset(email: str, password: str) -> int:
     return 0
 
 
+async def _record_restore() -> int:
+    from ..db import session_scope
+    from ..sync.epoch import rotate_epoch
+
+    async with session_scope() as session:
+        await rotate_epoch(session)
+    print(
+        "restore recorded: sync clients will be told this server's history changed and will "
+        "ask their users before they sync again"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
         if args.command == "list-users":
             return asyncio.run(_list_users())
+        if args.command == "record-restore":
+            return asyncio.run(_record_restore())
         return asyncio.run(_reset(args.email, _read_password()))
     except ResetError as exc:
         print(f"error: {exc}", file=sys.stderr)

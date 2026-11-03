@@ -45,6 +45,14 @@ const INFO: InstanceInfo = {
     last_job_status: "succeeded",
     last_job_at: "2026-11-01T03:00:05Z",
   },
+  sync: {
+    protocol: { min: 1, max: 1 },
+    entities: { task: 1, project: 1, note: 1, note_project_link: 1, task_note_link: 1 },
+    limits: { max_note_bytes: 5242880, feed_page_max: 500, feed_page_max_with_data: 200 },
+    tombstone_retention_days: 90,
+    idempotency_retention_days: 90,
+    epoch: "00000000-0000-4000-8000-000000000000",
+  },
 };
 
 function Where() {

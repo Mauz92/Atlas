@@ -280,14 +280,20 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   value or drop text; the existing server has none of this yet (`SYNC_PROTOCOL.md` §2).
 - **Mitigation:** uncertain ⇒ conflict copy, never a guess; pre-merge versions kept in note history; resolution log with undo;
   simulation invariants "no acknowledged loss" and "no resurrection"; client deletes go to a trash folder; ADR-0059 D4–D7.
-- **Owner milestone:** SYNC. **Status:** Open.
+- **SYNC-03 (2026-11-03):** task/project field merge, edit-wins and the structured text conflict are implemented and covered by
+  `test_sync_writes.py`, the model/real conformance traces and the v1 simulation (`no_silent_text_loss`, `edit_wins`,
+  `unexpected_rejection`, with a planted defect for each). **Still open:** note content merge/history (SYNC-04), persisted
+  resolution log and undo (SYNC-05: today `sync.resolution` exists only in the response, see R-41).
+- **Owner milestone:** SYNC. **Status:** Mitigating (tasks/projects); Open (notes).
 
 ### R-29 — Clock skew and clock jumps
 - **Severity/Likelihood:** Medium / High (laptops sleep, phones change zone)
 - **Description:** wrong device clocks break local reminder times, "today", token expiry display; they must never decide a winner.
 - **Mitigation:** server-assigned order only (ADR-0055 §3, ADR-0059 D11); simulation invariant 6 (same result under any offsets);
   server-set timestamps; reminders scheduled from due instants + zone, recomputed on clock change.
-- **Owner milestone:** SYNC. **Status:** Open.
+- **SYNC-03:** the server never reads `X-Client-Time` (`test_the_device_clock_never_decides`); the simulation compares runs with and
+  without jumping client clocks (identical final state) and a planted "order by client time" defect fails it.
+- **Owner milestone:** SYNC. **Status:** Mitigating (server verified; client reminders unbuilt).
 
 ### R-30 — Resync storms and restore-rewind
 - **Severity/Likelihood:** Medium / Medium
@@ -295,7 +301,11 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   feed and never notice), or many clients resyncing at once can loop or silently diverge.
 - **Mitigation:** SYNC-01 `cursor_ahead` signal (server side done 2026-11-03; client handling and the operator command are not); resync cooldown and per-device snapshot limit; confirm-before-reupload; operator
   runbook; simulation scenario "restore from backup"; `epoch` check.
-- **Owner milestone:** SYNC. **Status:** Open.
+- **SYNC-03:** `epoch` + `Atlas-Epoch` + `atlas-admin record-restore` implemented and documented (OPERATIONS.md 2.2a); a snapshot walk
+  can no longer be interrupted by the floor (`snapshot=true`, found by simulation seed 29, R-38). **Residual:** the operator must
+  run `record-restore` after a restore (R-39); client confirmation UX and storm control are SYNC-08; "restore from backup" is not yet
+  a random action of the simulation.
+- **Owner milestone:** SYNC. **Status:** Mitigating.
 
 ### R-31 — Retention shorter than an offline period
 - **Severity/Likelihood:** Medium / Medium
@@ -303,7 +313,9 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   a deletion made while a device was away can be unknowable after tombstones are purged.
 - **Mitigation:** ADR-0059 D2 (keep upserts, tombstones 90 days, snapshot from 0); resync is non-destructive, pending edits kept
   (rule 4); idempotency keys outlive tombstones.
-- **Owner milestone:** SYNC. **Status:** Open.
+- **SYNC-03:** implemented (upserts never purged, tombstones 90 days, `since=0` snapshot, keys purged with the tombstones;
+  `test_change_purge.py`, simulation with a tombstone purge). A device away longer than 90 days still needs the client-side
+  non-destructive resync (SYNC-08). **Status:** Mitigating (server).
 
 ### R-32 — Partial apply and cursor ordering
 - **Severity/Likelihood:** High / Low
@@ -354,6 +366,54 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   and parent changes go through task `PATCH`; reminders and links carry no revision. A tag or series write by two concurrent
   updates of the same task is serialised by the task row lock.
 - **Owner milestone:** SYNC-03. **Status:** Fixed locally (2026-11-03; CI not run).
+
+### R-38 - A multi-page snapshot bootstrap could never finish once the purge floor passed its first page (found and fixed in SYNC-03)
+- **Severity/Likelihood:** High / High *before the fix*: any device with more than one page of data, after the first tombstone purge
+- **Description:** `0 < since < floor` is `below_floor`. Page 2 of a bootstrap walk is at `since` = the cursor of page 1, which is
+  below the floor once a tombstone with a higher cursor has been purged, so the client was told to resync, restarted at 0 and
+  looped (found by simulation seed 29 at 300 steps; the first design said only "since = 0 is always served").
+- **Fix:** pages after the first carry `snapshot=true`; the floor check is skipped for them (cursor-ahead is not). Regression tests:
+  `test_a_multi_page_bootstrap_survives_a_floor_above_its_position`, `test_a_snapshot_walk_is_never_below_the_floor`, the v1
+  simulation with purges. **Status:** Closed (server); the client must send the parameter (SYNC-08).
+
+### R-39 - A restored server regrows past its clients' cursors and nobody notices
+- **Severity/Likelihood:** High / Low (needs a restore and an operator who forgets one command)
+- **Description:** `cursor_ahead` only fires while the server head is below the client's cursor. Once the restored server has accepted
+  enough new writes the cursors overlap and a client silently skips the changes it never saw.
+- **Mitigation:** `epoch` rotated by `atlas-admin record-restore`; clients send `Atlas-Epoch` and stop on `409 epoch_mismatch`;
+  OPERATIONS.md 2.2a makes it a restore step. **Residual:** it depends on the operator. A stronger design (the server detects a
+  restore itself, for example by recording the highest cursor outside the database) is not built. **Status:** Mitigating.
+
+### R-40 - A late acknowledgement can re-introduce an entity the client's cursor has already passed as deleted
+- **Severity/Likelihood:** Medium / Medium (found by the v1 simulation, seed 681)
+- **Description:** a snapshot omits tombstones; a client whose create was applied but not yet acknowledged can pass the delete and
+  then install the replayed create body as live state.
+- **Mitigation:** the rule of `SYNC_PROTOCOL.md` 8.1 (a 2xx body is historical; the acknowledged entity is read again at the next
+  pull) plus remembering a tombstone for ids never held. Encoded in the simulation client; `sync-core` must implement both.
+  **Status:** Mitigating (client work).
+
+### R-41 - Automatic resolutions exist only in the response until SYNC-05
+- **Severity/Likelihood:** Medium / Medium
+- **Description:** `sync.resolution` (rule, field, overwritten simple value) is returned to the writer and stored with its
+  idempotency record (so a retry sees it), but there is no `sync_resolutions` table, feed entity or undo: other devices are not told
+  "changed on another device", and the overwritten value is gone from the server once the idempotency key expires.
+- **Mitigation:** SYNC-05 (next); the wire shape is already final. **Status:** Open (by plan).
+
+### R-42 - Note writes in sync mode are only idempotent, not yet merge- or delete-safe
+- **Severity/Likelihood:** Medium / Medium
+- **Description:** SYNC-03 gave notes client ids, the live-path index, collision renaming and keys, but a stale note `DELETE` still
+  wins, a `PUT` of a deleted note is still `404`, and a stale `PUT` is a plain `409 stale` (the ADR-0054 keep-mine flow), so a sync
+  client must not rely on rule 4 or merge for notes until SYNC-04. A replayed note write returns the summary, not the content.
+- **Mitigation:** SYNC-04 (history, three-way merge, revive, move/delete rules); the sync-mode requirements (`base_revision` on
+  delete/move, rejected `base_hash`) keep the contract forward-compatible. **Status:** Open (by plan).
+
+### R-43 - Idempotency table growth and the purge scan
+- **Severity/Likelihood:** Low / Medium
+- **Description:** every sync-mode write stores a key; with 90-day retention at personal scale (tens of thousands of rows) the hourly
+  `DELETE ... WHERE created_at < cutoff` is a sequential scan of `idempotency_keys` (no index on `created_at`). Note keys store a
+  summary only.
+- **Mitigation:** acceptable now; add `ix_idempotency_keys_created_at` if the table exceeds ~1M rows (measure first, AGENTS.md 4).
+  **Status:** Accepted.
 
 ### R-33 — Desktop notes folder edited by other programs
 - **Severity/Likelihood:** High / High
@@ -432,3 +492,4 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 | 2026-11-03 | SYNC-03 | R-37 mitigated (row lock before the revision check on tasks, projects, notes; lock order documented; tests). R-34 fixed in the shipped nginx config with a static and a live-container test; JSON-escaping worst case recorded. Reconcile now removes a note exactly like `NotesService.delete` (project links dropped and announced). New findings, all fixed: reconcile-vs-edit lock order, task-into-deleted-project race, `FOR UPDATE` vs foreign-key deadlock, nginx 6m too small for escaped notes (now 11m). Harness: model-sim seed 482 was a missing client rule (an acknowledgement, possibly a replay, is a historical snapshot), not a server flaw; fixed in the model client, protocol rule recorded in `SYNC_PROTOCOL.md` section 8.1. |
 | 2026-11-03 | SYNC-02 | R-37 added: concurrent PATCHes with one `base_revision` both succeed (lost update). Also learned: a retried request must be byte-identical including `base_revision`, because the server fingerprints the whole body; a client that re-reads the base revision on retry gets `409` on its own key. The production `fullResync` hook is still not supplied (model client implements it by listing). |
 | 2026-11-03 | SYNC-01 | R-34 verified as a real defect (shipped nginx rejects bodies above 1 MiB with `413`; fix proposed, not applied). R-32 ordering proven by a concurrency test. R-30: server side of `cursor_ahead` delivered. New finding: `NotesReconciler` tombstones a removed note but, unlike `NotesService.delete`, does not drop its `note_projects` rows or announce the link removal (pre-existing; recorded in `ROADMAP.md` SYNC-03 scope, not changed in SYNC-01). |
+| 2026-11-03 | SYNC-03 (protocol v1) | R-38 (snapshot walk vs floor, sim seed 29) found and closed; R-39 (restore regrowth, `epoch`), R-40 (late ack vs tombstone, sim seed 681), R-41 (resolutions response-only until SYNC-05), R-42 (notes not merge/delete-safe until SYNC-04), R-43 (idempotency purge scan) added. R-28, R-29, R-30, R-31 moved to Mitigating (server side). |

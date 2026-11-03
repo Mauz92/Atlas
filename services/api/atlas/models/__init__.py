@@ -5,6 +5,7 @@ from .calendar import ExternalEvent, SyncCursor
 from .change import ChangeLog
 from .credential import CredentialProvider, ProviderCredential
 from .idempotency import IdempotencyKey
+from .instance import InstanceMeta
 from .job import Job, JobStatus
 from .note import NoteIndex, NoteLink, NoteTag, Tag
 from .notification import NotificationDevice, PushChannel
@@ -26,6 +27,7 @@ __all__ = [
     "CredentialProvider",
     "ExternalEvent",
     "IdempotencyKey",
+    "InstanceMeta",
     "Job",
     "JobStatus",
     "NoteIndex",

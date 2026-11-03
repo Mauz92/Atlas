@@ -5,16 +5,18 @@ from __future__ import annotations
 import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Annotated, NoReturn
+from typing import Annotated, Any, NoReturn
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from ..config import get_settings
 from ..idempotency import IdempotencyConflictError, IdempotencyStore, fingerprint
 from ..models import NoteIndex
 from ..notes import (
     NoteConflictError,
+    NoteIdExistsError,
     NoteNotFoundError,
     NotePathConflictError,
     NotesReconciler,
@@ -31,6 +33,7 @@ from ..projects import (
     ProjectsService,
 )
 from ..reminders import ReminderService
+from ..sync.protocol import SyncError
 from ..tasks import TasksService, TaskValidationError
 from ..tasks.note_links import TaskNoteLinks
 from .deps import CurrentUser, DbSession
@@ -52,12 +55,16 @@ from .schemas import (
     NoteUpdateRequest,
     ProjectListOut,
     ReconcileOut,
+    SyncResolutionOut,
+    SyncResult,
     TaskCreateRequest,
     TaskOut,
 )
+from .sync_gate import SyncMode, epoch_check
+from .syncio import REPLAYED_HEADER, reject_unknown_fields, require_base, require_key
 from .tasks import task_out
 
-router = APIRouter(prefix="/api/notes", tags=["notes"])
+router = APIRouter(prefix="/api/notes", tags=["notes"], dependencies=[Depends(epoch_check)])
 folders_router = APIRouter(prefix="/api/folders", tags=["notes"])
 
 
@@ -68,9 +75,21 @@ def get_storage() -> NotesStorage:
 StorageDep = Annotated[NotesStorage, Depends(get_storage)]
 
 
-def _translate(exc: Exception) -> NoReturn:
+def _translate(exc: Exception, sync: bool = False) -> NoReturn:
     """Map domain errors onto HTTP responses; re-raise anything unexpected."""
+    if isinstance(exc, NoteIdExistsError):
+        raise SyncError(
+            409, "id_exists", "that id is already in use by a different record"
+        ) from exc
     if isinstance(exc, NoteConflictError):
+        if sync:
+            raise SyncError(
+                409,
+                "stale",
+                "note changed since it was read",
+                current_revision=exc.current_revision,
+                current_hash=exc.current_hash,
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -79,12 +98,20 @@ def _translate(exc: Exception) -> NoReturn:
             },
         ) from exc
     if isinstance(exc, (NoteNotFoundError, FileNotFoundError, ProjectNotFoundError)):
+        if sync:
+            raise SyncError(404, "not_found", "Not found") from exc
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
     if isinstance(exc, (NotePathConflictError, FileExistsError)):
+        if sync:
+            raise SyncError(409, "path_exists", "A note or folder already exists there") from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="A note or folder already exists there"
         ) from exc
     if isinstance(exc, IdempotencyConflictError):
+        if sync:
+            raise SyncError(
+                409, "idempotency_mismatch", "idempotency key reused with a different request"
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="idempotency key reused with a different request",
@@ -100,6 +127,41 @@ def _translate(exc: Exception) -> NoReturn:
     if isinstance(exc, OSError):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     raise exc
+
+
+async def _begin_sync_write(
+    sync: bool,
+    request: Request,
+    model: type[BaseModel] | None,
+    store: IdempotencyStore,
+    key: str | None,
+    operation: str,
+    request_payload: dict[str, Any],
+) -> JSONResponse | None:
+    """Sync-mode preamble shared by the note writes: key required, unknown fields refused, the
+    key reserved. Returns the stored response of a replay (a summary: note bodies are not stored,
+    they can be 5 MiB), else ``None``. Outside sync mode notes keep their historical behaviour:
+    no key support at all."""
+    if not sync:
+        return None
+    require_key(sync, key)
+    if model is not None:
+        await reject_unknown_fields(request, model)
+    assert key is not None
+    try:
+        stored = await store.reserve(key, operation, fingerprint(request_payload))
+    except Exception as exc:
+        _translate(exc, sync)
+    if stored is None:
+        return None
+    return JSONResponse(
+        status_code=stored.status_code, content=stored.body, headers=REPLAYED_HEADER
+    )
+
+
+def _stored_summary(note: NoteIndex, result: SyncResult) -> dict[str, Any]:
+    """What a note write stores for replay: the summary and the sync block, never the content."""
+    return {**_summary(note).model_dump(mode="json"), "sync": result.model_dump(mode="json")}
 
 
 def _summary(note: NoteIndex) -> NoteSummaryOut:
@@ -181,15 +243,61 @@ async def reconcile(user: CurrentUser, session: DbSession, storage: StorageDep) 
 
 @router.post("", response_model=NoteDetailOut, status_code=status.HTTP_201_CREATED)
 async def create_note(
-    payload: NoteCreateRequest, user: CurrentUser, session: DbSession, storage: StorageDep
-) -> NoteDetailOut:
+    payload: NoteCreateRequest,
+    request: Request,
+    response: Response,
+    user: CurrentUser,
+    session: DbSession,
+    storage: StorageDep,
+    sync: SyncMode,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=200)] = None,
+) -> Any:
+    """Create a note.
+
+    An optional client-generated `id` makes the create idempotent by id. **Sync mode**
+    (`Atlas-Sync: 1`) requires an `Idempotency-Key`; a path already taken by a live note becomes
+    `name (2).md` and the response reports `sync.resolution` `path_collision` with the final path
+    (a replay of a note write returns the note summary and `sync` block, not the content).
+    """
+    store = IdempotencyStore(session, user.id)
+    body = payload.model_dump(mode="json")
+    replay = await _begin_sync_write(
+        sync, request, NoteCreateRequest, store, idempotency_key, "note.create", body
+    )
+    if replay is not None:
+        return replay
     service = NotesService(session, user.id, storage)
+    replayed = False
     try:
-        note = await service.create(payload.path, payload.content)
+        note = (
+            await service.claim_id(payload.id, payload.path, payload.content)
+            if payload.id
+            else None
+        )
+        replayed = note is not None
+        requested: str | None = None
+        if note is None:
+            created = await service.create_with_info(
+                payload.path, payload.content, client_id=payload.id, on_collision_rename=sync
+            )
+            note, requested = created.note, created.requested_path
         detail = await _detail(service, note)
     except Exception as exc:
-        _translate(exc)
+        _translate(exc, sync)
+    if sync:
+        result = SyncResult(revision=note.revision)
+        if requested is not None:
+            result.resolution.append(
+                SyncResolutionOut(
+                    rule="path_collision", detail=f"{requested} was taken; created {note.path}"
+                )
+            )
+        detail.sync = result
+        assert idempotency_key is not None
+        await store.remember(idempotency_key, status_code=201, body=_stored_summary(note, result))
     await session.commit()
+    if replayed:
+        response.headers.update(REPLAYED_HEADER)
     return detail
 
 
@@ -317,16 +425,32 @@ async def create_task_from_note(
 async def update_note(
     note_id: uuid.UUID,
     payload: NoteUpdateRequest,
+    request: Request,
     user: CurrentUser,
     session: DbSession,
     storage: StorageDep,
-) -> NoteDetailOut:
+    sync: SyncMode,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=200)] = None,
+) -> Any:
+    store = IdempotencyStore(session, user.id)
+    body = {"note_id": str(note_id), **payload.model_dump(mode="json")}
+    replay = await _begin_sync_write(
+        sync, request, NoteUpdateRequest, store, idempotency_key, "note.update", body
+    )
+    if replay is not None:
+        return replay
     service = NotesService(session, user.id, storage)
     try:
         note = await service.update(note_id, payload.content, payload.base_revision)
         detail = await _detail(service, note)
     except Exception as exc:
-        _translate(exc)
+        _translate(exc, sync)
+    if sync:
+        detail.sync = SyncResult(revision=note.revision)
+        assert idempotency_key is not None
+        await store.remember(
+            idempotency_key, status_code=200, body=_stored_summary(note, detail.sync)
+        )
     await session.commit()
     return detail
 
@@ -354,30 +478,70 @@ async def create_conflict_copy(
 async def move_note(
     note_id: uuid.UUID,
     payload: NoteMoveRequest,
+    request: Request,
     user: CurrentUser,
     session: DbSession,
     storage: StorageDep,
-) -> NoteDetailOut:
+    sync: SyncMode,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=200)] = None,
+) -> Any:
+    if sync:
+        require_base(sync, payload.base_revision)
+    store = IdempotencyStore(session, user.id)
+    body = {"note_id": str(note_id), **payload.model_dump(mode="json")}
+    replay = await _begin_sync_write(
+        sync, request, NoteMoveRequest, store, idempotency_key, "note.move", body
+    )
+    if replay is not None:
+        return replay
     service = NotesService(session, user.id, storage)
     try:
         note = await service.rename(note_id, payload.path)
         detail = await _detail(service, note)
     except Exception as exc:
-        _translate(exc)
+        _translate(exc, sync)
+    if sync:
+        detail.sync = SyncResult(revision=note.revision)
+        assert idempotency_key is not None
+        await store.remember(
+            idempotency_key, status_code=200, body=_stored_summary(note, detail.sync)
+        )
     await session.commit()
     return detail
 
 
 @router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_note(
-    note_id: uuid.UUID, user: CurrentUser, session: DbSession, storage: StorageDep
-) -> None:
+    note_id: uuid.UUID,
+    request: Request,
+    user: CurrentUser,
+    session: DbSession,
+    storage: StorageDep,
+    sync: SyncMode,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=200)] = None,
+    base_revision: Annotated[
+        int | None,
+        Query(ge=0, description="Sync mode (required). Edit-wins for notes arrives with SYNC-04."),
+    ] = None,
+) -> Response:
+    if sync:
+        require_base(sync, base_revision)
+    store = IdempotencyStore(session, user.id)
+    replay = await _begin_sync_write(
+        sync, request, None, store, idempotency_key, "note.delete", {"note_id": str(note_id)}
+    )
+    if replay is not None:
+        return Response(status_code=replay.status_code, headers=REPLAYED_HEADER)
     service = NotesService(session, user.id, storage)
     try:
         await service.delete(note_id)
     except Exception as exc:
-        _translate(exc)
+        _translate(exc, sync)
+    if sync:
+        assert idempotency_key is not None
+        await store.remember(idempotency_key, status_code=204, body={})
     await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @folders_router.post("", status_code=status.HTTP_201_CREATED)

@@ -26,9 +26,11 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
+from ..sync.fields import task_initial
 from .base import TimestampMixin
 
 #: The text-search expression the unified search (MU-05, ADR-0047) and ``ix_tasks_search_fts``.
@@ -101,6 +103,10 @@ class Task(Base, TimestampMixin):
     external_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    #: field -> revision at which it last changed (SYNC-03, D4); see ``atlas.sync.fields``.
+    field_revisions: Mapped[dict[str, int]] = mapped_column(
+        JSONB, nullable=False, default=task_initial, server_default=text("'{}'::jsonb")
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (

@@ -28,6 +28,7 @@ PROJECT_COLUMNS = {
     "start_date",
     "target_date",
     "revision",
+    "field_revisions",
     "deleted_at",
     "created_at",
     "updated_at",

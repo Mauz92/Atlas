@@ -26,10 +26,12 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, literal_column, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..changes import (
@@ -40,6 +42,16 @@ from ..changes import (
     note_project_link_id,
 )
 from ..models import NoteIndex, NoteProject, Project, ProjectStatus, Task
+from ..sync.fields import (
+    PROJECT_FIELDS,
+    PROJECT_TEXT_FIELDS,
+    FieldConflict,
+    FieldResolution,
+    changed_fields,
+    plan_merge,
+    snapshot,
+    stamp,
+)
 from .export import ProjectExport
 from .progress import ZERO_PROGRESS, ProjectProgress, progress_from_status_counts
 
@@ -48,6 +60,8 @@ _WRITABLE = frozenset({"name", "description", "status", "start_date", "target_da
 
 DEFAULT_LIMIT = 200
 MAX_LIMIT = 500
+
+FieldNames = list[str]
 
 _VALID_STATUSES = {status.value for status in ProjectStatus}
 
@@ -66,6 +80,29 @@ class ProjectRevisionConflictError(RuntimeError):
     def __init__(self, current_revision: int) -> None:
         super().__init__("project has changed since it was read")
         self.current_revision = current_revision
+
+
+class ProjectIdExistsError(RuntimeError):
+    """A client-chosen id is already taken by a different project (or by another user's)."""
+
+
+class ProjectEditWinsError(RuntimeError):
+    """A sync-mode delete was based on a revision older than the project's: the edit wins."""
+
+    def __init__(self, current_revision: int) -> None:
+        super().__init__("project was edited after the delete was based")
+        self.current_revision = current_revision
+
+
+@dataclass(slots=True)
+class ProjectSyncUpdate:
+    """The outcome of a sync-mode ``PATCH`` of a project (see ``TaskSyncUpdate``)."""
+
+    project: Project
+    applied: list[str]
+    conflicts: list[FieldConflict]
+    resolutions: list[FieldResolution]
+    revived: bool = False
 
 
 def _as_date(value: Any, field: str) -> date | None:
@@ -101,23 +138,34 @@ class ProjectsService:
         self.session = session
         self.user_id = user_id
 
-    async def get(self, project_id: uuid.UUID, *, for_update: bool = False) -> Project:
+    async def get(
+        self, project_id: uuid.UUID, *, for_update: bool = False, include_deleted: bool = False
+    ) -> Project:
         """The caller's live project, or ``ProjectNotFoundError`` (including another user's).
 
         ``for_update`` takes the row lock and re-reads the latest committed row (R-37); used by
         every revision-bumping write.
         """
-        stmt = select(Project).where(
-            Project.id == project_id,
-            Project.user_id == self.user_id,
-            Project.deleted_at.is_(None),
-        )
+        stmt = select(Project).where(Project.id == project_id, Project.user_id == self.user_id)
+        if not include_deleted:
+            stmt = stmt.where(Project.deleted_at.is_(None))
         if for_update:
             stmt = stmt.with_for_update(key_share=True).execution_options(populate_existing=True)
         project = await self.session.scalar(stmt)
         if project is None:
             raise ProjectNotFoundError(str(project_id))
         return project
+
+    async def is_deleted(self, project_id: uuid.UUID) -> bool:
+        """Whether the caller has a soft-deleted project with this id (a delete is then a no-op)."""
+        found = await self.session.scalar(
+            select(Project.id).where(
+                Project.id == project_id,
+                Project.user_id == self.user_id,
+                Project.deleted_at.is_not(None),
+            )
+        )
+        return found is not None
 
     async def list(self, *, limit: int = DEFAULT_LIMIT) -> list[Project]:
         """The caller's live projects in capture order (deterministic by ``created_at``, ``id``)."""
@@ -285,7 +333,29 @@ class ProjectsService:
             grouped.setdefault(owner_id, []).append(note)
         return grouped
 
-    async def create(self, data: Mapping[str, Any]) -> Project:
+    async def claim_id(self, client_id: uuid.UUID, data: Mapping[str, Any]) -> Project | None:
+        """Idempotency by client id (D3): ``None`` if free, the project if this exact create already
+        happened (untouched: revision 1, live, equal fields), :class:`ProjectIdExistsError` else."""
+        existing = await self.session.get(Project, client_id)
+        if existing is None:
+            return None
+        if (
+            existing.user_id != self.user_id
+            or existing.deleted_at is not None
+            or existing.revision != 1
+        ):
+            raise ProjectIdExistsError(str(client_id))
+        wanted = {name: value for name, value in data.items() if name in _WRITABLE}
+        if "name" in wanted:
+            wanted["name"] = str(wanted["name"]).strip()
+        for name, value in snapshot(existing, wanted).items():
+            if value != wanted[name]:
+                raise ProjectIdExistsError(str(client_id))
+        return existing
+
+    async def create(
+        self, data: Mapping[str, Any], *, client_id: uuid.UUID | None = None
+    ) -> Project:
         fields = {name: value for name, value in data.items() if name in _WRITABLE}
         if not str(fields.get("name", "")).strip():
             raise ProjectValidationError("name must not be empty")
@@ -294,10 +364,17 @@ class ProjectsService:
             fields["status"] = _validate_status(fields["status"])
         _validate_dates(fields)
         project = Project(user_id=self.user_id)
+        if client_id is not None:
+            project.id = client_id
         for name, value in fields.items():
             setattr(project, name, value)
         self.session.add(project)
-        await self.session.flush()
+        try:
+            await self.session.flush()
+        except IntegrityError as exc:  # a concurrent create with the same client id won
+            if client_id is None:
+                raise
+            raise ProjectIdExistsError(str(client_id)) from exc
         await self._record_change(project.id, ChangeOperation.UPSERT)
         await self.session.refresh(project)
         return project
@@ -313,6 +390,41 @@ class ProjectsService:
         if base_revision is not None and base_revision != project.revision:
             raise ProjectRevisionConflictError(project.revision)
         fields = {name: value for name, value in changes.items() if name in _WRITABLE}
+        await self._write(project, fields)
+        return project
+
+    async def update_sync(
+        self, project_id: uuid.UUID, changes: Mapping[str, Any], base_revision: int
+    ) -> ProjectSyncUpdate:
+        """Sync-mode ``PATCH``: field-level merge, edit wins over delete (see
+        :meth:`atlas.tasks.service.TasksService.update_sync` for the rules)."""
+        project = await self.get(project_id, for_update=True, include_deleted=True)
+        if base_revision > project.revision:
+            raise ProjectRevisionConflictError(project.revision)
+        revived = project.deleted_at is not None
+        fields = {name: value for name, value in changes.items() if name in _WRITABLE}
+        incoming = dict(fields)
+        if isinstance(incoming.get("name"), str):
+            incoming["name"] = incoming["name"].strip()
+        plan = plan_merge(
+            incoming=incoming,
+            stored=snapshot(project, PROJECT_FIELDS),
+            field_revisions=project.field_revisions,
+            base_revision=base_revision,
+            revision=project.revision,
+            text_fields=PROJECT_TEXT_FIELDS,
+        )
+        if not plan.apply and not revived:
+            return ProjectSyncUpdate(project, [], list(plan.conflicts), list(plan.resolutions))
+        to_write = {name: fields[name] for name in plan.apply}
+        changed = await self._write(project, to_write, revive=revived)
+        return ProjectSyncUpdate(
+            project, changed, list(plan.conflicts), list(plan.resolutions), revived
+        )
+
+    async def _write(
+        self, project: Project, fields: dict[str, Any], *, revive: bool = False
+    ) -> FieldNames:
         if "name" in fields:
             if not str(fields["name"]).strip():
                 raise ProjectValidationError("name must not be empty")
@@ -326,15 +438,26 @@ class ProjectsService:
                 "target_date": fields.get("target_date", project.target_date),
             }
         )
+        before = snapshot(project, PROJECT_FIELDS)
+        if revive:
+            project.deleted_at = None
         for name, value in fields.items():
             setattr(project, name, value)
+        changed = changed_fields(before, snapshot(project, PROJECT_FIELDS))
         project.revision += 1
+        project.field_revisions = stamp(project.field_revisions, changed, project.revision)
         await self.session.flush()
         await self._record_change(project.id, ChangeOperation.UPSERT)
         await self.session.refresh(project)
-        return project
+        return changed
 
-    async def delete(self, project_id: uuid.UUID) -> None:
+    async def delete(
+        self,
+        project_id: uuid.UUID,
+        *,
+        base_revision: int | None = None,
+        edit_wins: bool = False,
+    ) -> None:
         """Soft delete (tombstone) the project; unfile its live tasks and drop its note links.
 
         The project row is retained so clients observe the removal. Its **live** tasks are never
@@ -348,6 +471,8 @@ class ProjectsService:
         gone. No note is deleted.
         """
         project = await self.get(project_id, for_update=True)
+        if edit_wins and base_revision is not None and base_revision < project.revision:
+            raise ProjectEditWinsError(project.revision)
         unfiled = await self._unfile_tasks(project.id)
         unlinked = await self._remove_note_links(project.id)
         project.deleted_at = datetime.now(UTC)
@@ -422,6 +547,13 @@ class ProjectsService:
                 Task.project_id == project_id,
                 Task.deleted_at.is_(None),
             )
-            .values(project_id=None, revision=Task.revision + 1)
+            .values(
+                project_id=None,
+                revision=Task.revision + 1,
+                # Right-hand sides see the old row, so ``revision + 1`` is the new revision.
+                field_revisions=Task.field_revisions.op("||")(
+                    func.jsonb_build_object(literal_column("'project_id'"), Task.revision + 1)
+                ),
+            )
         )
         return task_ids

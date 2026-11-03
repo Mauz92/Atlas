@@ -37,9 +37,12 @@ from .recurrence import (
 )
 from .service import (
     TaskChangeSet,
+    TaskEditWinsError,
+    TaskIdExistsError,
     TaskNotFoundError,
     TaskRevisionConflictError,
     TasksService,
+    TaskSyncUpdate,
     TaskValidationError,
 )
 from .state import (
@@ -99,9 +102,12 @@ __all__ = [
     "SubtaskError",
     "SubtaskRollup",
     "TaskChangeSet",
+    "TaskEditWinsError",
     "TaskFilters",
+    "TaskIdExistsError",
     "TaskNotFoundError",
     "TaskRevisionConflictError",
+    "TaskSyncUpdate",
     "TaskValidationError",
     "TaskView",
     "TasksService",

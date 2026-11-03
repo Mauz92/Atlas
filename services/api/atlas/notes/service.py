@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..changes import (
@@ -30,6 +32,7 @@ from .storage import (
     NOTE_SUFFIX,
     NoteFile,
     NotesStorage,
+    content_hash,
     normalize_note_path,
     normalize_rel_path,
 )
@@ -48,6 +51,19 @@ class NoteNotFoundError(LookupError):
 
 class NotePathConflictError(FileExistsError):
     pass
+
+
+class NoteIdExistsError(RuntimeError):
+    """A client-chosen id is already taken by a different note (or by another user's)."""
+
+
+@dataclass(frozen=True)
+class NoteCreated:
+    """Result of a create: the note and, when the requested path was taken and the server chose
+    another (``path_collision``, SYNC_PROTOCOL.md 6.3), the path that was asked for."""
+
+    note: NoteIndex
+    requested_path: str | None = None
 
 
 class NoteConflictError(RuntimeError):
@@ -184,15 +200,78 @@ class NotesService:
 
     # --- mutations ------------------------------------------------------
 
-    async def create(self, path: str, content: str) -> NoteIndex:
+    async def claim_id(self, client_id: uuid.UUID, path: str, content: str) -> NoteIndex | None:
+        """Idempotency by client id (D3): ``None`` if free, the note if this exact create already
+        happened (untouched: revision 1, live, same path and bytes), else ``NoteIdExistsError``.
+
+        A replay is matched on the *requested* path or the ``name (2).md`` variants the server may
+        have chosen for it, so a retried create after a collision is still recognised.
+        """
+        existing = await self.session.get(NoteIndex, client_id)
+        if existing is None:
+            return None
+        if (
+            existing.user_id != self.user_id
+            or existing.deleted_at is not None
+            or existing.revision != 1
+            or existing.content_hash != content_hash(content)
+        ):
+            raise NoteIdExistsError(str(client_id))
+        wanted = normalize_note_path(path)
+        stem = wanted[: -len(NOTE_SUFFIX)]
+        if existing.path != wanted and not (
+            existing.path.startswith(f"{stem} (") and existing.path.endswith(f"){NOTE_SUFFIX}")
+        ):
+            raise NoteIdExistsError(str(client_id))
+        return existing
+
+    async def create(
+        self,
+        path: str,
+        content: str,
+        *,
+        client_id: uuid.UUID | None = None,
+        on_collision_rename: bool = False,
+    ) -> NoteIndex:
+        return (
+            await self.create_with_info(
+                path, content, client_id=client_id, on_collision_rename=on_collision_rename
+            )
+        ).note
+
+    async def create_with_info(
+        self,
+        path: str,
+        content: str,
+        *,
+        client_id: uuid.UUID | None = None,
+        on_collision_rename: bool = False,
+    ) -> NoteCreated:
+        """Create a note at ``path``.
+
+        Without ``client_id`` a tombstone at the same path is revived under its old id (today's
+        behaviour: task links to the note come back). With a ``client_id`` the note is always a
+        *new* row, even where a tombstone sits (the partial unique index, D3). With
+        ``on_collision_rename`` (sync mode) a path taken by a live note or a file becomes
+        ``name (2).md`` instead of a conflict; the caller reports ``path_collision``.
+        """
         normalized = normalize_note_path(path)
+        requested: str | None = None
+        if on_collision_rename and await self._path_taken(normalized):
+            requested = normalized
+            normalized = await self._free_path(normalized)
         if self.storage.exists(normalized):
             raise NotePathConflictError(normalized)
-        existing = await self.session.scalar(
-            select(NoteIndex).where(NoteIndex.user_id == self.user_id, NoteIndex.path == normalized)
+        rows = list(
+            await self.session.scalars(
+                select(NoteIndex)
+                .where(NoteIndex.user_id == self.user_id, NoteIndex.path == normalized)
+                .order_by(NoteIndex.deleted_at.is_not(None), NoteIndex.updated_at.desc())
+            )
         )
-        if existing is not None and existing.deleted_at is None:
+        if rows and rows[0].deleted_at is None:
             raise NotePathConflictError(normalized)
+        existing = rows[0] if rows and client_id is None else None
 
         try:
             file = self.storage.write_new(normalized, content)
@@ -206,12 +285,36 @@ class NotesService:
             note = NoteIndex(
                 user_id=self.user_id, path=normalized, revision=1, size_bytes=0, content_hash=""
             )
+            if client_id is not None:
+                note.id = client_id
             self.session.add(note)
-        await self._apply(note, file)
-        await self._relink_unresolved()
-        await self.session.flush()
+        try:
+            await self._apply(note, file)
+            await self._relink_unresolved()
+            await self.session.flush()
+        except IntegrityError as exc:
+            # A concurrent create with the same client id won; take back the file written above.
+            with suppress(OSError):
+                self.storage.delete(normalized)
+            if client_id is None:
+                raise
+            raise NoteIdExistsError(str(client_id)) from exc
         await self._record_change(note.id, ChangeOperation.UPSERT)
-        return note
+        return NoteCreated(note, requested_path=requested)
+
+    async def _path_taken(self, normalized: str) -> bool:
+        if self.storage.exists(normalized):
+            return True
+        return await self.get_by_path(normalized) is not None
+
+    async def _free_path(self, normalized: str) -> str:
+        """``name (2).md``, ``name (3).md`` ... the first path neither on disk nor live."""
+        stem = normalized[: -len(NOTE_SUFFIX)]
+        for number in range(2, 1000):
+            candidate = f"{stem} ({number}){NOTE_SUFFIX}"
+            if not await self._path_taken(candidate):
+                return candidate
+        raise NotePathConflictError(normalized)
 
     async def open_daily(self, day: str) -> tuple[NoteIndex, bool]:
         """Open the daily note for ``day`` (``YYYY-MM-DD``), creating it only if it is missing.
@@ -253,7 +356,10 @@ class NotesService:
     async def _adopt(self, path: str) -> NoteIndex:
         """Return the live index row for a file that exists, indexing the file if it has none."""
         existing = await self.session.scalar(
-            select(NoteIndex).where(NoteIndex.user_id == self.user_id, NoteIndex.path == path)
+            select(NoteIndex)
+            .where(NoteIndex.user_id == self.user_id, NoteIndex.path == path)
+            .order_by(NoteIndex.deleted_at.is_not(None), NoteIndex.updated_at.desc())
+            .limit(1)
         )
         if existing is not None and existing.deleted_at is None:
             return existing
@@ -378,12 +484,18 @@ class NotesService:
         for old_path, new_path in moves:
             note_id = await self.session.scalar(
                 select(NoteIndex.id).where(
-                    NoteIndex.user_id == self.user_id, NoteIndex.path == old_path
+                    NoteIndex.user_id == self.user_id,
+                    NoteIndex.path == old_path,
+                    NoteIndex.deleted_at.is_(None),
                 )
             )
             await self.session.execute(
                 update(NoteIndex)
-                .where(NoteIndex.user_id == self.user_id, NoteIndex.path == old_path)
+                .where(
+                    NoteIndex.user_id == self.user_id,
+                    NoteIndex.path == old_path,
+                    NoteIndex.deleted_at.is_(None),
+                )
                 .values(path=new_path, revision=NoteIndex.revision + 1)
             )
             await self.session.execute(

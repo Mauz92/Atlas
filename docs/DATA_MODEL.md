@@ -52,7 +52,9 @@ Unique per `(user_id, provider)`.
 ### 2.2 Notes (metadata only — content lives on disk)
 
 **NoteIndex** — owner: PostgreSQL (metadata); content owner: filesystem
-`id`, `user_id`, `path` (relative to notes root, unique per user), `title`,
+`id`, `user_id`, `path` (relative to notes root, unique per user **among live notes**: partial unique index
+`uq_notes_user_id_path_live`, `WHERE deleted_at IS NULL`, SYNC-03c/ADR-0059 D3; a tombstone keeps its row and id but no longer reserves
+the path), `title`,
 `content_hash` (e.g. SHA-256 of file bytes), `revision`, `size_bytes`,
 `created_at`, `updated_at`, `deleted_at`.
 
@@ -89,6 +91,7 @@ Unique per `(user_id, provider)`.
 | `reminder_policy_id` | nullable |
 | `external_provider`, `external_id` | nullable task-provider mapping (future) |
 | `revision`, `created_at`, `updated_at`, `deleted_at` | sync fields |
+| `field_revisions` | `jsonb NOT NULL`: field name -> the `revision` at which it last changed (SYNC-03a, ADR-0059 D4). Keys: every writable column plus `tags` (one simple field). Maintained by the service on every write (create = all fields at 1; a write stamps only fields whose value changed, including server effects such as `completed_at`/`project_id`/`parent_task_id`); backfilled by the migration to the row's current `revision`. Used by the sync-mode merge; it cannot reconstruct an old value |
 
 > **Search indexes (MU-05, ADR-0047, migration `a8c4d9e2b7f1`).** `tasks` and `projects` each carry one GIN
 > *expression* index for the unified search — `ix_tasks_search_fts` on `to_tsvector('simple', title ||
@@ -120,7 +123,8 @@ semantics, ADR-0044); the `Tag` row is per user and matched case-insensitively.
 
 **Project** — owner: PostgreSQL
 `id`, `user_id`, `name`, `description`, `status`, `start_date`, `target_date`,
-`revision`, `created_at`, `updated_at`, `deleted_at`.
+`revision`, `field_revisions` (as for tasks; keys `name`, `description`, `status`, `start_date`, `target_date`), `created_at`,
+`updated_at`, `deleted_at`.
 
 > `status` is one of `active` | `completed` | `archived` (default `active`). `tasks.project_id` is
 > a foreign key to `projects.id` with `ON DELETE SET NULL`: removing a project clears the
@@ -218,12 +222,20 @@ semantics, ADR-0044); the `Tag` row is per user and matched case-insensitively.
 > updated) or `delete` (a soft-delete tombstone), and `seq` is a monotonic per-user cursor allocated
 > from `users.change_seq` in the same transaction as the mutation. An entity changed twice between
 > two pulls appears once, at its latest cursor.
-> **Retention (M7-02, ADR-0033).** A durable `changes.purge` job removes rows older than
-> `change_retention_days` (default 30 days) and raises `users.change_purge_floor` to the highest
-> cursor it removed. It never deletes the user's entity rows — a soft-deleted task/project/note stays
-> a tombstone in its own table — so only the feed's history is bounded. A client whose `since` is
-> below the purge floor is answered `resync_required = true` (not a partial feed) and must
-> full-resync, so a purged deletion can never be resurrected. See §5.
+> **Retention (M7-02, ADR-0033; scope changed by SYNC-03e, ADR-0059 D2).** A durable `changes.purge` job
+> removes **`delete` rows** older than `change_retention_days` (default **90**, minimum 30; ADR-0033 said
+> 30 days and purged every row) and raises `users.change_purge_floor` to the highest cursor it removed.
+> `upsert` rows are never purged, so the log stays one row per existing entity. It never deletes the
+> user's entity rows - a soft-deleted task/project/note stays a tombstone in its own table. A client
+> whose `0 < since < floor` is answered `resync_required = true` (not a partial feed) and must resync,
+> so a purged deletion can never be resurrected; `since = 0` is a snapshot and is always served (also
+> `snapshot=true` continuation pages). The same job deletes `idempotency_keys` older than the same
+> window. See §5.
+
+**InstanceMeta** — owner: PostgreSQL (SYNC-03b)
+`key` (pk), `value`. One row, `epoch`: a UUID created by the migration that names this database's
+history for sync clients (ADR-0059 D9/D12); rotated by `atlas-admin record-restore` after a restore.
+It is not truncated by tests and is restored with the database.
 
 **Job** — owner: PostgreSQL (durable queue)
 `id`, `queue`, `task_name`, `payload` (jsonb), `status`
@@ -322,6 +334,6 @@ User 1─* NotificationDevice
 
 - Board column model vs. task status mapping to be finalised in M4.
 - `external_id` task-provider mapping deferred until external task providers are in scope.
-- Retention window for change-feed tombstones — **settled in M7-02**: a configurable window
-  (`change_retention_days`, default 30 days) with a per-user purge floor and a resync signal
-  (ADR-0033). Entity tombstones remain in their own tables and are never purged.
+- Retention window for change-feed tombstones — **settled in M7-02, changed in SYNC-03e**: a configurable
+  window (`change_retention_days`, default 90 days, minimum 30) for tombstones only, with a per-user purge
+  floor and a resync signal (ADR-0033 as amended by ADR-0059 D2). Entity tombstones remain in their own tables and are never purged.

@@ -29,6 +29,7 @@ from .feed import (
     note_project_link_id,
     parse_limit,
     parse_since,
+    parse_types,
     plan_change_page,
     task_note_link_id,
 )
@@ -66,6 +67,7 @@ __all__ = [
     "note_project_link_id",
     "parse_limit",
     "parse_since",
+    "parse_types",
     "plan_change_page",
     "resync_reason",
     "resync_required",
