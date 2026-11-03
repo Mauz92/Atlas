@@ -2545,3 +2545,35 @@ removed at sign-out when it could not be saved, RISKS R-23); delete asks with a 
 note titles (first heading), not file names; a renamed or moved note keeps the revision the server assigns, so
 an open second tab conflicts once and recovers through the normal choices; no collaborative merge (conflicts are
 resolved as copy-or-reload, never merged).
+
+## ADR-0055 — Product direction: local-first desktop and mobile clients syncing to the self-hosted server (PROPOSED)
+
+**Status.** Proposed 2026-11-03 on the owner's statement; **not approved and not implemented**. Needs the owner's
+review before any work that depends on it.
+
+**Owner statement.** Atlas is self-hosted with a desktop and a mobile interface that are *local first*: they work
+on local data and sync automatically to the server for cross-platform availability (desktop: native app, Obsidian
+style).
+
+**What this means against today's design.** Today the server is authoritative (Markdown files on the server,
+PostgreSQL for tasks and projects) and clients are online-only for mutations (R-22). Local-first reverses the
+default: each client holds a full local copy and is usable offline, and the server is the sync hub.
+
+**Already aligned.** Roadmap milestone 8 (cross-device and offline sync); revision-checked writes
+(`base_revision`) and idempotency keys; no-overwrite conflict handling; the note autosave engine is
+framework-free with injected stores (ADR-0054) and the task save session is pure TypeScript (ADR-0053).
+
+**Open questions (to decide before milestone 8).**
+1. Desktop shell: Tauri or Electron (licence, size, maintenance; reuse of the web UI).
+2. Desktop notes storage: a real folder of `.md` files on disk (Obsidian style, editable externally) synced to
+   the server, versus an internal local database. AGENTS.md §8 requires ordinary Markdown files, which favours
+   the folder.
+3. Local store for tasks and projects: SQLite on desktop and mobile, with a defined sync protocol (change log or
+   per-entity revisions, tombstones for deletes, ordering, conflict rules per entity).
+4. Mobile: native, or the web app as an installable app with a local store (open decision A-09).
+5. Which side wins for tasks when both changed: today a stale write is rejected; local-first needs a documented
+   merge or conflict-resolution action per field.
+
+**Consequences for current work.** Keep client logic out of React where practical, keep every write
+revision-checked and idempotent, and do not add new online-only assumptions beyond those in R-22. UX-06/UX-07
+are unaffected.
