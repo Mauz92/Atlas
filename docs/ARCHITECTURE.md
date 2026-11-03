@@ -173,6 +173,13 @@ Full semantics in `DATA_MODEL.md` and `CALENDAR_SYNC.md`.
 - Clients queue offline mutations durably and replay them on reconnect, checking the revision
   they based the edit on.
 
+**Local-first direction (ADR-0055, proposed protocol in ADR-0059).** Desktop and Android clients keep a full local
+copy (SQLite; desktop notes as a real folder of `.md` files) and sync with this server, which stays the hub, the
+durable backup and the owner of accounts and provider tokens. What the server does today versus what the
+local-first clients need — change-feed coverage, field-level and three-way merge, client ids, device
+credentials, versioning, retention — is analysed and specified in [`SYNC_PROTOCOL.md`](SYNC_PROTOCOL.md). Until
+that is accepted and implemented, the paragraph above describes the browser queue only.
+
 ## 8. Client Architecture and UX
 
 - **Web/PWA:** React + TypeScript, a maintained accessible component library, generated API

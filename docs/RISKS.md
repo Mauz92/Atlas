@@ -1,7 +1,7 @@
 # Atlas — Risk Register
 
 **Status:** Draft for approval (Milestone 0)
-**Last updated:** 2026-10-27
+**Last updated:** 2026-11-03
 
 Severity ∈ {High, Medium, Low}. Status ∈ {Open, Mitigating, Accepted, Closed}.
 Every open risk has an owner-milestone and a mitigation. Risks are reviewed at each milestone gate.
@@ -274,6 +274,77 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   instead of queueing. MU-08 did not change this; address with M8 offline UX.
 - **Owner milestone:** MU. **Status:** Mitigating.
 
+### R-28 — Data loss through sync (merge, resolution, delete)
+- **Severity/Likelihood:** High / Medium (design stage; nothing implemented)
+- **Description:** field merge, three-way note merge, "edit wins over delete" and automatic resolution can silently pick the wrong
+  value or drop text; the existing server has none of this yet (`SYNC_PROTOCOL.md` §2).
+- **Mitigation:** uncertain ⇒ conflict copy, never a guess; pre-merge versions kept in note history; resolution log with undo;
+  simulation invariants "no acknowledged loss" and "no resurrection"; client deletes go to a trash folder; ADR-0059 D4–D7.
+- **Owner milestone:** SYNC. **Status:** Open.
+
+### R-29 — Clock skew and clock jumps
+- **Severity/Likelihood:** Medium / High (laptops sleep, phones change zone)
+- **Description:** wrong device clocks break local reminder times, "today", token expiry display; they must never decide a winner.
+- **Mitigation:** server-assigned order only (ADR-0055 §3, ADR-0059 D11); simulation invariant 6 (same result under any offsets);
+  server-set timestamps; reminders scheduled from due instants + zone, recomputed on clock change.
+- **Owner milestone:** SYNC. **Status:** Open.
+
+### R-30 — Resync storms and restore-rewind
+- **Severity/Likelihood:** Medium / Medium
+- **Description:** a bug in the floor logic, a server restored from an older backup (clients ahead of the server today get an empty
+  feed and never notice), or many clients resyncing at once can loop or silently diverge.
+- **Mitigation:** SYNC-01 `cursor_ahead` signal; resync cooldown and per-device snapshot limit; confirm-before-reupload; operator
+  runbook; simulation scenario "restore from backup"; `epoch` check.
+- **Owner milestone:** SYNC. **Status:** Open.
+
+### R-31 — Retention shorter than an offline period
+- **Severity/Likelihood:** Medium / Medium
+- **Description:** today's purge removes every feed row after 30 days, so a returning or new device cannot catch up from the feed;
+  a deletion made while a device was away can be unknowable after tombstones are purged.
+- **Mitigation:** ADR-0059 D2 (keep upserts, tombstones 90 days, snapshot from 0); resync is non-destructive, pending edits kept
+  (rule 4); idempotency keys outlive tombstones.
+- **Owner milestone:** SYNC. **Status:** Open.
+
+### R-32 — Partial apply and cursor ordering
+- **Severity/Likelihood:** High / Low
+- **Description:** applying a page without storing the cursor atomically (or the reverse) skips or repeats changes; the browser
+  KV store keeps the cursor in a separate write from the data (`syncEngine.ts`).
+- **Mitigation:** one local SQLite transaction for page + cursor (spike S2); state-based apply by revision (idempotent); no local
+  foreign keys between synced entities; crash-point simulation. The user-row lock that orders cursors is verified by reading only
+  and gets a concurrency test (SYNC-01); it also serialises all of a user's writes.
+- **Owner milestone:** SYNC. **Status:** Open.
+
+### R-33 — Desktop notes folder edited by other programs
+- **Severity/Likelihood:** High / High
+- **Description:** editors save by rename or swap files, sync tools (OneDrive/Dropbox) touch the folder, watchers miss events,
+  files are moved in bulk, invalid UTF-8, case-insensitive and Unicode-normalising filesystems, Windows reserved names.
+- **Mitigation:** scan + hash is authoritative, watcher is a hint (MARKDOWN_STORAGE §5, ADR-0010); rename detection by hash;
+  atomic self-writes ignored by the watcher; portable-path rules (`SYNC_PROTOCOL.md` §11); unsyncable files listed, never deleted.
+- **Owner milestone:** SYNC (SYNC-09). **Status:** Open.
+
+### R-34 — Large notes and request limits
+- **Severity/Likelihood:** Medium / Medium
+- **Description:** notes up to 5 MiB are sent as JSON; the shipped nginx config sets no `client_max_body_size` (default 1 MiB) so a
+  large note may fail through the web container — **not tested**; merge cost on large files; desktop files above the cap.
+- **Mitigation:** verify and set the proxy limit in SYNC-04; explicit "too large to sync" state; 413 handling; merge time bound.
+- **Owner milestone:** SYNC. **Status:** Open.
+
+### R-35 — Device credential theft and revocation gaps
+- **Severity/Likelihood:** Medium / Low
+- **Description:** a bearer token outlives a password change; a lost laptop keeps syncing until revoked; keystore availability
+  varies (Linux without Secret Service, Android).
+- **Mitigation:** SECURITY §12; recovery revokes all (AUTH-01 integration); idle expiry; device list; no file fallback for the token.
+- **Owner milestone:** SYNC-06 / AUTH-01. **Status:** Open.
+
+### R-36 — Tauri 2 platform maturity (WebKitGTK, WebView2, Android) and plugin churn
+- **Severity/Likelihood:** Medium / Medium
+- **Description:** rendering/editing differences across system webviews; Android support younger than desktop; no official keystore
+  plugin; updater is desktop-only per the docs; the sql/store/stronghold plugins have `3.0.0-alpha` lines in flight; fs access on
+  Android may not allow a user-chosen shared folder (all checked 2026-11-03 against Tauri docs/releases, not by running).
+- **Mitigation:** SYNC-07 spike with pass/fail criteria and Electron fallback (desktop); pin 2.x; capability-minimal config;
+  PWA fallback for Android (A-09).
+- **Owner milestone:** SYNC-07. **Status:** Open.
+
 ---
 
 ## Review log
@@ -299,3 +370,4 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 | 2026-11-02 | MU-03 | R-22 progress: Tasks page delivered (filters, sort, saved filters, bulk actions; journey passes). Sub-risks: client-side sort covers only the first 500 matches (R-20, page shows a notice); bulk actions are sequential, non-atomic and online-only. |
 | 2026-11-02 | MU-02 | R-22 progress: Projects UI delivered (J3 passes in a browser); project mutations are online-only like task mutations. |
 | 2026-11-02 | MU-01 | R-22 progress: task detail/editing delivered (J1, J2 pass in a browser). Sub-risk recorded: UI task mutations are online-only (not via the offline queue). |
+| 2026-11-03 | SYNC design | R-28…R-36 added (sync data loss, clock skew, resync/restore, retention, partial apply, desktop folder, large notes, device credentials, Tauri maturity). Found while reading M7: reconcile does not feed the change log; purge removes the ability to bootstrap from cursor 0; a restored server is invisible to clients; ADR-0055's "client-generated ids" is not yet true. Detail `SYNC_PROTOCOL.md` §2. |

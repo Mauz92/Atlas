@@ -1,5 +1,22 @@
 # Current Task
 
+- Task ID: none in progress. **SYNC design delivered 2026-11-03 (docs only, nothing implemented, not committed):**
+  `docs/SYNC_PROTOCOL.md` (gap analysis of M7 vs ADR-0055, protocol spec), ADR-0059 (PROPOSED, decisions D1-D12 for the
+  owner), SYNC milestone in `docs/ROADMAP.md` (SYNC-01..12, Tauri spike plan under SYNC-07), `docs/TESTING.md` section 10
+  (simulation strategy), `docs/SECURITY.md` section 12, `docs/RISKS.md` R-28..R-36.
+- **Next:** SYNC-01 (`READY`: record note reconcile in the change feed; `cursor_ahead` resync signal; cursor concurrency
+  test), then SYNC-02 (`READY`: simulation harness). SYNC-07 (Tauri spike, Linux first) may run alongside; Windows/Android
+  need hardware. SYNC-03..06 are `BLOCKED` until the owner answers ADR-0059. AUTH-01 stays `BACKLOG` and meets SYNC-06 at the
+  device-revoke function.
+- Key findings to remember: reconcile never feeds `/api/changes`; the 30-day purge removes upserts so a new device cannot
+  bootstrap from cursor 0 and `fullResync` is never supplied by the app; a restored server is invisible to clients (`since >
+  head`); the API has no client-generated ids, no field merge, no note history, no device tokens, no versioning; `PATCH`
+  without `base_revision` overwrites blindly. Unverified: Tauri behaviour on any platform, nginx body limit for 5 MiB notes.
+
+---
+
+## Earlier state (before the SYNC design)
+
 - Task ID: none in progress. The UX milestone (UX-01…UX-08) is `DONE` locally; next is the owner's choice: close MU
   (CI run of `e2e-real` + release re-score), AUTH-01 (needs the owner's approval of the recovery design) or calendar
   (M5-00, blocked on real accounts).

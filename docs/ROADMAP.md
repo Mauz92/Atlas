@@ -1,7 +1,7 @@
 # Atlas — Roadmap and Backlog
 
 **Status:** Draft for approval (Milestone 0)
-**Last updated:** 2026-10-27
+**Last updated:** 2026-11-03
 
 This is the canonical project state. Milestones are worked in dependency order. A task is
 `DONE` only when its acceptance criteria pass and verification evidence is recorded in
@@ -25,6 +25,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
 | **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `DONE` (local PASS; CI `e2e-real` NOT RUN) | UX-01…UX-03 `DONE` 2026-11-02, UX-04…UX-08 `DONE` 2026-11-03; J1–J7 and the axe sweep pass on the finished UI. The separate `AUTH-01` row (account recovery) stays `BACKLOG` and is not part of this exit |
+| **SYNC** | **Local-first sync** (ADR-0055, ADR-0059 PROPOSED, `SYNC_PROTOCOL.md`) | `IN_PROGRESS` (design done 2026-11-03; SYNC-01 `READY`; nothing implemented) | Worked **first** (owner priority order). Server protocol + deterministic multi-client simulation pass before any native-shell task; Tauri spike verdict before SYNC-09/10 |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -885,9 +886,109 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 
 ---
 
+## SYNC — Local-first sync
+
+**Goal.** Make ADR-0055 buildable: a server protocol that keeps local-first clients convergent without silent loss,
+proven by a deterministic multi-client simulation, then (after a spike) the shared sync core and the native
+clients. Design, gap analysis and message shapes: [`SYNC_PROTOCOL.md`](SYNC_PROTOCOL.md) (do not duplicate here).
+Choices awaiting the owner: ADR-0059 D1–D12. Test strategy: `TESTING.md` §10. Risks: R-28…R-36.
+
+**Rules.** First vertical slice is server-side (SYNC-01…SYNC-03) plus the harness (SYNC-02), before any native shell
+work. No client behaviour changes until a client sends `Atlas-Sync: 1`. Each task's evidence goes to `ACCEPTANCE.md`;
+none is `DONE` until its tests ran. WIP limit: one task at a time except the spike (SYNC-07), which is hardware-bound.
+
+| ID | Title | Depends on | Status |
+|---|---|---|---|
+| SYNC-01 | Feed correctness fixes (no protocol change) | — | `READY` |
+| SYNC-02 | Simulation harness: model server, fault transport, invariants, conformance vs real server | — (uses current API) | `READY` |
+| SYNC-03 | Protocol v1 server: client ids, sync mode, field merge, `include=data`/`types`/snapshot/retention, versioning | SYNC-01, SYNC-02, ADR-0059 D1–D4, D6, D9, D11–D12 | `BACKLOG` (ADR-0059 accepted 2026-11-03; starts after SYNC-01/02) |
+| SYNC-04 | Note history and three-way merge, move/delete/revive rules, portable paths | SYNC-03, ADR-0059 D3, D5, D10 | `BACKLOG` (ADR-0059 accepted) |
+| SYNC-05 | Resolution log, feed entity and undo | SYNC-03, ADR-0059 D7 | `BACKLOG` (ADR-0059 accepted) |
+| SYNC-06 | Device credentials: table, bearer auth, rotation, revoke, Settings → Devices | SYNC-03, ADR-0059 D8; AUTH-01 consumes the revoke function | `BACKLOG` (ADR-0059 accepted) |
+| SYNC-07 | Tauri 2 spike (Linux, Windows, Android) and Electron-fallback decision | — (hardware: Windows machine, Android device) | `READY` for Linux; Windows/Android `BLOCKED` on hardware |
+| SYNC-08 | `packages/sync-core`: framework-free TS client core (queue, pull/apply, rebase, backoff, conflict states) over a `LocalStore` interface; web IndexedDB adapter keeps M7 behaviour | SYNC-03, SYNC-02 | `BACKLOG` |
+| SYNC-09 | Desktop client: Tauri shell, SQLite store, notes-folder engine, keystore, device sign-in | SYNC-04, SYNC-05, SYNC-06, SYNC-07 pass, SYNC-08 | `BACKLOG` |
+| SYNC-10 | Android client (or PWA fallback per A-09) with background sync | SYNC-09, SYNC-07 Android pass | `BACKLOG` |
+| SYNC-11 | Conflict and "changed on another device" UI (text-conflict resolver, undo, devices list) | SYNC-05, SYNC-08 | `BACKLOG` |
+| SYNC-12 | Release gate: real-device matrix, backup/restore with devices attached, docs (USER_GUIDE, OPERATIONS) | SYNC-09, SYNC-11 | `BACKLOG` |
+
+### SYNC-01 — Feed correctness fixes
+- **Problem.** (a) `NotesReconciler` changes revisions/tombstones without recording feed changes; (b) a client whose cursor
+  is ahead of the server (restore) is told nothing; (c) the one-row-per-entity ordering is claimed monotonic but untested under concurrency.
+- **Scope.** Record `note` upsert/delete from `NotesReconciler.run` (and `_adopt`'s paths already do); `since > head` ⇒
+  `resync_required` with `resync_reason=cursor_ahead` (additive field, default absent); extend `ChangesOut` and the
+  OpenAPI/`schema.d.ts`; the web engine treats it like `resync_required`. No retention or id change.
+- **Acceptance.** An external edit, add, removal and revival on the server filesystem each appear once in `/api/changes` after
+  reconcile; reconcile with no change records nothing (no cursor churn); `since > head` returns the resync signal; N parallel
+  mutating transactions of one user (asyncio + real PostgreSQL) yield strictly increasing, gap-free, unique cursors and a
+  reader never observes cursor `k+1` committed before `k`.
+- **Tests.** `tests/integration/test_notes_reconcile.py` (feed assertions), `test_changes_api.py` (cursor ahead), new
+  `test_change_concurrency.py`; unit for the plan; web unit for the engine.
+- **Evidence.** pending. **Status** `READY`.
+
+### SYNC-02 — Simulation harness
+- **Problem.** There is no multi-client test; M7-06 e2e uses a mocked API. Sync correctness cannot be claimed without one.
+- **Scope.** A TypeScript package/test tree (vitest, no new runtime dependency; a property-testing library only after a §14
+  review): virtual clock and scheduler per client, seeded PRNG, `Transport` fault wrapper (drop request, **drop response
+  after the server applied**, duplicate, delay/reorder, 5xx, 429, disconnect), an in-memory **model server** implementing the
+  current endpoints' semantics, the invariant checker, and a **conformance suite** that replays the same operation traces
+  against the model and the real API (httpx/Playwright-free, a running test server) and compares results. Initial clients use
+  today's task/project queue; the harness is the vehicle that later runs sync-core.
+- **Acceptance.** `npm run test:sim` runs ≥ 200 seeds in < 2 min on the model; the first failing seed is printed and
+  reproduces; ≥ 20 seeds run against the real API; the harness detects planted bugs (cursor advanced before apply; retry
+  without key; ignoring a tombstone) — each planted bug is a test that must fail.
+- **Tests.** The harness's own tests plus the three planted-bug tests. **Status** `READY`.
+
+### SYNC-03 … SYNC-06
+Scope, acceptance and tests follow `SYNC_PROTOCOL.md` §3–§10; each task gets its own plan section here when it becomes
+`READY` (after ADR-0059). Minimum acceptance common to all: the simulation scenarios named in `TESTING.md` §10.3 for that
+feature pass on the model and on the real API; old non-sync-mode behaviour is unchanged (existing suites untouched and green);
+migrations tested up/down on a clean DB and a populated one; `alembic check` clean.
+- **SYNC-03** also: `field_revisions` backfill; `Atlas-Sync` header; `426`; `include=data`, `types=`, snapshot, tombstone-only purge,
+  idempotency-key TTL job; `GET /api/instance` sync block; the task feed `GET /api/tasks/changes` marked deprecated.
+- **SYNC-04** also: nginx/compose body limit for 5 MiB notes verified; merge library licence/maintenance check recorded in
+  `DEPENDENCIES.md`; history included in backup and export sets (ADR-0041/0042 amended).
+- **SYNC-06** also: Settings → Devices; rate limit keyed by device; token never in logs/OpenAPI examples; revocation tested.
+
+### SYNC-07 plan — Tauri 2 spike (throwaway code, in a scratch directory, not in the repo tree)
+Versions looked up on 2026-11-03 (GitHub releases API): `tauri` 2.12.5 (2026-10-21), `tauri-cli` 2.12.4, plugin `sql` 2.6.0
+(2026-10-14), `notification` 2.8.0, `updater` 2.14.1, `deep-link` 2.6.3 (2026-10-28); `sql`, `store`, `stronghold`, `single-instance`
+also have `3.0.0-alpha.3` (2026-10-14): **pin 2.x, do not adopt alphas**. Licences (Apache-2.0/MIT) are **[UNVERIFIED]**:
+read each `LICENSE` at the pinned tag and record in `DEPENDENCIES.md` (AGENTS.md §14). Docs consulted: fs plugin (watch needs
+the `watch` Cargo feature; fs access is scope-limited; on Android only the app folder by default, external-storage
+permissions otherwise; no mention of SAF/content URIs), updater (desktop only; signature mandatory; only AppImage named for
+Linux), stronghold (IOTA engine; no OS-keystore plugin listed). Everything else below is **[UNVERIFIED]** until run.
+
+Common setup: build the existing `apps/web` bundle unchanged inside a minimal Tauri 2 shell; no Atlas code changes. Record
+OS, webview version (WebKitGTK / WebView2 / Android System WebView), and exact tool versions in the evidence.
+
+| # | Check | PASS criterion | FAIL → |
+|---|---|---|---|
+| S1 | Render existing UI (Linux WebKitGTK, Windows WebView2, Android WebView) | `npm run test:e2e:real` journeys J1–J7 adapted to run against the shell (Playwright where possible, otherwise manual script) pass; CodeMirror 6 Live mode: caret, selection, IME composition, undo, 5 000-line note typing latency p95 < 50 ms; the axe sweep has no new violations; no CSS feature missing in the oldest supported webview (record which) | Electron fallback for that platform if a core-editing defect cannot be fixed in CSS/JS within 2 days |
+| S2 | SQLite | `tauri-plugin-sql` 2.6.0 (or `rusqlite` behind our own commands if the plugin cannot do explicit transactions) opens a WAL database; 50 000 rows insert + indexed query < 1 s; **a transaction spanning "apply page + store cursor" commits atomically and rolls back on a forced kill (kill -9 at 100 random points, 0 inconsistent states)**; migrations run forward | No transactional guarantee ⇒ own Rust commands; if impossible ⇒ fail |
+| S3 | Notes folder | user picks a folder (dialog plugin), scope granted at runtime; 2 000 `.md` files scanned < 2 s (size+mtime) ; watcher reports external create/modify/delete/rename from VS Code, Obsidian, vim and `git checkout` within 2 s on Linux and Windows, **and a scan finds every change the watcher missed** (watch is a hint); atomic write (temp+rename) does not trigger a loop; works with the folder under OneDrive/Dropbox on Windows (record behaviour) | Watcher unreliable but scan correct ⇒ PASS with scan-only cadence documented; scan wrong ⇒ FAIL |
+| S4 | Keystore | token stored/read/deleted via Windows Credential Manager, Linux Secret Service (GNOME Keyring and KWallet) and Android Keystore; not readable from the webview; behaviour with no Secret Service running is defined (refuse, never fall back to a file silently). Candidate: Rust `keyring` crate (licence **UNVERIFIED**); Android needs a custom plugin | No safe store on a platform ⇒ that platform cannot sign in; blocks SYNC-06 client |
+| S5 | Notifications | a local notification fires at a scheduled time with the app closed on Windows and Linux; Android: scheduled local notification fires with the app swiped away and in Doze (record delay); tapping opens the task | Android cannot ⇒ reminders need the existing Web Push/PWA path (A-09) |
+| S6 | Auto-update | Windows per-user (NSIS `currentUser`, no admin) installs and updates over HTTPS from the self-hosted server with a signed update; Linux AppImage updates; `.deb` behaviour recorded; update signature failure refuses; rollback story written | Needs admin on the work laptop ⇒ portable/zip + manual update, or Electron |
+| S7 | Windows install without admin | installer runs as a standard user; WebView2 present or bootstrappable without admin on the target laptop (policy-dependent, **ask the owner to test on the work laptop**) | Not installable ⇒ desktop work client dropped from scope, record |
+| S8 | Android background sync | a periodic job (WorkManager via a small Kotlin plugin) runs a pull within the documented ≥ 15 min cadence while the app is closed, survives reboot, honours battery optimisation; foreground sync on open < 3 s for 1 000 changes | Cannot run ⇒ sync only while open + push notification wake (needs FCM; ADR-0007 cost/dependency review) or PWA fallback |
+| S9 | Size/footprint | installer size, idle RAM after 10 min with 5 000 notes indexed (Windows, Linux), cold start < 2 s | informational; > 300 MB idle RAM or > 5 s start ⇒ review |
+| S10 | Security posture | capability file grants only the commands used; CSP kept strict; webview cannot call arbitrary fs/shell; `cargo audit`/`npm audit` clean at the pin; maintenance check: last release < 60 days (met: 2026-10-21) and open security advisories read | Any unmitigated advisory ⇒ FAIL until pinned past it |
+
+**Electron fallback criteria (desktop only; Electron has no Android).** Choose Electron for a desktop platform if any of:
+S1 fails on that platform for core editing; S2 cannot be made transactional; S6/S7 make Tauri unusable for the owner's
+work laptop; S10 shows an unfixable advisory or the project stops releasing for > 90 days. Android then falls back to
+the PWA (A-09) or to a separately evaluated shell (not assessed here). A mixed result (Tauri on Linux, Electron on
+Windows) is rejected: two shells double the platform bugs.
+
+**Needs real hardware, not available in this environment:** Windows machine (ideally the work laptop), an Android device
+(two OS versions if possible), and for S8 a device with an aggressive vendor battery manager.
+
+---
+
 ## Immediate Next Tasks
 
-**Owner priority order (2026-11-03): 1. Sync (local-first, ADR-0055), 2. Auth (AUTH-01 plus device credentials for sync clients), 3. Calendar (M5-00 onward), 4. Core (close MU: CI run of `e2e-real` + release re-score). UX-01…UX-08 are all `DONE`. Next: the Sync design and backlog (gap analysis against M7, protocol, spikes). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
+**Owner priority order (2026-11-03): 1. Sync (local-first, ADR-0055), 2. Auth (AUTH-01 plus device credentials for sync clients), 3. Calendar (M5-00 onward), 4. Core (close MU: CI run of `e2e-real` + release re-score). UX-01…UX-08 are all `DONE`. The Sync design and backlog are done (2026-11-03, see the SYNC section, `SYNC_PROTOCOL.md`, ADR-0059 PROPOSED). **Next: SYNC-01 (feed correctness fixes) then SYNC-02 (simulation harness); SYNC-07 (Tauri spike, Linux first) can run alongside; SYNC-03…06 wait for the owner's answers to ADR-0059. AUTH-01 stays `BACKLOG` and meets SYNC-06 at the shared device-revoke function (ADR-0059 D8).** Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
 editing) and `MU-02` (Projects UI), `MU-03` (Tasks page) and `MU-04` (recurrence, subtasks and reminders in the UI) and `MU-05` (command palette, quick switcher and unified search) and `MU-06` (note ↔ task ↔ project linking) and `MU-07` (daily note, templates and Today as home) and `MU-08` (settings and shell polish) are `DONE`; MU itself is not closed (CI run and release re-score outstanding, see the MU exit-criteria evaluation).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 

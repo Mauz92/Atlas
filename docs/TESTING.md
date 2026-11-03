@@ -322,3 +322,73 @@ Tests are never disabled or weakened to make a milestone pass.
 - `NOT RUN` — not attempted.
 
 Report the actual command and a concise evidence line for release gates. Never invent results.
+
+## 10. Sync Testing (local-first clients; ADR-0055, ADR-0059, `SYNC_PROTOCOL.md`)
+
+Status: **planned** (SYNC-02 builds it; nothing below exists yet). Sync bugs are ordering and failure bugs, so the main
+evidence is a deterministic simulation, not example-based tests.
+
+### 10.1 Layers
+
+| Layer | What | Where | Runs |
+|---|---|---|---|
+| A. Server protocol | Multi-session HTTP tests: sync-mode writes, field merge, edit-vs-delete, note merge, idempotency replay, cursor ahead, snapshot, retention; **real concurrency** (asyncio, N transactions of one user) on real PostgreSQL | `services/api/tests/integration` | every CI run |
+| B. Simulation on a model server | N clients, one in-memory server model, seeded random schedule, fault transport, virtual time | `packages/sync-sim` (vitest) | CI: ≥ 200 seeds; nightly: ≥ 5 000 |
+| C. Simulation on the real API | Same scenarios and invariant checker, real FastAPI + PostgreSQL; the model/real **conformance** suite replays identical traces and diffs responses | same harness, real server fixture | CI: ≥ 20 seeds; nightly: more |
+| D. Real-stack e2e | Browser (Playwright, existing `e2e-real`) and the desktop shell (WebDriver/`tauri-driver`, **UNVERIFIED** availability) doing two-device journeys | `apps/web/e2e-real`, desktop e2e | CI where possible |
+| E. Real devices | §10.5 | manual, recorded in `ACCEPTANCE.md` | per release |
+
+### 10.2 Simulation model
+
+- **Determinism.** One seeded PRNG; virtual clock and scheduler injected into every client (no `Date.now`, no real
+  timers); a run is `(seed, scenario, N, steps)`; a failure prints the seed and writes the trace; the trace shrinks by
+  deleting steps while the failure persists.
+- **Clients.** The real `sync-core` (SYNC-08) over an in-memory `LocalStore`; before it exists, today's queue/engine with task
+  and project only (SYNC-02). Each client has its own clock offset (±0 s … ±1 day, jumping), its own offline periods and can be
+  restarted (state reloaded from its store) at **every await point** (crash-point enumeration: the run is repeated with a
+  crash injected at step k for each k of a short scenario).
+- **Actions** (chosen by the scheduler): create/edit one or several fields/delete/restore/move tasks and projects; create,
+  edit (append, replace a paragraph, large), rename, delete notes (including identical paths from two clients);
+  go offline/online; pull; push; restart; change clock; run reconcile; server restart; **restore server from an older
+  backup**; advance time past tombstone retention (retention purge job run).
+- **Faults** on the transport: lose request; lose **response after the server applied** (the dangerous one); duplicate
+  request; delay/reorder across clients; 429 with Retry-After; 5xx; truncated page; slow link; token revoked mid-run.
+- **Invariants** checked after quiescence (all clients online, faults off, pull to head, push to empty):
+  1. *Convergence*: every client's materialised entities equal the server's (notes byte-equal).
+  2. *No acknowledged loss*: each field write the client saw acknowledged is either in the final value or in the resolution
+     log (simple field), in a conflict state or conflict copy (text/overlap) — computed from a shadow log of intents.
+  3. *No duplicates*: exactly one entity per client-generated id; a retry never creates a second.
+  4. *No resurrection*: a deleted entity stays deleted unless a later edit explicitly won (rule 4, logged).
+  5. *Cursor safety*: a client cursor never exceeds the last cursor whose page was fully applied; cursors and revisions are
+     monotonic per client; no applied page is skipped after a crash.
+  6. *Order independence of clocks*: the same trace with different clock offsets gives the identical final state.
+  7. *Bounded work*: pushes needed to quiesce ≤ a function of pending ops (no resync storm: ≤ 1 resync per injected cause).
+  8. *Idempotence*: running pull+push again changes nothing.
+- **Properties** (also as plain property tests on the server): `merge(base, a, b)` equals `merge(base, b, a)` on non-overlapping
+  edits and never produces invalid UTF-8; field merge is commutative for disjoint fields; applying a feed page twice equals once.
+- **Planted-bug tests** (mutation check of the harness itself): advance the cursor before apply; drop the idempotency key on
+  retry; ignore tombstones; use client time for ordering; merge on a missing base — each must make a named scenario fail.
+
+### 10.3 Required scenarios (each must exist before the matching feature is `DONE`)
+
+Concurrent different-field edits; same simple field; same text field; edit vs delete (both orders); delete vs delete; recurring
+task completed on two devices; offline create of a task and its subtask, parent-first replay; note edited in different
+paragraphs on two devices; overlapping note edits (conflict copy, no merge); note rename vs edit; two notes created at the
+same path; note deleted on one device, edited on another; tombstone older than retention (resync, non-destructive, pending
+edits kept); device offline across the retention floor; **server restored from backup (cursor ahead)**; token revoked while
+offline; client crash between apply and cursor; response lost after apply; protocol-version mismatch (old client does not
+write); new entity type added (backfill).
+
+### 10.4 Scale and limits
+
+One user, 10 000 tasks, 5 000 notes (largest 5 MiB): bootstrap time, memory, pages, and incremental pull latency are measured
+and recorded (not asserted against invented thresholds until the first measurement exists).
+
+### 10.5 What needs real devices (cannot be simulated)
+
+Android Doze/standby and vendor battery managers (background sync, notification delay), Storage Access Framework and app
+permission flows, WebView version spread, Windows file locking/antivirus/OneDrive-synced note folders, case-insensitive and
+Unicode-normalising filesystems, the real OS keystores, installers and auto-update signing, sleep/wake clock jumps, captive
+portals and flaky mobile networks. Each is a checklist item in SYNC-12 and in the Tauri spike (`ROADMAP.md` SYNC-07).
+
+Results use the §9 vocabulary. A simulation seed that was not run is `NOT RUN`, not `PASS`.

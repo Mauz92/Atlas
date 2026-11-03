@@ -270,3 +270,20 @@ proxied `/api`/`/health` responses keep the API's own headers (scoping intact). 
 | Work-account data-flow acknowledgement UI (T12) | `NOT DELIVERED` | Belongs to M5-05, which is not delivered |
 
 See `ACCEPTANCE.md` (M9-05) for the exact commands and results.
+
+## 12. Sync clients and device credentials (PROPOSED, ADR-0059 D8; not implemented)
+
+Applies when local-first desktop/Android clients exist (ADR-0055). Design: `SYNC_PROTOCOL.md` §10.
+
+| # | Threat | Control (planned) |
+|---|---|---|
+| T13 | Stolen or leaked device token | 256-bit random, shown once, only its SHA-256 stored; 24 h rotation grace; 90-day idle expiry; list and revoke in Settings; recovery reset revokes all; token held in the OS keystore and attached by native code, never exposed to the webview or logs |
+| T14 | Lost/stolen laptop with local data | Atlas does not encrypt the local database or notes folder (ADR-0055 §6): OS disk encryption is the control; revoking the device stops sync; documented to the owner |
+| T15 | Malicious or old client writing wrongly | Sync mode requires protocol version, idempotency key and base revision; unknown fields rejected; `426` outside the supported range; all rules server-side |
+| T16 | Cross-user id collision with client-chosen UUIDs | `409 id_exists` for another user's id, indistinguishable from own-id mismatch; every query user-scoped |
+| T17 | Sync as an exfiltration path (compromised token pulls everything) | Per-device rate limits keyed by device id, `last_seen_at`/device list visible, snapshot starts limited per hour |
+| T18 | Note content in logs/resolution log | Application logs carry ids, rule and field names only; the resolution table stores simple-field values only (never text or note content) |
+| T19 | Malicious Markdown in a synced folder | Unchanged (T3/T6): content is untrusted; the desktop renderer uses the same sanitised preview |
+
+Open: keystore mechanism per platform (spike), HTTPS-only enforcement and the tailnet dev override, rate limiting behind a proxy
+(R-SEC-1 keys on IP; device limits key on device id).

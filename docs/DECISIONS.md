@@ -1,7 +1,7 @@
 # Atlas — Architectural Decision Records
 
 **Status:** Draft for approval (Milestone 0)
-**Last updated:** 2026-10-26
+**Last updated:** 2026-11-03
 
 Each record states context, decision, consequences and status. Proposed decisions are not
 binding until the planning gate is approved. Validation findings from Milestone 0 research are
@@ -2827,3 +2827,112 @@ another section drops its in-memory state (the data comes from the offline queue
 component). Names that changed and were updated in specs: the Sync, Calendar and Notifications pages no longer
 have an `h1` of their own (the h1 is *Settings*, the section is an `h2`); J7 now opens each section from the list;
 ux02 and mu08 use the new URLs. Rollback: UI-only; the old URLs are redirects, so reverting restores them.
+
+## ADR-0059 — Local-first sync protocol: decisions that need the owner (SYNC)
+
+**Status:** ACCEPTED by the owner 2026-11-03 (all recommendations D1–D12 as written). Nothing here is implemented yet. The full
+design, the gap analysis against M7 and the message shapes are in `SYNC_PROTOCOL.md` (the single source for
+those; this record keeps only the choices). Implements the sequencing of ADR-0055 §6 ("protocol and change feed
+first, before any native shell work").
+
+**Context.** ADR-0055 accepted local-first clients and the §4 conflict policy. Reading the code (not the roadmap)
+shows that M7 delivered a sound per-user cursor, tombstones and a browser-only queue, but several things ADR-0055
+assumes are not true: the API has no client-generated ids, no field-level merge, no note history/three-way merge,
+no device credentials, no versioning; the feed misses server-side note reconciliation; the retention purge removes
+the ability to bootstrap from `since=0`; and a restored server is invisible to clients (`SYNC_PROTOCOL.md` §2).
+
+**Conflicts with accepted ADRs (listed so approval is explicit).**
+- **ADR-0033** (retention): purges every `change_log` row older than 30 days. D2 changes the purge to tombstones
+  only, defines `since=0` as a snapshot, and lengthens the default window. Supersedes part of ADR-0033 if accepted.
+- **ADR-0055 §3**: "ids are client-generated UUIDs … already true of the API" is not true today (D3 adds it).
+- **ADR-0055 §4 rule 4** (edit wins over delete) is the opposite of today's `404`; D6 changes server behaviour in
+  sync mode only.
+- **ADR-0055 §4 last line** ("logged … no content in logs") versus rule 2 ("the overwritten value is kept in the
+  task's history"): D7 resolves it as: values of *simple* fields live in a database table (not application logs);
+  text and note content are never copied into the log.
+- **ADR-0034/0035/0036** (browser IndexedDB queue, keep-local conflict, metadata-only cache): the algorithms stay
+  as the web fallback; on desktop/Android the queue and server-state move to SQLite behind the same store
+  interface (SYNC-08). Their "feed carries no payload" premise changes (D2).
+- **ADR-0019** (`GET /api/tasks/changes`) becomes a second, overlapping feed; D2 freezes it and deprecates it
+  once `include=data` ships (AGENTS.md: no duplicate sources of truth).
+- **ADR-0054 §7** (note `PUT` has no idempotency key): D1 adds one in sync mode; non-sync behaviour unchanged.
+
+**Decisions requested.** Each shows options, then the recommendation (R).
+
+**D1 — Shape of the write API.** (a) Extend the existing endpoints with an opt-in `Atlas-Sync: 1` mode
+(required idempotency key and base revision, field-level merge, structured conflicts); (b) a new
+`POST /api/sync/push` batch endpoint carrying a list of operations. R: **(a)**. It reuses validation, services and
+tests, leaves the web app untouched, and N sequential requests are acceptable at personal scale; a batch can be
+added later if SYNC-02 measures a problem. Cost of (a): more requests after a long offline period.
+
+**D2 — Feed and retention.** (a) Keep ADR-0033 as is and add a separate bootstrap endpoint; (b) keep all
+`upsert` rows, purge only tombstones older than N days, `since=0` = snapshot without tombstones, add
+`include=data`, `types=`, `resync_reason`; N = 30 / **90** / 180 / never. R: **(b) with N = 90**. The log is one row
+per entity, so retaining upserts costs nothing noticeable and removes a whole endpoint. A holiday of six weeks
+no longer forces a resync; one beyond 90 days resyncs non-destructively (`SYNC_PROTOCOL.md` §7.3). Trade-off:
+the log grows with the number of entities (bounded).
+
+**D3 — Client-generated ids and note identity.** (a) Client temp ids mapped by the server; (b) optional client
+`id` (UUID v4/v7) on create, idempotent by id, plus replacing `uq_notes_user_id_path` with a partial unique index
+on live paths so a tombstoned path can be reused by a different note. R: **(b)**. Needs a migration and care in
+`NotesService.create` (today a create at a tombstoned path revives the old id) and `reconcile`.
+
+**D4 — How task/project merge knows what changed.** (a) `field_revisions jsonb` per row: field → revision at
+which it last changed; (b) a full per-revision snapshot/history table; (c) an operation log. R: **(a)**: the
+smallest thing that answers "did field f change after base revision r?", backfilled to the current revision.
+Limits: it cannot reconstruct an old value (the resolution log stores the overwritten *simple* value, D7);
+`tags` is treated as one simple field (no per-tag merge).
+
+**D5 — Where note merge happens, and history.** (a) Server merges, keeps `.atlas/history` revision files (last 20
+and 90 days); (b) client merges using its locally kept base; server stays a revision check. R: **(a)**: one
+implementation (AGENTS.md §7.4), recoverable pre-merge versions, history is also useful for undo/backups. Cost:
+disk, a merge dependency or implementation to be chosen and licence-checked in SYNC-04 (AGENTS.md §14; none chosen
+yet), and backups must include history. An uncertain merge is always a conflict copy.
+
+**D6 — Edit versus delete.** R: as ADR-0055 §4 rule 4: in sync mode a stale `DELETE` is refused (`edit_wins`) and a
+`PATCH`/`PUT` of a tombstoned entity restores it, both logged. Alternative (rejected): delete wins, because a lost
+edit is unrecoverable.
+
+**D7 — Resolution log.** Table `sync_resolutions`, announced through the feed, 90-day retention, `loser` holds
+simple-field values only; one-click undo (`SYNC_PROTOCOL.md` §9). Alternative: log field names without values (no
+undo for fields). R: with values, as ADR-0055 §4 requires undo.
+
+**D8 — Device credentials (with AUTH-01).** (a) Reuse the browser session cookie from the native client; (b)
+per-device bearer token: random 256-bit, only its hash stored, shown once, 24 h rotation grace, 90-day idle
+expiry, listed and revocable in Settings, OS keystore storage, HTTPS only, never given to the webview. R: **(b)**.
+Sub-decisions: created by e-mail+password exchange now, pairing code later; password *change* revokes browser
+sessions only, but the AUTH-01 recovery reset and `atlas-admin reset-password` revoke **all** device tokens.
+Sequencing: SYNC-06 builds the device table and revoke function; AUTH-01 calls it (the owner's order is Sync,
+then Auth, so the two meet there).
+
+**D9 — Versioning.** Protocol major in `Atlas-Sync`, supported range and entity schema numbers in
+`GET /api/instance`, `426` outside the range, `types=` negotiation with backfill on new types, client refuses a
+newer local database. R: as written in `SYNC_PROTOCOL.md` §10.2. Support window: current and previous protocol major.
+
+**D10 — v1 scope limits.** R: out of v1: attachments/non-`.md` files (left untouched, never deleted), empty
+folders, calendar events on devices (calendar stays online-only), per-tag merge, multi-user sharing. Reminders:
+`reminder_policy` and preferences sync; each device schedules its own local notifications from synced task data.
+**Open for the owner: Android notes storage**: Tauri's fs plugin documents app-folder access and external-storage
+permissions only (checked 2026-11-03); a user-chosen shared folder on Android (Storage Access Framework) is
+**unverified**. R: Android keeps notes in app-private storage (a full local copy that syncs), not a shared folder,
+unless the spike proves SAF access; desktop is a real folder as accepted. The web app stays online-first.
+
+**D11 — Clocks.** No ordering decision uses a device clock. Server-set times (`completed_at`, conflict-copy
+names, history) use the server clock; clients use their clock for display and local reminder firing only.
+Accepted as a rule; the simulation tests it with large skews.
+
+**D12 — Server restored from backup.** `since > head` ⇒ `resync_required(cursor_ahead)`; the client never
+re-uploads automatically: it shows what the server lost and re-creates on confirmation (client ids make that
+idempotent). Operator runbook step to follow (OPERATIONS.md). Alternative: the server refuses sync from
+"ahead" clients until the operator acknowledges. R: client-side confirmation, plus an `epoch` check for a
+different server.
+
+**Consequences.** If accepted: server changes land first as SYNC-01…SYNC-06 (fixes, harness, protocol,
+notes merge, resolution log, devices) with the simulation harness as the main evidence; the Tauri spike
+(SYNC-07) runs before any native client task; no existing client behaviour changes until a client sends
+`Atlas-Sync`. Costs: several migrations (`field_revisions`, `sync_resolutions`, `devices`, partial path index,
+`revision` on reminder policies/preferences), history storage, a merge dependency, and a permanent
+compatibility burden (two protocol majors). Rollback: all schema changes are additive; sync mode is opt-in.
+
+**Not decided here (spike / later):** the Tauri verdict and Electron fallback (SYNC-07, criteria in `ROADMAP.md`),
+the merge library, the batch endpoint, pairing flow, Android background-sync mechanism.

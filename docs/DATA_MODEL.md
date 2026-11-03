@@ -315,6 +315,11 @@ User 1─* NotificationDevice
 
 ## 7. Open Items
 
+- **Local-first sync additions (PROPOSED, not implemented):** `field_revisions` on tasks and projects, `revision` on
+  reminder policies and preferences, `sync_resolutions`, `devices`, note history files, a partial unique index on live
+  note paths, tombstone-only change-log retention. Shapes and rules: [`SYNC_PROTOCOL.md`](SYNC_PROTOCOL.md);
+  decisions: ADR-0059.
+
 - Board column model vs. task status mapping to be finalised in M4.
 - `external_id` task-provider mapping deferred until external task providers are in scope.
 - Retention window for change-feed tombstones — **settled in M7-02**: a configurable window
