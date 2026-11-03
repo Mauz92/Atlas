@@ -23,6 +23,7 @@ from typing import Any
 
 from .engine import Req, Resp
 from .model_notes import ModelNotes
+from .model_resolutions import ModelResolutions, wire
 
 #: label field per kind (task ``title``, project ``name``); both also have ``description``.
 LABEL = {"task": "title", "project": "name"}
@@ -82,6 +83,29 @@ class ServerBugs:
     notes_conflict_copy_truncated: bool = False
     #: the answer to a conflict is not stored under the key: a retry saves a second copy
     notes_conflict_not_stored: bool = False
+    # --- resolution log and undo (SYNC-05) ---
+    #: every 3rd resolution is reported (with an id) but its log row is never written
+    res_not_logged: bool = False
+    #: a replayed write (same idempotency key) logs its resolutions again
+    res_logged_on_replay: bool = False
+    #: a refused stale delete logs an ``edit_wins`` entry although nothing was written
+    res_logged_without_write: bool = False
+    #: the log row is written but not announced on the feed, so other devices never learn of it
+    res_not_announced: bool = False
+    #: a ``note_merged`` entry keeps the note's content in its ``detail``
+    res_keeps_text: bool = False
+    #: undo restores the old value even when the field changed after the resolution
+    undo_ignores_newer_change: bool = False
+    #: a resolution that was already undone can be undone again (a second ``undo`` entry)
+    undo_twice: bool = False
+    #: an undo is applied but writes no ``undo`` entry and does not mark the original undone
+    undo_not_logged: bool = False
+    #: an undo retried with the same idempotency key is evaluated again instead of replayed
+    undo_not_idempotent: bool = False
+    #: an undo of a resolution on a deleted entity brings the entity back
+    undo_revives_deleted: bool = False
+    #: a restore from a backup keeps the (newer) log instead of the backup's
+    restore_keeps_newer_log: bool = False
 
 
 @dataclass
@@ -135,6 +159,15 @@ class ModelServer:
         self._mutations = 0
         self._patches = 0
         self.notes = ModelNotes(self)
+        # the resolution log (SYNC-05) lives here so a snapshot/restore carries it like a table
+        self.res_log: list[dict[str, Any]] = []
+        self.res_by_id: dict[str, dict[str, Any]] = {}
+        #: ground truth, never visible through the API: every resolution a write generated
+        self.res_truth: dict[str, dict[str, Any]] = {}
+        self.undo_truth: list[dict[str, Any]] = []
+        self.generated = 0
+        self._res_n = 0
+        self.res = ModelResolutions(self)
 
     # --- ServerPort -------------------------------------------------------------------------
 
@@ -151,6 +184,8 @@ class ModelServer:
         parts = [p for p in req.path.split("/") if p]  # api, <plural>, [id], [restore]
         if parts[:2] == ["api", "changes"] and req.method == "GET":
             return self._changes(req)
+        if parts[:3] == ["api", "sync", "resolutions"]:
+            return self.res.handle(req, parts[3:])
         if len(parts) >= 2 and parts[0] == "api" and parts[1] == "notes":
             return self.notes.handle(req, bool(sync), parts[2:])
         if len(parts) < 2 or parts[0] != "api" or parts[1] not in _KIND_OF:
@@ -230,6 +265,8 @@ class ModelServer:
                     if sync:
                         return self._error(409, "idempotency_mismatch")
                     return Resp(409, {"detail": "idempotency key reused with a different request"})
+                if self.bugs.res_logged_on_replay:
+                    self.res.replay_hook(req, stored[3])  # BUG: a replay logs again
                 return Resp(stored[2], stored[3])  # replay: nothing is applied again
         resp: Resp = fn(req, *args)
         if key and not self.bugs.ignore_idempotency and 200 <= resp.status < 300:
@@ -407,6 +444,7 @@ class ModelServer:
                         "field": name,
                         "kept_revision": entity.revision + 1,
                         "loser": entity.fields[name],
+                        "detail": None,
                     }
                 )
         if conflicts and not applied and not revived:
@@ -436,7 +474,11 @@ class ModelServer:
             writes=tuple(writes),
         )
         if revived:
-            resolutions.append({"rule": "edit_wins_over_delete", "field": None})
+            resolutions.append(
+                {"rule": "edit_wins_over_delete", "field": None, "kept_revision": None,
+                 "loser": None, "detail": None}
+            )  # fmt: skip
+        self.res.log(req, entity, resolutions, revision=entity.revision)
         return Resp(200, self._out(entity, sync=True, conflicts=conflicts, resolutions=resolutions))
 
     def _sync_delete(self, req: Req, kind: str, entity_id: str) -> Resp:
@@ -456,6 +498,13 @@ class ModelServer:
             return Resp(204, None)  # already deleted: an idempotent no-op
         base = int(req.params["base_revision"])
         if base < entity.revision and not self.bugs.stale_delete_wins:
+            if self.bugs.res_logged_without_write:  # BUG: a refusal writes a log entry
+                self.res.log(
+                    req,
+                    entity,
+                    [{"rule": "edit_wins_over_delete", "field": None, "kept_revision": None}],
+                    revision=entity.revision,
+                )
             return self._error(
                 409,
                 "edit_wins",
@@ -476,10 +525,12 @@ class ModelServer:
         self._mutations += 1
         if self.bugs.skip_feed_row and self._mutations % 4 == 0:
             return
+        self._announce(entity.kind, entity.id, operation, entity.revision)
+
+    def _announce(self, kind: str, entity_id: str, operation: str, revision: int) -> None:
+        """One feed row per entity at its latest cursor (a resolution is an entity of its own)."""
         self.head_seq += 1
-        self.feed[(entity.kind, entity.id)] = FeedRow(
-            self.head_seq, entity.kind, entity.id, operation, entity.revision
-        )
+        self.feed[(kind, entity_id)] = FeedRow(self.head_seq, kind, entity_id, operation, revision)
 
     def _history(
         self,
@@ -550,6 +601,9 @@ class ModelServer:
                 rows = rows[1:]
         if types is not None:
             rows = [r for r in rows if r.kind in types]
+        elif "Atlas-Sync" not in req.headers:
+            # a legacy caller never sees an entity type it does not know (SYNC-05)
+            rows = [r for r in rows if r.kind != "resolution"]
         page = rows[:limit]
         has_more = len(rows) > limit
         next_since = page[-1].seq if page else since
@@ -565,7 +619,11 @@ class ModelServer:
                 "operation": r.operation,
                 "cursor": r.seq,
             }
-            if include == "data" and r.kind == "note":
+            if include == "data" and r.kind == "resolution":
+                entry = self.res_by_id[r.entity_id]
+                item["revision"] = r.revision
+                item["data"] = wire(entry)
+            elif include == "data" and r.kind == "note":
                 entity = self.entities[r.entity_id]
                 item["revision"] = entity.revision
                 item["data"] = self.notes.feed_data(entity)
@@ -595,15 +653,22 @@ class ModelServer:
 
     def restore_from(self, snapshot: ModelServer) -> None:
         """Replace this server's state by an older snapshot (a backup restore)."""
-        for name in ("entities", "feed", "head_seq", "floor", "idem", "history"):
+        names = ["entities", "feed", "head_seq", "floor", "idem", "history"]
+        if not self.bugs.restore_keeps_newer_log:  # BUG when set: the newer log survives
+            names += ["res_log", "res_by_id", "res_truth", "undo_truth", "generated", "_res_n"]
+        for name in names:
             setattr(self, name, getattr(snapshot, name))
 
     def snapshot(self) -> ModelServer:
         import copy
 
         clone = ModelServer(self.bugs)
-        for name in ("entities", "feed", "idem", "history"):
+        for name in (
+            "entities", "feed", "idem", "history", "res_log", "res_truth", "undo_truth"
+        ):  # fmt: skip
             setattr(clone, name, copy.deepcopy(getattr(self, name)))
+        clone.res_by_id = {entry["id"]: entry for entry in clone.res_log}
+        clone.generated, clone._res_n = self.generated, self._res_n
         clone.head_seq, clone.floor = self.head_seq, self.floor
         clone.notes._copies = self.notes._copies
         clone._next_id, clone._mutations, clone._patches = (

@@ -27,6 +27,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -52,6 +53,7 @@ from ..sync.fields import (
     snapshot,
     stamp,
 )
+from ..sync.resolution_rules import UndoTargetDeletedError
 from .export import ProjectExport
 from .progress import ZERO_PROGRESS, ProjectProgress, progress_from_status_counts
 
@@ -103,6 +105,8 @@ class ProjectSyncUpdate:
     conflicts: list[FieldConflict]
     resolutions: list[FieldResolution]
     revived: bool = False
+    #: stored values before the write, under the row lock (what an undo records; SYNC-05)
+    previous: dict[str, Any] = dataclass_field(default_factory=dict)
 
 
 def _as_date(value: Any, field: str) -> date | None:
@@ -394,7 +398,12 @@ class ProjectsService:
         return project
 
     async def update_sync(
-        self, project_id: uuid.UUID, changes: Mapping[str, Any], base_revision: int
+        self,
+        project_id: uuid.UUID,
+        changes: Mapping[str, Any],
+        base_revision: int,
+        *,
+        strict: bool = False,
     ) -> ProjectSyncUpdate:
         """Sync-mode ``PATCH``: field-level merge, edit wins over delete (see
         :meth:`atlas.tasks.service.TasksService.update_sync` for the rules)."""
@@ -402,24 +411,35 @@ class ProjectsService:
         if base_revision > project.revision:
             raise ProjectRevisionConflictError(project.revision)
         revived = project.deleted_at is not None
+        if strict and revived:
+            raise UndoTargetDeletedError(str(project_id))
         fields = {name: value for name, value in changes.items() if name in _WRITABLE}
         incoming = dict(fields)
         if isinstance(incoming.get("name"), str):
             incoming["name"] = incoming["name"].strip()
+        stored = snapshot(project, PROJECT_FIELDS)
         plan = plan_merge(
             incoming=incoming,
-            stored=snapshot(project, PROJECT_FIELDS),
+            stored=stored,
             field_revisions=project.field_revisions,
             base_revision=base_revision,
             revision=project.revision,
             text_fields=PROJECT_TEXT_FIELDS,
+            strict=strict,
         )
         if not plan.apply and not revived:
-            return ProjectSyncUpdate(project, [], list(plan.conflicts), list(plan.resolutions))
+            return ProjectSyncUpdate(
+                project, [], list(plan.conflicts), list(plan.resolutions), previous=stored
+            )
         to_write = {name: fields[name] for name in plan.apply}
         changed = await self._write(project, to_write, revive=revived)
         return ProjectSyncUpdate(
-            project, changed, list(plan.conflicts), list(plan.resolutions), revived
+            project,
+            changed,
+            list(plan.conflicts),
+            list(plan.resolutions),
+            revived,
+            previous=stored,
         )
 
     async def _write(

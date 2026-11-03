@@ -1067,6 +1067,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sync/resolutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Resolutions
+         * @description The caller's resolution log, newest first (90 days by default, then purged).
+         *
+         *     Includes `undo` entries and entries already undone (`undone_at`). `undoable` says whether
+         *     `POST .../undo` can work; `undo_blocked` and `follow_up` say why not and what to do instead.
+         */
+        get: operations["list_resolutions_api_sync_resolutions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/resolutions/{resolution_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Resolution */
+        get: operations["get_resolution_api_sync_resolutions__resolution_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/resolutions/{resolution_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Resolution
+         * @description Undo an automatic resolution: restore the value the later write overwrote.
+         *
+         *     Needs an `Idempotency-Key` (`422 idempotency_key_required`); the same key replays the first
+         *     answer. Only `simple_later_wins` (a task or project field) and `path_later_wins` (a note move)
+         *     can be undone; the value is written through the entity's normal sync write, based on the
+         *     revision the resolution produced:
+         *
+         *     - the field changed since (or the note moved again) -> `409 conflict` with a `changed_since`
+         *       conflict and the current value; **nothing is overwritten** and the entry stays undoable;
+         *     - the entity is deleted -> `409 entity_deleted` (an undo never brings it back);
+         *     - the restored value is not valid any more (a deleted project, an illegal status change, a
+         *       taken path) -> `409 conflict` (`invalid_value`, `invalid_transition`) or `409 path_exists`;
+         *     - already undone -> `409 already_undone` (a different key); not undoable -> `409 not_undoable`
+         *       with `reason` and `follow_up` (`note_merged`: the other version is in the note history;
+         *       `edit_wins_over_delete`: delete again; `path_collision`: rename the note);
+         *     - if the field already holds the restored value nothing is written (`applied: false`) and the
+         *       entry is still marked undone.
+         *
+         *     A successful undo writes an `undo` entry of its own to the log and announces both entries on
+         *     the feed. Another user's entry is `404`.
+         */
+        post: operations["undo_resolution_api_sync_resolutions__resolution_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notifications/config": {
         parameters: {
             query?: never;
@@ -1344,7 +1423,7 @@ export interface components {
              * Data
              * @description With `include=data`: the entity's stored state as of this response, which may be newer than `cursor`; apply by `revision`. Links carry no data; `null` also when the entity no longer exists.
              */
-            data?: components["schemas"]["TaskSyncData"] | components["schemas"]["ProjectSyncData"] | components["schemas"]["NoteSyncData"] | null;
+            data?: components["schemas"]["TaskSyncData"] | components["schemas"]["ProjectSyncData"] | components["schemas"]["NoteSyncData"] | components["schemas"]["ResolutionOut"] | null;
         };
         /**
          * ChangesOut
@@ -2297,6 +2376,123 @@ export interface components {
             at_time: string;
         };
         /**
+         * ResolutionFollowUp
+         * @description What to do when a resolution cannot be undone.
+         */
+        ResolutionFollowUp: {
+            /**
+             * Kind
+             * @description `note_history` (the other version is in the note's history, `href` points at it), `delete_again` (an ordinary delete) or `rename` (choose another path).
+             */
+            kind: string;
+            /** Href */
+            href?: string | null;
+        };
+        /** ResolutionListOut */
+        ResolutionListOut: {
+            /** Resolutions */
+            resolutions: components["schemas"]["ResolutionOut"][];
+            /**
+             * Next Cursor
+             * @description Pass as `cursor` for the next (older) page; `null` at the end.
+             */
+            next_cursor?: string | null;
+        };
+        /**
+         * ResolutionOut
+         * @description One entry of the automatic-resolution log (SYNC-05; `SYNC_PROTOCOL.md` section 9).
+         *
+         *     Never holds text: `loser` is the overwritten value of a *simple* field only (a status, a
+         *     priority, a date, a path). For text and note content the entry points at history instead.
+         */
+        ResolutionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Entity Type
+             * @description `task`, `project` or `note`.
+             */
+            entity_type: string;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /**
+             * Rule
+             * @description `simple_later_wins`, `edit_wins_over_delete`, `note_merged`, `path_collision`, `path_later_wins` or `undo`.
+             */
+            rule: string;
+            /** Field */
+            field?: string | null;
+            /**
+             * Kept Revision
+             * @description The entity revision the winning write produced.
+             */
+            kept_revision?: number | null;
+            /**
+             * Has Loser
+             * @description Whether the overwritten value is stored (`loser` may itself be `null`).
+             */
+            has_loser: boolean;
+            /**
+             * Loser
+             * @description The overwritten simple-field value (for `undo`: the value the undo replaced).
+             */
+            loser?: unknown;
+            /**
+             * Detail
+             * @description Paths only, bounded; never text.
+             */
+            detail?: string | null;
+            /**
+             * Device Id
+             * @description Always `null` until device credentials exist (SYNC-06).
+             */
+            device_id?: string | null;
+            /**
+             * Undoes Id
+             * @description For an `undo` entry: the resolution it undid.
+             */
+            undoes_id?: string | null;
+            /** Undone At */
+            undone_at?: string | null;
+            /** Undone By */
+            undone_by?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Undoable */
+            undoable: boolean;
+            /**
+             * Undo Blocked
+             * @description Why it cannot be undone: `already_undone`, `rule_not_undoable`, `value_not_stored` or `is_undo`.
+             */
+            undo_blocked?: string | null;
+            follow_up?: components["schemas"]["ResolutionFollowUp"] | null;
+        };
+        /**
+         * ResolutionUndoOut
+         * @description The answer to an undo. `applied` is `false` when the field already held the restored value:
+         *     the resolution is then still marked undone and an `undo` entry is logged.
+         */
+        ResolutionUndoOut: {
+            /** Applied */
+            applied: boolean;
+            /**
+             * Revision
+             * @description The entity's revision after the undo (unchanged if not applied).
+             */
+            revision?: number | null;
+            resolution: components["schemas"]["ResolutionOut"];
+            undo: components["schemas"]["ResolutionOut"];
+        };
+        /**
          * ResyncReason
          * @description Why a client must resync instead of pulling incrementally (SYNC-01).
          * @enum {string}
@@ -2416,13 +2612,19 @@ export interface components {
         };
         /**
          * SyncResolutionOut
-         * @description An automatic resolution applied by the server. In SYNC-03 it is reported in the response
-         *     only; SYNC-05 stores it (`sync_resolutions`) and adds undo.
+         * @description An automatic resolution applied by the server, as reported in the `sync` block of a write
+         *     response. Since SYNC-05 each one is also a row of the resolution log (`id`), announced on the
+         *     feed as the `resolution` entity and listed by `GET /api/sync/resolutions`.
          */
         SyncResolutionOut: {
             /**
+             * Id
+             * @description The log entry (`null` only in an error body, where nothing was written).
+             */
+            id?: string | null;
+            /**
              * Rule
-             * @description `simple_later_wins`, `edit_wins_over_delete`, `path_collision`.
+             * @description `simple_later_wins`, `edit_wins_over_delete`, `note_merged`, `path_collision`, `path_later_wins`.
              */
             rule: string;
             /** Field */
@@ -4700,7 +4902,7 @@ export interface operations {
                 limit?: number | null;
                 /** @description `data`: add each entity's `revision` and stored state to its item (max 200 items per page). Notes carry metadata only. */
                 include?: "data" | null;
-                /** @description Comma-separated entity types to return (`task`, `project`, `note`, `note_project_link`, `task_note_link`). The cursor still advances over the rest. */
+                /** @description Comma-separated entity types to return (`task`, `project`, `note`, `note_project_link`, `task_note_link`, `resolution`). The cursor still advances over the rest. Without `types`, `resolution` entries are returned only in sync mode (`Atlas-Sync`). */
                 types?: string | null;
                 /** @description Send `true` on every page of a snapshot walk after the first (the one at `since=0`): a purge floor above the walk's position then cannot interrupt it. */
                 snapshot?: boolean;
@@ -4718,6 +4920,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChangesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_resolutions_api_sync_resolutions_get: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1 to 200 (default 50). */
+                limit?: number | null;
+                /** @description `next_cursor` of the previous page (older entries). */
+                cursor?: string | null;
+                /** @description Only this entity's entries. */
+                entity_id?: string | null;
+                /** @description Only this rule. */
+                rule?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolutionListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resolution_api_sync_resolutions__resolution_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                resolution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolutionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_resolution_api_sync_resolutions__resolution_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                resolution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolutionUndoOut"];
                 };
             };
             /** @description Validation Error */

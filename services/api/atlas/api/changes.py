@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..changes import (
     DEFAULT_CHANGE_LIMIT,
@@ -29,14 +29,22 @@ from ..changes import (
 )
 from ..sync.protocol import MAX_DATA_LIMIT
 from .deps import CurrentUser, DbSession
-from .schemas import ChangeOut, ChangesOut, NoteSyncData, ProjectSyncData, TaskSyncData
-from .sync_gate import epoch_check
+from .schemas import (
+    ChangeOut,
+    ChangesOut,
+    NoteSyncData,
+    ProjectSyncData,
+    ResolutionOut,
+    TaskSyncData,
+)
+from .sync_gate import epoch_check, is_sync
 
 router = APIRouter(prefix="/api", tags=["sync"], dependencies=[Depends(epoch_check)])
 
 
 @router.get("/changes", response_model=ChangesOut)
 async def list_changes(
+    request: Request,
     user: CurrentUser,
     session: DbSession,
     since: Annotated[
@@ -74,7 +82,9 @@ async def list_changes(
             max_length=200,
             description=(
                 "Comma-separated entity types to return (`task`, `project`, `note`, "
-                "`note_project_link`, `task_note_link`). The cursor still advances over the rest."
+                "`note_project_link`, `task_note_link`, `resolution`). The cursor still advances "
+                "over the rest. Without `types`, `resolution` entries are returned only in sync "
+                "mode (`Atlas-Sync`)."
             ),
         ),
     ] = None,
@@ -123,6 +133,7 @@ async def list_changes(
         types=wanted_types,
         include_data=include == "data",
         snapshot=snapshot,
+        include_resolutions=is_sync(request),
     )
     return ChangesOut(
         changes=[
@@ -154,4 +165,6 @@ def _data_out(entity_type: str, data: dict[str, Any] | None) -> Any:
         return TaskSyncData.model_validate(data)
     if entity_type == "project":
         return ProjectSyncData.model_validate(data)
+    if entity_type == "resolution":
+        return ResolutionOut.model_validate(data)
     return NoteSyncData.model_validate(data)

@@ -88,4 +88,12 @@ async def load_entity_data(
                 note.revision,
                 _row(note, _NOTE_COLUMNS),
             )
+    resolution_ids = _ids(wanted.get(ChangeEntityType.RESOLUTION, ()))
+    if resolution_ids:
+        from ..sync.resolution_log import load_resolution_data
+
+        for resolution_id, found in (
+            await load_resolution_data(session, user_id, resolution_ids)
+        ).items():
+            result[(ChangeEntityType.RESOLUTION, str(resolution_id))] = found
     return result

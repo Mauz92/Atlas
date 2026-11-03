@@ -97,6 +97,8 @@ class Durable:
     #: some past moment (a replay after a lost response returns the *original* result), so each is
     #: read again at the next pull and the mirror is corrected from that, not from the ack
     refetch: dict[str, str] = field(default_factory=dict)
+    #: SYNC-05: the client's mirror of the ``resolution`` feed entity, id -> data
+    resolutions: dict[str, dict[str, Any]] = field(default_factory=dict)
     #: notes: the text being edited locally, with the base it derives from:
     #: id -> (working text, base revision, base hash, base text). Pinned at the first edit, so a
     #: pull that moves the server copy forward does not change what a later save is based on.
@@ -142,6 +144,13 @@ class Recorder:
     halts: list[str] = field(default_factory=list)
     #: notes: every ``conflict_copy`` a client was told about, with the op whose text it holds
     conflict_copies: list[tuple[str, Op, dict[str, Any]]] = field(default_factory=list)
+    #: SYNC-05: every resolution a response told a client about: id -> (op id, the response object)
+    seen_resolutions: dict[str, tuple[str, dict[str, Any]]] = field(default_factory=dict)
+    #: the value a winning write stored, by resolution id (read from the acknowledgement)
+    winners: dict[str, Any] = field(default_factory=dict)
+    #: acknowledged undos (client, op, status, body); refused ones (client, op, status, code)
+    undos: list[tuple[str, Op, int, Any]] = field(default_factory=list)
+    undo_refusals: list[tuple[str, Op, int, str | None]] = field(default_factory=list)
 
 
 class SimClient:

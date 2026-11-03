@@ -55,6 +55,8 @@ class ChangeEntityType(StrEnum):
     NOTE = "note"
     NOTE_PROJECT_LINK = "note_project_link"
     TASK_NOTE_LINK = "task_note_link"
+    #: an automatic-resolution log entry (SYNC-05): a notice, never a tombstone, purged with its row
+    RESOLUTION = "resolution"
 
 
 class ChangeOperation(StrEnum):

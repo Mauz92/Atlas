@@ -79,6 +79,9 @@ class Reason(StrEnum):
     TEXT = "text_conflict"
     #: the later-wins result would break the status state machine
     INVALID_TRANSITION = "invalid_transition"
+    #: an undo (SYNC-05) found a newer change of the field: it is never overwritten, not even by
+    #: the later-wins rule that governs ordinary writes
+    CHANGED_SINCE = "changed_since"
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +125,7 @@ def plan_merge(
     revision: int,
     text_fields: frozenset[str],
     equal: Any = None,
+    strict: bool = False,
 ) -> MergePlan:
     """Decide, per incoming field, whether it applies, is a no-op, wins or conflicts.
 
@@ -129,6 +133,10 @@ def plan_merge(
     stored value already equals the incoming one: no-op; (3) a genuine concurrent change: a simple
     field's incoming value wins (it arrives later in server order) and is reported; a text field
     is a conflict and is not applied. ``equal`` compares two normalised values (default ``==``).
+
+    ``strict`` (used by undo, SYNC-05) turns rule 3 for *every* field into a conflict
+    (:attr:`Reason.CHANGED_SINCE`): an undo restores an old value only if nothing changed the
+    field since, and otherwise reports it instead of overwriting.
 
     A field with no recorded revision counts as changed *now* (``revision``): an unknown history
     must never merge silently across a change it cannot see.
@@ -144,6 +152,10 @@ def plan_merge(
                 plan.noop.append(name)
         elif compare(name, stored.get(name), value):
             plan.noop.append(name)
+        elif strict:
+            plan.conflicts.append(
+                FieldConflict(name, Reason.CHANGED_SINCE, changed_at, stored.get(name))
+            )
         elif name in text_fields:
             plan.conflicts.append(FieldConflict(name, Reason.TEXT, changed_at, stored.get(name)))
         else:

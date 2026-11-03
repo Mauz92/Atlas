@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import ChangeLog, User
 from .data import load_entity_data
-from .feed import ChangeSet, FeedChange, merge_latest, plan_change_page
+from .feed import ChangeEntityType, ChangeSet, FeedChange, merge_latest, plan_change_page
 from .retention import resync_reason
 
 
@@ -34,6 +34,7 @@ class ChangesService:
         types: frozenset[str] | None = None,
         include_data: bool = False,
         snapshot: bool = False,
+        include_resolutions: bool = False,
     ) -> ChangeSet:
         """One page of the caller's changes after ``since``, ordered by cursor ascending.
 
@@ -81,6 +82,11 @@ class ChangesService:
             stmt = stmt.where(ChangeLog.operation == "upsert")
         if types:
             stmt = stmt.where(ChangeLog.entity_type.in_(sorted(types)))
+        elif not include_resolutions:
+            # SYNC-05: ``resolution`` entries are announced to sync-mode callers and to callers that
+            # ask for them by name; a legacy caller (the web app) never sees an entity type it
+            # does not know. The cursor still advances over them like over any filtered row.
+            stmt = stmt.where(ChangeLog.entity_type != ChangeEntityType.RESOLUTION)
         rows = list(await self.session.scalars(stmt.order_by(ChangeLog.seq.asc()).limit(limit + 1)))
         merged = merge_latest(
             [

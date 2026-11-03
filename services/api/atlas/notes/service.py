@@ -13,6 +13,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
+from typing import Any
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -96,11 +97,20 @@ class NoteWriteConflictError(RuntimeError):
     text was saved as ``copy`` so it is never lost. The caller must commit (the copy is a side
     effect) and answer ``409 conflict`` with the copy's identity."""
 
-    def __init__(self, reason: str, note: NoteIndex, copy: NoteIndex) -> None:
+    def __init__(
+        self,
+        reason: str,
+        note: NoteIndex,
+        copy: NoteIndex,
+        resolutions: Sequence[NoteResolution] = (),
+    ) -> None:
         super().__init__(f"the note could not be merged ({reason})")
         self.reason = reason
         self.note = note
         self.copy = copy
+        #: decisions already taken before the conflict (a revive: the note is live again, edit
+        #: wins); they were written and must be logged and reported with the 409 (SYNC-05)
+        self.resolutions = list(resolutions)
 
 
 @dataclass(frozen=True)
@@ -110,6 +120,9 @@ class NoteResolution:
     rule: str
     detail: str | None = None
     kept_revision: int | None = None
+    #: the simple field decided (``path``) and the value it overwrote (SYNC-05); text is never here
+    field: str | None = None
+    loser: Any = None
 
 
 @dataclass
@@ -534,9 +547,15 @@ class NotesService:
         note = await self._write_revision(note, merged.text, reason="merge")
         return NoteWrite(note, merged=merged.text != content, resolutions=[resolution])
 
-    async def _conflict(self, note: NoteIndex, content: str, reason: str) -> NoteWriteConflictError:
+    async def _conflict(
+        self,
+        note: NoteIndex,
+        content: str,
+        reason: str,
+        resolutions: Sequence[NoteResolution] = (),
+    ) -> NoteWriteConflictError:
         copy = await self.conflict_copy(note.id, content, portable=True)
-        return NoteWriteConflictError(reason, note, copy)
+        return NoteWriteConflictError(reason, note, copy, resolutions)
 
     async def _revive(
         self, note: NoteIndex, content: str, base_revision: int, base_hash: str
@@ -584,7 +603,7 @@ class NotesService:
         await self.history.record(note, text, reason="revive")
         await self._record_change(note.id, ChangeOperation.UPSERT)
         if copy_of is not None:
-            raise await self._conflict(note, copy_of, "overlap")
+            raise await self._conflict(note, copy_of, "overlap", resolutions)
         return NoteWrite(note, merged=text != content, resolutions=resolutions)
 
     async def delete_sync(self, note_id: uuid.UUID, base_revision: int) -> bool:
@@ -629,6 +648,8 @@ class NotesService:
                         "path_later_wins",
                         detail=f"was moved to {note.path} elsewhere; now {normalized}",
                         kept_revision=note.revision + 1,
+                        field="path",
+                        loser=note.path,
                     )
                 )
         if normalized == note.path:

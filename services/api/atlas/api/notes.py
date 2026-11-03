@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Annotated, Any, NoReturn
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -21,6 +23,7 @@ from ..notes import (
     NoteIdExistsError,
     NoteNotFoundError,
     NotePathConflictError,
+    NoteResolution,
     NotesReconciler,
     NotesService,
     NotesStorage,
@@ -73,7 +76,13 @@ from .schemas import (
     TaskOut,
 )
 from .sync_gate import SyncMode, epoch_check
-from .syncio import REPLAYED_HEADER, reject_unknown_fields, require_base, require_key
+from .syncio import (
+    REPLAYED_HEADER,
+    log_resolutions,
+    reject_unknown_fields,
+    require_base,
+    require_key,
+)
 from .tasks import task_out
 
 router = APIRouter(prefix="/api/notes", tags=["notes"], dependencies=[Depends(epoch_check)])
@@ -204,14 +213,24 @@ def _copy_out(note: NoteIndex) -> NoteCopyOut:
     )
 
 
+def _resolutions_out(items: Iterable[NoteResolution]) -> list[SyncResolutionOut]:
+    return [
+        SyncResolutionOut(
+            rule=item.rule,
+            detail=item.detail,
+            kept_revision=item.kept_revision,
+            field=item.field,
+            loser=jsonable_encoder(item.loser),
+        )
+        for item in items
+    ]
+
+
 def _sync_result(write: NoteWrite) -> NoteSyncResult:
     return NoteSyncResult(
         revision=write.note.revision,
         merged=write.merged,
-        resolution=[
-            SyncResolutionOut(rule=item.rule, detail=item.detail, kept_revision=item.kept_revision)
-            for item in write.resolutions
-        ],
+        resolution=_resolutions_out(write.resolutions),
     )
 
 
@@ -228,10 +247,22 @@ async def _conflict_response(
     store: IdempotencyStore,
     session: Any,
     key: str,
+    user_id: uuid.UUID,
 ) -> JSONResponse:
     """The ``409 conflict`` of a write that could not be merged. The conflict copy is a stored
     side effect, so the transaction is committed and the answer recorded under the key: a retry
-    replays this response instead of saving a second copy."""
+    replays this response instead of saving a second copy. A revive that preceded the conflict
+    (the note is live again, edit wins) is a decision that was written: it is logged here."""
+    resolutions = _resolutions_out(conflict.resolutions)
+    await log_resolutions(
+        session,
+        user_id,
+        "note",
+        conflict.note.id,
+        resolutions,
+        op_key=key,
+        revision=conflict.note.revision,
+    )
     body = {
         "error": "conflict",
         "detail": "the note changed on the server and the edits overlap; nothing was overwritten "
@@ -245,7 +276,7 @@ async def _conflict_response(
             ).model_dump(mode="json")
         ],
         "conflict_copy": _copy_out(conflict.copy).model_dump(mode="json"),
-        "resolution": [],
+        "resolution": [item.model_dump(mode="json") for item in resolutions],
     }
     await store.remember(key, status_code=409, body=body)
     await session.commit()
@@ -389,6 +420,15 @@ async def create_note(
             )
         detail.sync = result
         assert idempotency_key is not None
+        await log_resolutions(
+            session,
+            user.id,
+            "note",
+            note.id,
+            result.resolution,
+            op_key=idempotency_key,
+            revision=note.revision,
+        )
         await store.remember(idempotency_key, status_code=201, body=_stored_summary(note, result))
     await session.commit()
     if replayed:
@@ -609,10 +649,19 @@ async def update_note(
         )
         detail = await _detail(service, write.note)
     except NoteWriteConflictError as conflict:
-        return await _conflict_response(conflict, store, session, idempotency_key)
+        return await _conflict_response(conflict, store, session, idempotency_key, user.id)
     except Exception as exc:
         _translate(exc, sync)
     detail.sync = _sync_result(write)
+    await log_resolutions(
+        session,
+        user.id,
+        "note",
+        write.note.id,
+        detail.sync.resolution,
+        op_key=idempotency_key,
+        revision=write.note.revision,
+    )
     await store.remember(
         idempotency_key, status_code=200, body=_stored_summary(write.note, detail.sync)
     )
@@ -680,6 +729,15 @@ async def move_note(
     except Exception as exc:
         _translate(exc, sync)
     detail.sync = _sync_result(write)
+    await log_resolutions(
+        session,
+        user.id,
+        "note",
+        write.note.id,
+        detail.sync.resolution,
+        op_key=idempotency_key,
+        revision=write.note.revision,
+    )
     await store.remember(
         idempotency_key, status_code=200, body=_stored_summary(write.note, detail.sync)
     )
@@ -714,6 +772,8 @@ async def delete_note(
         sync, request, None, store, idempotency_key, "note.delete", {"note_id": str(note_id)}
     )
     if replay is not None:
+        if replay.status_code >= 400:  # a refused delete is replayed with its body
+            return replay
         return Response(status_code=replay.status_code, headers=REPLAYED_HEADER)
     service = NotesService(session, user.id, storage)
     try:
@@ -723,8 +783,16 @@ async def delete_note(
         else:
             await service.delete(note_id)
     except NoteEditWinsError as exc:
-        await session.commit()  # an unindexed external edit may have been recorded on the way
-        _translate(exc, sync)
+        # An unindexed external edit may have been recorded on the way, so this commits. The
+        # answer is stored under the key: without it the key stays reserved with no answer and
+        # a retry (the 409 may have been lost) would replay status 0 (found by SYNC-05).
+        try:
+            _translate(exc, sync)
+        except SyncError as refusal:
+            assert idempotency_key is not None
+            await store.remember(idempotency_key, status_code=409, body=refusal.body())
+            await session.commit()
+            raise
     except Exception as exc:
         _translate(exc, sync)
     if sync:

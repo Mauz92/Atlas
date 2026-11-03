@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterable
 from typing import Any
 
 from fastapi import Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..sync.fields import FieldConflict, FieldResolution
 from ..sync.protocol import SyncError
+from ..sync.resolution_log import UNSET as _NO_LOSER
+from ..sync.resolution_log import NewResolution, ResolutionLog
+from ..sync.resolution_rules import (
+    EDIT_WINS_OVER_DELETE,
+    PATH_COLLISION,
+    PATH_LATER_WINS,
+    SIMPLE_LATER_WINS,
+)
 from .schemas import SyncConflictOut, SyncResolutionOut, SyncResult
 
 REPLAYED_HEADER = {"Idempotency-Replayed": "true"}
@@ -89,6 +99,53 @@ def sync_result(
         conflicts=conflicts_out(conflicts),
         resolution=resolutions_out(resolutions, revived=revived),
     )
+
+
+#: rules whose ``kept_revision`` is the revision the write produced (the response leaves it empty)
+_REVISION_RULES = frozenset({EDIT_WINS_OVER_DELETE, PATH_COLLISION})
+#: rules that keep the overwritten value of a simple field
+_LOSER_RULES = frozenset({SIMPLE_LATER_WINS, PATH_LATER_WINS})
+
+
+async def log_resolutions(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    entity_type: str,
+    entity_id: uuid.UUID,
+    outs: Iterable[SyncResolutionOut],
+    *,
+    op_key: str | None,
+    revision: int,
+) -> None:
+    """Write the resolutions of a sync-mode write to the log, in the write's own transaction, and
+    put each entry's ``id`` into the response object (SYNC-05).
+
+    Call it after the entity was written and before the idempotency record is stored and the
+    transaction committed: the entries, the feed announcements, the write and the stored answer
+    then commit or roll back together, and a replay (which returns the stored answer before any
+    work) can never log again.
+    """
+    outs = list(outs)
+    entries: list[NewResolution] = []
+    for out in outs:
+        if out.kept_revision is None and out.rule in _REVISION_RULES:
+            out.kept_revision = revision
+        loser = out.loser if out.rule in _LOSER_RULES else _NO_LOSER
+        entries.append(
+            NewResolution(
+                entity_type=entity_type,
+                entity_id=entity_id,
+                rule=out.rule,
+                field=out.field,
+                kept_revision=out.kept_revision,
+                loser=loser,
+                detail=out.detail,
+            )
+        )
+    for out, row in zip(
+        outs, await ResolutionLog(session, user_id).record(entries, op_key=op_key), strict=True
+    ):
+        out.id = row.id
 
 
 def entity_json(model: BaseModel) -> dict[str, Any]:

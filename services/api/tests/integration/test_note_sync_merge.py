@@ -450,6 +450,22 @@ async def test_a_stale_delete_is_refused_and_the_edit_wins(c: AsyncClient) -> No
     assert bad.status_code == 409 and bad.json()["error"] == "stale"
 
 
+async def test_a_retried_refused_delete_replays_the_refusal(c: AsyncClient) -> None:
+    """The 409 may be lost: the retry (same key) must get it again, not an empty status 0
+    (found by SYNC-05: the refusal committed the key with no stored answer)."""
+    note = await create(c, "rd.md", "one\n")
+    assert (await put(c, note, "two\n")).status_code == 200
+    key = str(uuid.uuid4())
+    first = await c.delete(
+        f"/api/notes/{note['id']}", params={"base_revision": 1}, headers=h(c, key)
+    )
+    again = await c.delete(
+        f"/api/notes/{note['id']}", params={"base_revision": 1}, headers=h(c, key)
+    )
+    assert first.status_code == again.status_code == 409
+    assert again.json() == first.json() and again.headers["Idempotency-Replayed"] == "true"
+
+
 async def test_deleting_after_an_unindexed_external_edit_is_refused(
     c: AsyncClient, notes_storage: NotesStorage
 ) -> None:

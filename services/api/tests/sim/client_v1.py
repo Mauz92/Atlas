@@ -47,6 +47,8 @@ class SyncSimClient(SimClient):
         self.sent = 0
         self.sent_at_halt = -1
         self.active = True
+        #: SYNC-05: pull the ``resolution`` entity and undo resolutions (set by the world)
+        self.track_resolutions = False
 
     # --- lifecycle --------------------------------------------------------------------------
 
@@ -126,6 +128,8 @@ class SyncSimClient(SimClient):
         rng, d = self.rng, self.durable
         d.counter += 1
         op_id = f"{self.cid}-{d.counter}"
+        if self.track_resolutions and self._undo_action(op_id):
+            return
         if "note" in kinds and rng.random() < (1.0 if kinds == ("note",) else 0.4):
             self._note_action(op_id)
             return
@@ -171,6 +175,33 @@ class SyncSimClient(SimClient):
         if self.bugs.queue_ordered_by_client_clock:
             d.queue.sort(key=lambda o: o.ts)
         self.log(f"enqueue {op.action} {op.kind} {op.target} {op.fields} base={op.base}")
+
+    def undo_tap(self) -> None:
+        """The user taps undo on a notice they hold (the second wave of a resolution run)."""
+        self.durable.counter += 1
+        self._undo_action(f"{self.cid}-{self.durable.counter}", force=True)
+
+    def _undo_action(self, op_id: str, *, force: bool = False) -> bool:
+        """The user taps "undo" on a "changed on another device" notice (SYNC-05). Mostly an
+        undoable one; sometimes any notice, so the refusals (already undone, not undoable) are
+        exercised too."""
+        rng, d = self.rng, self.durable
+        queued = {o.target for o in d.queue if o.action == "undo"}
+        known = [
+            i for i in d.resolutions if i not in queued
+        ]  # in the order the client learned them
+        undoable = [i for i in known if d.resolutions[i]["undoable"]]
+        if not known or rng.random() >= (0.7 if undoable or force else 0.1):
+            return False
+        pool = known if (not undoable or rng.random() < 0.2) else undoable
+        # a user taps the notice that just appeared far more often than an old one
+        target = pool[-1] if rng.random() < 0.7 else rng.choice(pool)
+        op = Op(op_id, "resolution", "undo", target, {}, False, self._new_key(), self.clock())
+        # an undo is a tap on a notice, not part of the user's edit stream: it goes in front of the
+        # unsent operations (never in front of one already sent, whose retry must stay identical)
+        d.queue.insert(1 if d.queue and d.queue[0].attempts else 0, op)
+        self.log(f"enqueue undo of resolution {target}")
+        return True
 
     # --- note actions -------------------------------------------------------------------------
 
@@ -280,8 +311,10 @@ class SyncSimClient(SimClient):
             "X-Client-Time": str(self.clock()),
             "X-Sim-Op": op.op_id,
         }
-        plural = _PLURAL[op.kind]
-        if op.kind == "note" and op.action == "put":
+        plural = _PLURAL.get(op.kind, "")
+        if op.action == "undo":
+            req = Req("POST", f"/api/sync/resolutions/{op.target}/undo", headers=headers)
+        elif op.kind == "note" and op.action == "put":
             if not op.base_fixed and op.target not in d.working:
                 d.queue.remove(op)  # nothing to save any more
                 return
@@ -319,6 +352,10 @@ class SyncSimClient(SimClient):
         d = self.durable
         if op not in d.queue:
             return
+        self._note_resolutions(op, resp)
+        if op.action == "undo":
+            self._on_undo(resp, op)
+            return
         if 200 <= resp.status < 300:
             self._ack(op, resp)
             return
@@ -338,6 +375,48 @@ class SyncSimClient(SimClient):
             if copy is not None:
                 self.rec.conflict_copies.append((self.cid, op, copy))
             self.pull_changed = True
+
+    def _note_resolutions(self, op: Op, resp: Resp) -> None:
+        """Remember every resolution a response told this client about, and the value a winning
+        write stored (what an undo must later find in place of the value it replaces)."""
+        body = resp.body
+        if not isinstance(body, dict):
+            return
+        outs: list[dict[str, Any]] = []
+        sync = body.get("sync")
+        if isinstance(sync, dict):
+            outs += sync.get("resolution", [])
+        if isinstance(body.get("resolution"), list):
+            outs += body["resolution"]
+        for out in outs:
+            if out.get("id"):
+                self.rec.seen_resolutions[out["id"]] = (op.op_id, out)
+                if (
+                    200 <= resp.status < 300
+                    and out["rule"] in ("simple_later_wins", "path_later_wins")
+                    and out.get("field")
+                ):
+                    self.rec.winners[out["id"]] = body.get(out["field"])
+
+    def _on_undo(self, resp: Resp, op: Op) -> None:
+        """An answer to an undo: settled either way (a refusal is not retried)."""
+        d = self.durable
+        d.queue.remove(op)
+        body = resp.body
+        if 200 <= resp.status < 300 and isinstance(body, dict):
+            self.rec.undos.append((self.cid, op, resp.status, body))
+            entry = body["undo"]
+            if entry.get("id"):
+                self.rec.seen_resolutions[entry["id"]] = (op.op_id, entry)
+            ref = body["resolution"]
+            # the undo changed the entity: read it again at the next pull (an answer is historical)
+            d.refetch[ref["entity_id"]] = ref["entity_type"]
+            self.log(f"ACK undo {op.op_id} -> applied={body['applied']}")
+            return
+        code = body.get("error") if isinstance(body, dict) else None
+        self.rec.undo_refusals.append((self.cid, op, resp.status, code))
+        self.log(f"undo {op.op_id} refused: {resp.status} {code}")
+        self.pull_changed = True
 
     def _ack(self, op: Op, resp: Resp) -> None:
         super()._ack(op, resp)
@@ -405,7 +484,9 @@ class SyncSimClient(SimClient):
                 "since": job.since,
                 "limit": 4,
                 "include": "data",
-                "types": "task,project,note",
+                "types": "task,project,note,resolution"
+                if self.track_resolutions
+                else "task,project,note",
             }
             if job.shadow is not None and job.since > 0:
                 params["snapshot"] = True  # a continuation of the snapshot walk (never below floor)
@@ -457,6 +538,10 @@ class SyncSimClient(SimClient):
         refreshed = set(job.refetch)
         for change in page["changes"]:
             entity_id, kind = change["entity_id"], change["entity_type"]
+            if kind == "resolution":
+                if change.get("data") is not None:
+                    d.resolutions[entity_id] = change["data"]
+                continue
             if entity_id in refreshed:
                 continue
             data = change.get("data")
@@ -490,6 +575,9 @@ class SyncSimClient(SimClient):
         assert shadow is not None
         for change in page["changes"]:
             data = change.get("data")
+            if change["entity_type"] == "resolution":
+                shadow[change["entity_id"]] = ("resolution", data)
+                continue
             gone = change["operation"] == "delete" or data is None or data["deleted_at"]
             if gone:
                 shadow[change["entity_id"]] = (change["entity_type"], None)
@@ -498,7 +586,13 @@ class SyncSimClient(SimClient):
         if page["has_more"]:
             self.job = PullJob(since=page["next_since"], shadow=shadow)
             return
+        # the snapshot is the whole truth about the notices too
+        d.resolutions = {
+            i: data for i, (kind, data) in shadow.items() if kind == "resolution" and data
+        }
         for entity_id, (kind, data) in shadow.items():
+            if kind == "resolution":
+                continue
             if data is None:
                 # Remember the tombstone even for an id never held: a create of it may still be
                 # in flight and its acknowledgement must not bring the entity back (seed 681).

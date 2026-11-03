@@ -7,7 +7,9 @@ phase, then a fault-free quiescence phase, and finally checks the invariants of
 
 from __future__ import annotations
 
+import json
 import random
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -83,6 +85,8 @@ def build_world(
         )
         if cid == "old":
             client.protocol = 2  # type: ignore[attr-defined]
+        elif cfg.resolutions:
+            client.track_resolutions = True  # type: ignore[attr-defined]
         clients.append(client)
     return World(seed, cfg, port, events, net, rng, clock_rng, offsets, clients, rec, trace)
 
@@ -99,6 +103,9 @@ async def run_world(
     world = build_world(seed, port, cfg, client_bugs)
     await _faulty_phase(world)
     await _quiesce(world)
+    if world.cfg.resolutions and world.cfg.undo_rounds:
+        await _undo_wave(world)
+        await _quiesce(world)
     if invariants:
         await _check_invariants(world)
         await _check_idempotence(world)
@@ -182,6 +189,30 @@ async def _quiesce(world: World) -> None:
     )
 
 
+async def _undo_wave(world: World) -> None:
+    """Second wave (SYNC-05): every client now holds the notices of the whole run. They tap undo
+    on them while still editing a little and while the network misbehaves, so undos meet newer
+    writes, other undos of the same notice, retries and lost answers."""
+    world.net.faults = True
+    world.trace.append(f"t={world.events.now} --- undo wave (faults on) ---")
+    rng = world.rng
+    for _ in range(world.cfg.undo_rounds):
+        world.events.now += rng.randint(1, 15)
+        await world.events.run_due()
+        for client in world.clients:
+            if _halted(client):
+                continue
+            roll = rng.random()
+            if roll < 0.5 and isinstance(client, SyncSimClient):
+                client.undo_tap()
+            elif roll < 0.62:
+                client.user_action(world.cfg.kinds)
+        for client in world.clients:
+            client.tick()
+        for client in world.clients:
+            _check_cursor_safety(world, client)
+
+
 async def _quiescent(world: World) -> bool:
     if world.events.pending():
         return False
@@ -213,6 +244,18 @@ def _check_cursor_safety(world: World, client: SimClient) -> None:
         return
     for row in model.feed.values():
         if row.seq > d.cursor:
+            continue
+        if row.kind == "resolution":
+            if not getattr(client, "track_resolutions", False):
+                continue  # this client never asked for the entity
+            held = d.resolutions.get(row.entity_id)
+            have = None if held is None else (2 if held["undone_at"] else 1)
+            if have is None or have < row.revision:
+                raise world.fail(
+                    "cursor_safety",
+                    f"{client.cid} has cursor {d.cursor} but never applied resolution row "
+                    f"#{row.seq} ({row.entity_id} state {row.revision}); holds {held}",
+                )
             continue
         if row.entity_id in d.refetch:
             # An acknowledged write of this client brought the entity into the mirror after its
@@ -377,6 +420,8 @@ async def _check_invariants(world: World) -> None:
     if world.cfg.sync:
         _check_sync_world(world)
         await _check_notes(world, truth)
+    if world.cfg.resolutions:
+        await _check_resolutions(world)
     model = world.model
     if model is not None:
         _check_model_history(world, model)
@@ -644,3 +689,195 @@ def _check_model_note_history(world: World, model: ModelServer) -> None:
 
 def markers_of(text: str) -> frozenset[str]:
     return frozenset(line for line in text.split("\n") if line.startswith("m:"))
+
+
+# --- resolutions and undo (SYNC-05) ---------------------------------------------------------
+
+#: rules that always accompany a revision bump of their entity: two entries for the same
+#: (entity, rule, field, revision) can only be one write logged twice (an undo that changed
+#: nothing bumps no revision, so undo is not in the set; `undo_once` covers it)
+_ONE_PER_REVISION = frozenset(
+    {"simple_later_wins", "path_later_wins", "edit_wins_over_delete", "path_collision"}
+)
+_LOSER_RULES = frozenset({"simple_later_wins", "path_later_wins", "undo"})
+_UNDO_REFUSALS = frozenset(
+    {"conflict", "entity_deleted", "already_undone", "not_undoable", "path_exists"}
+)
+#: what a simulated user types: task titles, descriptions and note lines (never a simple value)
+_TEXT = re.compile(r"(task|project):c\d+-\d+|\bd:c\d+-\d+|\bm:c\d+-\d+|# Title")
+
+
+async def fetch_log(world: World) -> list[dict[str, Any]]:
+    """The whole resolution log through the list endpoint (newest first), as a client sees it."""
+    entries: list[dict[str, Any]] = []
+    cursor: str | None = None
+    for _ in range(1000):
+        params: dict[str, Any] = {"limit": 200}
+        if cursor is not None:
+            params["cursor"] = cursor
+        resp = await world.server.handle(
+            Req("GET", "/api/sync/resolutions", params=params, headers={"Atlas-Sync": "1"})
+        )
+        if resp.status != 200:
+            raise world.fail("harness", f"listing the resolution log returned {resp.status}")
+        entries += resp.body["resolutions"]
+        cursor = resp.body["next_cursor"]
+        if cursor is None:
+            return entries
+    raise world.fail("harness", "the resolution log did not end")
+
+
+async def _check_resolutions(world: World) -> None:
+    """Invariants of the resolution log and undo (TESTING.md section 10.0c)."""
+    rec = world.rec
+    log = await fetch_log(world)
+    by_id = {e["id"]: e for e in log}
+    if len(by_id) != len(log):
+        raise world.fail("resolution_logged_once", "the log lists an entry id twice")
+    # the log never holds text, only simple values and ids
+    for entry in log:
+        blob = json.dumps(entry, default=str)
+        if _TEXT.search(blob) or (entry["has_loser"] and entry["rule"] not in _LOSER_RULES):
+            raise world.fail(
+                "log_has_no_text", f"entry {entry['id']} ({entry['rule']}) keeps text: {blob[:200]}"
+            )
+    # exactly once: no two entries describe the same write (a retry, a replay)
+    writes: dict[tuple[Any, ...], str] = {}
+    for entry in log:
+        if entry["rule"] in _ONE_PER_REVISION and entry["kept_revision"] is not None:
+            key = (entry["entity_id"], entry["rule"], entry["field"], entry["kept_revision"])
+            if key in writes:
+                raise world.fail(
+                    "resolution_logged_once",
+                    f"entries {writes[key]} and {entry['id']} both record {key}: one write "
+                    "was logged twice",
+                )
+            writes[key] = entry["id"]
+    # every resolution a client was told about is in the log, with the same facts ...
+    told = rec.seen_resolutions
+    for rid, (op_id, out) in told.items():
+        entry = by_id.get(rid)
+        if entry is None:
+            raise world.fail(
+                "resolution_logged_once",
+                f"{op_id} was answered with resolution {rid} ({out['rule']}) that the log lacks",
+            )
+        same = (entry["rule"], entry["field"], entry["kept_revision"]) == (
+            out["rule"],
+            out.get("field"),
+            out.get("kept_revision"),
+        )
+        if not same:
+            raise world.fail(
+                "resolution_logged_once",
+                f"{op_id} was told {out} but the log holds {entry['rule']} {entry['field']} "
+                f"revision {entry['kept_revision']}",
+            )
+    # ... and the log holds nothing no write reported (an entry without its write, or a retry
+    # that wrote again and was never answered)
+    for entry in log:
+        if entry["id"] not in told:
+            name = "undo_idempotent" if entry["rule"] == "undo" else "no_log_without_write"
+            raise world.fail(
+                name,
+                f"log entry {entry['id']} ({entry['rule']} of {entry['entity_id']} at revision "
+                f"{entry['kept_revision']}) was reported to no client: no acknowledged write "
+                "produced it",
+            )
+    # undo: at most one undo entry per resolution, the flag agrees with the entries
+    undo_of: dict[str, list[str]] = {}
+    for entry in log:
+        if entry["rule"] == "undo" and entry["undoes_id"]:
+            undo_of.setdefault(entry["undoes_id"], []).append(entry["id"])
+    for target, entries in undo_of.items():
+        if len(entries) > 1:
+            raise world.fail("undo_once", f"resolution {target} has undo entries {entries}")
+    for entry in log:
+        if entry["rule"] == "undo":
+            continue
+        count = len(undo_of.get(entry["id"], ()))
+        if (entry["undone_at"] is not None) != (count == 1):
+            raise world.fail(
+                "undo_logged",
+                f"resolution {entry['id']} is marked undone={entry['undone_at'] is not None} "
+                f"but has {count} undo entries",
+            )
+    for cid, op, _status, body in rec.undos:
+        entry = by_id.get(body["undo"]["id"]) if body["undo"].get("id") else None
+        if entry is None or entry["undoes_id"] != op.target:
+            raise world.fail(
+                "undo_logged",
+                f"{cid} was answered {body['undo']} for undo {op.op_id} but the log holds no "
+                f"undo entry of {op.target}",
+            )
+        if (
+            body["applied"]
+            and op.target in rec.winners
+            and entry["loser"] != rec.winners[op.target]
+        ):
+            raise world.fail(
+                "undo_never_overwrites_newer",
+                f"undo {op.op_id} replaced {entry['loser']!r} but the winning write of "
+                f"{op.target} had stored {rec.winners[op.target]!r}: a newer value was overwritten",
+            )
+    for cid, op, status, code in rec.undo_refusals:
+        if code not in _UNDO_REFUSALS:
+            raise world.fail(
+                "unexpected_rejection",
+                f"{cid} was refused undo {op.op_id} with {status} {code!r}",
+            )
+    # every client that follows the entity holds exactly the log (notices converge)
+    truth = {e["id"]: e["undone_at"] is not None for e in log}
+    for client in world.clients:
+        if _halted(client) or not getattr(client, "track_resolutions", False):
+            continue
+        mine = {i: r["undone_at"] is not None for i, r in client.durable.resolutions.items()}
+        if mine != truth:
+            missing = sorted(set(truth) - set(mine))
+            differing = sorted(i for i in mine if i in truth and mine[i] != truth[i])
+            raise world.fail(
+                "resolutions_converge",
+                f"{client.cid} disagrees with the server's log: missing {missing[:5]}, "
+                f"differing {differing[:5]}, unknown {sorted(set(mine) - set(truth))[:5]}",
+            )
+    model = world.model
+    if model is not None:
+        _check_model_resolutions(world, model)
+
+
+def _check_model_resolutions(world: World, model: ModelServer) -> None:
+    """Ground truth only the model has: every generated resolution has exactly one row, and no
+    undo replaced a value that changed after the resolution."""
+    if len(model.res_log) != model.generated:
+        raise world.fail(
+            "resolution_logged_once",
+            f"{model.generated} resolutions were generated by writes but the log holds "
+            f"{len(model.res_log)} rows",
+        )
+    for truth in model.undo_truth:
+        if "winner_path" in truth:
+            ok = truth["before"] == truth["winner_path"]
+        else:
+            ok = truth["field_revision_before"] <= truth["kept_revision"]
+        if not ok:
+            raise world.fail(
+                "undo_never_overwrites_newer",
+                f"undo of {truth['resolution']} replaced {truth['before']!r} although the field "
+                f"had changed (revision {truth['field_revision_before']}) after the resolution "
+                f"(revision {truth['kept_revision']})",
+            )
+
+
+def check_log_matches_state(model: ModelServer) -> str | None:
+    """A restored (or any) server must not hold a log entry whose write is not in its state:
+    every entry's entity exists and has reached the entry's revision."""
+    for entry in model.res_log:
+        entity = model.entities.get(entry["entity_id"])
+        if entity is None:
+            return f"entry {entry['id']} refers to {entry['entity_id']} which does not exist"
+        if entry["kept_revision"] is not None and entry["kept_revision"] > entity.revision:
+            return (
+                f"entry {entry['id']} records revision {entry['kept_revision']} of "
+                f"{entry['entity_id']}, which is only at revision {entity.revision}"
+            )
+    return None

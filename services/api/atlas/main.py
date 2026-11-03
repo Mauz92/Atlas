@@ -25,6 +25,7 @@ from .api import (
     notes_router,
     notifications_router,
     projects_router,
+    resolutions_router,
     search_router,
     tasks_router,
 )
@@ -123,6 +124,7 @@ def create_app() -> FastAPI:
     app.include_router(search_router)
     app.include_router(calendar_router)
     app.include_router(changes_router)
+    app.include_router(resolutions_router)
     app.include_router(notifications_router)
     app.include_router(export_router)
     app.include_router(instance_router)

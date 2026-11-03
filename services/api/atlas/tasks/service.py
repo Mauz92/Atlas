@@ -34,6 +34,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -61,6 +62,7 @@ from ..sync.fields import (
     snapshot,
     stamp,
 )
+from ..sync.resolution_rules import UndoTargetDeletedError
 from .changes import plan_change_page
 from .filters import DEFAULT_LIMIT, LIKE_ESCAPE, TaskFilters, search_pattern
 from .priority import PRIORITY_ORDER
@@ -184,6 +186,9 @@ class TaskSyncUpdate:
     resolutions: list[FieldResolution]
     #: the task was soft-deleted and the edit brought it back (rule 4)
     revived: bool = False
+    #: the stored values of the incoming fields as they were under the row lock, before the write
+    #: (what an undo records as the value it replaced; SYNC-05)
+    previous: dict[str, Any] = dataclass_field(default_factory=dict)
 
 
 #: SQL rank of a task's priority (``0`` = ``none`` … ``4`` = ``urgent``), derived from the
@@ -646,7 +651,12 @@ class TasksService:
         return task
 
     async def update_sync(
-        self, task_id: uuid.UUID, changes: Mapping[str, Any], base_revision: int
+        self,
+        task_id: uuid.UUID,
+        changes: Mapping[str, Any],
+        base_revision: int,
+        *,
+        strict: bool = False,
     ) -> TaskSyncUpdate:
         """Sync-mode ``PATCH``: field-level merge against ``base_revision`` (ADR-0055 section 4).
 
@@ -656,12 +666,18 @@ class TasksService:
         is later in server order) and is reported, a text field is a conflict and is not applied.
         A stale base is never an error by itself. A soft-deleted task is brought back by the edit
         (rule 4, D6). Nothing here reads a client clock (D11).
+
+        ``strict`` is the undo of SYNC-05: a field changed after ``base_revision`` is a
+        ``changed_since`` conflict instead of a later-wins overwrite, and a deleted task raises
+        :class:`UndoTargetDeletedError` instead of being revived.
         """
         await self._lock_projects_for_update(task_id, changes, include_deleted=True)
         task = await self.get(task_id, for_update=True, include_deleted=True)
         if base_revision > task.revision:
             raise TaskRevisionConflictError(task.revision)  # a base this server never issued
         revived = task.deleted_at is not None
+        if strict and revived:
+            raise UndoTargetDeletedError(str(task_id))
         fields = {name: value for name, value in changes.items() if name in _WRITABLE}
         new_tags: TagNames | None = None
         if "tags" in changes:
@@ -680,6 +696,7 @@ class TasksService:
             revision=task.revision,
             text_fields=TASK_TEXT_FIELDS,
             equal=_same_value,
+            strict=strict,
         )
         conflicts = list(plan.conflicts)
         resolutions = list(plan.resolutions)
@@ -696,12 +713,12 @@ class TasksService:
                 )
         apply_tags = plan.apply.pop("tags", None)
         if not plan.apply and apply_tags is None and not revived:
-            return TaskSyncUpdate(task, [], conflicts, resolutions)
+            return TaskSyncUpdate(task, [], conflicts, resolutions, previous=stored)
         # ``fields`` (not ``plan.apply``) carries the client's raw values; _write normalises again,
         # so hand it the original values of exactly the applied fields.
         to_write = {name: fields[name] for name in plan.apply if name in fields}
         changed = await self._write(task, to_write, apply_tags, revive=revived)
-        return TaskSyncUpdate(task, changed, conflicts, resolutions, revived)
+        return TaskSyncUpdate(task, changed, conflicts, resolutions, revived, previous=stored)
 
     async def _write(
         self,

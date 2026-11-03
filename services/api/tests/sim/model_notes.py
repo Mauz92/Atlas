@@ -220,8 +220,21 @@ class ModelNotes:
         return out
 
     @staticmethod
-    def _res(rule: str, *, kept: int | None = None, detail: str | None = None) -> dict[str, Any]:
-        return {"rule": rule, "field": None, "kept_revision": kept, "loser": None, "detail": detail}
+    def _res(
+        rule: str,
+        *,
+        kept: int | None = None,
+        detail: str | None = None,
+        field: str | None = None,
+        loser: Any = None,
+    ) -> dict[str, Any]:
+        return {
+            "rule": rule,
+            "field": field,
+            "kept_revision": kept,
+            "loser": loser,
+            "detail": detail,
+        }
 
     def _history_event(self, req: Req, event: str, note: Entity, **extra: Any) -> None:
         from .model import HistoryEvent
@@ -275,6 +288,7 @@ class ModelNotes:
             resolutions.append(
                 self._res("path_collision", detail=f"{requested} was taken; created {normalized}")
             )
+        self.srv.res.log(req, note, resolutions, revision=note.revision)
         return Resp(201, self._out(note, sync=True, resolutions=resolutions))
 
     def _new_note(self, note_id: str, path: str, content: str) -> Entity:
@@ -314,7 +328,14 @@ class ModelNotes:
         payload = {"note_id": note_id, **body}
         return self._keyed(req, "note.update", payload, self._put, note_id)
 
-    def _conflict(self, req: Req, note: Entity, content: str, reason: str) -> Resp:
+    def _conflict(
+        self,
+        req: Req,
+        note: Entity,
+        content: str,
+        reason: str,
+        resolutions: list[dict[str, Any]] | None = None,
+    ) -> Resp:
         self._copies += 1
         stem = note.fields["path"][: -len(NOTE_SUFFIX)]
         suffix = "" if self._copies == 1 else f" {self._copies}"
@@ -328,6 +349,8 @@ class ModelNotes:
         )
         copy = self._new_note(f"n{self.srv._next_id}", path, saved)
         self._history_event(req, "conflict_copy", copy, after=content, of=note.id)
+        outs = resolutions or []
+        self.srv.res.log(req, note, outs, revision=note.revision)  # a revive before the conflict
         return Resp(
             409,
             {
@@ -349,7 +372,7 @@ class ModelNotes:
                     "revision": copy.revision,
                     "content_hash": sha(content),
                 },
-                "resolution": [],
+                "resolution": outs,
             },
         )
 
@@ -410,6 +433,7 @@ class ModelNotes:
                 return self._conflict(req, note, content, result.reason or "overlap")
         resolution = [self._res("note_merged", kept=note.revision)]
         if merged_text == current:
+            srv.res.log(req, note, resolution, revision=note.revision)
             return Resp(
                 200,
                 self._out(note, sync=True, merged=content != merged_text, resolutions=resolution),
@@ -421,6 +445,7 @@ class ModelNotes:
             req, "merge", note, base=base, revision_before=before, theirs=current, ours=content,
             after=merged_text, base_text=base_text,
         )  # fmt: skip
+        srv.res.log(req, note, resolution, revision=note.revision)
         return Resp(
             200,
             self._out(note, sync=True, merged=merged_text != content, resolutions=resolution),
@@ -459,7 +484,8 @@ class ModelNotes:
             theirs=last, base_text=known_base, copy=copy_of is not None,
         )  # fmt: skip
         if copy_of is not None:
-            return self._conflict(req, note, copy_of, "overlap")
+            return self._conflict(req, note, copy_of, "overlap", resolutions)
+        self.srv.res.log(req, note, resolutions, revision=note.revision)
         return Resp(
             200, self._out(note, sync=True, merged=text != content, resolutions=resolutions)
         )
@@ -543,7 +569,15 @@ class ModelNotes:
         if base < note.revision and normalized != note.fields["path"]:
             entry = note.history.get(base)
             if entry is not None and entry[1] != note.fields["path"]:
-                resolutions.append(self._res("path_later_wins", kept=note.revision + 1))
+                resolutions.append(
+                    self._res(
+                        "path_later_wins",
+                        kept=note.revision + 1,
+                        field="path",
+                        loser=note.fields["path"],
+                        detail=f"was moved to {note.fields['path']} elsewhere; now {normalized}",
+                    )
+                )
         if normalized == note.fields["path"]:
             return Resp(200, self._out(note, sync=True, resolutions=resolutions))
         if self._taken(normalized, exclude=note.id):
@@ -553,6 +587,7 @@ class ModelNotes:
             note, note.fields["content"], normalized, "move", req.headers.get("X-Sim-Op", "?")
         )
         self._history_event(req, "move", note, base=base, revision_before=before)
+        self.srv.res.log(req, note, resolutions, revision=note.revision)
         return Resp(200, self._out(note, sync=True, resolutions=resolutions))
 
     # --- feed data --------------------------------------------------------------------------

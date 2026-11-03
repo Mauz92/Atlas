@@ -182,14 +182,103 @@ class SyncConflictOut(BaseModel):
 
 
 class SyncResolutionOut(BaseModel):
-    """An automatic resolution applied by the server. In SYNC-03 it is reported in the response
-    only; SYNC-05 stores it (`sync_resolutions`) and adds undo."""
+    """An automatic resolution applied by the server, as reported in the `sync` block of a write
+    response. Since SYNC-05 each one is also a row of the resolution log (`id`), announced on the
+    feed as the `resolution` entity and listed by `GET /api/sync/resolutions`."""
 
-    rule: str = Field(description="`simple_later_wins`, `edit_wins_over_delete`, `path_collision`.")
+    id: uuid.UUID | None = Field(
+        default=None,
+        description="The log entry (`null` only in an error body, where nothing was written).",
+    )
+    rule: str = Field(
+        description=(
+            "`simple_later_wins`, `edit_wins_over_delete`, `note_merged`, `path_collision`, "
+            "`path_later_wins`."
+        )
+    )
     field: str | None = None
     kept_revision: int | None = None
     loser: Any = Field(default=None, description="The overwritten value of a simple field.")
     detail: str | None = None
+
+
+class ResolutionFollowUp(BaseModel):
+    """What to do when a resolution cannot be undone."""
+
+    kind: str = Field(
+        description=(
+            "`note_history` (the other version is in the note's history, `href` points at it), "
+            "`delete_again` (an ordinary delete) or `rename` (choose another path)."
+        )
+    )
+    href: str | None = None
+
+
+class ResolutionOut(BaseModel):
+    """One entry of the automatic-resolution log (SYNC-05; `SYNC_PROTOCOL.md` section 9).
+
+    Never holds text: `loser` is the overwritten value of a *simple* field only (a status, a
+    priority, a date, a path). For text and note content the entry points at history instead.
+    """
+
+    id: uuid.UUID
+    entity_type: str = Field(description="`task`, `project` or `note`.")
+    entity_id: uuid.UUID
+    rule: str = Field(
+        description=(
+            "`simple_later_wins`, `edit_wins_over_delete`, `note_merged`, `path_collision`, "
+            "`path_later_wins` or `undo`."
+        )
+    )
+    field: str | None = None
+    kept_revision: int | None = Field(
+        default=None, description="The entity revision the winning write produced."
+    )
+    has_loser: bool = Field(
+        description="Whether the overwritten value is stored (`loser` may itself be `null`)."
+    )
+    loser: Any = Field(
+        default=None,
+        description="The overwritten simple-field value (for `undo`: the value the undo replaced).",
+    )
+    detail: str | None = Field(default=None, description="Paths only, bounded; never text.")
+    device_id: uuid.UUID | None = Field(
+        default=None, description="Always `null` until device credentials exist (SYNC-06)."
+    )
+    undoes_id: uuid.UUID | None = Field(
+        default=None, description="For an `undo` entry: the resolution it undid."
+    )
+    undone_at: datetime | None = None
+    undone_by: uuid.UUID | None = None
+    created_at: datetime
+    undoable: bool
+    undo_blocked: str | None = Field(
+        default=None,
+        description=(
+            "Why it cannot be undone: `already_undone`, `rule_not_undoable`, `value_not_stored` "
+            "or `is_undo`."
+        ),
+    )
+    follow_up: ResolutionFollowUp | None = None
+
+
+class ResolutionListOut(BaseModel):
+    resolutions: list[ResolutionOut]
+    next_cursor: str | None = Field(
+        default=None, description="Pass as `cursor` for the next (older) page; `null` at the end."
+    )
+
+
+class ResolutionUndoOut(BaseModel):
+    """The answer to an undo. `applied` is `false` when the field already held the restored value:
+    the resolution is then still marked undone and an `undo` entry is logged."""
+
+    applied: bool
+    revision: int | None = Field(
+        default=None, description="The entity's revision after the undo (unchanged if not applied)."
+    )
+    resolution: ResolutionOut
+    undo: ResolutionOut
 
 
 class SyncResult(BaseModel):
@@ -632,7 +721,7 @@ class ChangeOut(BaseModel):
     revision: int | None = Field(
         default=None, description="With `include=data`: the entity's current revision."
     )
-    data: TaskSyncData | ProjectSyncData | NoteSyncData | None = Field(
+    data: TaskSyncData | ProjectSyncData | NoteSyncData | ResolutionOut | None = Field(
         default=None,
         description=(
             "With `include=data`: the entity's stored state as of this response, which may be "

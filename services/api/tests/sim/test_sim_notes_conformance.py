@@ -79,7 +79,12 @@ class NoteRecorder(Recorder):
         if not isinstance(body, dict):
             return None
         if "notes" in body:
-            return [self.note({**n, "content": "-"}) for n in body["notes"]]
+            # Two conflict copies differ only by the server-clock stamp in their names, which is
+            # stripped; the real list orders them by that stamp, so within one second they sort
+            # one way and across a second boundary the other. Compare the set (found by SYNC-05:
+            # a flaky `three-way merge, conflict copies and replay` step 9).
+            rows = [self.note({**n, "content": "-"}) for n in body["notes"]]
+            return sorted(rows, key=lambda r: (r["path"], r["content_hash"]))
         if "revisions" in body:
             return [
                 (r["revision"], r["content_hash"], r["path"], r["available"])

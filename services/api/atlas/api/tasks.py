@@ -77,6 +77,7 @@ from .sync_gate import SyncMode, epoch_check
 from .syncio import (
     REPLAYED_HEADER,
     entity_json,
+    log_resolutions,
     reject_unknown_fields,
     require_base,
     require_key,
@@ -605,8 +606,18 @@ async def update_task(
         out.sync = sync_result(
             task.revision,
             conflicts=outcome.conflicts,
-            resolutions=outcome.resolutions,
+            # only a field the write really changed was decided by a rule (and is logged)
+            resolutions=[r for r in outcome.resolutions if r.field in outcome.applied],
             revived=outcome.revived,
+        )
+        await log_resolutions(
+            session,
+            user.id,
+            "task",
+            task.id,
+            out.sync.resolution,
+            op_key=idempotency_key,
+            revision=task.revision,
         )
     if idempotency_key:
         await store.remember(idempotency_key, status_code=200, body=out.model_dump(mode="json"))

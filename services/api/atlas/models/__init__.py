@@ -17,6 +17,7 @@ from .reminder import (
     ReminderPolicy,
     ReminderStatus,
 )
+from .resolution import SyncResolution
 from .session import AuthSession
 from .task import RecurrenceSeries, Task, TaskLink, TaskPriority, TaskStatus, TaskTag
 from .user import User
@@ -47,6 +48,7 @@ __all__ = [
     "ReminderPolicy",
     "ReminderStatus",
     "SyncCursor",
+    "SyncResolution",
     "Tag",
     "Task",
     "TaskLink",

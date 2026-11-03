@@ -19,6 +19,7 @@ from ..models import Job, JobStatus, User
 from ..notes import NotesReconciler, NotesStorage
 from ..notes.history import prune_expired_history
 from ..reminders.constants import REMINDER_DELIVER_TASK, REMINDERS_SCAN_TASK
+from ..sync.resolution_log import purge_resolutions
 from . import queue
 from .worker import handler
 
@@ -119,7 +120,8 @@ async def purge_change_log(session: AsyncSession, _payload: dict[str, Any]) -> N
 
     Removes deletion tombstones older than ``change_retention_days`` from ``change_log`` (upserts
     are kept, SYNC-03e), advances each affected user's purge floor, and deletes idempotency keys
-    older than the same window, and prunes the note history past its retention (SYNC-04) - never a
+    older than the same window, deletes resolution-log rows (SYNC-05) older than the same window
+    with their feed rows, and prunes the note history past its retention (SYNC-04) - never a
     user's entity rows. Safe to run at any time and
     idempotent: a second pass over the same window removes nothing and leaves the floors
     unchanged. The handler
@@ -129,6 +131,9 @@ async def purge_change_log(session: AsyncSession, _payload: dict[str, Any]) -> N
     """
     cutoff = retention_cutoff(datetime.now(UTC), get_settings().change_retention_days)
     summary = await ChangePurgeService(session).purge(cutoff=cutoff)
+    resolutions = await purge_resolutions(session, cutoff=cutoff)
+    if resolutions:
+        logger.info("resolution log purged", extra={"purged": resolutions})
     keys = await purge_expired(session, cutoff=cutoff)
     if keys:
         logger.info("idempotency keys purged", extra={"purged": keys})

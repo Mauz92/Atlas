@@ -24,6 +24,7 @@ ENTITY_SCHEMAS: dict[str, int] = {
     "note": 1,
     "note_project_link": 1,
     "task_note_link": 1,
+    "resolution": 1,
 }
 
 #: ``include=data`` pages are smaller because every item carries its entity.

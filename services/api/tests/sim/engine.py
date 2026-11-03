@@ -96,6 +96,13 @@ class SimConfig:
     late_joiner: bool = False
     #: one extra client speaks an unsupported protocol (must be refused with 426 and stop)
     old_client: bool = False
+    #: SYNC-05 (needs ``sync``): clients also pull the ``resolution`` feed entity and sometimes undo
+    #: a resolution they have been told about
+    resolutions: bool = False
+    #: SYNC-05: after the first quiescence, this many steps in which clients tap "undo" on the
+    #: notices they now hold (and still edit a little), with faults back on, then quiesce again.
+    #: Notices are learned late in a faulty run, so without this wave undo would rarely run.
+    undo_rounds: int = 40
 
 
 class EventQueue:
