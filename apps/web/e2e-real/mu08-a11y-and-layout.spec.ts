@@ -18,12 +18,16 @@ const PAGES = [
   "/tasks",
   "/board",
   "/projects",
-  "/calendar",
-  "/sync",
-  "/notifications",
   "/notes",
   "/search",
+  // Calendar, Sync and Notifications are Settings sections since UX-08 (their old URLs redirect).
   "/settings",
+  "/settings/appearance",
+  "/settings/notifications",
+  "/settings/calendar",
+  "/settings/sync",
+  "/settings/data",
+  "/settings/about",
 ];
 
 async function seed(page: Page) {

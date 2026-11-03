@@ -1,6 +1,8 @@
 import { tasksApi } from "../api/client";
+import { EmptyState } from "../components/EmptyState";
 import { LoadError } from "../components/LoadError";
 import { QuickCapture } from "../components/QuickCapture";
+import { Skeleton } from "../components/Skeleton";
 import { TaskList } from "../components/TaskList";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 import { useTaskView } from "../hooks/useTaskView";
@@ -36,11 +38,9 @@ export function Inbox() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted" role="status">Loading inbox…</p>
+        <Skeleton label="Loading inbox" rows={4} />
       ) : tasks.length === 0 ? (
-        <div className="empty-state">
-          Inbox zero — everything has been triaged.
-        </div>
+        <EmptyState icon="inbox">Inbox zero — everything has been triaged.</EmptyState>
       ) : (
         <TaskList
           tasks={tasks}

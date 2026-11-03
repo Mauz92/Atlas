@@ -17,6 +17,7 @@ import { MenuButton } from "../components/MenuButton";
 import { ProjectForm } from "../components/ProjectForm";
 import { ProjectProgressBar } from "../components/ProjectProgressBar";
 import { QuickCapture } from "../components/QuickCapture";
+import { Skeleton } from "../components/Skeleton";
 import { TaskList } from "../components/TaskList";
 import { Tabs, panelId, tabId } from "../components/Tabs";
 import { useBoard } from "../hooks/useBoard";
@@ -153,7 +154,7 @@ export function ProjectPage() {
   if (!project) {
     return (
       <section className="page project-page">
-        <p className="muted" role="status">Loading project…</p>
+        <Skeleton label="Loading project" rows={4} kind="line" />
       </section>
     );
   }
@@ -292,7 +293,7 @@ export function ProjectPage() {
             {board.state === "error" ? (
               <LoadError message={board.error} onRetry={() => void board.reload()} />
             ) : board.state === "loading" ? (
-              <p className="muted" role="status">Loading tasks…</p>
+              <Skeleton label="Loading tasks" rows={3} />
             ) : tab === "tasks" ? (
               <>
                 <TaskList

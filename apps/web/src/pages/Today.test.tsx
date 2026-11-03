@@ -109,13 +109,14 @@ describe("Today", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows empty groups, the daily note slot and an empty events slot", async () => {
+  it("shows one empty state, the daily note slot and an empty events slot", async () => {
     mockTasks([]);
 
     renderToday();
 
-    expect(await screen.findByText("Nothing overdue.")).toBeInTheDocument();
-    expect(screen.getByText("Nothing else due today.")).toBeInTheDocument();
+    // One empty state replaces the three empty groups (UX-08).
+    expect(await screen.findByText(/Nothing is due today/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Overdue" })).toBeNull();
     expect(screen.getByText("No note for today yet.")).toBeInTheDocument();
     const events = screen.getByRole("region", { name: "Events" });
     expect(
@@ -246,7 +247,7 @@ describe("Today", () => {
     createMock.mockResolvedValue(makeTask({ id: "new", title: "Buy milk" }));
 
     renderToday();
-    await screen.findByText("Nothing overdue.");
+    await screen.findByText(/Nothing is due today/);
 
     fireEvent.change(screen.getByLabelText("Task title"), {
       target: { value: "Buy milk" },

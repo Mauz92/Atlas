@@ -54,7 +54,7 @@ npm run e2e            # → playwright test  (Chromium; e.g. "4 passed")
 ```
 
 The M7-06 suite (`e2e/sync-failure-modes.spec.ts`) covers three failure modes and drives the real
-`/sync` route: **network loss** (a queued edit is kept offline and flushes on reconnect), **restart**
+`/sync` route (it redirects to `/settings/sync` since UX-08): **network loss** (a queued edit is kept offline and flushes on reconnect), **restart**
 (a queued edit survives a page reload and still syncs) and **stale client / conflict** (a stale-revision
 `409` is surfaced and both *Keep mine* / *Take server* actions behave as documented). `e2e/helpers.ts`
 holds the API mocks and the durable-queue seeding used to represent an offline edit; the queue itself is
@@ -247,6 +247,21 @@ Cover, at minimum:
   `tasks-page.spec.ts` and J3 were updated for the chips, the "…" menu, the tabs and the row menu;
   `mu08-a11y-and-layout.spec.ts` adds the Tasks board view, the project Board and Notes tabs, and the chip menu,
   Due popover, save-view popover, bulk bar, project row menu and project header menu states.
+- Settings, skeletons and empty states (UX-08, ADR-0058): `src/lib/settingsSections.test.ts` (the seven sections in
+  order, URL segment parsing, redirects), `navigation.test.ts` (`PALETTE_PAGES` keeps Calendar/Sync/Notifications,
+  every `/settings/*` path is the one Settings entry), `src/pages/Settings.test.tsx` (section in the URL, one section at a
+  time, unknown section redirects, instance info only where used, server messages verbatim, at most one primary
+  button per section), `components/Skeleton.test.tsx` (`role="status"` with text, hidden bars, groups, board
+  columns; `EmptyState` icon, single action, not a status), `Tasks.test.tsx` / `Inbox.test.tsx` (skeleton, none yet vs
+  no results), `StatusBar.test.tsx` (links to `/settings/sync`, `/settings/calendar`), `App.routes.test.tsx`
+  (redirects). Real stack: `e2e-real/ux08-settings-states.spec.ts` (6): every section by link, URL and reload, the
+  redirects, palette "Go to Sync / Calendar / Notifications", phone drill-in; axe and no sideways scroll in every
+  section at 1440/1024/720/390 in both themes; a held list request shows the skeleton (`role="status"`), the page
+  heading does not move when data arrives; the skeleton is axe clean at four widths; empty states (list
+  responses are answered with an empty list because the journeys share a database) with an icon, axe and
+  overflow at four widths; sign-in and first-run cards centred and axe clean. Screenshots go to `$ATLAS_SHOT_DIR`.
+  Helper: `openSettingsSection` in `e2e-real/helpers.ts`. J7 opens each section from the list; ux02 and mu08 use the
+  new URLs.
 
 ## 5. Calendar Adapter Tests
 

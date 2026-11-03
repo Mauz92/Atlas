@@ -61,6 +61,13 @@ describe("Inbox", () => {
     );
   });
 
+  it("shows a skeleton (the page's status) while the list loads", async () => {
+    listMock.mockReturnValue(new Promise(() => {}));
+    render(<Inbox />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading inbox…");
+    expect(screen.queryByText(/Inbox zero/i)).toBeNull();
+  });
+
   it("shows a useful empty state", async () => {
     listMock.mockResolvedValue({ tasks: [] });
 

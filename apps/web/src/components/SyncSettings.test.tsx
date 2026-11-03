@@ -4,7 +4,7 @@ import { useConflictResolution } from "../hooks/useConflictResolution";
 import { useOfflineQueue } from "../hooks/useOfflineQueue";
 import { useReconciliation } from "../hooks/useReconciliation";
 import { makeCacheEntry } from "../test/offline";
-import { SyncPage } from "./Sync";
+import { SyncSettings } from "./SyncSettings";
 
 vi.mock("../hooks/useOfflineQueue", () => ({ useOfflineQueue: vi.fn() }));
 vi.mock("../hooks/useReconciliation", () => ({ useReconciliation: vi.fn() }));
@@ -26,7 +26,7 @@ beforeEach(() => {
   resolveMock.mockReturnValue({ resolvingKey: null, error: null, resolve: vi.fn() });
 });
 
-describe("SyncPage", () => {
+describe("SyncSettings", () => {
   it("renders the offline queue status from the hook", () => {
     queueMock.mockReturnValue({
       counts: { total: 2, pending: 2, conflicts: 0, failed: 0 },
@@ -39,9 +39,8 @@ describe("SyncPage", () => {
       flush: vi.fn(),
     });
 
-    render(<SyncPage />);
+    render(<SyncSettings />);
 
-    expect(screen.getByRole("heading", { level: 1, name: "Sync" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Pending sync");
     expect(screen.getByText("2 changes waiting to sync.")).toBeInTheDocument();
   });
@@ -58,7 +57,7 @@ describe("SyncPage", () => {
       flush: vi.fn(),
     });
 
-    render(<SyncPage />);
+    render(<SyncSettings />);
 
     expect(screen.getByRole("status")).toHaveTextContent("All synced");
   });
@@ -82,7 +81,7 @@ describe("SyncPage", () => {
       reconcile: vi.fn(),
     });
 
-    render(<SyncPage />);
+    render(<SyncSettings />);
 
     expect(
       screen.getByRole("heading", { level: 2, name: "Sync conflicts" }),
@@ -112,7 +111,7 @@ describe("SyncPage", () => {
       reconcile: vi.fn(),
     });
 
-    render(<SyncPage />);
+    render(<SyncSettings />);
 
     fireEvent.click(screen.getByRole("button", { name: "Keep mine" }));
     expect(resolve).toHaveBeenCalledWith({ entityType: "task", entityId: "task-1" }, "keep-mine");

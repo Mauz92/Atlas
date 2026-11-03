@@ -64,6 +64,23 @@ describe("Tasks page", () => {
     expect(screen.getByTestId("where")).toHaveTextContent("priority=high");
   });
 
+  it("shows a skeleton while loading, then tells 'none yet' from 'no results'", async () => {
+    list.mockResolvedValue({ tasks: [] });
+    renderPage("/tasks");
+    expect(screen.getByRole("status")).toHaveTextContent("Loading tasks…");
+    // None yet: points at the Inbox.
+    expect(await screen.findByText(/No open tasks/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Go to Inbox" })).toBeInTheDocument();
+  });
+
+  it("says no tasks match when a filter is set, with no second action", async () => {
+    list.mockResolvedValue({ tasks: [] });
+    renderPage("/tasks?priority=high");
+    expect(await screen.findByText("No tasks match these filters.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Go to Inbox" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Reset filters" })).toBeInTheDocument();
+  });
+
   it("shows a server validation error verbatim", async () => {
     list.mockRejectedValue(new Error("due: from must not be after to"));
     renderPage("/tasks?due_from=2026-12-01&due_to=2026-11-01");

@@ -1,5 +1,6 @@
 import { Board } from "../components/Board";
 import { LoadError } from "../components/LoadError";
+import { Skeleton } from "../components/Skeleton";
 import { useBoard } from "../hooks/useBoard";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 
@@ -44,7 +45,7 @@ export function BoardPage() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted" role="status">Loading board…</p>
+        <Skeleton label="Loading board" kind="board" />
       ) : (
         <Board
           columns={columns}

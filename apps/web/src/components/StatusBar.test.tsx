@@ -74,12 +74,12 @@ beforeEach(() => {
 });
 
 describe("StatusBar", () => {
-  it("is a labelled footer, not a status role, and links sync to /sync", () => {
+  it("is a labelled footer, not a status role, and links sync to /settings/sync", () => {
     renderBar();
     expect(screen.getByRole("contentinfo", { name: "Status bar" })).toBeInTheDocument();
     expect(screen.queryByRole("status")).toBeNull();
     expect(syncLink()).toHaveTextContent("Synced");
-    expect(syncLink()).toHaveAttribute("href", "/sync");
+    expect(syncLink()).toHaveAttribute("href", "/settings/sync");
     expect(syncLink().querySelector("[aria-live='polite']")).not.toBeNull();
   });
 
@@ -146,7 +146,7 @@ describe("StatusBar", () => {
     calendar.current = value;
     renderBar();
     const link = screen.getByRole("link", { name: new RegExp(text) });
-    expect(link).toHaveAttribute("href", "/calendar");
+    expect(link).toHaveAttribute("href", "/settings/calendar");
   });
 
   it("calendar: the latest successful sync time", () => {

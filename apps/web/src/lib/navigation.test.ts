@@ -1,6 +1,7 @@
 import {
   NAV_ITEMS,
   NAV_SECTIONS,
+  PALETTE_PAGES,
   RAIL_ITEMS,
   SECTIONS_STORAGE_KEY,
   activeNavKey,
@@ -41,9 +42,6 @@ describe("NAV_SECTIONS", () => {
         "/tasks",
         "/board",
         "/projects",
-        "/calendar",
-        "/sync",
-        "/notifications",
         "/notes",
         "/search",
         "/settings",
@@ -59,6 +57,22 @@ describe("NAV_SECTIONS", () => {
   });
 });
 
+describe("palette pages", () => {
+  it("still offers Calendar, Sync and Notifications, now as Settings sections", () => {
+    const byLabel = Object.fromEntries(PALETTE_PAGES.map((page) => [page.label, page.to]));
+    expect(byLabel).toMatchObject({
+      Today: "/",
+      Settings: "/settings",
+      Calendar: "/settings/calendar",
+      Sync: "/settings/sync",
+      Notifications: "/settings/notifications",
+      "Data and backups": "/settings/data",
+    });
+    const targets = PALETTE_PAGES.map((page) => page.to);
+    expect(new Set(targets).size).toBe(targets.length);
+  });
+});
+
 describe("active state", () => {
   it.each([
     ["/", "/", "today"],
@@ -67,7 +81,9 @@ describe("active state", () => {
     ["/board", "/board", "tasks"],
     ["/projects/abc", "project:abc", "projects"],
     ["/projects/zzz", "/projects", "projects"],
-    ["/sync", "/sync", "settings"],
+    ["/sync", "/settings", "settings"],
+    ["/settings/sync", "/settings", "settings"],
+    ["/notifications", "/settings", "settings"],
     ["/nope", null, null],
   ])("%s → sidebar %s, rail %s", (path, key, rail) => {
     expect(activeNavKey(path, ["abc"])).toBe(key);
@@ -75,7 +91,7 @@ describe("active state", () => {
   });
 
   it("names the sections that must be open", () => {
-    expect(sectionsContaining("/sync")).toEqual(["more"]);
+    expect(sectionsContaining("/settings")).toEqual(["more"]);
     expect(sectionsContaining("project:abc")).toEqual(["workspace", "projects"]);
     expect(sectionsContaining(null)).toEqual([]);
   });

@@ -8,11 +8,13 @@ import {
   type NoteDetail,
   type NoteSummary,
 } from "../api/client";
+import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { LoadError } from "../components/LoadError";
 import { MarkdownPreview } from "../components/MarkdownPreview";
 import { Menu, type MenuEntry } from "../components/Menu";
 import { NoteEditor, type NoteEditorHandle } from "../components/NoteEditor";
+import { Skeleton } from "../components/Skeleton";
 import {
   NoteTree,
   type NoteTreeActions,
@@ -677,11 +679,6 @@ export function Notes() {
             {error}
           </p>
         ) : null}
-        {listState === "loading" ? (
-          <p className="muted" role="status">
-            Loading notes…
-          </p>
-        ) : null}
         {status ? (
           <p className="muted" role="status">
             {status}
@@ -754,7 +751,9 @@ export function Notes() {
             onChange={(event) => void runSearch(event.target.value)}
           />
           <div className="notes-tree-scroll">
-            {results ? (
+            {listState === "loading" ? (
+              <Skeleton label="Loading notes" kind="tree" rows={7} />
+            ) : results ? (
               <div>
                 <p className="muted">{results.length} result(s)</p>
                 <ul className="tree">
@@ -774,6 +773,14 @@ export function Notes() {
                   ))}
                 </ul>
               </div>
+            ) : listState === "ready" && notes.length === 0 ? (
+              <EmptyState
+                icon="file-text"
+                compact
+                action={{ label: "Create the first note", onClick: () => beginCreation("note", activeFolder) }}
+              >
+                No notes yet.
+              </EmptyState>
             ) : (
               <NoteTree
                 tree={tree}
@@ -1043,16 +1050,12 @@ export function Notes() {
               </div>
             </>
           ) : (
-            <div className="empty-state">
-              <p>Select a note, or create one to get started.</p>
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => beginCreation("note", activeFolder)}
-              >
-                Create a note
-              </button>
-            </div>
+            <EmptyState
+              icon="file-text"
+              action={{ label: "Create a note", onClick: () => beginCreation("note", activeFolder) }}
+            >
+              Select a note, or create one to get started.
+            </EmptyState>
           )}
         </div>
 

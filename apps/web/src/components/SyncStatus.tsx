@@ -1,7 +1,9 @@
 import type { ProviderSyncStatus } from "../api/client";
 import type { LoadState } from "../hooks/useTaskView";
 import { cursorHealthLabel, lastSyncText, providerLabel, stateLabel } from "../lib/syncStatus";
+import { EmptyState } from "./EmptyState";
 import { LoadError } from "./LoadError";
+import { Skeleton } from "./Skeleton";
 
 interface SyncStatusProps {
   providers: ProviderSyncStatus[];
@@ -81,16 +83,16 @@ export function SyncStatus({
   onSyncNow,
 }: SyncStatusProps) {
   if (state === "loading") {
-    return <p className="muted" role="status">Loading sync status…</p>;
+    return <Skeleton label="Loading sync status" rows={2} kind="line" />;
   }
   if (state === "error") {
     return <LoadError message={error} onRetry={onRetry} />;
   }
   if (providers.length === 0) {
     return (
-      <div className="empty-state">
+      <EmptyState icon="calendar" compact>
         No calendar accounts are connected yet. Connect Google or Microsoft to see sync status.
-      </div>
+      </EmptyState>
     );
   }
   return (

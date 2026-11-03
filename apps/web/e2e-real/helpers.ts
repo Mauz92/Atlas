@@ -47,6 +47,15 @@ export function rail(page: Page) {
   return page.getByRole("navigation", { name: "Destinations" });
 }
 
+/** Open a Settings section from the section list (UX-08). */
+export async function openSettingsSection(page: Page, name: string): Promise<void> {
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("link", { name, exact: true })
+    .click();
+  await expect(page.getByRole("heading", { name, level: 2, exact: true })).toBeVisible();
+}
+
 /** The button that opens the command palette (the sidebar's Search row). */
 export function searchButton(page: Page) {
   return page.getByRole("button", { name: "Search", exact: true });

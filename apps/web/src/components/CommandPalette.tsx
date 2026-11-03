@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { notesApi, projectsApi, tasksApi, type Task } from "../api/client";
 import { useProjects } from "../hooks/useProjects";
 import { useUnifiedSearch } from "../hooks/useUnifiedSearch";
-import { NAV_ITEMS } from "../lib/navigation";
+import { PALETTE_PAGES } from "../lib/navigation";
 import { rankByQuery } from "../lib/palette";
 import { localDate } from "../lib/taskForm";
 import { readTheme, toggleTheme } from "../lib/theme";
@@ -114,7 +114,7 @@ export function CommandPalette({
     }
 
     const commands = [
-      ...NAV_ITEMS.map((item) => ({
+      ...PALETTE_PAGES.map((item) => ({
         id: `go-${item.to}`,
         group: "Commands",
         label: `Go to ${item.label}`,

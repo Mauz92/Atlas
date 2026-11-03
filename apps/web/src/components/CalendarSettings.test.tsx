@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { calendarApi } from "../api/client";
 import { makeProviderSyncStatus } from "../test/calendar";
-import { CalendarPage } from "./Calendar";
+import { CalendarSettings } from "./CalendarSettings";
 
 vi.mock("../api/client", () => ({
   calendarApi: { syncStatus: vi.fn(), syncProvider: vi.fn() },
@@ -15,15 +15,14 @@ beforeEach(() => {
   vi.resetAllMocks();
 });
 
-describe("CalendarPage", () => {
+describe("CalendarSettings", () => {
   it("renders the provider sync status and last sync", async () => {
     statusMock.mockResolvedValue({
       providers: [makeProviderSyncStatus({ provider: "google", state: "idle" })],
     });
 
-    render(<CalendarPage />);
+    render(<CalendarSettings />);
 
-    expect(screen.getByRole("heading", { level: 1, name: "Calendar" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Google Calendar" })).toBeInTheDocument();
     expect(screen.getByText(/Last synced/)).toBeInTheDocument();
     expect(screen.getByText("Up to date")).toBeInTheDocument();
@@ -33,7 +32,7 @@ describe("CalendarPage", () => {
   it("shows an empty state when no calendar account is connected", async () => {
     statusMock.mockResolvedValue({ providers: [] });
 
-    render(<CalendarPage />);
+    render(<CalendarSettings />);
 
     expect(
       await screen.findByText(/No calendar accounts are connected yet/i),
@@ -43,7 +42,7 @@ describe("CalendarPage", () => {
   it("shows a clear load error and can retry", async () => {
     statusMock.mockRejectedValueOnce(new Error("Server unreachable"));
 
-    render(<CalendarPage />);
+    render(<CalendarSettings />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Server unreachable");
 
@@ -67,7 +66,7 @@ describe("CalendarPage", () => {
     });
     syncMock.mockResolvedValue({ provider: "google", calendars: [] });
 
-    render(<CalendarPage />);
+    render(<CalendarSettings />);
     await screen.findByRole("heading", { name: "Google Calendar" });
 
     fireEvent.click(screen.getByRole("button", { name: "Sync now" }));
@@ -82,7 +81,7 @@ describe("CalendarPage", () => {
     });
     syncMock.mockRejectedValue(new Error("calendar sync is not available for this provider"));
 
-    render(<CalendarPage />);
+    render(<CalendarSettings />);
     await screen.findByRole("heading", { name: "Google Calendar" });
 
     fireEvent.click(screen.getByRole("button", { name: "Sync now" }));

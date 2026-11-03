@@ -139,10 +139,9 @@ describe("Shell navigation", () => {
     ["/projects/p-old", "Projects", "Projects"],
     ["/notes", "Notes", "Notes"],
     ["/search", "Search", "Settings"],
-    ["/calendar", "Calendar", "Settings"],
-    ["/sync", "Sync", "Settings"],
-    ["/notifications", "Notifications", "Settings"],
     ["/settings", "Settings", "Settings"],
+    ["/settings/sync", "Settings", "Settings"],
+    ["/calendar", "Settings", "Settings"],
   ])("at %s exactly one sidebar item (%s) and one rail item (%s) are active", async (path, item, dest) => {
     await renderAt(path);
     const current = sidebarNav().querySelectorAll("[aria-current]");
@@ -182,7 +181,7 @@ describe("Shell navigation", () => {
   it("More starts collapsed", async () => {
     await renderAt("/inbox");
     expect(screen.getByRole("button", { name: "More" })).toHaveAttribute("aria-expanded", "false");
-    expect(within(sidebarNav()).queryByRole("link", { name: "Sync" })).toBeNull();
+    expect(within(sidebarNav()).queryByRole("link", { name: "Settings" })).toBeNull();
   });
 });
 

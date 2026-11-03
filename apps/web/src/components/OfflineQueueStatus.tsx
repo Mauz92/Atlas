@@ -8,7 +8,9 @@ import {
   queueSummaryText,
   type QueueCounts,
 } from "../lib/queueStatus";
+import { EmptyState } from "./EmptyState";
 import { LoadError } from "./LoadError";
+import { Skeleton } from "./Skeleton";
 
 interface OfflineQueueStatusProps {
   counts: QueueCounts;
@@ -47,7 +49,7 @@ export function OfflineQueueStatus({
   onSyncNow,
 }: OfflineQueueStatusProps) {
   if (state === "loading") {
-    return <p className="muted" role="status">Loading offline queue…</p>;
+    return <Skeleton label="Loading offline queue" rows={2} kind="line" />;
   }
   if (state === "error") {
     return <LoadError message={error} onRetry={onRefresh} />;
@@ -92,7 +94,9 @@ export function OfflineQueueStatus({
           ))}
         </ul>
       ) : (
-        <div className="empty-state">You are up to date. Changes made offline appear here.</div>
+        <EmptyState icon="cloud" compact>
+          You are up to date. Changes made offline appear here.
+        </EmptyState>
       )}
     </div>
   );

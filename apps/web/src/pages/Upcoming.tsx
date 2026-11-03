@@ -1,4 +1,6 @@
+import { EmptyState } from "../components/EmptyState";
 import { LoadError } from "../components/LoadError";
+import { Skeleton } from "../components/Skeleton";
 import { TaskList } from "../components/TaskList";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 import { useTaskView } from "../hooks/useTaskView";
@@ -23,9 +25,9 @@ export function Upcoming() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted" role="status">Loading upcoming…</p>
+        <Skeleton label="Loading upcoming" rows={2} groups={2} />
       ) : groups.length === 0 ? (
-        <div className="empty-state">Nothing is scheduled for the days ahead.</div>
+        <EmptyState icon="calendar-days">Nothing is scheduled for the days ahead.</EmptyState>
       ) : (
         <div className="view-sections">
           {groups.map((group) => (

@@ -3,17 +3,15 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { useAuth } from "./auth/AuthProvider";
 import { Layout } from "./components/Layout";
+import { SETTINGS_REDIRECTS } from "./lib/settingsSections";
 import { BoardPage } from "./pages/Board";
-import { CalendarPage } from "./pages/Calendar";
 import { Inbox } from "./pages/Inbox";
 import { Login } from "./pages/Login";
-import { NotificationsPage } from "./pages/Notifications";
 import { ProjectPage } from "./pages/ProjectPage";
 import { Projects } from "./pages/Projects";
 import { SearchPage } from "./pages/Search";
 import { Settings } from "./pages/Settings";
 import { Setup } from "./pages/Setup";
-import { SyncPage } from "./pages/Sync";
 import { Tasks } from "./pages/Tasks";
 import { Today } from "./pages/Today";
 import { Upcoming } from "./pages/Upcoming";
@@ -48,10 +46,11 @@ export default function App() {
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:id" element={<ProjectPage />} />
-        <Route path="/calendar" element={<CalendarPage />} />
-        <Route path="/sync" element={<SyncPage />} />
+        {/* Calendar, Sync and Notifications are Settings sections now (UX-08): old links land there. */}
+        {Object.entries(SETTINGS_REDIRECTS).map(([from, to]) => (
+          <Route key={from} path={from} element={<Navigate to={to} replace />} />
+        ))}
         <Route path="/search" element={<SearchPage />} />
-        <Route path="/notifications" element={<NotificationsPage />} />
         <Route
           path="/notes"
           element={
@@ -61,6 +60,7 @@ export default function App() {
           }
         />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/settings/:section" element={<Settings />} />
       </Route>
     </Routes>
   );

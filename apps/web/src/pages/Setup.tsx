@@ -25,7 +25,7 @@ export function Setup() {
   }
 
   return (
-    <div className="auth-page">
+    <main className="auth-page">
       <form className="card" onSubmit={onSubmit}>
         <h1>Create your Atlas account</h1>
         <p className="muted">This is the first account and will own this Atlas instance.</p>
@@ -60,11 +60,11 @@ export function Setup() {
           />
           <span className="hint">At least 12 characters.</span>
         </label>
-        {submitError ? <p className="error">{submitError}</p> : null}
+        {submitError ? <p className="error" role="alert">{submitError}</p> : null}
         <button type="submit" className="primary" disabled={busy}>
           {busy ? "Creating…" : "Create account"}
         </button>
       </form>
-    </div>
+    </main>
   );
 }

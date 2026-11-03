@@ -3,11 +3,13 @@
  *
  * `NAV_SECTIONS` is the single source: the sidebar renders it section by section, the icon rail and
  * the mobile bottom nav show the items marked `rail`, and the command palette offers every item as
- * "Go to …". Day is not a destination any more (`/day` redirects to Today, ADR-0051 §2); Calendar,
- * Sync, Notifications and Search live in the collapsible "More" section, so every page stays
- * reachable and every old URL still resolves.
+ * "Go to …". Day is not a destination any more (`/day` redirects to Today, ADR-0051 §2); Search and
+ * Settings live in the collapsible "More" section. Calendar, Sync and Notifications are sections of
+ * Settings (UX-08, ADR-0058): their old URLs redirect, and the palette still offers each one
+ * (`PALETTE_PAGES`).
  */
 import type { IconName } from "../components/Icon";
+import { SETTINGS_PALETTE, SETTINGS_REDIRECTS } from "./settingsSections";
 
 /** A rail destination: the group a page belongs to. At most six exist (UX-02 acceptance). */
 export type RailId = "today" | "inbox" | "tasks" | "projects" | "notes" | "settings";
@@ -57,9 +59,6 @@ export const NAV_SECTIONS: NavSection[] = [
     startsCollapsed: true,
     items: [
       { to: "/search", label: "Search", icon: "search", group: "settings" },
-      { to: "/calendar", label: "Calendar", icon: "calendar", group: "settings" },
-      { to: "/sync", label: "Sync", icon: "refresh-cw", group: "settings" },
-      { to: "/notifications", label: "Notifications", icon: "bell", group: "settings" },
       { to: "/settings", label: "Settings", icon: "settings", group: "settings", rail: true },
     ],
   },
@@ -67,6 +66,12 @@ export const NAV_SECTIONS: NavSection[] = [
 
 /** Every page in sidebar order (what the palette offers as "Go to …"). */
 export const NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((section) => section.items);
+
+/** What the palette offers as "Go to …": every page plus every Settings section. */
+export const PALETTE_PAGES: { to: string; label: string }[] = [
+  ...NAV_ITEMS.map((item) => ({ to: item.to, label: item.label })),
+  ...SETTINGS_PALETTE,
+];
 
 /** The rail destinations, in order; Settings is drawn at the bottom of the rail. */
 export const RAIL_ITEMS: NavItem[] = NAV_ITEMS.filter((item) => item.rail);
@@ -77,11 +82,13 @@ export function projectNavKey(projectId: string): string {
 }
 
 /** Old URLs that are no longer pages of their own, mapped to where they now live. */
-export const REDIRECTS: Record<string, string> = { "/day": "/" };
+export const REDIRECTS: Record<string, string> = { "/day": "/", ...SETTINGS_REDIRECTS };
 
 function normalise(pathname: string): string {
   const trimmed = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-  return REDIRECTS[trimmed] ?? trimmed;
+  const target = REDIRECTS[trimmed] ?? trimmed;
+  // Every Settings section is the one Settings entry.
+  return target.startsWith("/settings/") ? "/settings" : target;
 }
 
 /**

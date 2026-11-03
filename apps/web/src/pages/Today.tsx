@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { notesApi, tasksApi, type Task } from "../api/client";
+import { EmptyState } from "../components/EmptyState";
 import { LoadError } from "../components/LoadError";
 import { QuickCapture } from "../components/QuickCapture";
+import { Skeleton } from "../components/Skeleton";
 import { TaskList } from "../components/TaskList";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 import { useTaskView } from "../hooks/useTaskView";
@@ -137,7 +139,9 @@ export function Today() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted" role="status">Loading today…</p>
+        <Skeleton label="Loading today" rows={2} groups={3} />
+      ) : overdue.length + dueToday.length + startsToday.length === 0 && !scheduledError ? (
+        <EmptyState icon="sun">Nothing is due today. Capture a task above, or enjoy the quiet.</EmptyState>
       ) : (
         <div className="view-sections">
           <section className="view-section">

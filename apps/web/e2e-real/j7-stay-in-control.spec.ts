@@ -2,7 +2,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { expect, test } from "./fixtures";
-import { OWNER, apiCall, ensureOwner, rail, searchButton, signIn } from "./helpers";
+import { OWNER, apiCall, ensureOwner, openSettingsSection, rail, searchButton, signIn } from "./helpers";
 
 /**
  * MU-08 journey J7 — stay in control (docs/ROADMAP.md, MU). Real API, real database. Settings must
@@ -79,14 +79,18 @@ test("J7: account, theme, reminders, export, backup status and instance info all
   await expect(page.getByText("Name saved")).toBeVisible();
 
   // --- Theme ---------------------------------------------------------------------------------
+  await openSettingsSection(page, "Appearance");
   await page.getByRole("radio", { name: "Dark" }).check();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.reload();
+  // The section is in the URL, so a reload stays on Appearance.
+  await expect(page).toHaveURL(/\/settings\/appearance$/);
   await expect(page.getByRole("radio", { name: "Dark" })).toBeChecked();
   await page.getByRole("radio", { name: "Light" }).check();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 
   // --- Reminder timing and notification status ---------------------------------------------
+  await openSettingsSection(page, "Notifications and reminders");
   await expect(page.getByRole("heading", { name: /Notifications aren't available|Turn on desktop|can't show/ })).toBeVisible();
   await page.getByLabel("Reminder timing").selectOption({ label: "1 day before at 09:00" });
   await page.getByRole("button", { name: "Save reminder timing" }).click();
@@ -103,6 +107,7 @@ test("J7: account, theme, reminders, export, backup status and instance info all
   await expect(page.getByText("Reminders are off.")).toBeVisible();
 
   // --- Export ----------------------------------------------------------------------------------
+  await openSettingsSection(page, "Data and backups");
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     page.getByRole("button", { name: "Download export" }).click(),
@@ -137,6 +142,7 @@ test("J7: account, theme, reminders, export, backup status and instance info all
     await rm(backupDir, { recursive: true, force: true });
   }
 
+  await openSettingsSection(page, "About");
   const info = await apiCall<{ version: string; migration_revision: string }>(page, "GET", "/api/instance");
   const instance = page.getByRole("region", { name: "Instance" });
   await expect(instance).toContainText(info.version);
@@ -144,6 +150,7 @@ test("J7: account, theme, reminders, export, backup status and instance info all
   await expect(instance).toContainText("ok");
 
   // --- Keyboard shortcut help ----------------------------------------------------------------
+  await openSettingsSection(page, "Account");
   await page.getByLabel("Display name").fill("?");
   await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeHidden();
   await page.getByLabel("Display name").fill(OWNER.name);

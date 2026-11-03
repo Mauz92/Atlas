@@ -1,11 +1,12 @@
 # Current Task
 
-- Task ID: none in progress. Next: UX-08 (settings, skeletons, empty states, `BACKLOG`).
-- Last completed: UX-07 (`DONE`, 2026-11-03, local verification; not committed): Tasks filter bar + floating bulk
-  bar + List|Board, project rows/header/tabs, compact board cards with `[`/`]`, one date format. Decisions:
-  ADR-0057. Evidence: `docs/ACCEPTANCE.md` UX-07 (verify.sh PASS, pytest 1061, vitest 798, real-stack 46 passed,
-  mocked e2e 7 passed). Before that UX-06 (ADR-0056), UX-05 (ADR-0054), UX-04, UX-03, UX-02, UX-01, MU-08. CI
-  `e2e-real` NOT RUN.
+- Task ID: none in progress. The UX milestone (UX-01…UX-08) is `DONE` locally; next is the owner's choice: close MU
+  (CI run of `e2e-real` + release re-score), AUTH-01 (needs the owner's approval of the recovery design) or calendar
+  (M5-00, blocked on real accounts).
+- Last completed: UX-08 (`DONE`, 2026-11-03, local verification; not committed): Settings sections, skeletons,
+  one `EmptyState`, `main` landmark on sign-in/first-run. Decisions: ADR-0058. Evidence: `docs/ACCEPTANCE.md` UX-08
+  (verify.sh PASS, pytest 1061, vitest 816, real-stack 52 passed, mocked e2e 7 passed). Before that UX-07
+  (ADR-0057), UX-06 (ADR-0056), UX-05 (ADR-0054), UX-04, UX-03, UX-02, UX-01, MU-08. CI `e2e-real` NOT RUN.
 
 - Milestone: UX — Design system and app shell (docs/ROADMAP.md "UX" section, ADR-0051, evidence in docs/UX_AUDIT.md)
 
@@ -13,8 +14,33 @@
   IP over plain HTTP for phone/laptop use; default is localhost-only.
 
 ## Goal (next)
-UX-08 (settings consolidation, skeletons, empty states). Separately the owner may close MU (CI run + release
-re-score) or resume calendar work. (R-24, CRLF read by the server, was fixed 2026-11-03.)
+No UX task is open. The owner may close MU (CI run + release re-score), approve the AUTH-01 design, or resume
+calendar work. (R-24, CRLF read by the server, was fixed 2026-11-03.)
+
+## UX-08 conventions to keep
+- Settings = `pages/Settings.tsx` (layout only) + `lib/settingsSections.ts` (the one table: ids, labels, palette
+  labels, one-line descriptions, `SETTINGS_REDIRECTS`, `SETTINGS_PALETTE`). Routes `/settings` and
+  `/settings/:section`; `/settings` shows Account (no `aria-current` in the list) and on a phone only the list
+  (`data-view="index|section"` + CSS at 720 px; no JS viewport logic). Add a section there, a body in
+  `components/settings/` (or reuse a component), and one `case` in `SectionBody`. Do not give a section a page
+  `h1`: the h1 is *Settings*, the section title is `h2#settings-section-title`.
+- Rows: `components/settings/SettingsRow.tsx` (`label`+`htmlFor`, or `labelId` for a group; `description`
+  becomes the hint). Keep ids and labels e2e uses: `Display name`, `Save name`, `Current password`, `New password`
+  (exact), `Confirm new password`, `Change password`, radios `System/Light/Dark`, `Download export`, regions
+  `Backups` and `Instance` (h3 inside the section). Helper `openSettingsSection(page, "<section label>")`.
+- Navigation: `NAV_SECTIONS` "More" = Search + Settings; every `/settings/*` is the Settings entry
+  (`normalise`); the palette reads `PALETTE_PAGES`; the status bar links to `/settings/sync` and
+  `/settings/calendar`. Instance info is loaded only by Data and About (`hooks/useInstanceInfo.ts`).
+- `components/Skeleton.tsx` (`label`, `rows`, `groups`, `kind` task|card|line|tree|board) is the loading state: it
+  is `role="status"` with sr-only "<label>…" text, so use `getByRole("status").filter({hasText})`, not
+  `getByText(/^Loading/)` while loading. `components/EmptyState.tsx` (icon from `Icon`, one line, optional single
+  `action`) is the empty state; never a dashed box, never `role="status"`. Tasks: a filtered empty list has no
+  action (the bar has *Reset filters*), a plain one offers *Go to Inbox*. Today shows one EmptyState only when
+  overdue, due today and scheduled are all empty.
+- Empty states in e2e: the journeys share one database, so `ux08` answers the list request (`/api/tasks`,
+  `/api/projects`, `/api/notes`) with an empty list via `page.route`. Held requests (`hold()` in the same spec)
+  show a skeleton.
+- Not done: compact-density toggle, AUTH-01, Today date picker.
 
 ## UX-07 conventions to keep
 - Tasks page = `pages/Tasks.tsx` + `components/FilterBar.tsx` (chips are `MenuButton`s over the shared `Menu`; the
@@ -144,11 +170,11 @@ re-score) or resume calendar work. (R-24, CRLF read by the server, was fixed 202
 3. Optional: fix the pre-existing dev-only `minimatch` advisory (`npm audit --include=dev`, RISKS.md).
 
 ## Recommended next task
-UX-08 (UX-07 is done). Separately the owner may still close MU (items 1-2 above) or resume calendar
-with M5-00 (blocked on real Google/Microsoft accounts, AR-001).
+Close MU (items 1-2 above); UX-01…UX-08 are done. AUTH-01 needs an ADR and the owner's approval first. Calendar
+resumes with M5-00 (blocked on real Google/Microsoft accounts, AR-001).
 
 ## Notes for the next session
-- Verification: `./scripts/verify.sh` (pytest 1061, vitest 798); `cd apps/web && npm run test:e2e:real` (46 tests,
+- Verification: `./scripts/verify.sh` (pytest 1061, vitest 816); `cd apps/web && npm run test:e2e:real` (52 tests,
   real API + throwaway DB, see `docs/TESTING.md` §1b); `npm run e2e` (7 mocked). No `atlas_e2e_*` database is left
   on the dev PostgreSQL.
 - Journeys share one owner: a spec that changes the owner's name, password or reminder default must restore it (J7 does).

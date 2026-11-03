@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 
+import { EmptyState } from "../components/EmptyState";
 import { LoadError } from "../components/LoadError";
 import { ProjectSummary } from "../components/ProjectSummary";
+import { Skeleton } from "../components/Skeleton";
 import { TaskList } from "../components/TaskList";
 import { usePlanning } from "../hooks/usePlanning";
 import { useTaskEditor } from "../hooks/useTaskEditor";
@@ -76,7 +78,7 @@ export function Week() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted" role="status">Loading the week…</p>
+        <Skeleton label="Loading the week" rows={2} groups={3} />
       ) : (
         <>
           {projectsError ? (
@@ -86,7 +88,7 @@ export function Week() {
           ) : null}
           <ProjectSummary projects={projects} />
           {tasks.length === 0 ? (
-            <div className="empty-state">Nothing planned for this week.</div>
+            <EmptyState icon="calendar-range">Nothing planned for this week.</EmptyState>
           ) : (
             <div className="week-days">
               {groups.map((group) => (

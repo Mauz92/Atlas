@@ -737,7 +737,7 @@ button.rail-button {
   gap: var(--s-1);
   min-width: 0;
   padding: var(--s-2);
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
 }
@@ -794,10 +794,14 @@ button.sidebar-search:hover {
   margin-left: auto;
 }
 
+/* The navigation scrolls on its own, so a long project list never pushes the account row away. */
 .sidebar-nav {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: var(--s-3);
+  min-height: 0;
+  overflow-y: auto;
 }
 
 button.sidebar-section-header {
@@ -901,6 +905,7 @@ button.nav-row-toggle {
   display: flex;
   align-items: center;
   gap: var(--s-2);
+  flex: none;
   margin-top: auto;
   padding: var(--s-2) 0 0 var(--s-2);
   border-top: 1px solid var(--border);
@@ -954,12 +959,147 @@ button.nav-row-toggle {
 }
 
 .empty-state {
-  margin-top: var(--s-4);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--r-lg);
-  padding: var(--s-6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-5);
+  padding: var(--s-6) var(--s-4);
   color: var(--text-3);
   text-align: center;
+}
+
+.empty-state p {
+  max-width: 44ch;
+  margin: 0;
+}
+
+.empty-state button {
+  margin-top: var(--s-2);
+}
+
+.empty-state.compact {
+  margin-top: var(--s-3);
+  padding: var(--s-4) var(--s-2);
+}
+
+/* Skeleton (UX-08): placeholder rows that reserve the height of the rows they stand for. */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin-top: var(--s-3);
+}
+
+.skeleton-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 36px;
+  padding: 0 var(--s-2);
+}
+
+.skeleton-bar,
+.skeleton-box,
+.skeleton-tile {
+  background: linear-gradient(90deg, var(--bg-hover) 25%, var(--bg-selected) 50%, var(--bg-hover) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s linear infinite;
+}
+
+.skeleton-bar {
+  display: block;
+  width: 60%;
+  height: 12px;
+  border-radius: var(--r-sm);
+}
+
+.skeleton-row[data-n="1"] .skeleton-bar {
+  width: 44%;
+}
+
+.skeleton-row[data-n="2"] .skeleton-bar {
+  width: 72%;
+}
+
+.skeleton-row[data-n="3"] .skeleton-bar {
+  width: 52%;
+}
+
+.skeleton-box {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--r-full);
+}
+
+.skeleton-heading {
+  width: 96px;
+  margin: var(--s-3) 0 var(--s-1);
+}
+
+.skeleton-card .skeleton-row {
+  min-height: 56px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.skeleton-line .skeleton-row {
+  min-height: 24px;
+  padding: 0;
+}
+
+.skeleton-tree .skeleton-row {
+  min-height: 28px;
+}
+
+.skeleton-tree .skeleton-row[data-n="1"],
+.skeleton-tree .skeleton-row[data-n="3"] {
+  margin-left: var(--s-4);
+}
+
+.skeleton-board {
+  flex-direction: row;
+  gap: var(--s-3);
+  overflow: hidden;
+}
+
+.skeleton-column {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+.skeleton-tile {
+  display: block;
+  height: 64px;
+  border-radius: var(--r-md);
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-bar,
+  .skeleton-box,
+  .skeleton-tile {
+    animation: none;
+  }
 }
 
 /* Status bar */
@@ -2661,10 +2801,6 @@ button.menu-item .menu-chevron,
 
 /* --- Web Push consent (M8-02) ------------------------------------------ */
 
-.notifications-page {
-  max-width: 640px;
-}
-
 .notification-consent {
   margin-top: var(--s-5);
   padding: var(--s-4);
@@ -3850,53 +3986,133 @@ button.task-subtask-title.done {
 /* --- Settings and shell polish (MU-08) --------------------------------- */
 
 .settings-page {
-  max-width: 720px;
+  max-width: 960px;
 }
 
-.settings-section {
-  margin-top: var(--s-5);
-  padding-top: var(--s-4);
+.settings-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--s-6);
+  align-items: start;
+}
+
+.settings-nav ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  min-height: var(--control-sm);
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.settings-nav-link:hover {
+  background: var(--bg-hover);
+}
+
+.settings-nav-link.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 500;
+}
+
+.settings-nav-chevron,
+.settings-back {
+  display: none;
+}
+
+.settings-pane {
+  min-width: 0;
+}
+
+.settings-pane h2 {
+  margin: 0 0 var(--s-1);
+}
+
+.settings-blurb {
+  max-width: var(--measure);
+  margin: 0 0 var(--s-4);
+}
+
+.settings-group {
+  margin: 0 0 var(--s-5);
+}
+
+.settings-group h3 {
+  margin: 0 0 var(--s-1);
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  gap: var(--s-4);
+  align-items: center;
+  padding: var(--s-3) 0;
   border-top: 1px solid var(--border);
 }
 
-.settings-section h2 {
-  margin: 0 0 var(--s-2);
+.settings-group > .settings-row:last-child {
+  border-bottom: 1px solid var(--border);
 }
 
-.settings-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  max-width: 420px;
-  margin-top: var(--s-4);
+.settings-row-text label,
+.settings-row-label {
+  display: block;
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  font-weight: 500;
+  color: var(--text);
 }
 
-.settings-form h3 {
+.settings-row-text p {
   margin: 0;
 }
 
-.settings-actions {
+.settings-row-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+
+.settings-row-control input:not([type="radio"]) {
+  width: 240px;
+  max-width: 100%;
+}
+
+.settings-feedback {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s-3);
+  min-height: var(--control-sm);
+  padding-top: var(--s-2);
+}
+
+.settings-feedback p {
+  margin: 0;
+}
+
+.settings-submit {
+  border-top: 1px solid var(--border);
 }
 
 .settings-radio {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-2) var(--s-4);
-  border: 0;
-  padding: 0;
-  margin: 0;
-}
-
-.settings-radio legend {
-  padding: 0;
-  margin-bottom: var(--s-2);
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  color: var(--text-2);
 }
 
 .settings-facts {
@@ -3917,6 +4133,53 @@ button.task-subtask-title.done {
 .settings-facts dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+/* A phone shows the list, then one section ("drill-in"), never both (breakpoint as the shell's 720px). */
+@media (max-width: 720px) {
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-4);
+  }
+
+  .settings-page[data-view="index"] .settings-pane,
+  .settings-page[data-view="section"] .settings-nav {
+    display: none;
+  }
+
+  .settings-nav-link,
+  .settings-nav-link.active {
+    min-height: 44px;
+    padding: var(--s-2) var(--s-3);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--bg-raised);
+    color: var(--text);
+    font-weight: 400;
+  }
+
+  .settings-nav-chevron {
+    display: inline-block;
+    color: var(--text-3);
+  }
+
+  .settings-back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-1);
+    min-height: 44px;
+    color: var(--text-2);
+    text-decoration: none;
+  }
+
+  .settings-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-2);
+  }
+
+  .settings-row-control {
+    justify-content: flex-start;
+  }
 }
 
 .shortcut-help {

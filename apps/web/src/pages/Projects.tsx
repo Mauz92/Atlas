@@ -2,12 +2,14 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { projectsApi, type Project } from "../api/client";
+import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { LoadError } from "../components/LoadError";
 import type { MenuEntry } from "../components/Menu";
 import { MenuButton } from "../components/MenuButton";
 import { ProjectForm } from "../components/ProjectForm";
 import { ProjectProgressBar } from "../components/ProjectProgressBar";
+import { Skeleton } from "../components/Skeleton";
 import { useProjects } from "../hooks/useProjects";
 import { formatDay } from "../lib/tasks";
 
@@ -122,11 +124,11 @@ export function Projects() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted" role="status">Loading projects…</p>
+        <Skeleton label="Loading projects" rows={3} kind="card" />
       ) : live.length === 0 ? (
-        <div className="empty-state">
+        <EmptyState icon="folder-kanban">
           No projects yet — create one to start grouping tasks.
-        </div>
+        </EmptyState>
       ) : (
         <ul className="project-list">{live.map(row)}</ul>
       )}

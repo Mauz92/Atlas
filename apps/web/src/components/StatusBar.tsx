@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useOnlineStatus } from "../hooks/useMediaQuery";
 import { useOfflineQueue } from "../hooks/useOfflineQueue";
 import { useSyncStatus } from "../hooks/useSyncStatus";
+import { settingsPath } from "../lib/settingsSections";
 import { calendarStatusItem, syncStatusItem } from "../lib/statusBar";
 import { Icon } from "./Icon";
 
@@ -39,12 +40,12 @@ export function StatusBar({ onShowShortcuts }: { onShowShortcuts: () => void }) 
 
   return (
     <footer className={`statusbar${sync.tone === "ok" ? " is-quiet" : ""}`} aria-label="Status bar">
-      <Link to="/sync" className={`statusbar-item tone-${sync.tone}`} title={sync.label}>
+      <Link to={settingsPath("sync")} className={`statusbar-item tone-${sync.tone}`} title={sync.label}>
         <Icon name={sync.icon} size={14} />
         <span aria-live="polite">{sync.text}</span>
       </Link>
       {cal ? (
-        <Link to="/calendar" className={`statusbar-item tone-${cal.tone} statusbar-calendar`} title={cal.label}>
+        <Link to={settingsPath("calendar")} className={`statusbar-item tone-${cal.tone} statusbar-calendar`} title={cal.label}>
           <Icon name={cal.icon} size={14} />
           <span>{cal.text}</span>
         </Link>

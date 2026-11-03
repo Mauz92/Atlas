@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { tasksApi, type Task, type TaskStatus } from "../api/client";
 import { Board } from "../components/Board";
 import { BulkBar } from "../components/BulkBar";
+import { EmptyState } from "../components/EmptyState";
 import { FilterBar } from "../components/FilterBar";
 import { LoadError } from "../components/LoadError";
+import { Skeleton } from "../components/Skeleton";
 import { TaskList } from "../components/TaskList";
 import { UndoToast } from "../components/UndoToast";
 import { activeProjects, useProjects } from "../hooks/useProjects";
@@ -15,6 +17,7 @@ import { useTaskQuery } from "../hooks/useTaskQuery";
 import {
   filterFromParams,
   filterToParams,
+  isFiltered,
   PAGE_LIMIT,
   type TaskFilter,
 } from "../lib/taskFilters";
@@ -82,6 +85,7 @@ export function Tasks() {
   // build on the URL they just wrote, not on the last committed render.
   const latest = useRef(params);
   latest.current = params;
+  const openRoute = useNavigate();
   function navigate(next: URLSearchParams) {
     latest.current = next;
     setParams(next, { replace: true });
@@ -144,6 +148,11 @@ export function Tasks() {
   }
 
   const shownError = bulkError ?? editor.error;
+  // "No results" (a filter is set: offer to clear it) differs from "none yet" (point at capture).
+  const filtered = isFiltered(filter);
+  const emptyText = filtered ? "No tasks match these filters." : "No open tasks. Capture one in the Inbox.";
+  // The filter bar already offers "Reset filters", so a filtered list needs no action of its own.
+  const emptyAction = filtered ? undefined : { label: "Go to Inbox", onClick: () => openRoute("/inbox") };
 
   return (
     <section className="page tasks-page">
@@ -172,7 +181,7 @@ export function Tasks() {
       {state === "error" ? (
         <LoadError message={error} onRetry={() => void reload()} />
       ) : state === "loading" ? (
-        <p className="muted" role="status">Loading tasks…</p>
+        <Skeleton label="Loading tasks" rows={5} />
       ) : (
         <>
           <div className="task-count">
@@ -214,10 +223,14 @@ export function Tasks() {
               onOpen={editor.open}
               movingId={[...editor.actions.busy][0] ?? null}
               empty={tasks.length === 0}
-              emptyMessage="No tasks match these filters."
+              emptyMessage={emptyText}
               actions={editor.actions}
               archivedToggle
             />
+          ) : tasks.length === 0 ? (
+            <EmptyState icon="square-check" action={emptyAction}>
+              {emptyText}
+            </EmptyState>
           ) : (
             <TaskList
               tasks={tasks}
@@ -226,7 +239,6 @@ export function Tasks() {
               actions={editor.actions}
               filable={editor.projects}
               onOpen={editor.open}
-              emptyMessage="No tasks match these filters."
               selection={{
                 isSelected: (id) => selected.has(id),
                 toggle: (task) => toggle(task.id),

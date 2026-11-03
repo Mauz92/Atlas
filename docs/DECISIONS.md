@@ -2768,3 +2768,62 @@ menu and popover), the project page's *Board* button (now a tab), *Edit/Archive 
 options*), *Restore <name>* on the Projects page (row menu), and *Link a note* (Notes tab). Rollback: UI-only; the
 URL format is a superset of ADR-0045's.
 
+
+## ADR-0058 — Settings sections, skeletons and one empty state (UX-08)
+
+**Status:** Accepted (2026-11-03, within the owner's UX direction ADR-0051 and `UX_AUDIT.md` §3.4, §4.3, §6;
+UI-only: no backend, schema or new npm package, no new network call or stored data, so it keeps the local-first
+direction of ADR-0055).
+
+**Context.** Settings was one long page (account, theme, notifications, export, backups, instance) while Sync,
+Calendar and Notifications were three more pages in the sidebar's *More* section, with Notifications duplicating
+a block of Settings. Every list page showed a bare "Loading…" line and the empty lists were a dashed box of
+developer-style prose, each styled by hand. The sign-in and first-run pages had no `main` landmark.
+
+**Decisions.**
+1. **Settings is a two-column page: a section list and one section at a time**, addressed as `/settings/<section>`
+   (`Account`, `Appearance`, `Notifications and reminders`, `Calendar`, `Sync`, `Data and backups`, `About`;
+   one table, `lib/settingsSections.ts`). A path segment (not `?section=`) because it reads as a page, needs no
+   parsing in the router and keeps `/settings` valid. `/settings` shows Account on a wide screen and only the
+   list on a phone; an unknown segment redirects to `/settings`. The section list is real links (`aria-current`),
+   so Back, reload and links work; the phone drill-in is a CSS switch on `data-view="index|section"` with an
+   "All settings" link, so no viewport logic lives in React.
+2. **The pages that became sections redirect**: `/sync`, `/notifications`, `/calendar` →
+   `/settings/<section>` (`SETTINGS_REDIRECTS`, used by the router and by `normalise` in `lib/navigation.ts`).
+   `NAV_SECTIONS`' *More* section now holds only Search and Settings; every `/settings/*` path is the one
+   Settings entry (one active sidebar and rail item). The status bar links straight to the sections. The command
+   palette is built from `PALETTE_PAGES` = the nav items plus `SETTINGS_PALETTE`, so "Go to Sync", "Go to
+   Calendar", "Go to Notifications" (and Account, Appearance, Data and backups, About Atlas) still work.
+3. **Content and behaviour are reused, not rewritten.** `SyncSettings` and `CalendarSettings` are the former page
+   bodies (same hooks and `SyncStatusPanel` / `SyncStatus`), `NotificationSettings` is unchanged, and the Account,
+   export, backup and instance code moved into `components/settings/` with the same messages, ids and labels.
+   Rows are "label and description left, control right" (`SettingsRow`); no section has more than one primary
+   button (none uses one). Instance data (`GET /api/instance`) is loaded only by the two sections that show it
+   (`useInstanceInfo`), so the Sync, Calendar and Notifications sections make no extra request.
+4. **One `Skeleton`** (`components/Skeleton.tsx`) replaces the "Loading…" lines on Inbox, Today, Upcoming, Week,
+   Tasks, Projects, Board, the project page, the Notes tree, and inside the Sync, Calendar, backup and instance
+   sections: bars in `--bg-hover`/`--bg-selected` with a slow shimmer that stops under `prefers-reduced-motion`
+   (the global rule and an explicit one). Rows reserve the height of a real task row (36 px) so the heading and
+   capture box above do not move. It is the page's `role="status"` with screen-reader text ("Loading inbox…"),
+   exactly as the line it replaces was, so unscoped `getByRole("status")` in specs and unit tests keep working;
+   the bars are `aria-hidden`.
+5. **One `EmptyState`** (`components/EmptyState.tsx`): icon (existing `Icon` shapes only), one sentence and at
+   most one action as an ordinary secondary button; not a `role="status"`. Used on Inbox ("Inbox zero"), Today
+   (one state instead of three empty groups; the groups return as soon as anything is due or scheduled),
+   Upcoming, Week, Projects, Tasks, Notes (tree and editor pane), and in the Sync and Calendar sections. **Tasks
+   distinguishes** "no results" (a filter is set: "No tasks match these filters.", no action because the bar's
+   *Reset filters* is the action) from "none yet" ("No open tasks. Capture one in the Inbox." with *Go to
+   Inbox*). The dashed box and its developer wording are gone.
+6. **Sign-in and first-run** were already a centred token-styled card; the only defect was the missing `main`
+   landmark (axe `landmark-one-main`, `region`), fixed by making `.auth-page` a `<main>`; their errors are now
+   `role="alert"`.
+7. **Not done (scope).** The compact-density toggle listed in `UX_AUDIT.md` UX-08 (no page has a density token
+   to switch), account recovery (AUTH-01), a Today date picker, new settings. No new icon, so
+   `docs/DEPENDENCIES.md` is unchanged.
+
+**Consequences / limitations.** A visitor on a phone at `/settings` sees only the list (the Account form is
+in the DOM but `display: none`). Section content mounts only for the open section, so leaving Sync or Calendar for
+another section drops its in-memory state (the data comes from the offline queue and the API, not from the
+component). Names that changed and were updated in specs: the Sync, Calendar and Notifications pages no longer
+have an `h1` of their own (the h1 is *Settings*, the section is an `h2`); J7 now opens each section from the list;
+ux02 and mu08 use the new URLs. Rollback: UI-only; the old URLs are redirects, so reverting restores them.

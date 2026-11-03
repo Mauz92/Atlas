@@ -24,10 +24,10 @@ export function Login() {
   }
 
   return (
-    <div className="auth-page">
+    <main className="auth-page">
       <form className="card" onSubmit={onSubmit}>
         <h1>Sign in to Atlas</h1>
-        {error ? <p className="error">{error}</p> : null}
+        {error ? <p className="error" role="alert">{error}</p> : null}
         <label>
           Email
           <input
@@ -48,11 +48,11 @@ export function Login() {
             onChange={(e) => setPassword(e.target.value)}
           />
         </label>
-        {submitError ? <p className="error">{submitError}</p> : null}
+        {submitError ? <p className="error" role="alert">{submitError}</p> : null}
         <button type="submit" className="primary" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
       </form>
-    </div>
+    </main>
   );
 }

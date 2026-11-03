@@ -6,6 +6,19 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Changed (UX-08): **Settings is one page with sections.** A list on the left (**Account**, **Appearance**,
+  **Notifications and reminders**, **Calendar**, **Sync**, **Data and backups**, **About**) and one section at a
+  time on the right; the section is in the address (`/settings/sync`), so a link or a reload keeps it. Sync,
+  Calendar and Notifications are no longer separate pages: their old addresses open the matching section, and the
+  command palette still offers "Go to Sync", "Go to Calendar" and "Go to Notifications". Each setting is a row
+  with its name and a line of explanation on the left and the control on the right. On a phone the list comes
+  first and each section opens with an **All settings** link back. Lists show grey placeholder rows (not
+  "Loading…" text) while they load, with no movement of the page when the data arrives; they stop shimmering
+  when your system asks for reduced motion. Every empty list now looks the same (icon, one sentence, at most one
+  button): *Inbox zero*, *Nothing is due today* (one message instead of three empty groups), *Nothing is
+  scheduled…*, *Nothing planned for this week*, *No projects yet*, and on Tasks *No open tasks* (with **Go to
+  Inbox**) versus *No tasks match these filters*. The sign-in and first-run pages are now a proper `main`
+  landmark and announce errors. Nothing stored or sent changed.
 - Changed (UX-07): **Tasks, Projects and Board are tidier.** The Tasks page has one filter bar: a search box and
   chips for **Status**, **Priority**, **Project**, **Due** and **Sort** (each opens a small menu; Due also lets
   you type a date range) plus a **List | Board** switch. Chips that differ from the default show their value;

@@ -18,9 +18,10 @@ const OLD_URLS: [string, string][] = [
   ["/tasks", "Tasks"],
   ["/board", "Board"],
   ["/projects", "Projects"],
-  ["/calendar", "Calendar"],
-  ["/sync", "Sync"],
-  ["/notifications", "Notifications"],
+  // Calendar, Sync and Notifications are Settings sections since UX-08 (the URL redirects).
+  ["/calendar", "Settings"],
+  ["/sync", "Settings"],
+  ["/notifications", "Settings"],
   ["/notes", "Notes"],
   ["/search", "Search"],
   ["/settings", "Settings"],
@@ -62,26 +63,30 @@ test("UX-02: the shell works by keyboard, keeps old URLs and fits a phone", asyn
   await expect(sidebarNav.locator('[aria-current="page"]')).toHaveText("Tasks");
   await expect(rail(page).locator("[aria-current]")).toHaveCount(1);
 
-  // --- A collapsed sidebar section opens by keyboard; More holds Sync -----------------------
+  // --- A collapsed sidebar section opens by keyboard; More holds Settings --------------------
   const more = page.getByRole("button", { name: "More" });
   await expect(more).toHaveAttribute("aria-expanded", "false");
   await more.focus();
   await page.keyboard.press("Enter");
   await expect(more).toHaveAttribute("aria-expanded", "true");
   await page.keyboard.press("Tab"); // Search
-  await page.keyboard.press("Tab"); // Calendar
-  await page.keyboard.press("Tab"); // Sync
-  await expect(sidebarNav.getByRole("link", { name: "Sync" })).toBeFocused();
+  await page.keyboard.press("Tab"); // Settings
+  await expect(sidebarNav.getByRole("link", { name: "Settings" })).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("heading", { name: "Sync", level: 1 })).toBeVisible();
-  await expect(sidebarNav.locator('[aria-current="page"]')).toHaveText("Sync");
-  await expect(rail(page).getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "true");
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+  await expect(sidebarNav.locator('[aria-current="page"]')).toHaveText("Settings");
+  await expect(rail(page).getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+  // A section of Settings keeps the same single active item.
+  await page.goto("/settings/sync");
+  await expect(page.getByRole("heading", { name: "Sync", level: 2 })).toBeVisible();
+  await expect(sidebarNav.locator("[aria-current]")).toHaveCount(1);
+  await expect(sidebarNav.locator('[aria-current="page"]')).toHaveText("Settings");
 
   // --- Ctrl+B hides the sidebar, remembered across a reload ---------------------------------
   await page.keyboard.press("Control+b");
   await expect(sidebar).toBeHidden();
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Sync", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
   await expect(sidebar).toBeHidden();
   await expect(rail(page).getByRole("button", { name: "Show sidebar" })).toBeVisible();
   expect(await axeIds(page), "axe with the sidebar collapsed").toEqual([]);
@@ -93,6 +98,14 @@ test("UX-02: the shell works by keyboard, keeps old URLs and fits a phone", asyn
     await page.goto(url);
     await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
     await expect(sidebarNav.locator("[aria-current]")).toHaveCount(1);
+  }
+  for (const [from, to] of [
+    ["/sync", "/settings/sync"],
+    ["/notifications", "/settings/notifications"],
+    ["/calendar", "/settings/calendar"],
+  ]) {
+    await page.goto(from);
+    await expect(page).toHaveURL(new RegExp(`${to}$`));
   }
   await page.goto("/day");
   await expect(page).toHaveURL(/\/$/);

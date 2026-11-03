@@ -24,7 +24,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M8 | Notifications and mobile apps | `IN_PROGRESS` | Platform behaviour tested on real devices |
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
-| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `IN_PROGRESS` | UX-01, UX-02 and UX-03 `DONE` 2026-11-02, UX-04, UX-05, UX-06 and UX-07 `DONE` 2026-11-03; next UX-08 (`BACKLOG`); J1–J7 and the axe sweep keep passing while the UI is rebuilt |
+| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `DONE` (local PASS; CI `e2e-real` NOT RUN) | UX-01…UX-03 `DONE` 2026-11-02, UX-04…UX-08 `DONE` 2026-11-03; J1–J7 and the axe sweep pass on the finished UI. The separate `AUTH-01` row (account recovery) stays `BACKLOG` and is not part of this exit |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -666,7 +666,7 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 | UX-05 | Notes workspace + note autosave (own tests before Save is removed) | UX-02 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-05; ADR-0054; CI `e2e-real` NOT RUN; not committed) |
 | UX-06 | Live preview mode; Live becomes default once round-trip tests pass | UX-05 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-06; ADR-0056; CI `e2e-real` NOT RUN; not committed) |
 | UX-07 | Tasks, Projects and Board polish | UX-03 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-07; ADR-0057; CI `e2e-real` NOT RUN; not committed) |
-| UX-08 | Settings consolidation, skeletons, empty states | UX-02 | `BACKLOG` |
+| UX-08 | Settings consolidation, skeletons, empty states | UX-02 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-08; ADR-0058; CI `e2e-real` NOT RUN; not committed) |
 | AUTH-01 | Account recovery in the UI: recovery code issued at setup/in Settings, "Forgot password?" on the sign-in page, reset without email (CLI `atlas-admin reset-password` exists since 2026-11-03) | UX-02 | `BACKLOG` (needs an ADR and the owner's approval of the recovery design: there is no email service in a self-hosted install, so a one-time recovery code shown once at setup and regenerable in Settings is proposed; reset must revoke all sessions, be rate limited, never log the code, and store only its hash) |
 
 ### UX-01 plan — Design tokens and base controls
@@ -852,11 +852,42 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
   (`adjacentStatus`), `lib/tasks.ts` (`formatDay`). Saved views stayed in the filter bar's "…" menu (the sidebar
   is `NAV_SECTIONS` only). Evidence: `ACCEPTANCE.md` UX-07. Limitations in ADR-0057 and R-26.
 
+### UX-08 plan — Settings consolidation, skeletons, empty states
+- **Scope.** (1) **Settings** becomes a two-column page: a section list (Account, Appearance, Notifications and
+  reminders, Calendar, Sync, Data and backups, About) and one section at a time, addressed as `/settings/<section>`
+  (`/settings` shows Account on a wide screen and the list alone on a phone, where a section is a drill-in with an
+  "All settings" back link). `/sync`, `/notifications` and `/calendar` redirect to their section; the sidebar's
+  *More* section keeps only Search and Settings, while the palette still offers "Go to Sync / Calendar /
+  Notifications / …" (from one `SETTINGS_SECTIONS` table). Rows are "label and description left, control right";
+  at most one primary button per section; the Sync, Calendar, Notification, reminder, export, backup and instance
+  content and behaviour are reused unchanged. (2) **Skeletons** (a shared `Skeleton` with `role="status"` and
+  screen-reader text, token colours, shimmer off under reduced motion) replace the "Loading…" lines on Inbox,
+  Today, Upcoming, Week, Tasks, Projects, Board, the project page and the Notes tree. (3) **One `EmptyState`**
+  (icon, one line, at most one action) on Inbox, Tasks (no results vs none yet), Projects, Today, Upcoming, Week
+  and Notes, replacing the dashed developer-style box. (4) Login and Setup are checked against the design system
+  and small inconsistencies fixed.
+- **Out of scope.** Backend or data-model changes, new npm packages, the compact-density toggle (UX_AUDIT UX-08
+  lists it; no page uses a density token yet), the Day date picker on Today, new settings, AUTH-01 (account
+  recovery), a native client.
+- **Acceptance.** Every old URL (`/settings`, `/sync`, `/notifications`, `/calendar`) resolves, with a redirect to
+  the right section for the last three; the section is in the URL and survives a reload; J7 passes with the new
+  section navigation; the Sync and push-consent mocked specs pass against the redirected URLs; no list page shows
+  "Loading…" text without a skeleton and no skeleton remains once data is loaded; every empty list has an icon and a
+  sentence (action where one makes sense); axe clean in light and dark and no horizontal scroll at 1440/1024/720/390
+  on Settings (every section), a skeleton state and the empty states; J1-J7, ux02-ux07, tasks-page and mu08 pass
+  with selectors changed only where labels legitimately changed; `./scripts/verify.sh`, `npm run test:e2e:real` and
+  `npm run e2e` pass.
+- **Status: `DONE` (2026-11-03).** As built (ADR-0058): `lib/settingsSections.ts`, `pages/Settings.tsx` with
+  `components/settings/*` (`SettingsRow`, Account, Appearance, Data, About), `SyncSettings` and `CalendarSettings`
+  (the former page bodies), `Skeleton`, `EmptyState`; `NAV_SECTIONS` lost Calendar/Sync/Notifications and the
+  palette reads `PALETTE_PAGES`. Left out: the compact-density toggle (UX_AUDIT lists it; no density token
+  exists). Evidence: `ACCEPTANCE.md` UX-08. Limitations in ADR-0058 and R-27.
+
 ---
 
 ## Immediate Next Tasks
 
-**Next: UX-08 (`BACKLOG`, settings/skeletons/empty states; UX-01…UX-07 are `DONE`) or close MU (CI run + release re-score). Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
+**Next: close MU (CI run of `e2e-real` + release re-score; UX-01…UX-08 are all `DONE`, `AUTH-01` is the one open UX-adjacent item and needs the owner's approval of its recovery design) or resume calendar work. Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
 editing) and `MU-02` (Projects UI), `MU-03` (Tasks page) and `MU-04` (recurrence, subtasks and reminders in the UI) and `MU-05` (command palette, quick switcher and unified search) and `MU-06` (note ↔ task ↔ project linking) and `MU-07` (daily note, templates and Today as home) and `MU-08` (settings and shell polish) are `DONE`; MU itself is not closed (CI run and release re-score outstanding, see the MU exit-criteria evaluation).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 

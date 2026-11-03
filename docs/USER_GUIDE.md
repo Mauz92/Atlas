@@ -27,11 +27,11 @@ Atlas is being built milestone by milestone. This table is the honest state of e
 | Kanban board (move a task between statuses) | **Available** | **Board**, the Tasks page's Board view and each project's Board tab; drag, the card menu or **]** / **[**. |
 | Projects and derived progress | **Available** | **Projects** page: create, edit, archive; each project has progress, tasks, a board and linked notes. |
 | Search | **Available** | **Ctrl+K** finds notes, tasks and projects and runs commands; the **Search** page shows the same results. |
-| Offline edits and cross-device sync | **Available** | A **Sync** page shows the queue, conflicts and a manual "Sync now". Edits made in the task and project screens need a connection. |
-| Desktop notifications (Web Push) | **Partial** | Notification status is on **Settings**; **an operator must configure VAPID keys**, and a real delivery has not been verified on this install. |
-| Reminder timing preferences | **Available** | Default timing on **Settings**; per-task override in the task panel. |
-| Settings (account, theme, export, backup status, instance info) | **Available** | Change your name and password; download an export; see backup status and the version. |
-| Calendar accounts (Google / Microsoft) and event views | **Not available** | Blocked on real provider accounts (`ROADMAP.md` M5/M6, AR-001). **Calendar** shows sync *status* only; Today's events area stays empty. |
+| Offline edits and cross-device sync | **Available** | **Settings → Sync** shows the queue, conflicts and a manual "Sync now". Edits made in the task and project screens need a connection. |
+| Desktop notifications (Web Push) | **Partial** | Notification status is in **Settings → Notifications and reminders**; **an operator must configure VAPID keys**, and a real delivery has not been verified on this install. |
+| Reminder timing preferences | **Available** | Default timing in **Settings → Notifications and reminders**; per-task override in the task panel. |
+| Settings (account, appearance, notifications, calendar, sync, data and backups, about) | **Available** | A list of sections with one open at a time: change your name and password; pick a theme; download an export; see backup status and the version. |
+| Calendar accounts (Google / Microsoft) and event views | **Not available** | Blocked on real provider accounts (`ROADMAP.md` M5/M6, AR-001). **Settings → Calendar** shows sync *status* only; Today's events area stays empty. |
 | Mobile apps (Android / iOS) and native push | **Not available** | M8; needs real devices. The web app works on a phone-sized screen. |
 
 Anything marked **Not available** or **Partial** does **not** exist as a working feature yet — the nav
@@ -78,11 +78,11 @@ The window has four parts (UX-02):
   **Settings**. The icon of the area you are in is highlighted.
 - **Sidebar**: **Search** (opens the palette, Ctrl/⌘ K), then the sections **Planning** (Today, Inbox,
   Upcoming, Week), **Workspace** (Tasks, Board, Projects with your active projects, Notes) and **More**
-  (Search page, Calendar, Sync, Notifications, Settings; collapsed until you open it). Select a section
+  (Search page and Settings; collapsed until you open it). Select a section
   heading to fold it; Atlas remembers this in the browser. **Ctrl/⌘ B** hides or shows the whole sidebar.
   Your name, the theme button and **Sign out** are at the bottom.
 - **Status bar** (bottom): sync state (*Synced*, *Offline · 3 queued*, *1 conflict*; select it to open
-  **Sync**), the calendar's last sync (opens **Calendar**) and **Shortcuts**.
+  **Settings → Sync**), the calendar's last sync (opens **Settings → Calendar**) and **Shortcuts**.
 - **On a phone** (720 px wide or less): a bottom bar with Today, Inbox, Tasks, Projects and Notes; the
   menu button (top left) opens the sidebar as a drawer, and the search button (top right) opens the
   palette. The status bar only appears when something needs attention (offline, queued, conflicts).
@@ -99,12 +99,11 @@ The window has four parts (UX-02):
 | **Tasks** | `/tasks` | Every task: a filter bar (search, Status, Priority, Project, Due, Sort), a List \| Board switch, saved views and bulk actions. |
 | **Board** | `/board` | Kanban board; drag a card, use its **…** menu, or press **]** / **[** on it to change status. |
 | **Projects** | `/projects` | Your projects (progress, open tasks, target date) and each project's page (Tasks, Board, Notes tabs). |
-| **Calendar** | `/calendar` | Sync **status** for connected calendars only (no event views yet). |
-| **Sync** | `/sync` | Offline queue, conflicts, and a manual "Sync now". |
-| **Notifications** | `/notifications` | Notification permission and reminder timing (also on **Settings**). |
 | **Notes** | `/notes` | The Markdown notebook (editor, preview, tree, search). |
 | **Search** | `/search` | Search notes, tasks and projects. |
-| **Settings** | `/settings` | Account, theme, reminders, export, backup status, instance info. |
+| **Settings** | `/settings` | A section list and one section at a time, in the address (`/settings/account`, `/appearance`, `/notifications`, `/calendar`, `/sync`, `/data`, `/about`). **Account:** name and password. **Appearance:** theme. **Notifications and reminders:** desktop notifications and default reminder timing. **Calendar:** sync status for connected calendars (no event views yet). **Sync:** offline queue, conflicts and "Sync now". **Data and backups:** export and backup status. **About:** version and instance health. The old `/sync`, `/notifications` and `/calendar` addresses still work and open their section. On a phone the list comes first and each section opens with an **All settings** link back. |
+
+While a list is loading, Atlas shows grey placeholder rows instead of text (they stop shimmering if your system asks for reduced motion). An empty list says what is missing: *Inbox zero*, *Nothing is due today*, *No projects yet*, *No tasks match these filters* and so on, with one button where one helps (for example **Go to Inbox** on an empty Tasks page).
 
 ---
 
@@ -305,7 +304,7 @@ Atlas keeps your data on the server and lets you keep working when the connectio
 make offline are **stored on this device** and sent automatically when the connection returns. This
 applies to the editing operations the current UI performs.
 
-Open **Sync** to see:
+Open **Settings → Sync** to see:
 
 - an overall **state** badge — *up to date / syncing / offline / error / conflicts*;
 - the **pending**, **failed** and **conflict** counts, and the queued operations;
@@ -325,7 +324,7 @@ and resumes cleanly. Reasoning: `ROADMAP.md` M7 (ADR-0032…ADR-0036).
 
 ## 8. Notifications and reminders
 
-Open **Settings** (or **Notifications**) for two things.
+Open **Settings → Notifications and reminders** for two things.
 
 **Turn desktop notifications on.** Select **Enable notifications** to allow this browser to show a
 reminder when it is due — even when the Atlas tab is closed. Atlas reports the state explicitly:
@@ -347,7 +346,7 @@ UI yet.
 
 ## 9. Calendar
 
-The **Calendar** page is a **status surface only** in this release: per provider it shows whether the
+The **Settings → Calendar** section is a **status surface only** in this release: per provider it shows whether the
 account is connected, the last successful sync, the derived state and any error, with a manual
 **Sync now**.
 

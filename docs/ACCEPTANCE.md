@@ -1,7 +1,7 @@
 # Atlas — Acceptance Record
 
 **Status:** Active (Milestone 9)
-**Last updated:** 2026-10-27
+**Last updated:** 2026-11-03
 
 Records verification evidence for milestone gates. A milestone is not complete until its criteria
 are marked `PASS` here with evidence, or explicitly recorded as `BLOCKED`/`NOT RUN`.
@@ -3428,3 +3428,38 @@ and fixed: the search icon overlapped the first letter (the base input padding o
 Limitations: ADR-0057 and R-26 (saved views per browser; the Tasks board shows only filtered tasks; fold and
 archive toggles reset on reload; client copy of the transition table for `[` / `]`).
 
+
+### UX-08 — Settings consolidation, skeletons and empty states
+
+**Result: `DONE` (local, 2026-11-03); CI job `e2e-real` `NOT RUN` on GitHub Actions; not committed.** Settings is a
+section list plus one section at a time (`/settings/<section>`); Sync, Calendar and Notifications became sections;
+skeletons replace "Loading…" on the list pages; one `EmptyState`; sign-in and first-run got a `main` landmark
+(ADR-0058). No backend, schema, dependency or icon change (`DEPENDENCIES.md` unchanged).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Settings: seven sections, one at a time, section in the URL, survives a reload | `PASS` | `ux08` "Settings: one section…" (each section opened from the list, URL, `aria-current`, reload on About); `Settings.test.tsx`; `settingsSections.test.ts` |
+| Old `/sync`, `/notifications`, `/calendar` still resolve; unknown section goes to `/settings`; palette "Go to Sync / Calendar / Notifications" works; sidebar/rail have one active item | `PASS` | `ux08` (redirects, palette Enter), `ux02` (old URLs, `/settings/sync` keeps one active item), `App.routes.test.tsx`, `navigation.test.ts`, `Layout.test.tsx` |
+| Rows are "label + description left, control right"; at most one primary button per section | `PASS` | `ux08` (`button.primary` count <= 1 on each section); `Settings.test.tsx`; screenshots below |
+| Existing content and behaviour preserved (account, theme, reminders, notification consent, export, backups, instance, Sync panel, Calendar status) | `PASS` | J7 (now opening each section from the list), `Settings.test.tsx`, `SyncSettings.test.tsx`, `CalendarSettings.test.tsx`, mocked `sync-failure-modes` (4) and `web-push-consent` (3) specs run through the redirects |
+| Phone: the list first, then a drill-in section with "All settings" | `PASS` | `ux08` at 390 px (Account form hidden on the list, list hidden in a section, back link) |
+| Skeletons instead of "Loading…" on Inbox, Today, Upcoming, Week, Tasks, Projects, Notes tree (and Board, project page, Sync/Calendar/backup/instance); `role="status"` kept; page does not jump; shimmer off under reduced motion | `PASS` | `ux08` "loading shows a skeleton…" (list request held: status with "Loading …" text visible, h1 `y` identical before and after release, skeleton gone); `Skeleton.test.tsx`; CSS has the explicit `prefers-reduced-motion` rule (reduced motion itself not run in a browser: `NOT RUN`) |
+| One `EmptyState` (icon, one line, at most one action) on Inbox, Tasks (no results vs none yet), Projects, Today, Upcoming, Week, Notes | `PASS` | `ux08` "every empty list…" (8 views incl. Tasks both ways, icon present, action buttons, Reset filters flow); `Tasks.test.tsx`, `Inbox.test.tsx`, `Skeleton.test.tsx` |
+| axe clean and no horizontal scroll at 1440 / 1024 / 720 / 390 px, light and dark: every Settings section and the list, skeleton states, empty states, sign-in and first-run | `PASS` | `ux08` (4 sweeps x 4 widths x 2 themes); `mu08` adds the six `/settings/<section>` routes (axe both themes, overflow at 375 and 800). axe found a real defect on the first sign-in run (`landmark-one-main`, `region`): fixed with `<main>` |
+| Login and Setup consistent with the design system | `PASS` | one centred token-styled card at all four widths (position asserted within 1 px), axe clean; only fix was the `main` landmark and `role="alert"` on errors |
+| J1-J7, ux02-ux07, mu08, tasks-page keep passing with selectors changed only where labels legitimately changed | `PASS` | Changed: J7 (section navigation), ux02 (More holds Settings; old URLs show the Settings h1), mu08 (section routes). Pages that were `h1` Sync/Calendar/Notifications are now `h2` sections under the `h1` Settings |
+| Tokens only; icons via `Icon.tsx`; no new package | `PASS` | `npm run lint` (CSS scale check `OK`); no Lucide shape added |
+| Repository checks | `PASS` | `./scripts/verify.sh` -> ruff, ruff format, mypy (115 files), pytest `1061 passed`; eslint + CSS scale check, `tsc`, vitest `816 passed` (73 files; UX-07 recorded 798); `verification: PASS` |
+| Real-stack suite | `PASS` | `npm run test:e2e:real` -> `52 passed` (46 + 6 in `ux08-settings-states.spec.ts`); first `ux08` runs failed on spec mistakes (a count of h2s that includes the notification cards, an over-strict `Loading` text check, a hidden notes empty state on phones) and on the axe finding above; all fixed, then the full suite was run once |
+| Mocked e2e | `PASS` | `npm run e2e` -> `7 passed` |
+| No stray `atlas_e2e_*` databases; owner's stack untouched | `PASS` | `pg_database`: `postgres`, `atlas`, `atlas_test`, templates only; `atlas` and the dev stack were not used |
+| Compact-density toggle (listed in `UX_AUDIT.md`) | `NOT RUN` | Out of scope by decision: no density token exists (ADR-0058 §7) |
+| Other browsers, real phone, screen reader, 200 % zoom, reduced motion in a browser | `NOT RUN` | Chromium (desktop + emulated widths) only |
+
+**Screenshots** (throwaway stack, scratchpad `ux08/`, not in the repository), 1440 and 390 px, light and dark:
+`/tmp/claude-1000/-home-kim-Documents-Atlas/31ff7fb3-5923-481a-b611-5657fde6b6ea/scratchpad/ux08/settings-{index,account,appearance,sync,data}-*.png`, `skeleton-inbox-{light,dark}-1440.png`,
+`skeleton-inbox-light-390.png`, `empty-{inbox,today,upcoming,week,projects,tasks,tasks-filtered,notes}-*.png`,
+`auth-{login,setup}-*.png`.
+
+Limitations: ADR-0058 and R-27 (old addresses are redirects; only the open Settings section is mounted; Today shows
+one empty state when all three groups are empty; no density toggle).
