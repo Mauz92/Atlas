@@ -31,3 +31,21 @@ export function excerpt(content: string, maxLines = 6, maxChars = 400): string {
     .join("\n");
   return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
 }
+
+/**
+ * An excerpt as readable plain text (UX-09): Markdown markers a reader does not need are dropped
+ * (`## Focus` becomes `Focus`, `- item` becomes `• item`, `- [ ]` / `- [x]` become ☐ / ☑). The
+ * result is still plain text, rendered as text and never as HTML or Markdown (j6, SECURITY T3).
+ */
+export function plainPreview(text: string): string {
+  return text
+    .split("\n")
+    .map((line) =>
+      line
+        .replace(/^\s{0,3}#{1,6}\s+/, "")
+        .replace(/^(\s*)[-*+]\s+\[ \]\s+/, "$1☐ ")
+        .replace(/^(\s*)[-*+]\s+\[[xX]\]\s+/, "$1☑ ")
+        .replace(/^(\s*)[-*+]\s+/, "$1• "),
+    )
+    .join("\n");
+}

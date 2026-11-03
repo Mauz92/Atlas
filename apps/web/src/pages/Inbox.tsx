@@ -24,7 +24,7 @@ export function Inbox() {
   }
 
   return (
-    <section className="page inbox-page">
+    <section className="page inbox-page tinted-page">
       <h1>Inbox</h1>
       <p className="muted">Captured tasks waiting to be triaged.</p>
       <QuickCapture onCapture={capture} placeholder="Capture a task…" />
@@ -42,13 +42,15 @@ export function Inbox() {
       ) : tasks.length === 0 ? (
         <EmptyState icon="inbox">Inbox zero — everything has been triaged.</EmptyState>
       ) : (
-        <TaskList
-          tasks={tasks}
-          timeZone={timeZone}
-          actions={editor.actions}
-          filable={editor.projects}
-          onOpen={editor.open}
-        />
+        <div className="list-card">
+          <TaskList
+            tasks={tasks}
+            timeZone={timeZone}
+            actions={editor.actions}
+            filable={editor.projects}
+            onOpen={editor.open}
+          />
+        </div>
       )}
       {editor.overlays}
     </section>

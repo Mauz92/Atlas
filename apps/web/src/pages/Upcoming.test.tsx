@@ -42,6 +42,32 @@ describe("Upcoming", () => {
     expect(screen.getAllByRole("heading", { level: 2 })).toHaveLength(2);
   });
 
+  it("labels tomorrow's group relatively, counts the group and drops the date from its rows (UX-09)", async () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 30, 0, 0);
+    listMock.mockResolvedValue({
+      tasks: [
+        makeTask({
+          id: "x",
+          title: "Dentist",
+          due_state: "upcoming",
+          due_at: tomorrow.toISOString(),
+          time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
+      ],
+    });
+
+    render(<Upcoming />);
+
+    const heading = await screen.findByRole("heading", { level: 2 });
+    expect(heading).toHaveTextContent(/^Tomorrow · /);
+    expect(heading.querySelector(".section-count")).toHaveTextContent("1");
+    const due = screen.getByText("Dentist").closest("li")?.querySelector(".task-due");
+    expect(due?.textContent).toMatch(/9:30|09:30/);
+    expect(due?.textContent).not.toMatch(/[A-Z][a-z]{2}/);
+  });
+
   it("shows a useful empty state", async () => {
     listMock.mockResolvedValue({ tasks: [] });
 

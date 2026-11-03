@@ -109,6 +109,23 @@ describe("Today", () => {
     ).toBeInTheDocument();
   });
 
+  it("summarises the day and counts each section (UX-09)", async () => {
+    mockTasks([
+      makeTask({ id: "o1", title: "Pay rent", due_state: "overdue", due_at: "2026-10-20T09:00:00+00:00" }),
+      makeTask({ id: "o2", title: "Call bank", due_state: "overdue", due_at: "2026-10-21T09:00:00+00:00" }),
+      makeTask({ id: "t1", title: "Write report", due_state: "today", due_at: "2026-10-26T15:00:00+00:00" }),
+    ]);
+
+    renderToday();
+
+    expect(await screen.findByText("2 overdue · 1 due today")).toBeInTheDocument();
+    const overdue = screen.getByRole("heading", { name: "Overdue" });
+    expect(overdue.querySelector(".section-count")).toHaveTextContent("2");
+    expect(overdue.parentElement).toHaveClass("tone-overdue");
+    // An overdue row says so in words, visibly (not only in colour or screen-reader text).
+    expect(within(overdue.parentElement as HTMLElement).getAllByText(/Overdue/, { selector: ".task-due-text" })).toHaveLength(2);
+  });
+
   it("shows one empty state, the daily note slot and an empty events slot", async () => {
     mockTasks([]);
 

@@ -1,4 +1,60 @@
+- **UX-09 (readability tokens, task row anatomy, section cards) is `DONE` locally (2026-11-03, not committed, CI not run).** ADR-0062,
+  evidence `docs/ACCEPTANCE.md` UX-09 (verify.sh PASS: pytest 4172, vitest 877; real-stack 56 passed; mocked e2e 7 passed), R-49.
+  **Next UX step: UX-10** (`READY`: Week agenda layout, phone FAB + capture sheet, bottom-sheet menu, 16 px inputs).
+
+## UX-09 conventions to keep
+- Rows: `TaskMeta` renders `.task-meta` > `.task-meta-when` (due chip `.task-due.due-overdue|due-today|due-later`, `.task-priority`,
+  `.task-subtasks`) and `.task-meta-context` (`.task-parent`, `.task-project.project-tag` with `.project-dot.project-cN`, up to 2
+  `.task-tag` + `.task-tag-more`); board cards use the flat `.task-meta.is-compact`. Due chip logic is `lib/dueChip.ts` (state from
+  the server's `due_state`; `day` prop = the day group, drops the date). `data-meta-lines` (0-2) drives the phone title clamp (three
+  lines max). The whole `.task-body` opens the task (onClick on the div; the `Open <title>` button bubbles; do not add a second handler).
+- Sections: `components/ViewSection.tsx` (`section > h2.section-head` first child, `aria-hidden` count, `tone` overdue|today); `.list-card`
+  for a list with no header; add `tinted-page` to a page to get the phone page tint. Project hue: `lib/projectColor.ts` (FNV-1a % 8; never change).
+- Tokens: `--bg-page/-card/-section`, `--row-sep`, `--due-*`, `--priority-*`, `--project-1..8` in all three colour blocks and in
+  `styles.test.ts`. Font sizes only from the scale (phone line 2 is 14 px, line 3 12 px).
+- Touch: `@media (pointer: coarse), (max-width: 720px)` gives the 44 px checkbox (an input drawing a 22 px circle) and "...", rows >= 56 px.
+- Specs: `e2e-real/ux09-readability.spec.ts`; selectors unchanged (`.task-row`, `.task-priority`, `.task-due`, `.project-tag`, names).
+- Not done (UX-10/11): Week agenda, FAB, bottom-sheet menu, 16 px inputs, Tasks select mode, Board, Notes, Projects cards, palette.
+
+---
+
 # Current Task
+
+- **SYNC-05 (resolution log, `resolution` feed entity, list and undo) is `DONE` locally (2026-11-03, not committed, CI not run).**
+  Delivered in seven verified sub-steps 05a-05g (`docs/ROADMAP.md` SYNC-05, evidence `docs/ACCEPTANCE.md` SYNC-05, decisions ADR-0061,
+  contract `docs/SYNC_PROTOCOL.md` section 9, data `docs/DATA_MODEL.md` `SyncResolution`). New migration `f4a8b2c6d1e3` (reversible;
+  **not applied to the owner's `atlas` database**: the owner's next `atlas-migrate`/stack start applies it after `a1f0c3d2b4e6`..`e7a3c5b1d9f2`
+  if those are pending; tested on `atlas_test` and a scratch database only). New code: `atlas/models/resolution.py`,
+  `atlas/sync/resolution_rules.py` (pure) and `resolution_log.py` (store/announce/page/purge), `atlas/api/resolutions.py` (list, get,
+  undo), `log_resolutions` in `atlas/api/syncio.py` called at every sync write site (tasks, projects, notes) in the write's transaction,
+  `plan_merge(strict=True)` + `update_sync(strict=True)` (undo), `ChangeEntityType.RESOLUTION`. Retention reuses `CHANGE_RETENTION_DAYS`
+  (no new setting). `device_id` is `NULL` until SYNC-06 (the column and `ResolutionLog(device_id=...)` are the interface).
+- **Interfaces SYNC-06/08/11 must honour:** a resolution is a feed entity with state 1 (2 once undone); clients apply it by state,
+  keep it as a notice and drop it when older than `sync.tombstone_retention_days` or absent from a fresh snapshot (no `delete` row);
+  `undoable`/`undo_blocked`/`follow_up` say what the UI may offer; an undo needs an `Idempotency-Key`, answers `applied: false` when the
+  value is already there, and `409 conflict`/`changed_since` (with the current value) when the field changed since: the UI must say so
+  and offer "set it by hand" (R-48); a refused stale `DELETE` (`409 edit_wins`) is **not** logged (ADR-0061); the sim client rule "a 2xx
+  is historical" applies to an undo answer too (the entity is re-read at the next pull). SYNC-06 fills `device_id` and can then
+  compare it with the client's own device to show "changed on another device" only for others.
+- **What the work found (read `RISKS.md` R-47, R-48 and the ADR-0061 point 6):** a retried refused note `DELETE` replayed status `0`
+  (SYNC-04 code, fixed, regression test); the conformance traces caught two model/real disagreements; a flaky SYNC-04 conformance
+  assertion (`three-way merge, conflict copies and replay` step 9: two conflict copies listed in clock-stamp order across a second
+  boundary) is now order-insensitive. The simulation needed an "undo wave" after the first quiescence, because a faulty run learns its
+  notices too late to undo them (`TESTING.md` 10.0c).
+- **Next (smallest logical step): SYNC-06** (device credentials: table, bearer auth, rotation, revoke; AUTH-01 calls the revoke
+  function; fills `device_id`). SYNC-07 (Tauri spike, Linux first) is independent. Then SYNC-08 (`packages/sync-core`). Not built:
+  `reminder_policy`/`preferences` feed entities (owner decision on reminder sync timing), `ETag`/`If-None-Match` on note reads.
+- **Owner to do (unchanged from P0):** rebuild and recreate the stack when ready (`docker compose -f deploy/docker-compose.yml up -d
+  --build`, back up first), `tailscale serve` per `DEPLOYMENT.md` 8.1, one restore drill on real data, copy backups off the machine,
+  then P0-4 (`e2e-real` on CI) and P0-6 (dogfood).
+- A concurrent session edited `docs/UX_AUDIT.md` and added UX-09..UX-11 to `docs/ROADMAP.md` while SYNC-05 was in progress; those
+  changes are not part of SYNC-05 and are in the same uncommitted tree.
+- Commands: `./scripts/verify.sh`; sim soaks in `docs/TESTING.md` 10.0/10.0a/10.0b/10.0c (`ATLAS_SIM_SEEDS`, `ATLAS_SIM_REAL_SEEDS`,
+  `ATLAS_SIM_STEPS`, `ATLAS_SIM_SEED`); `cd apps/web && npm run test:e2e:real`.
+
+---
+
+## Earlier state (personal alpha P0-1..P0-3)
 
 - **Personal alpha steps P0-1, P0-2, P0-3 done locally (2026-11-03, not committed, CI not run).** Results and the install guide:
   `docs/ACCEPTANCE.md` P0-1/P0-2/P0-3, `docs/DEPLOYMENT.md` sections 8 and 11, `docs/OPERATIONS.md` 1.4 and 2.7, `RISKS.md` R-46.
@@ -9,9 +65,9 @@
   `./scripts/verify.sh` PASS. The owner's `atlas` database, containers and dev stack were not touched; the three smoke projects
   and the `atlas-smoke-*` images were removed.
 - **Owner to do:** rebuild and recreate the stack when ready (`docker compose -f deploy/docker-compose.yml up -d --build` applies
-  migrations `a1f0c3d2b4e6`..`e7a3c5b1d9f2`, back up first), run `tailscale serve` per `DEPLOYMENT.md` 8.1, do one restore drill on
+  migrations `a1f0c3d2b4e6`..`f4a8b2c6d1e3`, back up first), run `tailscale serve` per `DEPLOYMENT.md` 8.1, do one restore drill on
   real data (`OPERATIONS.md` 2.7), copy backup sets off the machine, then P0-4 (`e2e-real` on CI) and P0-6 (dogfood).
-- **Next engineering step unchanged: SYNC-05** (resolution log, undo), details below.
+- (At that time the next engineering step was SYNC-05; it is done, see above.)
 
 ---
 

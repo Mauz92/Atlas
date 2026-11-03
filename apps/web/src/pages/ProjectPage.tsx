@@ -296,19 +296,21 @@ export function ProjectPage() {
               <Skeleton label="Loading tasks" rows={3} />
             ) : tab === "tasks" ? (
               <>
-                <TaskList
-                  tasks={groups.open}
-                  timeZone={board.timeZone}
-                  emptyMessage={
-                    board.total === 0
-                      ? "No tasks in this project yet."
-                      : "Nothing open in this project."
-                  }
-                  hideProject
-                  actions={editor.actions}
-                  filable={editor.projects}
-                  onOpen={editor.open}
-                />
+                <div className={groups.open.length > 0 ? "list-card" : undefined}>
+                  <TaskList
+                    tasks={groups.open}
+                    timeZone={board.timeZone}
+                    emptyMessage={
+                      board.total === 0
+                        ? "No tasks in this project yet."
+                        : "Nothing open in this project."
+                    }
+                    hideProject
+                    actions={editor.actions}
+                    filable={editor.projects}
+                    onOpen={editor.open}
+                  />
+                </div>
                 {(
                   [
                     ["Completed", groups.completed],

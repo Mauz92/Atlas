@@ -30,6 +30,8 @@ interface TaskListProps {
   emptyMessage?: string;
   /** Leave the project out of the meta line (a project's own page). */
   hideProject?: boolean;
+  /** The day group these rows belong to (`YYYY-MM-DD`, viewer's zone): rows drop that date (UX-09). */
+  day?: string;
 }
 
 /**
@@ -48,6 +50,7 @@ export function TaskList({
   selection,
   emptyMessage,
   hideProject,
+  day,
 }: TaskListProps) {
   const shared = useProjects().projects;
   const lookup = useMemo(
@@ -99,6 +102,7 @@ export function TaskList({
           project={task.project_id && !hideProject ? lookup.get(task.project_id) : undefined}
           parentTitle={task.parent_task_id ? parents.get(task.parent_task_id) : undefined}
           actions={actions}
+          day={day}
           projects={choices}
           onOpen={onOpen}
           selection={

@@ -25,7 +25,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
 | **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `DONE` (local PASS; CI `e2e-real` NOT RUN) | UX-01…UX-03 `DONE` 2026-11-02, UX-04…UX-08 `DONE` 2026-11-03; J1–J7 and the axe sweep pass on the finished UI. The separate `AUTH-01` row (account recovery) stays `BACKLOG` and is not part of this exit |
-| **SYNC** | **Local-first sync** (ADR-0055, ADR-0059 ACCEPTED, `SYNC_PROTOCOL.md`) | `IN_PROGRESS` (SYNC-01…SYNC-04 `DONE` locally 2026-11-03: server protocol v1 for tasks, projects and notes incl. history/merge; next SYNC-05 resolution log, SYNC-06 devices) | Worked **first** (owner priority order). Server protocol + deterministic multi-client simulation pass before any native-shell task; Tauri spike verdict before SYNC-09/10 |
+| **SYNC** | **Local-first sync** (ADR-0055, ADR-0059 ACCEPTED, `SYNC_PROTOCOL.md`) | `IN_PROGRESS` (SYNC-01…SYNC-05 `DONE` locally 2026-11-03: server protocol v1 for tasks, projects and notes incl. history/merge and the resolution log with undo; next SYNC-06 devices) | Worked **first** (owner priority order). Server protocol + deterministic multi-client simulation pass before any native-shell task; Tauri spike verdict before SYNC-09/10 |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
 blocked on external accounts and devices. M5–M9 statuses above describe the *buildable backend scope*, not
@@ -668,6 +668,9 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 | UX-06 | Live preview mode; Live becomes default once round-trip tests pass | UX-05 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-06; ADR-0056; CI `e2e-real` NOT RUN; not committed) |
 | UX-07 | Tasks, Projects and Board polish | UX-03 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-07; ADR-0057; CI `e2e-real` NOT RUN; not committed) |
 | UX-08 | Settings consolidation, skeletons, empty states | UX-02 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-08; ADR-0058; CI `e2e-real` NOT RUN; not committed) |
+| UX-09 | Readability tokens and the task row / section structure on Inbox, Today, Upcoming, Tasks lists, project list (phone first; evidence `UX_AUDIT.md` "Readability and mobile audit (2026-11)") | UX-08 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-09; ADR-0062; CI `e2e-real` NOT RUN; not committed) |
+| UX-10 | Week agenda layout and navigation, phone capture (FAB + sheet), phone menu as bottom sheet, 16 px inputs, viewport/safe-area | UX-09 | `READY` (UX-09 is `DONE`) |
+| UX-11 | Remaining phone pages: Tasks select mode and filter strip, Board column view, Notes toolbar, Projects cards, palette sheet | UX-10 | `BACKLOG` (until UX-10 is `DONE`) |
 | AUTH-01 | Account recovery in the UI: recovery code issued at setup/in Settings, "Forgot password?" on the sign-in page, reset without email (CLI `atlas-admin reset-password` exists since 2026-11-03) | UX-02 | `BACKLOG` (needs an ADR and the owner's approval of the recovery design: there is no email service in a self-hosted install, so a one-time recovery code shown once at setup and regenerable in Settings is proposed; reset must revoke all sessions, be rate limited, never log the code, and store only its hash) |
 
 ### UX-01 plan — Design tokens and base controls
@@ -884,6 +887,97 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
   palette reads `PALETTE_PAGES`. Left out: the compact-density toggle (UX_AUDIT lists it; no density token
   exists). Evidence: `ACCEPTANCE.md` UX-08. Limitations in ADR-0058 and R-27.
 
+### UX-09 plan — Readability tokens and the task row / section structure (owner feedback 2026-11-03)
+- **Problem.** On a phone the task lists are hard to read: one undifferentiated text block per row (title 14 px, meta
+  12 px wrapping to 2-3 lines, rows 52-80 px), no row separators, flat grey section labels, overdue and High share one
+  colour, 22 px checkboxes and a 20 px title as the only open target. Evidence and screenshots:
+  `UX_AUDIT.md` "Readability and mobile audit (2026-11)" §B, §C.1 findings 2, 3, 5, 6.
+- **Scope.** (1) Tokens from the audit §D.2 in `styles.css` (light and dark, both dark copies): `--bg-page`,
+  `--bg-card`, `--bg-section`, `--row-sep`, `--due-overdue(-soft)`, `--due-today(-soft)`, `--priority-urgent/high/medium/low`,
+  `--project-1..8`; the same values added to `src/styles.test.ts` `REQUIREMENTS` (text 4.5:1 on every surface
+  they appear on, dots 3:1). (2) `TaskMeta`/`TaskRow`: phone anatomy of §D.3 (title 16 px; line 2 due chip with icon + word,
+  priority, subtask count; line 3 project dot + name and at most two tags; parent for subtasks; never more than three
+  lines); overdue/today/priority conveyed by colour **and** icon **and** text; project dot colour = `hash(project.id) % 8`
+  (no schema change); inside a day group (Upcoming, Today, Week) the date is dropped and only the time shown. (3) Touch
+  targets: the checkbox gets a 44x44 hit area, the whole row body opens the task, row min-height 56 px, `(pointer: coarse)`.
+  (4) Section structure on `Inbox`, `Today`, `Upcoming`, `Tasks`, project Tasks tab: section cards on `--bg-page` (phone), row
+  hairlines, sticky `--bg-section` headers with counts, Overdue / Due today header treatment, relative day headers
+  ("Tomorrow · Wed 4 Nov"). (5) Desktop: due and priority in fixed-width columns. (6) `Skeleton` row height follows the new row
+  height. (7) Today: daily note preview as plain text with Markdown markers dropped (refined 2026-11-03: `MarkdownPreview` would render inline HTML, which j6 forbids; ADR-0062 §7), one-line Events. Icons: the vendored `triangle-alert` replaces the planned `alert-circle`; none added.
+- **Out of scope.** Week layout and navigation, FAB/capture, bottom-sheet menu, 16 px inputs (UX-10); Tasks select mode, Board,
+  Notes, Projects, palette (UX-11); user-chosen project colours (would add a project field and sync surface: separate
+  decision); swipe gestures (not recommended, audit §C.4); any API, data-model or dependency change. Two icons
+  (`alert-circle`, `sun` if missing) would be Lucide shapes recorded in `DEPENDENCIES.md`.
+- **Dependencies.** UX-08 (done). No backend work; independent of SYNC.
+- **Acceptance.** (a) Token contrast test passes in both themes and both dark copies are identical. (b) At 390 and 360 px
+  every task row is at most three lines, text never overflows its row, no row is taller than 96 px, title is 16 px, and
+  an overdue row, a due-today row and an urgent/high row are distinguishable **without colour** (icon + word, checked by
+  a component test and by a greyscale screenshot). (c) Every row has a 44x44 completion hit area and the row body
+  opens the task; "…" stays 44x44; unit/e2e check by `boundingBox`. (d) Section headers are sticky below the mobile
+  header, show counts, and the Overdue header is distinguishable by icon and text. (e) No horizontal document scroll at
+  360, 390, 768 and 1440 in light and dark (extend the mu08 layout spec to the four sizes). (f) axe WCAG 2 A/AA clean on
+  Inbox, Today, Upcoming, Tasks, project page in both themes at 390 and 1440 (and one VoiceOver or TalkBack pass, or
+  recorded as unverified). (g) `npm run lint` (scale check) and `npm run typecheck` pass, `npm test` passes, `npm run e2e`
+  and `npm run test:e2e:real` pass. (h) Desktop rows stay at most 40 px (ADR-0052).
+- **Required tests.** Component tests for `TaskMeta` (each state renders icon + text; dropped date inside a day group;
+  at most two tags + "+n"); a unit test for the project colour hash (stable, 8 buckets); `styles.test.ts` additions; Playwright
+  real-stack spec `ux09-readability.spec.ts` at the four sizes in both themes (row height <= 96, targets >= 44,
+  no horizontal scroll, axe); update ux03 only where a label legitimately changes.
+- **e2e selectors to keep** (listed in `UX_AUDIT.md` §E): `.task-row`, `.task-priority`, `.task-due`, `Open <title>`,
+  `Complete <title>`, `Actions for <title>`, `Schedule <title> for today`, menu roles, regions "Daily note" and "Events".
+- **Verification evidence.** screenshot set at 390, 360, 768, 1440 x light/dark compared with the audit set
+  (`UX_AUDIT.md` §A), command output of the checks above in `ACCEPTANCE.md` UX-09. Rollback: CSS/markup only.
+- **Status: `DONE`** (local, 2026-11-03; see `ACCEPTANCE.md` UX-09, ADR-0062, R-49). Deviations recorded there: phone line 2 is 14 px and line 3 12 px (no 13 px in the scale); the title keeps one line when both meta lines exist (three-line cap); the real-stack spec checks Today, Inbox, Upcoming, Week, Tasks, Projects and a project page at four sizes (not the roadmap's ux03/mu08 extension).
+
+### UX-10 plan — Week agenda, phone capture, menu sheet, inputs
+- **Problem.** Week's 7 columns of 150-160 px hide Saturday/Sunday (1,122 px grid in a 656 px container at 768; 1,192 in
+  1,088 at 1440 with the sidebar open), break words and clip meta; there is no always-reachable capture on a phone; the row
+  menu is a small popover over the text; inputs are 14 px (iOS zoom). Audit §C.1 findings 1, 4, 7 and §D.4.
+- **Scope.** (1) Week: agenda cards in an `auto-fit, minmax(260px, 1fr)` grid by default, seven columns only where they fit
+  (container query, >= 7 x 220 px); today's card highlighted; empty day = one muted line; segmented, bordered, 44 px
+  week navigation with the same names; projects summary on one scrollable line. (2) Phone capture: a 56 px FAB and a bottom sheet
+  reusing `QuickCapture` on Today, Inbox, Upcoming, Week, Tasks and project pages (not Notes/Settings); inline capture
+  removed on phone Today, kept on desktop and phone Inbox. (3) `Menu`/`Popover`: bottom-sheet presentation at
+  `(max-width: 720px)`, same roles, keys, focus return and Esc rules (ADR-0052 §4). (4) `@media (pointer: coarse)`
+  `font-size: var(--fs-md)` for text inputs, selects and textareas; `viewport-fit=cover` and
+  `interactive-widget=resizes-content` in `index.html`, `env(safe-area-inset-bottom)` on the bottom nav, FAB and sheets.
+  (5) Inbox on touch: a second visible 44 px "Today" button per row (owner may decline).
+- **Out of scope.** Tasks/Board/Notes/Projects/palette (UX-11); gestures; backend.
+- **Dependencies.** UX-09 (tokens, row anatomy).
+- **Acceptance.** No horizontal document scroll **and no inner horizontal scroll on the Week page** at 360, 390, 768 and 1440 (with the
+  sidebar open) in both themes; all seven days reachable at every size; no word breaks inside a title; capture reachable in
+  one tap from every task page on a phone and the sheet does not cover the input when the keyboard is open (emulated; real device
+  recorded as unverified); every control inside the sheet is >= 44 px; all text inputs compute to >= 16 px under
+  `(pointer: coarse)`; the menu is a bottom sheet at 390 and a popover at 1440 with identical roles and keys; axe clean; J1-J7,
+  ux02-ux09, tasks-page, mu08 pass; `npm run e2e`, `npm run test:e2e:real`, lint, typecheck, tests pass.
+- **Required tests.** Week layout spec at 360/390/768/1440 (all seven day headings visible, no inner scroll); component tests
+  for the sheet focus trap, Esc and focus return; capture sheet adds exactly one task on retry (idempotent, existing path);
+  update the `Week` and `Inbox` unit tests for the removed phone inline capture (selector `Task title` stays: one visible
+  instance at a time).
+- **e2e selectors to keep.** Those of UX-09 plus "Previous week", "This week", "Next week", `Task title`. Selectors that may
+  change: `.week-days` / `.week-day` class names (list them in the PR), the phone Today inline capture.
+- **Status: `READY`** (UX-09 is `DONE`).
+
+### UX-11 plan — Remaining phone pages
+- **Problem.** Tasks has two checkboxes per row and a wrapping dashed chip bar; Board is five side-scrolling columns of ~190 px
+  (2,404 px tall); the Notes toolbar is crowded and the breadcrumb reads "/…"; Projects rows are three loose lines; palette rows
+  are ~28 px. Audit §C.1 findings 8-10.
+- **Scope.** Tasks: square select box only in a "Select" mode (entered from the filter "…" menu), filter chips in one scrollable
+  line (44 px, solid border, active chip tinted), "Select all" 44 px. Board: one column at a time with a tab strip (or snap columns
+  at 85 vw), the key-hint paragraph behind a "?" button on touch. Notes: toolbar shows the note title, one segmented mode control, the
+  rest in "…". Projects: cards with project dot colour, one-line summary, target date right, 44 px "…". Palette: full-height sheet on
+  phone, 44 px rows, no key hints. Settings, Login, Setup: tokens only.
+- **Out of scope.** Backend; drag-and-drop redesign; Notes editor behaviour; new settings.
+- **Dependencies.** UX-10 (sheet, 16 px inputs, FAB).
+- **Acceptance.** At 360 and 390 px: no inner or document horizontal scroll on Tasks, Projects, Notes (except the Board's deliberate
+  column strip if tabs are not chosen), every interactive control >= 44 px (a Playwright sweep over the touched pages excluding
+  inline text links), Board shows one full-width column with all five reachable by tab, bulk actions still work (complete, move, delete + undo,
+  J-specs), axe clean in both themes, existing specs pass with listed selector changes (the Tasks "Select" control and the
+  Board help button), tests, lint and typecheck pass, `npm run e2e` and `npm run test:e2e:real` pass.
+- **Required tests.** Tasks selection-mode component test; Board column tabs (keyboard: arrows, `[`/`]` still move cards; the move
+  announcement is kept); target-size sweep spec; update `tasks-page.spec`, `ux07`.
+- **Status: `BACKLOG`** (becomes `READY` when UX-10 is `DONE`).
+
 ---
 
 ## SYNC — Local-first sync
@@ -903,7 +997,7 @@ none is `DONE` until its tests ran. WIP limit: one task at a time except the spi
 | SYNC-02 | Simulation harness: model server, fault transport, invariants, conformance vs real server | — (uses current API) | `DONE` (2026-11-03) |
 | SYNC-03 | Protocol v1 server: client ids, sync mode, field merge, `include=data`/`types`/snapshot/retention, versioning | SYNC-01, SYNC-02, ADR-0059 D1–D4, D6, D9, D11–D12 | `DONE` (2026-11-03, local, 7 sub-steps 03a-03g all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-03). Notes: identity/create/idempotency only, content semantics are SYNC-04 |
 | SYNC-04 | Note history and three-way merge, move/delete/revive rules, portable paths | SYNC-03, ADR-0059 D3, D5, D10 | `DONE` (2026-11-03, local, 7 sub-steps 04a-04g all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-04; ADR-0060) |
-| SYNC-05 | Resolution log, feed entity and undo | SYNC-03, ADR-0059 D7 | `BACKLOG` (ADR-0059 accepted) |
+| SYNC-05 | Resolution log, feed entity and undo | SYNC-03, ADR-0059 D7 | `DONE` (2026-11-03, local, 7 sub-steps 05a-05g all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-05; ADR-0061) |
 | SYNC-06 | Device credentials: table, bearer auth, rotation, revoke, Settings → Devices | SYNC-03, ADR-0059 D8; AUTH-01 consumes the revoke function | `BACKLOG` (ADR-0059 accepted) |
 | SYNC-07 | Tauri 2 spike (Linux, Windows, Android) and Electron-fallback decision | — (hardware: Windows machine, Android device) | `READY` for Linux; Windows/Android `BLOCKED` on hardware |
 | SYNC-08 | `packages/sync-core`: framework-free TS client core (queue, pull/apply, rebase, backoff, conflict states) over a `LocalStore` interface; web IndexedDB adapter keeps M7 behaviour | SYNC-03, SYNC-02 | `BACKLOG` |
@@ -1042,8 +1136,41 @@ adjusted for the `base_hash` contract).
 front matter must be byte-identical to one side (no YAML parser); a rename of a deleted note is refused; `ETag`/`If-None-Match` not built.
 **Found by the work:** a lone surrogate in a JSON string was a `500` (fixed, all modes); a replayed *delete* acknowledgement can
 tombstone an entity another device revived (R-40, client rule, model client fixed). **Not in SYNC-04:** resolution log and undo
-(SYNC-05; `note_merged`, `edit_wins_over_delete`, `path_*` are response-only like the others), device credentials (SYNC-06),
+(SYNC-05, done: every resolution is logged), device credentials (SYNC-06),
 clients (SYNC-08/09), conflict UI (SYNC-11), word-level merge or YAML-aware front-matter merge (R-45).
+
+### SYNC-05 — Resolution log, `resolution` feed entity and undo (`DONE` locally 2026-11-03)
+
+Contract: `SYNC_PROTOCOL.md` 9; decisions: ADR-0061; data: `DATA_MODEL.md` 2.5 (`SyncResolution`). **Problem.** After SYNC-04 every
+automatic decision of a sync-mode write (`simple_later_wins`, `edit_wins_over_delete`, `note_merged`, `path_collision`,
+`path_later_wins`) existed only in the response of the writing device (R-41): other devices could not be told "changed on another
+device", the overwritten value was lost when the idempotency key expired, and nothing could be undone (ADR-0055 section 4: every
+automatic resolution is logged so it can be inspected and undone). **Plan (written before the work, refined while executing),
+ordered, each step verified before the next** (one uncommitted tree; targeted suites after each step, full `verify.sh` at the end):
+
+| Step | Content | Migration | Status |
+|---|---|---|---|
+| 05a | Table `sync_resolutions` + model: user-scoped, rule/entity-type check constraints, `loser` as `{"value": ...}` (null-able values), `device_id` column without FK, `op_key`/`ordinal` tripwire, unique `undoes_id`; indexes for the list and the purge. Migration tested clean, at the previous revision with representative data (tasks, projects, notes, feed rows; nothing changes, table empty), constraints, cascade, down/up round trip | `f4a8b2c6d1e3` (reversible; downgrade also deletes the `resolution` feed rows) | `DONE` |
+| 05b | `atlas/sync/resolution_rules.py` (pure: undoability and its reasons/follow-ups, bounds, list cursor) and `resolution_log.py` (insert + announce in the caller's transaction, page, mark undone, purge); unit tests | none | `DONE` |
+| 05c | Feed entity: `ChangeEntityType.RESOLUTION`, `include=data` payload (state 1/2), `types=` vocabulary, default visibility (sync mode only), `instance.sync.entities`, purge job deletes expired rows with their feed rows; `ResolutionOut` in OpenAPI | none | `DONE` |
+| 05d | Log at every write site in the write's transaction, ids in the response: task/project `PATCH` (only fields really changed), revive, note create (`path_collision`), `PUT` (`note_merged`, revive, collision), the conflict response of a revive, note move (`path_later_wins` with `path` and the overwritten path). Refused deletes deliberately not logged (ADR-0061). Fixed on the way: retried refused note `DELETE` replayed status 0 | none | `DONE` |
+| 05e | `GET /api/sync/resolutions`, `GET .../{id}`, `POST .../{id}/undo`: strict write through the ordinary services (`plan_merge(strict=True)`, base = `kept_revision`), never revives, idempotent, own `undo` entry, original marked undone and re-announced, reminders rescheduled, explicit refusal bodies for non-undoable kinds | none | `DONE` |
+| 05f | Simulation: model log/feed/list/undo, clients that pull `resolution` and undo (a second wave after quiescence), 8 invariants, 10 planted defects + restore scenario, model/real conformance (6 traces), real-API runs | none | `DONE` |
+| 05g | Docs, `openapi.json`/`schema.d.ts`, `verify.sh`, soaks, real-stack browser suite, restore drill of a backup that contains the table | none | `DONE` |
+
+**Acceptance (all verified, `ACCEPTANCE.md`):** a decision and its log row commit or roll back together (injected failure after the
+write leaves nothing); a replay or retry logs nothing more (integration, DB tripwire, simulation); a client learns every decision
+through the feed with the same cursor/`types=`/`include=data`/retention behaviour as other entities, the web app does not see the
+new type; no text or note content is stored or logged; list and undo are user-scoped (another user's entry is `404`, untouched);
+undo restores the overwritten value only if nothing changed the field since and otherwise says so (`changed_since`), never
+revives a deleted entity, is idempotent by key, answers a second undo `already_undone`, logs itself, and non-undoable kinds
+(`note_merged`, `edit_wins_over_delete`, `path_collision`, `undo`) say why and what to do instead; the log survives a database
+backup and restore; non-sync mode and the web app are unchanged.
+
+**Deviations, all in ADR-0061:** a refused stale `DELETE` is not logged (nothing was written); no `delete` tombstone for a purged
+resolution (a client drops notices by age); retention reuses `CHANGE_RETENTION_DAYS` (no new setting, nothing for `OPERATOR_GUIDE`).
+**Not in SYNC-05:** which device made a write (`device_id` is `NULL`, SYNC-06), the notice/undo UI and the client cache of notices
+(SYNC-11, SYNC-08), a persisted resolve action for text conflicts, a redo of an undo (edit the field).
 
 ### SYNC-07 plan — Tauri 2 spike (throwaway code, in a scratch directory, not in the repo tree)
 Versions looked up on 2026-11-03 (GitHub releases API): `tauri` 2.12.5 (2026-10-21), `tauri-cli` 2.12.4, plugin `sql` 2.6.0
@@ -1107,7 +1234,7 @@ P0-4 run `e2e-real` on GitHub Actions once (needs `master` pushed; owner's decis
 P0-5 AUTH-01 (recovery) or keep the `atlas-admin` CLI (verified in the smoke test); P0-6 a two-week dogfood log of defects.
 Limits to accept: no calendars, online only, one user.
 
-**Phase 1 — Finish the sync server.** SYNC-05 (resolution log + undo), SYNC-06 (device credentials; AUTH-01 shares
+**Phase 1 — Finish the sync server.** SYNC-05 (resolution log + undo; done 2026-11-03, locally), SYNC-06 (device credentials; AUTH-01 shares
 the revoke function), SYNC-07 (Tauri 2 spike on Linux first; Windows and Android need your hardware).
 **Phase 2 — Shared client core.** SYNC-08 `packages/sync-core` (TS, framework-free: queue, pull/apply, rebase,
 backoff, conflict states) tested by the SYNC-02 simulation against the real server; the web app keeps working.

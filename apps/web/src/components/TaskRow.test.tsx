@@ -48,10 +48,11 @@ function renderRow(
 describe("TaskRow", () => {
   it.each<[string, Partial<Task>, RegExp | string]>([
     ["a project", { project_id: "p1" }, "Home"],
-    ["an overdue due date, in the warning colour", { due_at: "2026-10-01T12:00:00Z", due_state: "overdue" }, /Overdue, due/],
+    ["an overdue due date with the word Overdue", { due_at: "2026-10-01T12:00:00Z", due_state: "overdue" }, /Overdue\s·\s.*1/],
     ["a date-only due without a clock time", { due_at: "2026-11-03T23:59:00Z", time_zone: "UTC" }, /^[^:]*\b3\b[^:]*$/],
     ["a priority", { priority: "urgent" }, "Urgent"],
     ["subtask progress", { subtasks_total: 3, subtasks_done: 1 }, "1/3 subtasks"],
+    ["a due-today state with the word Today", { due_at: "2026-11-03T15:00:00Z", due_state: "today" }, /Today\s·\s.*15/],
     ["tags", { tags: ["money"] }, "money"],
   ])("shows %s in the meta line", (_, overrides, text) => {
     const { row } = renderRow(overrides);
@@ -186,5 +187,80 @@ describe("TaskRow", () => {
     expect(open("Three")).toHaveFocus();
     fireEvent.keyDown(open("Three"), { key: "k" });
     expect(open("Two")).toHaveFocus();
+  });
+
+  describe("meta anatomy (UX-09)", () => {
+    const icon = (el: Element | null) => el?.querySelector("svg.icon");
+
+    it("conveys overdue, due today and urgent by an icon and a word, not by colour alone", () => {
+      const overdue = renderRow({ due_at: "2026-10-01T12:00:00Z", due_state: "overdue", priority: "urgent" });
+      const due = overdue.row.querySelector(".task-due");
+      expect(due).toHaveClass("due-overdue");
+      expect(icon(due)).not.toBeNull();
+      expect(due).toHaveTextContent("Overdue");
+      expect(icon(overdue.row.querySelector(".task-priority"))).not.toBeNull();
+      expect(overdue.row.querySelector(".task-priority")).toHaveTextContent("Urgent");
+      expect(overdue.row).toHaveClass("prio-urgent");
+    });
+
+    it("shows Today with its icon and word", () => {
+      const { row } = renderRow({ due_at: "2026-11-03T23:59:00Z", time_zone: "UTC", due_state: "today" });
+      const due = row.querySelector(".task-due");
+      expect(due).toHaveClass("due-today");
+      expect(due).toHaveTextContent(/^Today$/);
+      expect(icon(due)).not.toBeNull();
+    });
+
+    it("does not call a completed task overdue", () => {
+      const { row } = renderRow({ status: "completed", due_at: "2026-10-01T12:00:00Z", due_state: "overdue" });
+      expect(row.querySelector(".task-due")).not.toHaveClass("due-overdue");
+      expect(row.querySelector(".task-due")).not.toHaveTextContent("Overdue");
+    });
+
+    it("keeps the priority word in the DOM for medium and low (CSS shows only the flag on a phone)", () => {
+      const { row } = renderRow({ priority: "medium" });
+      expect(row.querySelector(".task-priority")).toHaveTextContent("Medium");
+      expect(row.querySelector(".task-priority")).toHaveClass("priority-medium");
+    });
+
+    it("shows at most two tags and a +n for the rest", () => {
+      const { row } = renderRow({ tags: ["a", "b", "c", "d"] });
+      expect([...row.querySelectorAll(".task-tag")].map((tag) => tag.textContent)).toEqual(["a", "b"]);
+      expect(row.querySelector(".task-tag-more")).toHaveTextContent("+2");
+    });
+
+    it("gives the project a hue dot derived from its id, next to the name", () => {
+      const { row } = renderRow({ project_id: "p1" });
+      const dot = row.querySelector(".task-project .project-dot");
+      expect(dot).toHaveAttribute("aria-hidden", "true");
+      expect(dot?.className).toMatch(/project-c[1-8]\b/);
+      expect(row.querySelector(".task-project")).toHaveTextContent("Home");
+    });
+
+    it("splits the meta into a when line and a what line, and counts them for the title clamp", () => {
+      const both = renderRow({ project_id: "p1", due_at: "2026-11-09T09:00:00Z", due_state: "upcoming" });
+      expect(both.row).toHaveAttribute("data-meta-lines", "2");
+      expect(both.row.querySelector(".task-meta-when")).toHaveTextContent(/9|09/);
+      expect(both.row.querySelector(".task-meta-context")).toHaveTextContent("Home");
+    });
+
+    it("counts one meta line for a due only and none for a bare task", () => {
+      expect(renderRow({ due_at: "2026-11-09T09:00:00Z", due_state: "upcoming" }).row).toHaveAttribute(
+        "data-meta-lines",
+        "1",
+      );
+    });
+
+    it("opens the task from a click on the meta, not only on the title", () => {
+      const { onOpen, row } = renderRow({ project_id: "p1", priority: "high" });
+      fireEvent.click(row.querySelector(".task-meta-context") as HTMLElement);
+      expect(onOpen).toHaveBeenCalledTimes(1);
+    });
+
+    it("opens exactly once from the title button (the click bubbles to the body)", () => {
+      const { onOpen } = renderRow();
+      fireEvent.click(screen.getByRole("button", { name: "Open Pay rent" }));
+      expect(onOpen).toHaveBeenCalledTimes(1);
+    });
   });
 });

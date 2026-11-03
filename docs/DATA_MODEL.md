@@ -242,6 +242,23 @@ semantics, ADR-0044); the `Tag` row is per user and matched case-insensitively.
 > `snapshot=true` continuation pages). The same job deletes `idempotency_keys` older than the same
 > window. See §5.
 
+**SyncResolution** — owner: PostgreSQL (SYNC-05, ADR-0059 D7, ADR-0061; migration `f4a8b2c6d1e3`)
+`id`, `user_id` (`users.id ON DELETE CASCADE`), `entity_type` (`task`|`project`|`note`), `entity_id`, `rule`
+(`simple_later_wins`|`edit_wins_over_delete`|`note_merged`|`path_collision`|`path_later_wins`|`undo`; a check constraint),
+`field` (the simple field decided; `path` for a note move), `kept_revision` (the revision the winning write produced; for
+`note_merged` the revision whose text was merged into), `loser` (JSONB `{"value": ...}` or `NULL`: the overwritten value of a
+simple field, at most 4 096 bytes; for `undo` the value it replaced), `detail` (paths only, at most 2 048 characters),
+`device_id` (always `NULL` until SYNC-06, no foreign key yet), `op_key` + `ordinal` (the `Idempotency-Key` of the causing request and
+the entry's position in it; **unique** per user when `op_key` is set), `undoes_id` (`sync_resolutions.id ON DELETE SET NULL`,
+**unique**: one undo entry per resolution), `undone_at`, `undone_by` (`ON DELETE SET NULL`), `created_at`.
+> The automatic-decision log of sync-mode writes. Rows are inserted in the same transaction as the write that caused them and
+> announced as feed entity `resolution` (state 1, or 2 once undone). **Never holds text**: task/project text and note content are
+> not copied; text and note decisions point to history or the conflict copy. Not an entity of its own history: no tombstone; the
+> hourly `changes.purge` job deletes rows older than `change_retention_days` (default 90) together with their `change_log` rows,
+> never an entity. It is a table of the one database, so every backup contains it and a restore brings it back with the entities
+> it describes. A refused stale delete is not logged (nothing was written). Indexes: `(user_id, created_at, ordinal, id)` for the newest-first
+> list, `(user_id, entity_id)`, `created_at` for the purge.
+
 **InstanceMeta** — owner: PostgreSQL (SYNC-03b)
 `key` (pk), `value`. One row, `epoch`: a UUID created by the migration that names this database's
 history for sync clients (ADR-0059 D9/D12); rotated by `atlas-admin record-restore` after a restore.
@@ -338,8 +355,8 @@ User 1─* NotificationDevice
 ## 7. Open Items
 
 - **Local-first sync additions:** done - `field_revisions` on tasks and projects (SYNC-03), the partial unique index on live note
-  paths (SYNC-03), tombstone-only change-log retention (SYNC-03), `note_revisions` plus the history files (SYNC-04). Still to
-  come: `revision` on reminder policies and preferences, `sync_resolutions` (SYNC-05), `devices` (SYNC-06). Shapes and rules:
+  paths (SYNC-03), tombstone-only change-log retention (SYNC-03), `note_revisions` plus the history files (SYNC-04), `sync_resolutions` (SYNC-05). Still to
+  come: `revision` on reminder policies and preferences, `devices` (SYNC-06). Shapes and rules:
   [`SYNC_PROTOCOL.md`](SYNC_PROTOCOL.md); decisions: ADR-0059, ADR-0060.
 
 - Board column model vs. task status mapping to be finalised in M4.

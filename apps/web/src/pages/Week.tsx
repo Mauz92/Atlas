@@ -50,7 +50,7 @@ export function Week() {
   const label = weekLabelOf(anchor, timeZone);
 
   return (
-    <section className="page week-page">
+    <section className="page week-page tinted-page">
       <header className="planning-header">
         <div aria-live="polite">
           <h1>Week of {label}</h1>
@@ -105,6 +105,7 @@ export function Week() {
                     filable={editor.projects}
                     onOpen={editor.open}
                     emptyMessage="Nothing scheduled."
+                    day={group.key}
                   />
                 </section>
               ))}

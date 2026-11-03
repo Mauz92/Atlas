@@ -271,7 +271,7 @@ proxied `/api`/`/health` responses keep the API's own headers (scoping intact). 
 
 See `ACCEPTANCE.md` (M9-05) for the exact commands and results.
 
-## 12. Sync clients and device credentials (ADR-0059 D8; protocol server SYNC-03 and note merge SYNC-04 implemented, device credentials SYNC-06 not)
+## 12. Sync clients and device credentials (ADR-0059 D8; protocol server SYNC-03, note merge SYNC-04 and resolution log SYNC-05 implemented, device credentials SYNC-06 not)
 
 Applies when local-first desktop/Android clients exist (ADR-0055). Design: `SYNC_PROTOCOL.md` §10.
 
@@ -282,7 +282,9 @@ Applies when local-first desktop/Android clients exist (ADR-0055). Design: `SYNC
 | T15 | Malicious or old client writing wrongly | Sync mode requires protocol version, idempotency key and base revision; unknown fields rejected; `426` outside the supported range; all rules server-side |
 | T16 | Cross-user id collision with client-chosen UUIDs | `409 id_exists` for another user's id, indistinguishable from own-id mismatch; every query user-scoped |
 | T17 | Sync as an exfiltration path (compromised token pulls everything) | Per-device rate limits keyed by device id, `last_seen_at`/device list visible, snapshot starts limited per hour |
-| T18 | Note content in logs/resolution log | Application logs carry ids, rule and field names only; the resolution table stores simple-field values only (never text or note content) |
+| T18 | Note content in logs/resolution log | Application logs carry ids, rule and field names only; the resolution table stores simple-field values only (never text or note content) - **implemented and tested by SYNC-05** |
+| T20 | The resolution log as a way to read another user's data or to rewrite it (list, feed, undo by id) | every query filters on `user_id`; another user's id is `404 not_found` for read and undo (byte-identical to an unknown id); undo writes only through the entity's own user-scoped service |
+| T21 | Undo used (or raced) to destroy newer data | strict write: any change of the field after the resolution is a `409 conflict`, never an overwrite; never revives a deleted entity; idempotent by key; one undo per resolution by a unique index |
 | T19 | Malicious Markdown in a synced folder | Unchanged (T3/T6): content is untrusted; the desktop renderer uses the same sanitised preview |
 
 **Verified by SYNC-03 (server, 2026-11-03)** - T15: sync mode requires the idempotency key and base revision (`422`), refuses unknown
@@ -315,6 +317,25 @@ conflict copy and the path rules.
   normalisation collisions; `.atlas` stays rejected by the path validator; the server-chosen names (`name (2).md`, conflict copies)
   are derived from the validated path and shortened, never from other client input.
 - *Logs:* the new code logs no note text or path (it logs nothing per write; the purge logs a count).
+
+**Verified by SYNC-05 (resolution log, 2026-11-03)** - new surface: a table of overwritten values, three endpoints and a feed entity.
+- *Cross-user:* `GET`/`POST .../undo` of another user's entry, an unknown id and the feed are tested to be indistinguishable or
+  empty (`test_another_users_entries_are_invisible_and_cannot_be_undone`: list, get, undo, feed with and without `include=data`;
+  the other user's row is untouched). Every query in `ResolutionLog` and `load_resolution_data` carries `user_id`; the cursor of the
+  list is opaque and only narrows within the caller's rows.
+- *No content stored or logged:* the table has no column that can hold text; `loser` is the overwritten value of a simple field only
+  (bounded to 4 096 bytes); `detail` holds paths (bounded); tests assert that task text, descriptions and note content never appear
+  in any row (`test_text_conflicts_are_not_resolutions...`, `test_a_merged_note_is_logged_without_content...`), that application
+  logs of a full flow contain no value or path (`test_application_logs_carry_no_values`), and the simulation scans every entry of
+  every run for the text its users type (`log_has_no_text`, with a planted defect). The new code logs only the count of purged rows.
+  **Residual:** overwritten simple values (a status, a date, a path, a project id) and note paths remain in the database and its
+  backups for the retention window (90 days) - the price of undo, like the note history (R-44); `CHANGE_RETENTION_DAYS` is the
+  operator's control (minimum 30).
+- *Abuse of undo:* see T21; the endpoint requires a key, a valid session (CSRF applies to cookie sessions as to every `POST`) and
+  the epoch gate; payload sizes are bounded (no request body; responses carry at most one stored value of 4 096 bytes per entry; the
+  list is capped at 200 entries per page).
+- *SQL/XSS/path:* parameterised ORM queries only; the cursor is parsed strictly (`422` otherwise); stored paths are never used to
+  touch the file system (an undo calls the ordinary rename, which validates its target as every move).
 
 Open: keystore mechanism per platform (spike), HTTPS-only enforcement and the tailnet dev override, rate limiting behind a proxy
 (R-SEC-1 keys on IP; device limits key on device id).

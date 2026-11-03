@@ -155,7 +155,7 @@ export function Tasks() {
   const emptyAction = filtered ? undefined : { label: "Go to Inbox", onClick: () => openRoute("/inbox") };
 
   return (
-    <section className="page tasks-page">
+    <section className="page tasks-page tinted-page">
       <h1>Tasks</h1>
 
       <FilterBar
@@ -232,19 +232,21 @@ export function Tasks() {
               {emptyText}
             </EmptyState>
           ) : (
-            <TaskList
-              tasks={tasks}
-              timeZone={timeZone}
-              projects={projectsById}
-              actions={editor.actions}
-              filable={editor.projects}
-              onOpen={editor.open}
-              selection={{
-                isSelected: (id) => selected.has(id),
-                toggle: (task) => toggle(task.id),
-                active: selected.size > 0,
-              }}
-            />
+            <div className="list-card">
+              <TaskList
+                tasks={tasks}
+                timeZone={timeZone}
+                projects={projectsById}
+                actions={editor.actions}
+                filable={editor.projects}
+                onOpen={editor.open}
+                selection={{
+                  isSelected: (id) => selected.has(id),
+                  toggle: (task) => toggle(task.id),
+                  active: selected.size > 0,
+                }}
+              />
+            </div>
           )}
         </>
       )}

@@ -1,7 +1,7 @@
 # Atlas — Local-first Sync Protocol
 
-**Status:** design ACCEPTED (ADR-0059, 2026-11-03). **Server protocol v1 is implemented by SYNC-03 and SYNC-04 (2026-11-03, local,
-not committed, CI not run)** except the parts marked **[PLANNED]** below, which belong to SYNC-05 (resolution log, undo), SYNC-06
+**Status:** design ACCEPTED (ADR-0059, 2026-11-03). **Server protocol v1 is implemented by SYNC-03, SYNC-04 and SYNC-05 (2026-11-03, local,
+not committed, CI not run)** except the parts marked **[PLANNED]** below, which belong to SYNC-06
 (device credentials) and SYNC-08 (clients). The table "Implementation status" says, section by section, what is behaviour today
 and what is still a target; everything else in this file is the contract.
 **Scope:** how a local-first client (Tauri desktop, Tauri Android; ADR-0055) and the existing web app keep
@@ -12,20 +12,20 @@ Legend: **[EXISTS]** verified by reading code/tests on 2026-11-03; **[GAP]** nee
 wrong at the time of the analysis (§2 is a historical baseline); **[NEW]** specified; **[DONE]** implemented and tested by
 SYNC-03; **[PLANNED]** specified, owned by a later task; **[UNVERIFIED]** not checked.
 
-### Implementation status (SYNC-03 and SYNC-04, 2026-11-03)
+### Implementation status (SYNC-03 to SYNC-05, 2026-11-03)
 
 | Section | Status | Notes |
 |---|---|---|
 | §4 feed: `include=data`, `types=`, snapshot at `since=0`, `head`/`floor`, `resync_reason` | **[DONE]** | plus the `snapshot=true` continuation parameter (§4.3a, found by the simulation) |
 | §5 retention (upserts kept, tombstones 90 days, floor) and idempotency-key TTL | **[DONE]** | `CHANGE_RETENTION_DAYS` default 90, minimum 30; keys expire with the tombstones |
 | §6.1 sync mode: header, required key/base, unknown fields `422`, client ids, `sync` block, `Idempotency-Replayed` | **[DONE]** for tasks, projects, notes | notes: replay returns the summary plus the content from history, see §6.3 |
-| §6.2 task/project field merge, edit-wins on `DELETE`, revive on `PATCH` | **[DONE]** | resolutions are returned in the response only; storage and undo are SYNC-05 |
+| §6.2 task/project field merge, edit-wins on `DELETE`, revive on `PATCH` | **[DONE]** | resolutions are returned in the response and (SYNC-05) logged in the same transaction; each carries its log `id` |
 | §6.3 note create (client id, collision rename), idempotent note writes | **[DONE]** SYNC-03 | |
-| §6.3 note history, `base_hash`, three-way merge, conflict copies, stale-delete `edit_wins`, revive on `PUT`, move rules, portable paths, replay with content, `GET .../history` | **[DONE]** SYNC-04 | ADR-0060; `resolution` objects are response-only until SYNC-05 (R-41); `ETag`/`If-None-Match` on `GET /api/notes/{id}` is **not** implemented (not needed by any client yet) |
+| §6.3 note history, `base_hash`, three-way merge, conflict copies, stale-delete `edit_wins`, revive on `PUT`, move rules, portable paths, replay with content, `GET .../history` | **[DONE]** SYNC-04 | ADR-0060; `resolution` objects are logged by SYNC-05 (R-41 closed); `ETag`/`If-None-Match` on `GET /api/notes/{id}` is **not** implemented (not needed by any client yet) |
 | §6.4 links, §6.5 ordering | unchanged | |
 | §7 resync and restore: server side (`below_floor`, `cursor_ahead`, snapshot, `epoch`, `atlas-admin record-restore`) | **[DONE]** | client behaviour (7.3 shadow walk, 7.4 confirmation, 7.5 storm control) is modelled by the simulation client, **[PLANNED]** in `sync-core` (SYNC-08); per-device rate limits need device ids (SYNC-06) |
 | §8 errors | **[DONE]** for the codes in §8.1 reachable without devices | `401 token_revoked`, `403 forbidden_scope`, `429` per device: SYNC-06 |
-| §9 resolution log | **[PLANNED]** SYNC-05 | the response-only `sync.resolution` is its wire shape |
+| §9 resolution log, `resolution` feed entity, list, undo | **[DONE]** SYNC-05 | ADR-0061; table `sync_resolutions`; refused deletes are not logged (nothing was written); `device_id` stays `NULL` until SYNC-06 |
 | §10.1 devices | **[PLANNED]** SYNC-06 | |
 | §10.2 versioning: `Atlas-Sync`, `426`, `GET /api/instance` `sync` block, `Atlas-Epoch` | **[DONE]** | |
 | §11 desktop folder rules | client obligations, **[PLANNED]** SYNC-09 | |
@@ -104,7 +104,7 @@ its *buildable* scope; it is not a local-first sync layer.
 | `note_project_link`, `task_note_link` | PostgreSQL | none | feed `delete` row only | ids | [EXISTS] |
 | `reminder_policy` | PostgreSQL | add `revision` | hard delete → feed `delete` | fields | [NEW] |
 | `preferences` (one per user: reminder default, display name, time zone when it exists) | PostgreSQL | add `revision` | none | fields | [NEW] |
-| `resolution` | PostgreSQL | none | none | §9 record | [NEW] |
+| `resolution` | PostgreSQL | 1, 2 once undone (a state number, no entity revision) | none (purged with its feed row) | §9 record | **[DONE]** SYNC-05 |
 | calendar `external_event` | provider | — | `deleted_at` | — | **Out of v1**: calendar views stay online-only on local-first clients (ADR-0059 D10) |
 | note attachments, empty folders | — | — | — | — | **Out of v1** (D10) |
 
@@ -121,7 +121,7 @@ are unaffected:
 | Parameter | Meaning |
 |---|---|
 | `include=data` | Each item gets `revision` and `data` (current entity state as of the read; tombstones carry `deleted_at`). `limit` max 200 in this mode. |
-| `types=task,project,…` | Only these entity types are returned. The cursor still advances over filtered-out items (the last page reports `head` as `next_since`). An unknown type name is `422`. The client lists the types it understands; see §10 for why. |
+| `types=task,project,…` | Only these entity types are returned. The cursor still advances over filtered-out items (the last page reports `head` as `next_since`). An unknown type name is `422`. The client lists the types it understands; see §10 for why. `resolution` (SYNC-05, §9) is part of the default set only in sync mode. |
 | `snapshot=true` | Sent on every page of a snapshot walk after the first (§4.3a). |
 
 Response (additions in bold): `changes[] {entity_type, entity_id, operation, cursor, changed_at, **revision?**, **data?**}`,
@@ -184,7 +184,7 @@ snapshot/retention changes of §4/§5). In sync mode:
   the server assigns one as today.
 - Every write response adds `sync: {revision, resolution: Resolution[], conflicts: Conflict[]}` (`null` outside sync mode); a
   merged or auto-resolved write returns the full resulting entity so the client can replace its base. `Resolution` is
-  `{rule, field?, kept_revision?, loser?, detail?}` and, until SYNC-05, exists **only in the response**. `Conflict` is
+  `{id, rule, field?, kept_revision?, loser?, detail?}` and, since SYNC-05, is also a row of the resolution log (section 9; `id` is the entry; `null` only in an error body such as `409 edit_wins`, where nothing was written). `Conflict` is
   `{field, reason: text_conflict|invalid_transition, server_revision, server_value}`.
 - Errors use `{error: <code>, detail, current_revision?, conflicts?, entity?, resolution?}`. Codes in §8. Implemented codes:
   `idempotency_key_required`, `base_revision_required`, `unknown_fields` (`fields`), `idempotency_mismatch`, `id_exists`,
@@ -390,21 +390,83 @@ endpoints keep the login limiter.
 
 ---
 
-## 9. Automatic-resolution log [NEW]
+## 9. Automatic-resolution log [DONE, SYNC-05]
 
-Table `sync_resolutions(id uuid, user_id, entity_type, entity_id, field text null, rule text, kept_revision int,
-loser jsonb null, device_id uuid null, op_id uuid null, created_at, undone_at null)`. Recorded in the same
-transaction as the write and announced as feed entity `resolution` (so every device learns of it through its
-normal pull).
+Decisions: ADR-0059 D7, ADR-0061. Table `sync_resolutions` (migration `f4a8b2c6d1e3`, reversible): `id`, `user_id`, `entity_type`
+(`task|project|note`), `entity_id`, `rule`, `field`, `kept_revision`, `loser` (JSONB, `{"value": ...}`, `NULL` = not stored),
+`detail` (paths only, 2 048 characters at most), `device_id` (always `NULL` until SYNC-06; no foreign key yet), `op_key` +
+`ordinal` (the request's `Idempotency-Key` and the entry's position in it), `undoes_id`, `undone_at`, `undone_by`, `created_at`.
+Unique `(user_id, op_key, ordinal)` makes "a retry logs nothing more" a database fact; unique `undoes_id` allows one undo entry per
+resolution.
 
-- `rule` ∈ `simple_later_wins`, `edit_wins_over_delete`, `note_merged`, `path_collision`, `path_later_wins`.
-- `loser` holds the overwritten **value of a simple field** (needed for one-click undo). It never holds a text
-  field (`title`, `description`, `name`) or note content: for those, the other version is the current server value
-  or a history file. Application logs carry ids, rule and field names only (no values, SECURITY §4).
-- Undo: `POST /api/sync/resolutions/{id}/undo` re-applies `loser` as an ordinary sync-mode write based on the
-  current revision (conflicts again if the field changed since); notes: the client writes a history revision with
-  a normal `PUT`. Retention 90 days, then purged with its feed row.
-- Devices show "changed on another device" for resolutions they did not originate (`device_id` differs).
+**When it is written.** In the *same transaction* as the write that caused the decision: after the entity was written, before the
+idempotency record is stored and the request committed (`atlas/api/syncio.py` `log_resolutions`). A rolled-back request leaves no
+row and no feed entry; a replay returns the stored answer (which carries the entry ids) before any work, so it logs nothing.
+Entries exist only for sync-mode writes.
+
+| `rule` | Written by | `field` / `loser` | Undoable |
+|---|---|---|---|
+| `simple_later_wins` | task/project `PATCH` where a simple field changed on both sides and the incoming value was applied | field; the overwritten value | yes |
+| `path_later_wins` | note move that overrode another device's move | `path`; the path it overwrote | yes |
+| `edit_wins_over_delete` | an edit/`PUT` of a deleted entity that brought it back (also when a note revive ends in a conflict copy) | none | no: `follow_up delete_again` (an ordinary delete) |
+| `note_merged` | a stale note `PUT` that was merged (also inside a revive) | none; `kept_revision` = the revision whose text the edit was merged into | no: `follow_up note_history` with `href` `/api/notes/{id}/history/{kept_revision}` |
+| `path_collision` | a note create or revive whose path was taken | none; `detail` names both paths | no: `follow_up rename` |
+| `undo` | a successful undo | the undone field; the value the undo replaced | no (`is_undo`) |
+
+`kept_revision` is the revision the write produced, except for `note_merged` (above). **Not logged:** a refused stale `DELETE`
+(`409 edit_wins`; nothing was written or overwritten and the caller is told in the response - ADR-0061, a deliberate narrowing of
+D6's "both logged"), a text conflict (returned to the client, nothing applied), a note conflict copy (the `409` carries it).
+**Never stored:** task or project text, note content. `loser` is stored only for the two undoable rules and `undo`, and only when
+its JSON is at most 4 096 bytes; otherwise the entry exists without it and is not undoable (`value_not_stored`). Application logs
+carry ids, rule and field names only.
+
+**Wire shape** (`ResolutionOut`; the `sync.resolution[]` objects of write responses are the same facts plus `id`):
+`id, entity_type, entity_id, rule, field, kept_revision, has_loser, loser, detail, device_id, undoes_id, undone_at, undone_by,
+created_at, undoable, undo_blocked, follow_up{kind, href}`. `undo_blocked` is `already_undone`, `rule_not_undoable`,
+`value_not_stored` or `is_undo`. `has_loser` separates "the overwritten value was `null`" from "no value stored".
+
+**Feed entity `resolution`.** Recorded in the writer's transaction like any entity (one `change_log` row per entry, cursor from the
+user's counter), so a device learns of a decision through its normal pull. `include=data` returns `ResolutionOut` with `revision`
+1, or 2 once the entry was undone (an undo re-announces the original at a new cursor, and announces its own `undo` entry), so a
+client applies it by revision like any entity. Visibility: a request in sync mode (`Atlas-Sync`) without `types=` receives it; with
+`types=` only if named; a legacy request without `types=` never sees it (the web app is unchanged); the cursor advances over it
+like over any filtered row. `GET /api/instance` lists `resolution: 1` in `sync.entities`. There is no `delete` row for a resolution:
+retention (below) removes the log row **and** its feed row, so a client drops a notice by itself when it is older than
+`sync.tombstone_retention_days` (or absent from a fresh snapshot). A device shows "changed on another device" for entries it did not
+originate (`device_id` differs; compared by SYNC-06/11, until then every entry is "other" for a client that knows its own writes
+by `kept_revision`).
+
+**Endpoints** (all under the `epoch_check` gate, strictly user-scoped, another user's id is `404 not_found`):
+- `GET /api/sync/resolutions?limit=&cursor=&entity_id=&rule=`: newest first (by `created_at`, then the entry's position in its request, so the entries of one write list last decision first), `limit` 1-200 (default 50), opaque `cursor`
+  (`next_cursor` of the previous page, `null` at the end), `422` on a bad limit or cursor. Includes `undo` entries and undone entries.
+- `GET /api/sync/resolutions/{id}`.
+- `POST /api/sync/resolutions/{id}/undo`, `Idempotency-Key` **required** (`422 idempotency_key_required`), no body. The same key
+  replays the first answer (`Idempotency-Replayed: true`); a key used for another request is `409 idempotency_mismatch`.
+
+**Undo** re-applies the overwritten value through the entity's ordinary sync write in a *strict* form
+(`plan_merge(strict=True)`, base = the resolution's `kept_revision`): the write is applied only if nothing changed the field since;
+otherwise it is refused. For a note move the same test is "the path at `kept_revision` (from history) is still the current path".
+
+| Situation | Answer | Effect |
+|---|---|---|
+| field unchanged since, value differs | `200 {applied: true, revision, resolution (undone), undo}` | value restored; revision +1; reminders rescheduled like any edit; original marked undone; `undo` entry logged; both announced |
+| field already holds the value | `200 {applied: false, ...}` | nothing written; original still marked undone; `undo` entry logged |
+| field/path changed since (even back to the same value later) | `409 conflict`, `conflicts: [{field, reason: changed_since, server_revision, server_value}]`, `resolution_id` | nothing written; the entry stays undoable |
+| entity deleted | `409 entity_deleted` | an undo never revives |
+| value invalid now (deleted project, illegal status step, unsafe path) | `409 conflict` with reason `invalid_value` or `invalid_transition` | nothing written |
+| note target path taken | `409 path_exists` | nothing written |
+| already undone (another key) | `409 already_undone` + the entry | nothing written |
+| `note_merged`, `edit_wins_over_delete`, `path_collision`, `undo`, no stored value | `409 not_undoable`, `reason`, `follow_up`, `resolution` | explicit pointer: history revision / delete again / rename |
+| unknown or another user's id | `404 not_found` | |
+
+Locks: the resolution row is locked first (`FOR UPDATE`), then the entity row, then the user's change cursor; nothing else ever
+locks a resolution row, so the order cannot cycle. A concurrent second undo of one resolution waits and then answers
+`already_undone`.
+
+**Retention.** `CHANGE_RETENTION_DAYS` (default 90, minimum 30) - no new setting: the hourly purge job deletes entries older than
+the window together with their feed rows, never an entity. After that the entry can no longer be listed or undone. Entries ride
+in every database backup (the table is in the one database, `pg_dump`) and come back with a restore together with the entities
+they describe.
 
 ## 10. Devices, credentials, versioning
 

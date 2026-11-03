@@ -6,6 +6,25 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Changed (UX-09): **Task lists are easier to read, especially on a phone.** Each task is now up to three lines: the title (larger on a
+  phone), then when it is due (with an icon and the word **Overdue** or **Today**, never only a colour), its priority and subtask
+  count, then its project (with a small colour dot that is the same everywhere for that project) and at most two tags. Tapping
+  anywhere on a task opens it; the checkbox and the **...** button are 44 px targets on touch screens. Today, Inbox, Upcoming, Week
+  and Tasks group tasks into cards on a softly tinted page (phone) with sticky section headers that show counts; Overdue and Due
+  today are marked with an icon and a colour. Upcoming says "Tomorrow" and no longer repeats the date in every row; on Today a row
+  due today shows only its time. Today's note preview shows plain text without the Markdown markers. Only Urgent and High
+  priorities are coloured. No data, sync or settings change (ADR-0062).
+- Added (SYNC-05): **The server now remembers what it decided on its own, and can undo it, for the coming desktop and Android
+  apps.** When two devices change the same status, priority, date or project of a task or project, or move the same note, the later
+  change wins as before - and the server now keeps a record of the value that lost (not any text, never note content) for 90 days.
+  Other devices learn of it through the normal sync (`resolution` entries in `GET /api/changes`), and an app can list the record
+  (`GET /api/sync/resolutions`) and undo one entry (`POST /api/sync/resolutions/{id}/undo`). An undo only restores the old value if
+  nothing changed it since; otherwise it says so and changes nothing. Merged notes, revived deletions and renumbered note names are
+  recorded too and point to the note history, to "delete again" or to "rename". The record is part of every database backup. Nothing
+  changes for the web app. Details: `docs/SYNC_PROTOCOL.md` section 9.
+- Fixed (SYNC-05): a note delete that the server had refused (the note was edited after the delete was based) and that was then
+  retried with the same request key got an empty, invalid answer; the refusal is now repeated.
+
 - Changed (P0-1): **Docker Compose install fixes.** The web container now listens on `127.0.0.1:8080` only (set `WEB_BIND=0.0.0.0`
   for the old behaviour); `POSTGRES_PASSWORD` now sets the database password for both the database and the app (a
   `DATABASE_URL` in `.env` is ignored by Compose); `ALLOWED_HOSTS` no longer makes the api container unhealthy; every setting

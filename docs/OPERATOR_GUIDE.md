@@ -116,7 +116,7 @@ on its next write ([`SECURITY.md`](SECURITY.md) R-SEC-3).
 | `DATABASE_URL` | PostgreSQL DSN (e.g. `postgresql+psycopg://atlas:…@db:5432/atlas`). |
 | `NOTES_ROOT` | Absolute path to the Markdown notes root (in the container: `/data/atlas/notes`). |
 | `NOTES_RECONCILE_SECONDS` | How often the worker re-scans the notes root (default `300`). |
-| `CHANGE_RETENTION_DAYS` | How far back the per-user change feed keeps deletion history (default `30`); a device older than this is told to full-resync. **It never purges your task/project/note rows.** |
+| `CHANGE_RETENTION_DAYS` | How far back the per-user change feed keeps deletion history (default `90`, minimum `30`); a device older than this is told to full-resync. The same window applies to saved-request keys and to the automatic-resolution log (the "changed on another device" notices and their undo; they keep the overwritten status, date or path of a simple field, never text). **It never purges your task/project/note rows.** |
 | `CHANGE_PURGE_INTERVAL_SECONDS` | How often the purge job runs (default `3600`). |
 | `NOTE_HISTORY_KEEP_REVISIONS` / `NOTE_HISTORY_KEEP_DAYS` | Note history for sync clients (SYNC-04): a note keeps its newest N revisions (default `20`) and everything younger than D days (default `90`). The text lives in `<notes root>/.atlas/history` and is in every backup; it keeps the text of overwritten and **deleted** notes for that long. |
 | `NOTE_HISTORY_MAX_REVISIONS` / `NOTE_HISTORY_MAX_BYTES` | Hard bounds per note on top of the above (defaults `200` revisions, `67108864` bytes of distinct text); the newest N revisions are always kept. A merge base that was pruned makes a stale save a conflict copy, never a guess. |

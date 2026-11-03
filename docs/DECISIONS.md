@@ -3015,3 +3015,115 @@ error echoed it and could not be encoded) and is now a normal `422`; note text c
 conflict copies than a smarter merge would give (touching edits, two front-matter edits); no new dependency. Rollback: downgrade the
 migration (files stay, inert); sync mode is opt-in. **Not decided here:** the merge UX (SYNC-11), the resolution log (SYNC-05),
 whether the web app opts into sync mode.
+
+## ADR-0061 — Resolution log, `resolution` feed entity and strict undo (SYNC-05)
+
+**Status:** ACCEPTED as the implementation of ADR-0059 D7 (2026-11-03, local, not committed, CI not run). Nothing below changes an
+owner decision except the one narrowing in point 2, which is listed so approval is explicit. Contract: `SYNC_PROTOCOL.md` section 9;
+data: `DATA_MODEL.md` 2.9; evidence: `ACCEPTANCE.md` SYNC-05; risk R-41 (closed).
+
+**1. One table, written by the API layer inside the request's transaction.** `sync_resolutions` (migration `f4a8b2c6d1e3`). The
+write sites (task/project `PATCH`, note create/`PUT`/move, and the conflict response of a revive) build the same
+`sync.resolution` objects as before, then call one function that inserts the rows and announces them on the feed, *after* the entity
+was written and *before* the idempotency answer is stored and the request committed. So write, log rows, feed rows and stored answer
+commit or roll back together, and a replay (which returns the stored answer first) cannot log again. The services stay unaware of
+the log (AGENTS.md 7.4: one place). A unique `(user_id, op_key, ordinal)` index is the tripwire for "a retry logged twice": a
+defect that ran a write twice would fail loudly and roll the request back. Rejected alternative: logging inside the services - it
+would put the idempotency key into five service signatures for no gain.
+
+**2. A refused stale `DELETE` is not logged (narrowing of D6's "both logged").** The `409 edit_wins` writes nothing and overwrites
+nothing; the caller is told in the response, and every other device still has the entity it had. Logging it would need an entry
+without its write, a commit during an error response and a dedupe key, and it would make "no log entry without its write" untrue.
+The revive (`PATCH`/`PUT` of a deleted entity) is a real write and is logged. Reversible later by one call at the refusal sites.
+
+**3. What is stored.** `loser` is the overwritten value of a simple field, wrapped as `{"value": ...}` so that a stored `null`
+(the field was empty) differs from "nothing stored"; at most 4 096 bytes, else the entry has no value and cannot be undone. Text
+fields and note content are never stored: `note_merged` points at the history revision it merged into, `path_collision` at
+"rename". `detail` holds paths only (2 048 characters). `device_id` exists, is always `NULL`, has no foreign key until SYNC-06, and
+`ResolutionLog` already takes it as an argument.
+
+**4. Feed entity without tombstones.** `resolution` is announced as an ordinary upsert row; its state number is 1 or 2 (undone), so a
+client applies it by revision. It is visible to sync-mode callers without `types=` and to anyone who names it; a legacy caller (the
+web app) is not shown a type it does not know. Retention deletes the log row and its feed row together instead of leaving a
+`delete` tombstone: a notice is not state, the tombstone would itself have to be purged, and the cursor floor must stay exact for
+real deletions. Client rule: drop a notice older than `sync.tombstone_retention_days` or missing from a fresh snapshot. Retention
+reuses `CHANGE_RETENTION_DAYS` (no new setting): the log should live as long as a device may be away.
+
+**5. Undo is the same write path, in a strict form.** `plan_merge(strict=True)` turns *every* concurrent change of the field into a
+`changed_since` conflict (the ordinary rule 3 would apply the older value over the newer one and log another resolution - an undo
+that "wins" is exactly the silent overwrite the log exists to prevent). Base = the resolution's `kept_revision`, so "unchanged
+since" is decided by `field_revisions`. A deleted entity is not revived (`entity_deleted`). A value that is no longer valid is a
+conflict, not an error. A note move is undone through `rename_sync` after checking in the note history that the path at
+`kept_revision` is still the current path (a pruned revision is a conflict, never a guess). An undo is idempotent by key, final
+(its own entry is not undoable) and writes an `undo` entry whose `loser` is the value it replaced; the original is marked undone
+and both are announced, in the undo's transaction. If the field already holds the value nothing is written (`applied: false`) but
+the entry is still marked undone. Lock order: resolution row, entity row, change cursor.
+
+**6. Found on the way (fixed, all modes of the same endpoint):** a retried refused note `DELETE` (same key) replayed status `0`:
+the `409 edit_wins` committed the key without storing the answer (SYNC-04 code). The answer is now stored and replayed
+(`test_a_retried_refused_delete_replays_the_refusal`). Also found by the new conformance traces: the model and the real API
+disagreed on `kept_revision` of `edit_wins_over_delete` and `path_collision` (response `null`, now the produced revision, both
+sides) and on `detail` of `path_later_wins`.
+
+**Consequences.** One table, one feed type, three endpoints, no setting, no dependency. Every sync-mode write that makes a decision
+now writes one to three extra rows (and takes one to three extra feed cursors). Overwritten simple values are kept up to 90 days
+in the database and its backups (SECURITY.md T18). Rollback: downgrade `f4a8b2c6d1e3` drops the table and the feed rows of the
+type (the log is lost, nothing else); sync mode is opt-in. **Not decided here:** the notice and undo UI (SYNC-11), which device made
+a write (SYNC-06), whether text-field conflicts need a persisted resolve action (they are returned in the response and the note
+conflict copy is the artefact).
+
+## ADR-0062 — Readability tokens, one row anatomy and section cards (UX-09)
+
+**Status:** Accepted (owner feedback 2026-11-03 asked for clearer separation and allows colour where it helps; refines
+ADR-0051 §1 "colour only for meaning"; every choice is UI-only and reversible). **Source:**
+[`UX_AUDIT.md`](UX_AUDIT.md) "Readability and mobile audit (2026-11)" §B-§D. (Numbered 0062: 0061 is SYNC-05.)
+
+**Context.** On a phone a task row was one undifferentiated block (title 14 px, 12 px meta wrapping to 2-3 lines, 52-80 px),
+overdue and High shared one colour, sections were flat grey labels, and the only open target was the title text.
+
+**Decisions.**
+1. **Tokens** (`styles.css`, light and dark, both dark copies identical, all in `styles.test.ts`): `--bg-page`, `--bg-card`,
+   `--bg-section`, `--row-sep`, `--due-overdue(-soft)`, `--due-today(-soft)`, `--priority-urgent/-high` (hex) and
+   `--priority-medium/-low` (aliases of `--text-2/-3`: only urgent and high carry colour), `--project-1..8`. Values are the audit's;
+   text pairs are tested at 4.5:1 on every surface they appear on (7:1 for body text), dots at 3:1, the card outline against the page
+   at >= 1.25 (the fill difference alone is < 1.2, so a card always has its `--border-strong` outline).
+2. **Project colour is derived, not stored:** `projectHue(id) = FNV-1a-32(id) % 8 + 1` (`lib/projectColor.ts`). Stable across
+   devices, no schema/API/sync change. The dot is `aria-hidden` and the name always accompanies it; a user-chosen colour would add
+   a project field and a sync surface and is a separate decision.
+3. **Due chip** (`lib/dueChip.ts`): the state still comes from the server's `due_state` (never re-derived). Overdue = alert icon +
+   word "Overdue" + `--due-overdue` on its soft fill; due today = sun icon + "Today"; later = calendar icon, muted. Completed
+   tasks are never overdue. Inside a day group (`day` prop: Upcoming and Week group keys, Today's own day) a due on that day shows
+   the time only, a date-only due says nothing (or just "Today"); everywhere else (Inbox, Tasks, project tab, an overdue row of
+   another day) the date stays. The old sr-only "Overdue, due" text is replaced by visible text.
+4. **Row anatomy** (`TaskMeta`, `TaskRow`): meta is two groups, *when* (due chip, priority, subtask count) and *what* (parent or
+   project dot + name, at most two tags and "+n"). Phone (<= 720 px): title 16/22, line 2, line 3, and the title keeps one line
+   when both meta lines exist, so a row is never more than three text lines (`data-meta-lines` drives the clamp). Line 2 is 14 px,
+   line 3 is 12 px: the CSS scale has no 13 px, and the scale was not widened. Medium and low priority show the flag only on a
+   phone (the word is visually hidden, still in the DOM). Desktop: one 36 px line; *what* first, then fixed columns for due
+   (188 px), priority (72 px) and subtasks (44 px) so dates line up. Board cards keep the flat compact meta.
+5. **Targets.** Under `(pointer: coarse), (max-width: 720px)` the completion checkbox is a 44x44 input drawing a 22 px circle
+   (ring = urgent/high colour), the "..." is 44x44, rows are >= 56 px. The whole `.task-body` opens the task through an `onClick` on
+   the body `div`; the title `button` (name `Open <title>`) stays the keyboard and screen-reader path and its click bubbles, so a
+   task opens exactly once. The Tasks page's square select box is unchanged (22 px; its redesign is UX-11).
+6. **Sections.** `ViewSection` renders `section > h2.section-head` (the h2 is the sticky band and the section's first child, so
+   "heading then its parent" queries keep working); the count is `aria-hidden`, so the heading name is the title ("Overdue").
+   Overdue and Due today add an icon and a coloured bar (words say it too). Phone: sections and `.list-card` are cards
+   (`--bg-card`, outline, `--r-lg`) on `--bg-page` (applied with `.main-column:has(.tinted-page)` to Today, Inbox, Upcoming, Week,
+   Tasks only), hairlines inset 56 px, headers sticky at `top: 48px` (below the mobile header); desktop: flat, header band only, sticky
+   at 0. Upcoming's headers are relative ("Tomorrow · Wed, Nov 4"). Today gets a "N overdue · N due today" line.
+7. **Today's daily note** is previewed as plain text with Markdown markers dropped (`plainPreview`), **not** through
+   `MarkdownPreview` as the plan said: j6 and the Today test require note text (`<b>..</b>`) to stay inert text, and `MarkdownPreview`
+   would render allowed inline HTML. Events stays one muted sentence in a muted card.
+8. **Icons:** none added. `triangle-alert` (already vendored) stands in for the planned `alert-circle`; `sun` and `calendar-days`
+   exist. `DEPENDENCIES.md` unchanged.
+9. **Week** keeps its UX-08 layout (seven columns, UX-10 replaces it): its rows use the stacked meta in narrow columns on desktop and
+   the phone anatomy on a phone; its day sections are cards with sticky headers on a phone. Not changed: Board, Notes, Projects,
+   palette, menus, inputs (UX-10/11).
+
+**Consequences.** CSS and markup only; no backend, schema, dependency or API change. Selectors kept: `.task-row`,
+`.task-priority` (text is still exactly the word on desktop), `.task-due` (+ `is-overdue`), `.project-tag` (text is the project name),
+all accessible names, regions "Daily note" / "Events". Changed: `.task-meta` now contains `.task-meta-when` / `.task-meta-context`;
+the project dot is an element (`.project-dot`) not `::before`; the Overdue chip text is "Overdue · date". Limitations: line 2 is
+clipped at its end on a 360 px phone when a long due, "Urgent" and a subtask count all appear; Week still hides Sunday on desktop
+until UX-10; the project hues were checked for contrast, not simulated for colour-vision deficiency (never the only cue);
+sticky-header behaviour under a real touch scroll and screen-reader order are unverified (R-49).

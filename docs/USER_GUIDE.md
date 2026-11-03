@@ -103,6 +103,13 @@ The window has four parts (UX-02):
 | **Search** | `/search` | Search notes, tasks and projects. |
 | **Settings** | `/settings` | A section list and one section at a time, in the address (`/settings/account`, `/appearance`, `/notifications`, `/calendar`, `/sync`, `/data`, `/about`). **Account:** name and password. **Appearance:** theme. **Notifications and reminders:** desktop notifications and default reminder timing. **Calendar:** sync status for connected calendars (no event views yet). **Sync:** offline queue, conflicts and "Sync now". **Data and backups:** export and backup status. **About:** version and instance health. The old `/sync`, `/notifications` and `/calendar` addresses still work and open their section. On a phone the list comes first and each section opens with an **All settings** link back. |
 
+**Reading a task row.** Line 1 is the title (tap it, or anywhere in the row, to open the task). Line 2 says when and how important:
+a red **Overdue** chip with a warning icon, a blue **Today** chip with a sun, otherwise the date (or just the time under a day
+heading such as Upcoming's "Tomorrow"), then a flag with **Urgent** or **High** (Medium and Low show the flag only on a phone) and
+the subtask count. Line 3 shows the project (with its colour dot; the colour is picked for you from the project, not chosen) and
+up to two tags, with "+n" for more. The round box completes the task; **...** opens its menu. Section headers stay at the top of
+the screen while you scroll their list and show how many tasks they hold.
+
 While a list is loading, Atlas shows grey placeholder rows instead of text (they stop shimmering if your system asks for reduced motion). An empty list says what is missing: *Inbox zero*, *Nothing is due today*, *No projects yet*, *No tasks match these filters* and so on, with one button where one helps (for example **Go to Inbox** on an empty Tasks page).
 
 ---

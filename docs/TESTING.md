@@ -253,6 +253,16 @@ P0-1/P0-2/P0-3.
   `tasks-page.spec.ts` and J3 were updated for the chips, the "…" menu, the tabs and the row menu;
   `mu08-a11y-and-layout.spec.ts` adds the Tasks board view, the project Board and Notes tabs, and the chip menu,
   Due popover, save-view popover, bulk bar, project row menu and project header menu states.
+- Readability tokens, row anatomy and sections (UX-09, ADR-0062): `src/styles.test.ts` (every new token in both themes and both
+  dark copies: text on the page tint, card and header band, due/priority colours, eight project dots, card outline, hairline),
+  `lib/projectColor.test.ts` (stable, 1..8, even spread), `lib/dueChip.test.ts` (state words, completed, day group drops the date),
+  `components/TaskRow.test.tsx` (icon + word per state, <= 2 tags + "+n", dot, meta lines, whole-body click opens once),
+  `components/ViewSection.test.tsx`, `Today.test.tsx` / `Upcoming.test.tsx` (summary, counts, "Tomorrow"), `dailyNote.test.ts`.
+  Real stack: `e2e-real/ux09-readability.spec.ts` (3): Today, Inbox, Upcoming, Week, Tasks, Projects and a project page at 360/390/768/1440
+  in light and dark: no horizontal scroll, axe (WCAG 2.0/2.1 A/AA + best practice) clean, phone rows <= 96 px and <= 3 lines with
+  16 px titles and no overflow, touch checkbox and "..." >= 44x44 by `boundingBox`, desktop rows <= 40 px; the Overdue chip, urgent word,
+  project dot and "+1" tag visible; a tap on the meta opens the task; the Overdue header is sticky at 48 px; Upcoming drops the date.
+  Greyscale screenshot of Today is saved under `test-results/`.
 - Settings, skeletons and empty states (UX-08, ADR-0058): `src/lib/settingsSections.test.ts` (the seven sections in
   order, URL segment parsing, redirects), `navigation.test.ts` (`PALETTE_PAGES` keeps Calendar/Sync/Notifications,
   every `/settings/*` path is the one Settings entry), `src/pages/Settings.test.tsx` (section in the URL, one section at a
@@ -435,6 +445,40 @@ What the note simulation found: **seed 109 at 700 steps** (a replayed delete ack
 had revived; a client rule for tasks and projects too, fixed in the model client, R-40). Not yet simulated: history pruning mid-run
 (the model keeps 200 revisions; pruned bases are covered by integration tests), unindexed external edits, folder renames, server
 restore with notes.
+
+#### 10.0c Resolution log and undo (SYNC-05)
+
+Files: `model_resolutions.py` (the model server's log, feed entity, list and strict undo; the log lives on `ModelServer` so
+`snapshot()`/`restore_from()` carry it like a table; `ServerBugs` gained ten `res_*`/`undo_*`/`restore_*` flags), `client_v1.py` (clients
+pull `resolution` when `SimConfig.resolutions` is on, keep a mirror of the notices, and tap undo on the one that just appeared; undos go
+in front of unsent operations), `runner.py` (`_undo_wave`: after the first quiescence the clients, who now hold every notice, tap
+undo and edit a little for `undo_rounds` steps with faults back on, then quiesce again - without it a faulty run learns its notices
+too late to undo them; `_check_resolutions`, `check_log_matches_state`), `test_sim_resolutions.py` (6 conformance traces),
+`test_sim_resolutions_model.py` (model runs, coverage, 10 planted defects, restore scenario), `test_sim_resolutions_real.py`.
+New invariants: `resolution_logged_once` (every resolution a client was answered with is in the log with the same rule, field and
+revision; no two entries describe one write; model: generated resolutions = rows), `no_log_without_write` (every entry was reported
+to a client by an acknowledged write), `log_has_no_text` (no entry contains what a simulated user types, and only the undoable
+rules and `undo` keep a value), `undo_once` / `undo_logged` (at most one undo entry per resolution, flag and entries agree, every
+acknowledged undo has its entry), `undo_idempotent` (an undo entry nobody was answered with: a retried undo was evaluated again),
+`undo_never_overwrites_newer` (the value an undo replaced equals the value the winning write stored; model: the field had not changed
+after the resolution), `resolutions_converge` (every client holds exactly the log through the feed), and the existing
+`no_resurrection` (an undo never revives), `cursor_safety` (extended to the `resolution` rows) and `unexpected_rejection` (only
+`conflict`, `entity_deleted`, `already_undone`, `not_undoable`, `path_exists` may answer an undo).
+
+| Command | Effect |
+|---|---|
+| `pytest services/api/tests/sim/test_sim_resolutions_model.py` | default: 100 + 40 + 40 model seeds x 250 steps (4 clients, notes included), outcome coverage check, 10 planted defects, restore scenario |
+| `pytest services/api/tests/sim/test_sim_resolutions.py` | 6 traces (log + feed + list + undo and every refusal; project field; notes: merge, collision, move, path undo, `path_exists`; a revive that ends in a conflict) on model and real API |
+| `ATLAS_SIM_REAL_SEEDS=20 ATLAS_SIM_STEPS=150 ... -k resolution` | real-API runs (late joiner, notes, undo wave) |
+| `ATLAS_SIM_SEEDS=1000 ATLAS_SIM_STEPS=300 ... -k "not real and not planted and not conformance"` | model soak of every simulation module |
+
+Layer A: `tests/integration/test_sync_resolutions.py` (what is logged and what never is, replay, rollback after a failed request,
+the database tripwire, feed visibility and `include=data`, every undo outcome and refusal, notes, scope across users, paging,
+retention and the purge job, application logs, backup dump, concurrent undos, the epoch gate), `test_sync_resolutions_migration.py`
+(clean schema, populated previous schema, constraints, downgrade), unit `test_resolution_rules.py`.
+Coverage of a default run (60 seeds, 4 clients, tasks+projects+notes): about 860 `simple_later_wins`, 420 `edit_wins_over_delete`, 800
+`path_collision`, 60 `note_merged`, 45 `path_later_wins`, 680 undo entries (570 applied, 110 no-ops), refusals `already_undone`,
+`not_undoable`, `conflict` (about 590) and `path_exists`.
 
 ### 10.1 Layers
 

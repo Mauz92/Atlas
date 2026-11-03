@@ -418,3 +418,293 @@ below is kept as the original question text.
    saves is designed.*
 5. **Default editor mode once live preview exists.** *Default: Source until UX-06 passes its round-trip
    tests, then Live, with the last choice remembered per browser.*
+
+
+---
+
+# Readability and mobile audit (2026-11)
+
+Status: **proposal; UX-09 implemented 2026-11-03 (ADR-0062)** (owner feedback 2026-11-03; follow-up to ADR-0051). At the time
+of the audit nothing under `apps/web/src` had been changed. Tasks UX-09…UX-11 are in `ROADMAP.md`. Where this section and §1–§7 above differ
+(for example "colour only for meaning"), this section is newer: the owner now allows colour where it improves
+readability, but it must stay calm and keep the contrast rules of `src/styles.test.ts`.
+
+**Owner feedback.** "Improve readability, especially in Inbox, Today, Upcoming and Week. It works OK on desktop,
+but on mobile it is quite messy. We need clearer element separation. Colours are OK if they help."
+
+## A. How this was done
+
+- **Stack.** A throwaway database `atlas_e2e_uxa2_*`, its own API on :8381 and its own Vite on :5311 (own
+  dependency cache). The API ran from a `git archive HEAD` copy of `services/api` because the working-tree backend
+  was being edited (SYNC-05) at the time; the web app is the working tree (`git status` showed no `apps/` changes).
+  The owner's stack (:5173, :8000) and the `atlas` database were not touched; teardown is
+  `scratchpad/ux2/down.sh`. The real-stack Playwright harness was **not** used (its API process starts from the
+  working-tree backend); the scripts above use the same `db_admin.py` helper and free ports.
+- **Data.** Seeded through the real API with fictional content: 33 tasks (4 overdue, one at 5 days overdue with a
+  100-character title and three tags, high and urgent priorities, three projects, 4 subtasks, recurring tasks,
+  3 completed, tasks due on every day of the week, timed and date-only), 12 notes, a daily note.
+- **Screenshots.** 200 PNGs, 25 states × {390×844, 360×740, 768×1024, 1440×900} × {light, dark}, touch emulation
+  at 390/360/768, device scale 2 on touch. Directory:
+  `/tmp/claude-1000/-home-kim-Documents-Atlas/31ff7fb3-5923-481a-b611-5657fde6b6ea/scratchpad/ux2/shots/`, named
+  `<state>_<p390|p360|t768|d1440>_<light|dark>.png`. States: today, inbox, upcoming, week, tasks, board, projects,
+  project-tasks/-board/-notes, notes, notes-open, search, settings (+ sync, calendar, notif, appearance, data),
+  task-panel (Today and Inbox), row-menu, palette, login, setup. Page shots are `fullPage`; the fixed bottom nav
+  therefore appears in the middle of tall shots (a screenshot artefact, not a bug).
+- **Measured** with `scratchpad/ux2/metrics.cjs` (computed sizes of rows, targets, inputs, week grid) and
+  `axe.cjs` (WCAG 2 A/AA, 9 routes × 2 sizes × 2 themes: **0 violations**; axe's A/AA tags do not include the
+  WCAG 2.2 target-size rule, so the target findings below are not axe findings). `npx tsc --noEmit` PASS and
+  `vitest run src/styles.test.ts` PASS (28 tests) on the current tree. No horizontal document scroll at any
+  captured size (183 captures: `scrollWidth == clientWidth`); the Week and Board overflows below are inside their
+  own scroll containers.
+- Not run: `npm run e2e`, `npm run test:e2e:real`, `./scripts/verify.sh` (owner instruction).
+
+## B. Verdict
+
+The structure from UX-01…UX-08 is sound and the desktop is calm. The phone problems are **density, hierarchy and
+separation**, not missing features:
+
+1. **A row is one undifferentiated text block.** Title 14 px, meta 12 px, all wrapping; a row is 52–80 px
+   (average 58) depending on how many meta items wrap onto 2–3 lines (`today_p390_light.png`, rows "Review and
+   finalise…" and "Call plumber…"). There are no row separators, so which line belongs to which task is read from
+   spacing alone.
+2. **A section is a 12 px grey label.** Overdue, Due today, Scheduled and the day groups look the same, are not
+   sticky, and carry no tint, count (Today, Upcoming) or colour. In a 1,100–1,500 px scroll the reader loses
+   which day or state they are in.
+3. **Colour is used once and ambiguously.** `--warning` amber is both "overdue" and "High priority"
+   (`styles.css` `.task-due.is-overdue, .priority-high`); Urgent is red; Medium, Low, today, project and tags are
+   all grey. In Today "Mon 2 Nov, 17:00" and "High" are the same orange.
+4. **Targets are desktop-sized.** On touch the completion checkbox is 22×22 px and the only way to open a task is
+   the 20 px-high title text; chips are 28 px; project "…" is 28 px; the 768 px rail links are 36 px.
+5. **Phone capture and inputs.** Inputs are 14 px (iOS Safari zooms on focus below 16 px); capture exists only at the
+   top of Today, Inbox and a project, and scrolls away.
+
+## C. Findings
+
+Severity: **B** = blocks use (information or action not reachable), **R** = hurts readability or usability,
+**P** = polish. File names are in the screenshot directory above; `CSS` lines are in `apps/web/src/styles.css`.
+
+### C.1 Top 10
+
+| # | Sev | Page | Finding and evidence |
+|---|---|---|---|
+| 1 | **B** | Week at 768 and 1440 | The 7-column grid is `repeat(7, minmax(150px, 1fr))` (CSS ~L2560, `.week-days`) inside a container that is narrower than 7×150–160 px: 1,122 px grid in a 656 px container at 768, 1,192 in 1,088 at 1440 with the sidebar open (`metrics.cjs`). **Saturday/Sunday are cut off or off-screen**, words break mid-word ("plumbe / r", `week_t768_dark.png`), meta is clipped ("Mediur", "relaunch") and a row is up to 224 px tall (`week_d1440_light.png`, `week_t768_light.png`). Only ≤720 px collapses to one column. |
+| 2 | **R** | All task lists, touch | Tap targets: checkbox 22×22 (`@media (pointer: coarse)` CSS ~L2095 sets 22, not 44); `button.task-open` 264×20 so a row opens only on its title text; Tasks chips and List/Board 28 px high; Tasks "Filter options" 28; Projects "…" 28; at 768 touch the rail links are 36. The "…" (44×44) is fine. Evidence: `metrics.cjs` output. |
+| 3 | **R** | Inbox, Today, Upcoming, Week (phone) | Row typography and height: title 14 px, meta 12 px; meta wraps to 2–3 lines (project, due, priority, tags, parent all in one wrapping flex), so row height is 52–80 px and uneven (`today_p360_dark.png`). No separator, no row background. Title clamps at 2 lines while the meta is allowed 3. |
+| 4 | **R** | Phone, all forms | Inputs are `font-size: 14px` (`inputFs: ["14px"]` on Inbox, Tasks, Projects, Settings): iOS zooms the page on focus and does not zoom back reliably. Applies to capture, filter search, project/settings fields. |
+| 5 | **R** | All lists | Overdue vs High share one colour (amber `#9a5200`); due state is conveyed by colour only for sighted users (the "Overdue, due" text is `sr-only`, `TaskMeta`); Medium/Low are plain grey. In Inbox an overdue date (`Sun 1 Nov`) is just an orange date with no word or icon (`inbox_p390_light.png`). |
+| 6 | **R** | Today, Upcoming, Week | Section/day headers: 12/600 `--text-3`, not sticky, no tint or count (Today/Upcoming), Overdue not emphasised. Upcoming and Week repeat the date inside every row under a header that already says it ("Sun 8 Nov" under "Sun 8 Nov", `upcoming_p390_light.png`), which is what makes those rows wrap. |
+| 7 | **R** | Phone capture | No always-reachable capture: `QuickCapture` is rendered by Today, Inbox and ProjectPage only, at the top of the page. Upcoming, Week, Tasks, Board, Notes have none; no FAB. The bottom nav has five destinations and no action. |
+| 8 | **R** | Tasks (phone) | Every row has a **square select box and a round complete box** side by side (`tasks_p390_light.png`): two similar 22 px controls 8 px apart (mis-tap risk, B-level for accidental completion); 32 flat rows with no grouping; the filter bar wraps to two rows of dashed 28 px chips. |
+| 9 | **R** | Board (phone) | Five columns side-scroll inside the page; only the Inbox column and a sliver of "Next" are visible, columns ~190 px wide, the page is 2,404 px tall, and a four-line help paragraph sits above (`board_p390_light.png`). Keyboard hint text (`[`/`]`) is meaningless on a phone. |
+| 10 | **P/R** | Notes, Today, Projects, palette (phone) | Notes toolbar is crowded and the breadcrumb is shown as "/…", unreadable (`notes-open_p390_light.png`); Today's daily-note preview prints flattened raw Markdown ("## Focus - Finish…", UX_AUDIT quick win 9 was never done, `today_p390_light.png`); Projects rows have a black progress bar and no identity colour, the "Target …" and "…" are misaligned (`projects_p390_light.png`); palette result rows are ~28 px high on touch (`palette_p390_dark.png`). |
+
+### C.2 Further findings by page
+
+**Inbox** (`inbox_*`)
+- R: no triage affordance on touch beyond "…" → menu → submenu (2–3 taps per item). The menu is a small popover
+  anchored at the right edge that covers the row text (`row-menu_p390_light.png`); it should be a bottom sheet
+  on phones. Inbox is where a phone user spends time (J2).
+- R: the intro line "Captured tasks waiting to be triaged." and the 14 px capture field take about 210 px before the
+  first row (`inbox_p390_light.png`). Subtask rows show a 3-line meta (parent, project) that is longer than the title.
+- P: no count of waiting items in the heading or the nav (desktop sidebar and phone bottom nav).
+
+**Today** (`today_*`)
+- R: the day's shape is not visible: no count per section, no "N overdue" summary, no sticky headers.
+- R: "Overdue" contains tasks due *today* but earlier (e.g. "Tue 3 Nov, 15:00", `today_p390_light.png`), shown with
+  the full date; inside Today a time ("15:00") is enough.
+- R: Daily note shows raw Markdown; Events says "Calendar events will appear here once a calendar is connected."
+  as a paragraph. Both fill the lower half of the phone screen.
+- P: desktop (`today_d1440_light.png`): the right-aligned meta starts at a different x on every row (ragged);
+  fine for a scan but the eye cannot compare dates or priorities. Aligning the due and priority into fixed
+  columns would make the list scannable.
+
+**Upcoming** (`upcoming_*`): R: dates repeated (finding 6); headers are not relative ("Wed 4 Nov" rather than
+"Tomorrow · Wed 4 Nov"); group gaps (24 px) are larger than the information separating them, so the list looks
+airy but unstructured. P: no empty-day logic needed (days without tasks are omitted).
+
+**Week** (`week_*`): B finding 1. R: the three navigation buttons ("Previous week / This week / Next week") are
+`ghost` with no border, so they read as plain text (`week_p390_light.png`); "This week" disabled looks identical
+to the others. R: the Projects summary chips (name, 2/9 · 22%) take 160–190 px of the phone screen before the
+first day and wrap one per line. P: today's column/section is not highlighted; weekends are not de-emphasised;
+a day with no tasks should be one muted line, not a full section.
+
+**Tasks** (`tasks_*`): see finding 8. R: no sort/grouping visible on a phone; "32 tasks" and "Select all" sit
+between the filters and the list and are easy to mis-tap (`Select all` checkbox is 16 px).
+
+**Projects / project page** (`projects_*`, `project-*`): R: progress and target date are on three lines at
+phone width; tabs (Tasks | Board | Notes) are text with an underline (height not measured). The project page lists
+**subtasks as top-level rows** ("Demo script", "Q&A prep" with the parent shown) which is by design (ADR-0052 §8)
+but makes the project look longer than its 9 tasks. P: the project's colour is not used anywhere: a project dot
+is `--text-3` grey on every row (`.task-project::before`).
+
+**Board** (`board_*`, `project-board_*`): finding 9. P: cards use the compact meta well on desktop.
+
+**Notes** (`notes_*`, `notes-open_*`): R: finding 10. The tree on phone is good (44 px rows, `notes_p390_light.png`).
+R: three mode controls (Source, Live, Preview), a side toggle, a details toggle and "…" in one 45 px toolbar at
+390 px; the file name is not shown.
+
+**Task panel** (`task-panel_*`): usable (full width, property list, "Saved" state). R: date and time are two native
+inputs with a clear button on one row, 44 px high, tight at 360; "Start" shows a native placeholder
+"dd/mm/yyyy, --:--" (browser-locale dependent). P: priority is shown as coloured text only; long: 1,140 px of
+scroll on phone with all groups open.
+
+**Settings** (`settings_*`): good: drill-in list with 44 px rows, "All settings" back link. P: row cards use the
+same border as inputs; no icons. No changes needed beyond tokens.
+
+**Search / palette** (`search_*`, `palette_*`): R: rows ~28 px on touch (palette), long path text truncated with
+an ellipsis ("Talks/Local-first apps/Ou…"); the palette is not full-height on phone and the keyboard hint
+"↑↓ to move · Enter to open · Esc to close" is shown on a phone. P: dark theme is correct.
+
+**Login / Setup** (`login_*`, `setup_*`): fine in both themes. P: labels are 12 px (fine with 16 px input);
+add `autocomplete` attributes if missing (not verified).
+
+**Layout / shell** (`*_p390_*`): P: bottom nav is 56 px with 11 px labels (acceptable; labels at 11 px are the
+smallest text in the app) and the header shows "Atlas" instead of the page title (the title is the `h1` below,
+so the 48 px header carries no information). R: `index.html` has no `viewport-fit=cover`, so no
+`env(safe-area-inset-bottom)` padding on the bottom nav (installed/standalone use on a notched phone puts the nav
+under the home indicator; not verified on a device) and no `interactive-widget=resizes-content` (keyboard overlap
+of a bottom sheet/FAB is not testable in an emulator).
+
+**Empty states / skeletons:** the existing `EmptyState` and `Skeleton` are fine; the skeleton row height
+(36 px) will need to follow the new row height (56 px phone) so the list does not jump.
+
+**Dark theme:** all semantic text passes (§D). The dark task rows have the same structure problems, but contrast
+and calm are good (`inbox_p360_dark.png`); dark amber `#f0b45b` and red `#ff8a80` are readable. No dark-only defects found.
+
+### C.3 What is already good (keep)
+
+Round checkbox with `Complete <title>` names; `Open <title>`, `Actions for <title>` names; 44 px "…" on touch;
+no horizontal document scroll anywhere; axe clean; Settings drill-in; notes tree on phone; the palette content
+model; `Skeleton` and `EmptyState`; the neutral palette itself (the problem is hierarchy, not hue).
+
+### C.4 Touch alternatives to hover actions
+
+Under `(hover: none)` the quick actions (today, date, project) are not rendered and the always-visible "…" (44 px) is
+the alternative; it works and is keyboard- and screen-reader-safe. There is **no swipe**. This audit does not
+recommend swipe gestures (not discoverable, conflict with the browser's back-swipe, no accessible equivalent,
+cannot be verified without a real device). Recommended instead: a bottom-sheet variant of the existing menu on phones,
+and one visible "Today" quick button on Inbox rows only (Inbox exists to triage).
+
+## D. Proposed design
+
+### D.1 Principles
+
+Group rows into **cards on a tinted page**; separate rows with a **hairline**; state is **colour + icon + word**;
+projects get a **dot colour**; text sizes on phone **16/13**; everything touchable **≥ 44 px**; nothing is added
+to the data model, API or dependencies.
+
+### D.2 Tokens (added to `src/styles.css`; contrast computed with the `styles.test.ts` formula)
+
+Verification script (not in the repo): `scratchpad/ux2/contrast.mjs`. UX-09 adds these tokens to
+`styles.test.ts` `REQUIREMENTS`, so CI keeps checking them.
+
+| Token | Light | Dark | Use and checked contrast |
+|---|---|---|---|
+| `--bg-page` | `#f4f4f6` | `#111114` | page behind cards on phone (tint) |
+| `--bg-card` | `#ffffff` | `#1c1c20` | section card; card vs page 1.10 / 1.11, so a `--border-strong` outline is required (1.35–1.67) |
+| `--bg-section` | `#ececf0` | `#222227` | section header band; `--text-2` on it 6.6 / 7.7, `--text` 13.9 / 12.8 |
+| `--row-sep` | `#dedee3` | `#34343a` | row hairline; 1.34 / 1.37 on `--bg-card` (decorative, 1.4.11 not required) |
+| `--due-overdue` | `#b42318` | `#ff8a80` | overdue date and header; min 5.38 (selected) / 5.91, 6.6 on card |
+| `--due-overdue-soft` | `#fdecea` | `#3a1f1d` | overdue chip fill; 5.75 / 6.60 |
+| `--due-today` | `#1a5aa6` | `#7db4f5` | today date and header; min 5.62 / 6.24 |
+| `--due-today-soft` | `#e8f0fb` | `#172a44` | today chip fill; 5.98 / 6.70 |
+| `--priority-urgent` | `#b42318` | `#ff8a80` | flag and ring; same as overdue values (icon differs) |
+| `--priority-high` | `#9a5200` | `#f0b45b` | flag; min 4.80 / 7.31 (existing `--warning`) |
+| `--priority-medium` / `-low` | `--text-2` / `--text-3` | same | neutral by design: only urgent and high carry colour (calm) |
+| `--project-1` … `-8` | `#2f6fd0 #0f8a8a #2e8540 #8a7a14 #c4600a #c93a6a #7c4dc4 #5f6b7a` | `#6ea0f0 #3fc0c0 #56c27a #d1bd3f #f08a3c #ee7aa0 #b08af0 #9aa6b6` | blue, teal, green, olive, orange, rose, violet, slate. Dot (non-text, 1.4.11 3:1) minimum on page/card/hover/selected: light 3.42–4.63, dark 4.97–7.11. The project **name stays `--text-2`** text; the dot is never the only identifier. |
+
+The project colour is derived (not stored): `hash(project.id) % 8`, so it is stable and needs no schema change
+(a user-chosen colour can be a later, separate decision: it would add a field to the project and to sync).
+Existing tokens are unchanged, so nothing regresses; `--warning` stays for non-task uses.
+
+### D.3 Phone row anatomy (≤ 720 px; `TaskRow` + `TaskMeta`)
+
+```
+┌──────────────────────────────────────────────┐  card: --bg-card, 1px --border-strong, r 10
+│ ◯   Renew passport                       ⋯   │  line 1: title 16/22 (--fs-md), 2-line clamp
+│     ⚠ Overdue · Sat 31 Oct   ⚑ Urgent        │  line 2: when · what (13 px, nowrap, one line)
+│     ● Admin · #finance +1                    │  line 3 (only if present): context
+├──────────────────────────────────────────────┤  hairline --row-sep, inset 52 px
+```
+
+- **Leading:** the round checkbox keeps its 22 px visual size, but sits in a 44×44 transparent hit area (an
+  `::before` or wrapper label), ring colour = priority urgent/high (colour is redundant: the word is on line 2).
+  The Tasks page's square select box is not rendered on touch until "Select" mode is on (see UX-11).
+- **Line 1:** title, 16 px / 22 px, weight 400 (done: line-through, `--text-3`). The whole row body (not only the
+  title text) is the open target (`min-height: 56px`; the "…" and checkbox stay separate 44 px targets).
+- **Line 2 (one line, no wrap, ellipsis at the end):** (a) due chip: icon + text; overdue = `--due-overdue` text on
+  `--due-overdue-soft`, icon `alert-circle`, text "Overdue · Sat 31 Oct"; today = `--due-today`, sun icon,
+  "Today · 15:00"; later = `--text-2`, calendar icon. Inside a day group the date is dropped and only the time is shown.
+  (b) priority: flag + word for Urgent/High in colour; Medium/Low as the muted flag icon without a word on phone
+  (the word stays in the panel, the menu and `sr-only` text). (c) subtasks `2/4` with icon.
+- **Line 3 (only when there is something):** project dot (project colour) + name in `--text-2`, then at most two
+  tags as `#tag` in `--text-3` and "+n"; for a subtask the parent ("↳ Draft talk outline") replaces the project name
+  and the project goes to the panel.
+- **Trailing:** the 44 px "…" (unchanged). Inbox on touch adds a second 44 px "Today" (sun) button.
+- Height: 56 px (title only), 76 px with line 2, 96 px with line 3; **never more than three lines**, so the
+  worst phone row drops from 80 px to 76 px and the average from 58 px to roughly 65 px (estimate, not built) with clearer structure. Rows
+  stay 36 px on desktop (ADR-0052 acceptance ≤ 40 px).
+
+**Desktop (≥ 721 px):** same tokens; due and priority move into fixed-width right-hand columns (due 120 px,
+priority 72 px) with tags/project before them, so dates and priorities align down a list. The hover quick actions
+are unchanged.
+
+### D.4 Sections and pages
+
+- **Section card (phone):** `.view-section` becomes `--bg-card` with a `--border-strong` outline and `--r-lg`;
+  rows separated by `--row-sep`; the page behind it is `--bg-page`. On desktop sections stay flat on `--bg`
+  (calm), with only a header band.
+- **Section header:** `--bg-section` band, 12/600 `--text-2`, count on the left after the title
+  ("Overdue · 6"), `position: sticky; top: 48px` on phone (below the mobile header) and `top: 0` on desktop. Overdue
+  header: `--due-overdue` text, 3 px left bar and alert icon; Due today: `--due-today` and sun icon. Colour never
+  stands alone: the header text and icon say it.
+- **Today:** header summary line ("6 overdue · 1 due today"), sections as above; the daily note preview renders through
+  `MarkdownPreview` (3 lines, "Open today's note"); Events collapses to one muted line.
+- **Upcoming:** headers relative ("Tomorrow · Wed 4 Nov", "Fri 6 Nov"), date dropped from rows, sticky. Group gap
+  24 px → 16 px (cards separate the groups).
+- **Week:** below 1,540 px of *container* width (not viewport) use an agenda: the day sections as cards in an
+  `auto-fit, minmax(260px, 1fr)` grid (1 column on phone, 2 at 768, 3–4 at 1440 with the sidebar), no horizontal scroll;
+  today's card has a `--due-today` top border and its header says "Today"; an empty day is one muted line
+  ("Nothing scheduled") inside a slim card; weekend headers use `--text-3`. The seven-column layout is kept only
+  when it really fits (≥ 7 × 220 px), where it is a CSS container query with the same markup. Navigation becomes a
+  segmented group (`‹` Previous week | This week | Next week `›`), 44 px on touch, bordered, with the same
+  accessible names. Project chips collapse to a single horizontally scrollable line (or "3 projects ▾").
+- **Capture on phone:** a 56 px FAB (bottom right, above the bottom nav and safe area; not on Notes and Settings)
+  opens a bottom sheet with the existing `QuickCapture` (16 px input, label "Task title", Add), on every task
+  page; inline capture stays on desktop and, on phone, on Inbox (its purpose) but not on Today.
+- **Menu on phone:** the shared `Menu`/`Popover` renders as a bottom sheet (full-width, 48 px rows, scrim, same
+  ARIA roles and keys) under `(max-width: 720px)`.
+- **Other pages (UX-11):** Tasks: select boxes hidden until "Select" mode; chips in one horizontal scroll line, solid
+  border, 44 px, active chip tinted; Board: one column at a time with a column tab strip (or snap columns 85 vw),
+  help text behind a "?" button on touch; Notes: toolbar shows the note title, modes in one segmented control, the
+  rest in "…"; Projects: card with project dot colour, one-line "3/6 · 50% · 3 open", target date right-aligned,
+  44 px "…"; palette: full-height sheet on phone, 44 px rows, no key hints; inputs 16 px on touch everywhere.
+
+### D.5 What does not change
+
+Data model, API, sync, routes, the ARIA structure of the row and menus, the keyboard model (`j k x t m p`), the
+neutral accent, desktop density. No new dependency and no new icon family: `alert-circle` and `sun` need
+checking against the vendored set (`components/Icon.tsx`, `DEPENDENCIES.md`); if absent they are two more Lucide
+(ISC) shapes.
+
+## E. e2e selectors to preserve
+
+`.task-row`, `.task-priority`, `.task-due` (specs ux03, mu04), the accessible names `Open <title>`,
+`Complete <title>`, `Actions for <title>`, `Schedule <title> for today`, menus `role=menu` "Priority" etc., regions
+"Daily note" and "Events", dialog "Task details", search "Task filters", toolbar "Bulk actions", the buttons
+"Previous week", "This week", "Next week", `h1` text on each page, and `document.documentElement.scrollWidth`
+equality in `mu08-a11y-and-layout.spec.ts`. Selectors that legitimately change: none expected except the Week
+grid container class (`.week-days`) and the phone "Select" control on Tasks; UX-11 lists them.
+
+## F. Not verified
+
+- Real phone: iOS Safari zoom-on-focus (inferred from 14 px inputs; the rule is well known), notch/home-indicator
+  overlap, the on-screen keyboard over a bottom sheet or FAB, `dvh` behaviour with the dynamic toolbar.
+- Real touch gestures: all clicks are mouse clicks on an emulated touch device; tap-target sizes were measured, not
+  tapped; scroll-snap, sticky headers while momentum scrolling, long-press.
+- Screen readers (VoiceOver, TalkBack, NVDA): axe only; announcement order of the new row (UX-09 must test with
+  one) and of sticky headers is unknown.
+- 200 % zoom, forced colours, reduced motion, Firefox and Safari rendering (Chromium only), landscape phone.
+- The proposed palette was checked for contrast numerically and, for the dot hues, for hue separation only by eye
+  in a table; colour-vision-deficiency simulation was not done (the design never relies on hue alone).
+- CI `e2e-real` and `npm run e2e` were not run for this audit (nothing was changed).

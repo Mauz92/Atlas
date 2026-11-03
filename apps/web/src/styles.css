@@ -79,9 +79,31 @@
   --danger-soft: #fdecea;
   --warning: #9a5200;
   --warning-soft: #fdf1e0;
+  /* Readability tokens (UX-09, ADR-0062): page tint behind section cards, card, header band, row
+     hairline, due states with soft fills, priority, and eight calm project hues. */
+  --bg-page: #f4f4f6;
+  --bg-card: #ffffff;
+  --bg-section: #ececf0;
+  --row-sep: #dedee3;
+  --due-overdue: #b42318;
+  --due-overdue-soft: #fdecea;
+  --due-today: #1a5aa6;
+  --due-today-soft: #e8f0fb;
+  --priority-urgent: #b42318;
+  --priority-high: #9a5200;
+  --project-1: #2f6fd0;
+  --project-2: #0f8a8a;
+  --project-3: #2e8540;
+  --project-4: #8a7a14;
+  --project-5: #c4600a;
+  --project-6: #c93a6a;
+  --project-7: #7c4dc4;
+  --project-8: #5f6b7a;
   --success: #17723a;
   --success-soft: #e8f5eb;
   --scrim: rgb(0 0 0 / 0.32);
+  --priority-medium: var(--text-2);
+  --priority-low: var(--text-3);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -107,6 +129,24 @@
     --danger-soft: #3a1f1d;
     --warning: #f0b45b;
     --warning-soft: #36290f;
+    --bg-page: #111114;
+    --bg-card: #1c1c20;
+    --bg-section: #222227;
+    --row-sep: #34343a;
+    --due-overdue: #ff8a80;
+    --due-overdue-soft: #3a1f1d;
+    --due-today: #7db4f5;
+    --due-today-soft: #172a44;
+    --priority-urgent: #ff8a80;
+    --priority-high: #f0b45b;
+    --project-1: #6ea0f0;
+    --project-2: #3fc0c0;
+    --project-3: #56c27a;
+    --project-4: #d1bd3f;
+    --project-5: #f08a3c;
+    --project-6: #ee7aa0;
+    --project-7: #b08af0;
+    --project-8: #9aa6b6;
     --success: #5fd38a;
     --success-soft: #15301e;
     --scrim: rgb(0 0 0 / 0.56);
@@ -135,6 +175,24 @@
   --danger-soft: #3a1f1d;
   --warning: #f0b45b;
   --warning-soft: #36290f;
+  --bg-page: #111114;
+  --bg-card: #1c1c20;
+  --bg-section: #222227;
+  --row-sep: #34343a;
+  --due-overdue: #ff8a80;
+  --due-overdue-soft: #3a1f1d;
+  --due-today: #7db4f5;
+  --due-today-soft: #172a44;
+  --priority-urgent: #ff8a80;
+  --priority-high: #f0b45b;
+  --project-1: #6ea0f0;
+  --project-2: #3fc0c0;
+  --project-3: #56c27a;
+  --project-4: #d1bd3f;
+  --project-5: #f08a3c;
+  --project-6: #ee7aa0;
+  --project-7: #b08af0;
+  --project-8: #9aa6b6;
   --success: #5fd38a;
   --success-soft: #15301e;
   --scrim: rgb(0 0 0 / 0.56);
@@ -224,11 +282,9 @@ p {
  * legacy selectors are listed here instead of each page carrying its own copy.
  */
 .section-header,
-.view-section h2,
 .notes-panel h2,
 .project-summary h2,
 .board-column-header h2,
-.week-day h2,
 .shortcut-help h3,
 .palette-group {
   margin: 0 0 var(--s-2);
@@ -1094,6 +1150,18 @@ button.nav-row-toggle {
   }
 }
 
+/* A task skeleton row stands for a phone row (56px) so the list does not jump when it loads. */
+@media (max-width: 720px) {
+  .skeleton-task .skeleton-row {
+    min-height: 56px;
+  }
+
+  .skeleton-task .skeleton-box {
+    width: 22px;
+    height: 22px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .skeleton-bar,
   .skeleton-box,
@@ -1848,13 +1916,80 @@ button.statusbar-item:hover {
   margin-top: var(--s-4);
 }
 
-/* --- Task rows and menus (UX-03, ADR-0052) ----------------------------- */
+/*
+ * Sections and cards (UX-09, ADR-0062). A section is a header band (--bg-section) over its rows; on a
+ * phone it is also a card on the tinted page (--bg-page). The header is sticky: below the 48px mobile
+ * header on a phone, at the top of the window on desktop. The h2 *is* the header.
+ */
+.section-head,
+.week-day h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-1);
+  padding: var(--s-1) var(--s-3);
+  min-height: 28px;
+  background: var(--bg-section);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.section-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.section-count {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.section-count::before {
+  content: "\00b7\00a0";
+}
+
+.tone-overdue > .section-head {
+  color: var(--due-overdue);
+  box-shadow: inset 3px 0 0 var(--due-overdue);
+}
+
+.tone-today > .section-head {
+  color: var(--due-today);
+  box-shadow: inset 3px 0 0 var(--due-today);
+}
+
+.view-section.is-muted > .section-head {
+  color: var(--text-3);
+}
+
+.today-summary {
+  margin: 0 0 var(--s-3);
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.section-note {
+  margin: 0;
+  padding: var(--s-1) var(--s-3);
+}
+
+.daily-note-preview,
+.view-section > p:not(.section-note) {
+  margin-block: var(--s-2);
+}
+
+/* --- Task rows and menus (UX-03, ADR-0052; anatomy UX-09, ADR-0062) ------ */
 
 /*
- * One row: [select] (o) Title ........ meta [hover actions] [...]. No per-row borders: spacing
- * and a hover fill carry the structure. Rows are 36px on desktop (<= 40px, UX-03 acceptance);
- * quick actions overlay the right end of the row on hover or focus; on touch screens they are not
- * shown and the always-visible "..." menu carries every action.
+ * One row: [select] (o) Title ........ meta [hover actions] [...]. Desktop: one line of 36px, the
+ * due and priority in fixed columns at the right, a hairline between rows. Phone (<= 720px): title
+ * (line 1), due / priority / subtasks (line 2), project and tags (line 3), a 44px completion hit
+ * area and a 44px "...", the whole body opens the task. At most three text lines in total, so the
+ * title gives up its second line when both meta lines are present.
  */
 .task-list {
   list-style: none;
@@ -1869,10 +2004,31 @@ button.statusbar-item:hover {
 }
 
 .task-row {
+  --ring: var(--border-control);
   position: relative;
   min-height: 36px;
   padding: var(--s-1) var(--s-1) var(--s-1) var(--s-2);
   border-radius: var(--r-md);
+}
+
+.task-row.prio-urgent {
+  --ring: var(--priority-urgent);
+}
+
+.task-row.prio-high {
+  --ring: var(--priority-high);
+}
+
+/* Hairline between rows (decorative: the rows are also separated by spacing). */
+.task-row + .task-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: var(--s-2);
+  left: var(--s-2);
+  height: 1px;
+  background: var(--row-sep);
+  pointer-events: none;
 }
 
 .task-row:hover,
@@ -1891,6 +2047,10 @@ button.statusbar-item:hover {
   display: flex;
   align-items: baseline;
   gap: var(--s-3);
+}
+
+.task-body.is-openable {
+  cursor: pointer;
 }
 
 .task-title {
@@ -1945,6 +2105,11 @@ input.task-check {
   width: 16px;
   height: 16px;
   border-radius: 50%;
+  border-color: var(--ring);
+}
+
+input.task-check:checked {
+  border-color: var(--accent);
 }
 
 input.task-check:not(:checked):not(:disabled):hover::after {
@@ -1980,10 +2145,14 @@ input.task-select:checked {
   opacity: 1;
 }
 
-/* Meta line: muted, one line, right-aligned on wide rows. */
+/*
+ * Meta (desktop): one line, right-aligned: *what* (parent or project, tags) first, then *when*
+ * (due chip, priority, subtasks) in fixed columns so dates and priorities line up down a list.
+ * Board cards (`.is-compact`) keep the flat, wrapping meta of UX-07.
+ */
 .task-meta {
   flex: 0 0 auto;
-  max-width: 60%;
+  max-width: 62%;
   margin-left: auto;
   display: flex;
   align-items: center;
@@ -2002,52 +2171,178 @@ input.task-select:checked {
   gap: var(--s-1);
 }
 
-/* Only a long parent title gives way (with an ellipsis); the rest is clipped at the end. */
-.task-meta > .task-parent {
+.task-meta > .task-meta-context {
+  order: -1;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  gap: var(--s-3);
+}
+
+.task-meta-context > * {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.task-meta > .task-meta-when {
+  display: grid;
+  grid-template-columns: 188px 72px 44px;
+  column-gap: var(--s-3);
+}
+
+.task-meta-when > .task-due {
+  grid-column: 1;
+}
+
+.task-meta-when > .task-priority {
+  grid-column: 2;
+}
+
+.task-meta-when > .task-subtasks {
+  grid-column: 3;
+}
+
+/* Only a long parent or project name gives way (with an ellipsis); the rest is clipped at the end. */
+.task-meta .task-parent,
+.task-meta .task-project {
   flex: 0 1 auto;
   min-width: 0;
 }
 
-.task-meta > .task-tag {
+.task-meta .task-tag,
+.task-meta .task-tag-more {
   display: inline;
+  flex: none;
+}
+
+.task-parent-title,
+.task-project-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .task-parent-title {
   max-width: 14rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .task-project {
   color: var(--text-2);
 }
 
-.task-project::before {
-  content: "";
+.task-project-name {
+  max-width: 16rem;
+}
+
+/* The project's identity dot (a hue derived from its id); the name beside it is the identifier. */
+.project-dot {
+  --dot: var(--text-3);
   flex: none;
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--text-3);
+  background: var(--dot);
 }
 
-.task-due.is-overdue,
-.priority-high {
-  color: var(--warning);
+.project-c1 {
+  --dot: var(--project-1);
 }
 
-.priority-urgent {
-  color: var(--danger);
+.project-c2 {
+  --dot: var(--project-2);
+}
+
+.project-c3 {
+  --dot: var(--project-3);
+}
+
+.project-c4 {
+  --dot: var(--project-4);
+}
+
+.project-c5 {
+  --dot: var(--project-5);
+}
+
+.project-c6 {
+  --dot: var(--project-6);
+}
+
+.project-c7 {
+  --dot: var(--project-7);
+}
+
+.project-c8 {
+  --dot: var(--project-8);
+}
+
+/* Due chip: icon + word + colour (never colour alone). */
+.task-due,
+.task-priority,
+.task-subtasks {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.task-due {
+  min-width: 0;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+
+.task-due-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-due.due-overdue,
+.task-due.due-today {
+  padding: 0 var(--s-2);
+  border-radius: var(--r-sm);
+  font-weight: 500;
+}
+
+.task-due.due-overdue {
+  color: var(--due-overdue);
+  background: var(--due-overdue-soft);
+}
+
+.task-due.due-today {
+  color: var(--due-today);
+  background: var(--due-today-soft);
+}
+
+/* Only urgent and high carry colour; medium and low stay neutral. */
+.task-priority.priority-urgent {
+  color: var(--priority-urgent);
+  font-weight: 500;
+}
+
+.task-priority.priority-high {
+  color: var(--priority-high);
+  font-weight: 500;
 }
 
 .priority-medium {
-  color: var(--text-2);
+  color: var(--priority-medium);
+}
+
+.priority-low {
+  color: var(--priority-low);
+}
+
+.task-tag-more {
+  color: var(--text-3);
 }
 
 .task-row-actions {
   position: absolute;
   top: 50%;
   right: calc(var(--control-sm) + var(--s-2));
+  z-index: 1;
   display: flex;
   gap: 0;
   /* Fades out the end of the meta it covers instead of cutting it. */
@@ -2087,15 +2382,59 @@ button.icon-button.ghost:hover {
   }
 }
 
-@media (pointer: coarse) {
+/*
+ * Phone and touch (UX-09): the completion checkbox is a 44x44 target that draws a 22px circle, the
+ * "..." is 44x44, and rows are at least 56px. Applies to touch devices of any width and to any
+ * window of 720px or less, so a narrow desktop window gets the same targets.
+ */
+@media (pointer: coarse), (max-width: 720px) {
   .task-row {
-    min-height: 44px;
+    min-height: 56px;
   }
 
-  input.task-check,
   input.task-select {
     width: 22px;
     height: 22px;
+  }
+
+  input.task-check {
+    width: 44px;
+    height: 44px;
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+  }
+
+  input.task-check::before {
+    content: "";
+    grid-area: 1 / 1;
+    width: 22px;
+    height: 22px;
+    border: 1.5px solid var(--ring);
+    border-radius: 50%;
+    background: var(--bg-card);
+  }
+
+  input.task-check::after {
+    grid-area: 1 / 1;
+    place-self: center;
+  }
+
+  input.task-check:checked {
+    background: transparent;
+  }
+
+  input.task-check:checked::before {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  input.task-check:disabled::before {
+    border-style: dashed;
+  }
+
+  input.task-check:not(:checked):not(:disabled):hover::after {
+    content: none;
   }
 
   .task-row button.icon-button,
@@ -2106,27 +2445,96 @@ button.icon-button.ghost:hover {
   }
 }
 
-/* Narrow: the title may wrap to two lines and the meta goes under it. */
+/* Phone: three lines per row at most; the whole body (not only the title text) opens the task. */
 @media (max-width: 720px) {
+  .task-row {
+    align-items: flex-start;
+    gap: 0;
+    padding: 0 0 0 var(--s-1);
+    border-radius: 0;
+  }
+
+  .task-row + .task-row::before {
+    right: 0;
+    left: 56px;
+  }
+
+  .task-row > .task-select {
+    margin: var(--s-3) var(--s-1) 0 0;
+  }
+
+  .task-row .task-more {
+    align-self: flex-start;
+  }
+
   .task-body {
-    flex-wrap: wrap;
-    gap: 0 var(--s-3);
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    align-self: stretch;
+    gap: var(--s-1);
+    padding: var(--s-3) var(--s-1) var(--s-3) var(--s-2);
   }
 
   .task-row .task-title {
-    flex-basis: 100%;
+    flex: none;
+    font-size: var(--fs-md);
+    line-height: 22px;
     white-space: normal;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
   }
 
+  /* Title + two meta lines = three lines: the title keeps one. */
+  .task-row[data-meta-lines="2"] .task-title {
+    -webkit-line-clamp: 1;
+  }
+
   .task-meta {
     max-width: 100%;
     margin-left: 0;
-    flex-wrap: wrap;
-    gap: 0 var(--s-3);
-    white-space: normal;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--s-1);
+    font-size: var(--fs-base);
+    line-height: var(--lh-base);
+  }
+
+  .task-meta > .task-meta-when {
+    display: flex;
+    column-gap: var(--s-3);
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .task-meta > .task-meta-context {
+    order: 0;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+  }
+
+  .task-meta-when > .task-priority,
+  .task-meta-when > .task-subtasks {
+    flex: none;
+  }
+
+  /* Medium and low: the flag alone on a phone (the word stays for screen readers). */
+  .task-priority.priority-medium .priority-word,
+  .task-priority.priority-low .priority-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .task-body.is-openable:active {
+    background: var(--bg-hover);
   }
 }
 
@@ -2514,47 +2922,59 @@ button.menu-item .menu-chevron,
 }
 
 .week-day h2 {
-  display: flex;
-  align-items: baseline;
   justify-content: space-between;
-  gap: var(--s-2);
-  margin: 0;
-}
-
-/* Narrow columns: the title wraps and the meta goes under it; actions live in the menu. */
-.week-day .task-row {
-  align-items: flex-start;
-}
-
-.week-day .task-row > input {
-  margin-top: 2px;
-}
-
-.week-day .task-body {
-  flex-wrap: wrap;
-  gap: 0 var(--s-2);
-}
-
-.week-day .task-row .task-title {
-  flex-basis: 100%;
-  white-space: normal;
-}
-
-.week-day .task-meta {
-  max-width: 100%;
-  margin-left: 0;
-  flex-wrap: wrap;
-  gap: 0 var(--s-2);
-  white-space: normal;
-}
-
-.week-day .task-meta > * {
-  flex: 0 1 auto;
-  min-width: 0;
 }
 
 .week-day .task-row-actions {
   display: none;
+}
+
+/* Narrow columns (desktop): the title wraps and the meta stacks under it; actions live in the menu. */
+@media (min-width: 721px) {
+  .week-day .task-row {
+    align-items: flex-start;
+  }
+
+  .week-day .task-row > input {
+    margin-top: 2px;
+  }
+
+  .week-day .task-body {
+    flex-wrap: wrap;
+    gap: 0 var(--s-2);
+  }
+
+  .week-day .task-row .task-title {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+
+  .week-day .task-meta {
+    max-width: 100%;
+    margin-left: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    white-space: normal;
+  }
+
+  .week-day .task-meta > .task-meta-when {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--s-2);
+  }
+
+  .week-day .task-meta > .task-meta-context {
+    order: 0;
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 0 var(--s-2);
+  }
+
+  .week-day .task-meta > * {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
 }
 
 @media (max-width: 1100px) {
@@ -2572,6 +2992,62 @@ button.menu-item .menu-chevron,
   .week-days {
     grid-template-columns: minmax(0, 1fr);
     overflow-x: visible;
+  }
+}
+
+/*
+ * Phone (UX-09): section cards on a tinted page. The page behind the cards is --bg-page, a card is
+ * --bg-card with a --border-strong outline (the fill difference alone is too subtle), rows are
+ * separated by a hairline, headers stick below the 48px mobile header. Desktop sections stay flat.
+ */
+@media (max-width: 720px) {
+  .main-column:has(.tinted-page) {
+    background: var(--bg-page);
+  }
+
+  .view-sections {
+    gap: var(--s-4);
+  }
+
+  .view-section,
+  .list-card,
+  .week-day {
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-lg);
+  }
+
+  .week-days {
+    gap: var(--s-4);
+  }
+
+  .view-section > .section-head,
+  .week-day > h2 {
+    position: sticky;
+    top: 48px;
+    z-index: 5;
+    margin: 0;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+  }
+
+  .view-section > p,
+  .view-section > button,
+  .view-section > .error {
+    margin: var(--s-3);
+  }
+
+  .view-section > p.section-note {
+    margin: 0;
+  }
+
+  .view-section > .task-list + *,
+  .week-day > .task-list + * {
+    margin-top: 0;
+  }
+
+  .view-section > p.muted,
+  .week-day > p.muted {
+    margin: var(--s-3);
   }
 }
 

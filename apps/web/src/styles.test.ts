@@ -46,6 +46,12 @@ function contrast(a: string, b: string): number {
 const SURFACES = ["--bg", "--bg-sidebar", "--bg-raised", "--bg-hover", "--bg-selected"];
 const FIELD_SURFACES = ["--bg", "--bg-sidebar", "--bg-raised"];
 
+/** Surfaces added by UX-09 (ADR-0062): the page tint, the section card and the header band. */
+const LIST_SURFACES = ["--bg-page", "--bg-card", "--bg-section"];
+const ROW_SURFACES = [...SURFACES, ...LIST_SURFACES];
+const PROJECT_DOTS = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `--project-${n}`);
+const DOT_SURFACES = [...FIELD_SURFACES, ...LIST_SURFACES, "--bg-hover", "--bg-selected"];
+
 /** [foreground, backgrounds, minimum ratio, why]. */
 const REQUIREMENTS: [string, string[], number, string][] = [
   ["--text", SURFACES, 7, "body text (AAA)"],
@@ -58,6 +64,15 @@ const REQUIREMENTS: [string, string[], number, string][] = [
   ["--danger", [...SURFACES, "--danger-soft"], 4.5, "danger text and pill"],
   ["--warning", [...SURFACES, "--warning-soft"], 4.5, "overdue/high priority text and pill"],
   ["--success", [...SURFACES, "--success-soft"], 4.5, "success text and pill"],
+  // UX-09: text on the new list surfaces and the due/priority/project colours used in rows.
+  ["--text", LIST_SURFACES, 7, "body text on the page tint, card and header band"],
+  ["--text-2", LIST_SURFACES, 4.5, "header band text and project names on the new surfaces"],
+  ["--text-3", ["--bg-page", "--bg-card"], 4.5, "tags and meta on the page tint and card"],
+  ["--due-overdue", [...ROW_SURFACES, "--due-overdue-soft"], 4.5, "overdue chip and header text"],
+  ["--due-today", [...ROW_SURFACES, "--due-today-soft"], 4.5, "due-today chip and header text"],
+  ["--priority-urgent", ROW_SURFACES, 4.5, "urgent flag text"],
+  ["--priority-high", ROW_SURFACES, 4.5, "high flag text"],
+  ...PROJECT_DOTS.map((dot): [string, string[], number, string] => [dot, DOT_SURFACES, 3, "project dot (1.4.11)"]),
 ];
 
 describe.each([
@@ -79,6 +94,21 @@ describe.each([
         minimum,
       );
     }
+  });
+
+  it("keeps the new surfaces and the row hairline distinct but calm", () => {
+    // A card is told from the page by its outline, so the outline must be visible and the fill
+    // difference subtle; the hairline is decorative (not a control boundary).
+    expect(contrast(theme["--border-strong"], theme["--bg-page"])).toBeGreaterThanOrEqual(1.25);
+    expect(contrast(theme["--bg-card"], theme["--bg-page"])).toBeLessThan(1.2);
+    expect(contrast(theme["--row-sep"], theme["--bg-card"])).toBeGreaterThanOrEqual(1.2);
+    expect(contrast(theme["--row-sep"], theme["--bg-card"])).toBeLessThan(1.6);
+  });
+
+  it("keeps overdue, today and the priorities apart, and the eight project hues distinct", () => {
+    expect(theme["--due-overdue"]).not.toBe(theme["--due-today"]);
+    expect(theme["--priority-high"]).not.toBe(theme["--due-overdue"]);
+    expect(new Set(PROJECT_DOTS.map((name) => theme[name])).size).toBe(8);
   });
 
   it("keeps region dividers subtle (they are not control boundaries)", () => {

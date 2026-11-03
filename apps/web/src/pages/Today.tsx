@@ -7,9 +7,10 @@ import { LoadError } from "../components/LoadError";
 import { QuickCapture } from "../components/QuickCapture";
 import { Skeleton } from "../components/Skeleton";
 import { TaskList } from "../components/TaskList";
+import { ViewSection } from "../components/ViewSection";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 import { useTaskView } from "../hooks/useTaskView";
-import { dailyPath, excerpt } from "../lib/dailyNote";
+import { dailyPath, excerpt, plainPreview } from "../lib/dailyNote";
 import { ACTIVE_STATUSES, addDays, dayKeyOf, startOfDay } from "../lib/planning";
 import { dueOn, localDate } from "../lib/taskForm";
 import { groupToday } from "../lib/tasks";
@@ -63,7 +64,7 @@ export function Today() {
       const found = listing.notes.find((note) => note.path === dailyPath(day));
       if (found) {
         const note = await notesApi.get(found.id);
-        setDaily({ id: note.id, title: note.title, text: excerpt(note.content) });
+        setDaily({ id: note.id, title: note.title, text: plainPreview(excerpt(note.content)) });
       } else {
         setDaily(null);
       }
@@ -122,11 +123,12 @@ export function Today() {
       filable={editor.projects}
       onOpen={editor.open}
       emptyMessage={emptyMessage}
+      day={key}
     />
   );
 
   return (
-    <section className="page today-page">
+    <section className="page today-page tinted-page">
       <h1>Today</h1>
       <QuickCapture onCapture={capture} placeholder="Add a task for today…" />
 
@@ -143,31 +145,39 @@ export function Today() {
       ) : overdue.length + dueToday.length + startsToday.length === 0 && !scheduledError ? (
         <EmptyState icon="sun">Nothing is due today. Capture a task above, or enjoy the quiet.</EmptyState>
       ) : (
-        <div className="view-sections">
-          <section className="view-section">
-            <h2>Overdue</h2>
-            {list(overdue, "Nothing overdue.")}
-          </section>
-          <section className="view-section">
-            <h2>Due today</h2>
-            {list(dueToday, "Nothing else due today.")}
-          </section>
-          <section className="view-section" aria-label="Scheduled work">
-            <h2>Scheduled today</h2>
-            {scheduledError ? (
-              <p className="error" role="alert">
-                {scheduledError}
-              </p>
-            ) : (
-              list(startsToday, "No other work is scheduled to start today.")
-            )}
-          </section>
-        </div>
+        <>
+          {overdue.length + dueToday.length > 0 ? (
+            <p className="today-summary">
+              {[
+                overdue.length > 0 ? `${overdue.length} overdue` : null,
+                dueToday.length > 0 ? `${dueToday.length} due today` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          ) : null}
+          <div className="view-sections">
+            <ViewSection title="Overdue" tone="overdue" count={overdue.length}>
+              {list(overdue, "Nothing overdue.")}
+            </ViewSection>
+            <ViewSection title="Due today" tone="today" count={dueToday.length}>
+              {list(dueToday, "Nothing else due today.")}
+            </ViewSection>
+            <ViewSection title="Scheduled today" count={startsToday.length} label="Scheduled work">
+              {scheduledError ? (
+                <p className="error" role="alert">
+                  {scheduledError}
+                </p>
+              ) : (
+                list(startsToday, "No other work is scheduled to start today.")
+              )}
+            </ViewSection>
+          </div>
+        </>
       )}
 
       <div className="view-sections">
-        <section className="view-section" aria-label="Daily note">
-          <h2>Daily note</h2>
+        <ViewSection title="Daily note" label="Daily note">
           {dailyError ? (
             <p className="error" role="alert">
               {dailyError}
@@ -186,13 +196,10 @@ export function Today() {
           <button type="button" onClick={() => void openTodaysNote()} disabled={dailyBusy}>
             {daily ? "Open today's note" : "Create today's note"}
           </button>
-        </section>
-        <section className="view-section" aria-label="Events">
-          <h2>Events</h2>
-          <p className="muted">
-            Calendar events will appear here once a calendar is connected.
-          </p>
-        </section>
+        </ViewSection>
+        <ViewSection title="Events" label="Events" muted>
+          <p className="muted section-note">Calendar events will appear here once a calendar is connected.</p>
+        </ViewSection>
       </div>
       {editor.overlays}
     </section>

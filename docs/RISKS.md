@@ -210,6 +210,18 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   `ux08` asserts the phone shows only the list, then only the section; password fields are cleared on success only.
 - **Status:** Open (accepted; keep the redirects at least as long as AUTH-01 and the native client are pending).
 
+### R-49 — Readability design relies on CSS the tests cannot see on a real phone (UX-09, ADR-0062)
+- **Severity/Likelihood:** Low / Medium
+- **Impact:** the three-line row rule, sticky section headers under the 48 px mobile header, the 44 px checkbox hit area
+  (a transparent 44 px input drawing a 22 px circle through `::before`/`::after`), `:has()` for the page tint and the line clamp
+  are verified in Chromium (emulated touch, measured by `boundingBox` and computed style), not on iOS Safari, Android Chrome,
+  Firefox, with a screen reader or at 200 % zoom. A browser without `:has()` simply shows the white page behind the cards.
+  Line 2 of a phone row clips at its end (no ellipsis on the flex group) when a long due, "Urgent" and a subtask count all show at
+  360 px. Project hues are checked for contrast only; the dot is never the only cue (the name is shown).
+- **Mitigation:** every state is conveyed by icon + word, not colour; sizes and heights are asserted in `ux09-readability.spec.ts`
+  at 360/390/768/1440 in both themes; the layout is CSS-only and reversible (ADR-0062).
+- **Status:** Open (accepted; verify on a real phone with VoiceOver/TalkBack before release).
+
 ## Low severity
 
 ### R-18 — PostgreSQL full-text search limits at scale
@@ -286,8 +298,10 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 - **SYNC-04 (2026-11-03):** note history, the three-way merge, server-side conflict copies, edit-wins/revive and the move rules are
   implemented (ADR-0060) and covered by property tests of the merge, 55 integration tests with exact-byte assertions, note
   conformance traces and the note simulation (`no_silent_overwrite`, `no_acknowledged_note_loss`, `conflict_copy_has_losing_text`,
-  `unique_paths`, `edit_wins`, each with a planted defect). **Still open:** persisted resolution log and undo (SYNC-05: today
-  `sync.resolution` exists only in the response, see R-41); real-device and real-client evidence (SYNC-08/09).
+  `unique_paths`, `edit_wins`, each with a planted defect). **SYNC-05 (2026-11-03):** the persisted resolution log, its feed entity and a
+  strict undo are implemented (R-41 closed; invariants `resolution_logged_once`, `no_log_without_write`, `log_has_no_text`,
+  `undo_once`, `undo_logged`, `undo_never_overwrites_newer`, `resolutions_converge`, each with a planted defect). **Still open:**
+  real-device and real-client evidence (SYNC-08/09).
 - **Owner milestone:** SYNC. **Status:** Mitigating.
 
 ### R-29 — Clock skew and clock jumps
@@ -401,10 +415,14 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 
 ### R-41 - Automatic resolutions exist only in the response until SYNC-05
 - **Severity/Likelihood:** Medium / Medium
-- **Description:** `sync.resolution` (rule, field, overwritten simple value) is returned to the writer and stored with its
-  idempotency record (so a retry sees it), but there is no `sync_resolutions` table, feed entity or undo: other devices are not told
-  "changed on another device", and the overwritten value is gone from the server once the idempotency key expires.
-- **Mitigation:** SYNC-05 (next); the wire shape is already final. **Status:** Open (by plan).
+- **Description:** `sync.resolution` (rule, field, overwritten simple value) was returned to the writer and stored with its
+  idempotency record (so a retry saw it), but there was no `sync_resolutions` table, feed entity or undo: other devices were not told
+  "changed on another device", and the overwritten value was gone from the server once the idempotency key expired.
+- **Outcome (SYNC-05, 2026-11-03, local):** closed on the server side. Every decision of a sync-mode write is a row of
+  `sync_resolutions` written in the write's transaction, announced as feed entity `resolution`, listed by
+  `GET /api/sync/resolutions` and undone by `POST .../undo` (strict: never overwrites a newer value). Proven by integration tests,
+  model/real conformance traces and the simulation with 10 planted defects (ADR-0061, `ACCEPTANCE.md` SYNC-05). What remains is
+  client work: SYNC-08 applies the entity, SYNC-11 shows the notice and the undo. **Status:** Closed (server).
 
 ### R-42 - Note writes in sync mode were only idempotent, not merge- or delete-safe
 - **Severity/Likelihood:** Medium / Medium
@@ -449,6 +467,25 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 `127.0.0.1:5432` (needed by host-side tests; any local user can reach it with the password). (5) A downgrade drops the
 `note_revisions` table but leaves `.atlas/history` files. (6) Backup sets are unencrypted and on the same disk until copied.
 **Status:** Mitigating.
+
+### R-47 - The resolution log keeps overwritten simple values and note paths for 90 days
+- **Severity/Likelihood:** Low / High (certain once sync mode is used)
+- **Description:** `sync_resolutions.loser` holds the value a later write overwrote (a status, a priority, a date, a project id, a
+  note path) and `detail` names note paths; they stay in the database and every backup until the retention window passes
+  (`CHANGE_RETENTION_DAYS`, default 90, minimum 30). No text or note content is ever stored, but a project id or path can be
+  personal. The table is not covered by the data export (it is operational state, like history and keys).
+- **Mitigation:** bounded (4 096-byte value, 2 048-character detail, 90 days), user-scoped, never logged, documented in
+  `SECURITY.md` T18/T20. An operator who needs a value gone lowers the window or deletes the rows. **Status:** Accepted.
+
+### R-48 - Strict undo is often refused on busy fields
+- **Severity/Likelihood:** Low / Medium
+- **Description:** an undo is applied only if nothing touched the field after the resolution. The simulation (default scenario,
+  undo wave after the run) saw roughly as many `changed_since` refusals as applied undos; on a field that two devices keep editing,
+  most notices will be un-undoable by the time the user sees them. That is correct (the alternative is a silent overwrite) but it
+  can feel like a broken button.
+- **Mitigation:** the refusal is explicit (`409 conflict`, `changed_since`, the current value in `server_value`), the entry stays
+  listed with its overwritten value so the UI can offer "set it back by hand" (an ordinary edit); SYNC-11 must word this.
+  **Status:** Open (UI task).
 
 ### R-43 - Idempotency table growth and the purge scan
 - **Severity/Likelihood:** Low / Medium
@@ -519,6 +556,7 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 | 2026-10-27 | M9-05 | Security review (threat model vs implementation). R-21 added (push endpoint not scheme/host-constrained; accepted for the single-user model). F1 (SPA missing security headers/CSP) found and fixed in `apps/web/nginx.conf`; R-SEC-1/2/4 re-confirmed, R-SEC-3 resolved. Detail in `docs/SECURITY.md` §"Milestone 9 security review". |
 | 2026-11-01 | Audit | Function audit: R-22 added (backend-heavy, interface-light); ADR-0043 re-prioritises to a usable core. |
 | 2026-11-02 | MU-08 | R-22 progress: Settings, shortcut help, mobile nav and an axe accessibility gate delivered (J7 passes). Sub-risks: password change signs out all other sessions (no per-device session list); the password limiter is in-process; backup status is only as visible as `BACKUP_DIR` is to the API and does not re-verify checksums; **`npm audit --include=dev` reports a moderate `minimatch` advisory (GHSA-g3hv-75wg-m249) in the eslint/typescript-eslint toolchain — present before MU-08, dev-only, not yet fixed (the fix needs a breaking tooling upgrade), so the 2026-10-27 "0 advisories" claim no longer holds**; no user time-zone setting; MU exit needs a CI run and a release re-score. |
+| 2026-11-03 | UX-09 | Readability tokens, one row anatomy and section cards (ADR-0062): UI-only; R-49 added (CSS behaviours verified in Chromium only). |
 | 2026-11-03 | UX-08 | Settings sections, skeletons and one empty state (ADR-0058): UI-only; R-27 added (old addresses are redirects; only the open Settings section is mounted). No new network call, dependency, icon or stored data; instance info is now requested only by the two sections that show it. Sign-in and first-run gained a `main` landmark (an axe finding). |
 | 2026-11-03 | UX-07 | Tasks/Projects/Board polish (ADR-0057): UI-only; R-26 added (board key moves depend on a client copy of the transition table and on re-focusing a re-created card; the server re-validates). Saved views stay per-browser `localStorage` (no cross-device sharing); the Tasks board shows only the filtered tasks. No new security surface: no new network calls, dependencies or stored data. |
 | 2026-11-03 | UX-06 | Live preview (ADR-0056): R-25 added (decorations over untrusted text; mitigated by a decorations-only design, a scheme allow-list and a corpus + real-stack DOM check). R-24 added: the server normalises CRLF to LF on read, a pre-existing defect found while testing line-ending round trips (not fixed: no backend changes in UX-06). |
@@ -537,4 +575,5 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 | 2026-11-03 | SYNC-01 | R-34 verified as a real defect (shipped nginx rejects bodies above 1 MiB with `413`; fix proposed, not applied). R-32 ordering proven by a concurrency test. R-30: server side of `cursor_ahead` delivered. New finding: `NotesReconciler` tombstones a removed note but, unlike `NotesService.delete`, does not drop its `note_projects` rows or announce the link removal (pre-existing; recorded in `ROADMAP.md` SYNC-03 scope, not changed in SYNC-01). |
 | 2026-11-03 | SYNC-04 (note history and merge) | R-42 closed (server side); R-28 and R-40 updated (the note simulation found that a replayed *delete* acknowledgement needs the same re-read rule as a create, seed 109); R-44 (history keeps overwritten and deleted text; disk) and R-45 (conservative merge, conflict-copy volume) added. |
 | 2026-11-03 | SYNC-03 (protocol v1) | R-38 (snapshot walk vs floor, sim seed 29) found and closed; R-39 (restore regrowth, `epoch`), R-40 (late ack vs tombstone, sim seed 681), R-41 (resolutions response-only until SYNC-05), R-42 (notes not merge/delete-safe until SYNC-04), R-43 (idempotency purge scan) added. R-28, R-29, R-30, R-31 moved to Mitigating (server side). |
+| 2026-11-03 | SYNC-05 (resolution log) | R-41 closed on the server; R-47 (log keeps overwritten simple values 90 days) and R-48 (strict undo is often refused on busy fields) added; R-28 updated. Found and fixed: a retried refused note `DELETE` replayed status `0` (key committed without its answer, SYNC-04 code). The conformance traces found two model/real disagreements (`kept_revision` of revive and collision, `detail` of `path_later_wins`), fixed on both sides. |
 | 2026-11-03 | P0-1/P0-2/P0-3 | R-46 added (smoke test of the Compose stack found and fixed six defects; four accepted edges). R-34 verified through the real web container (1.5/5/10 MiB `201`, 12 MiB `413`). First restore drill of a set that contains note history. |

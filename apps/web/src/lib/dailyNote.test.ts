@@ -1,4 +1,4 @@
-import { dailyPath, excerpt, templatesOf } from "./dailyNote";
+import { dailyPath, excerpt, plainPreview, templatesOf } from "./dailyNote";
 
 describe("dailyNote helpers", () => {
   it("builds the daily path", () => {
@@ -30,5 +30,13 @@ describe("dailyNote helpers", () => {
 
   it("truncates long previews", () => {
     expect(excerpt("x".repeat(50), 6, 10)).toBe(`${"x".repeat(10)}…`);
+  });
+});
+
+describe("plainPreview (UX-09)", () => {
+  it("drops heading hashes and turns list markers into bullets, as plain text", () => {
+    expect(plainPreview("## Focus\n- Finish\n* Call\n- [ ] todo\n- [x] done\n<b>raw</b>")).toBe(
+      "Focus\n• Finish\n• Call\n☐ todo\n☑ done\n<b>raw</b>",
+    );
   });
 });
