@@ -40,7 +40,8 @@ test("J6: Today is home, today's note is created once, notes start from a templa
 
   await ensureOwner(page);
   await task("J6 overdue", { due_at: `${dateIn(ZONE, -2)}T09:00:00` });
-  await task("J6 due today", { due_at: `${today}T23:30:00` });
+  // 23:59 is the end-of-day value (ADR-0044), so the task stays "due today" for all but the last minute.
+  await task("J6 due today", { due_at: `${today}T23:59:00` });
   await task("J6 scheduled", { start_at: `${today}T10:00:00` });
   await apiCall(page, "POST", "/api/notes", {
     path: "templates/J6 meeting.md",
