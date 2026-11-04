@@ -3906,3 +3906,53 @@ changed; `./scripts/verify.sh` was **not run** (another agent was using it; the 
 | Verdict | stay with Tauri 2, no Electron criterion triggered on Linux, **conditional** on Windows S6/S7 and real-input checks | 13.2 |
 | Isolation and cleanup | `PASS` | spike not in any workspace (configs read: `apps/web/eslint.config.js`, `tsconfig.json` `include`, `vite.config.ts` test projects, `ci.yml` working directories); throwaway DB dropped (only `atlas` and `atlas_test` remain), stack processes stopped, test Secret Service entry cleared, nothing published, no owner key used (throwaway minisign pair in the scratchpad) |
 | Not covered | `NOT RUN` | Windows, Android, macOS (not in scope); real editors (VS Code, Obsidian, vim, `git checkout`) against the watcher; dialog plugin and plugin-fs `watch`; HTTPS update and HTTPS API with a publicly trusted or private-CA certificate; AppImage on another distribution; 10-minute idle memory with 5 000 notes; CI |
+
+### SYNC-07 addendum: GitHub-hosted Windows runner (2026-11-04, committed and pushed; workflow `.github/workflows/windows-spike.yml`, manual only)
+
+Status of the task: Linux part `IN_REVIEW`; the **mechanical** Windows part is `PASS` on a hosted runner; the **owner-environment** Windows part (S7 standard user / UAC / SmartScreen / AV / OneDrive / IME, S1 in WebView2) and Android remain `NOT RUN`. Numbers and what the runner can and cannot prove: `docs/SYNC_PROTOCOL.md` 13.3a (single source).
+Runs: [41803343231](https://github.com/Mauz92/atlas/actions/runs/41803343231) `FAIL` (my `Get-Item`/registry script bug, build and headless checks passed), [41805706305](https://github.com/Mauz92/atlas/actions/runs/41805706305) `FAIL` (updater script used a hashtable member that did not exist; smoke ran and showed the single-instance harness needed `SPIKE_SUITE=hold`),
+[41808348307](https://github.com/Mauz92/atlas/actions/runs/41808348307) `PASS` (found W1, the Windows directory-`fsync` defect, in the previous run's artifacts and fixed it; watcher path-separator gap remained), [41810645362](https://github.com/Mauz92/atlas/actions/runs/41810645362) `PASS` (final; 10 min 17 s for the Windows job, 37 s for the supply-chain job).
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Workflow is manual only, time-boxed, secret-free, actions pinned to SHAs | `PASS` | `on: workflow_dispatch` only; `timeout-minutes` 75 / 15 / 15 / 25; no `secrets.*`; four actions pinned by SHA (`DEPENDENCIES.md`) |
+| Spike compiles for `x86_64-pc-windows-msvc`, builds per-user NSIS installers 0.1.0 and 0.2.0 with a throwaway key generated on the runner | `PASS` | artifacts `TEST-ONLY-atlas-spike-windows-installers` (installers 3.0 MB, `.sig`, public key, `latest.json` sets, scripts; **no private key**) |
+| Install per user, no HKLM, under `%LOCALAPPDATA%`, `asInvoker` | `PASS` (runner is admin: standard-user UAC-free install **not proven**) | `install.json` |
+| Signed update: valid applied, tampered refused, wrong key refused | `PASS` | `updater-test.json` |
+| Headless: SQLite bench + 100 kills, keyring (Credential Manager), scan, watcher, atomic write | `PASS` after fixing W1 and the watcher matcher | `headless*.txt/json`, `harness-fsscope.json` |
+| Smoke: app starts under WebView2 156, single instance, harness suites, idle memory | `PASS` (memory `review`: 316 MB working set, 30 s idle) | `smoke.json` |
+| `cargo audit` / `cargo license` for the Windows target | `PASS` (0 vulnerabilities, no warning inside the Windows graph, no GPL/AGPL/LGPL) | artifact `atlas-spike-windows-supply-chain` |
+| Standard-user UAC-free install/update, SmartScreen, AppLocker/WDAC/AV, WebView2 bootstrapper under policy, OneDrive/Dropbox, IME, real Atlas UI in WebView2 (S1), toast display (S5) | `NOT RUN` | owner, checklist 13.3 / 13.3a |
+| Defect found by the runner | W1 `notes::atomic_write` failed on Windows after a successful rename (`File::open(dir)` refused) | fixed in the spike (commit f584fc6); a SYNC-09 requirement |
+| Minutes | 66 Windows job minutes over four runs (about 132 billed at the 2x private-repo multiplier) + about 11 `ubuntu-latest` minutes | `SYNC_PROTOCOL.md` 13.3a |
+
+## P0-4 - First GitHub Actions runs (2026-11-04; private repo `Mauz92/atlas`, owner-authorised push and runners)
+
+Status: **`IN_REVIEW`.** Every job of `.github/workflows/ci.yml` has now run on GitHub. Four of five jobs pass completely and the fifth (`frontend`) passes everything except its last step; the workflow as a whole is **red because of one owner decision** (R-61). Evidence run: [41819386512](https://github.com/Mauz92/atlas/actions/runs/41819386512)
+(head `f5c94ee`, `ubuntu-latest` = Ubuntu 26.04 image 20261025.179.1, Python 3.13.x, Node 22, `postgres:17-alpine` service). The REQ scores in `RELEASE.md` are **not** re-scored here (owner review).
+
+| Job (run 41819386512) | Result | Duration | What ran / not run |
+|---|---|---|---|
+| `hygiene` | `PASS` | 6 s | required docs present, no tracked `.env`, `docker compose config` |
+| `backend` | `PASS` | 10 min 33 s | ruff, `ruff format --check` (298 files), mypy (135 files), **pytest 4293 passed / 15 skipped** (local: 4294 / 14: one more test skips on the runner, not investigated), `pip-audit` "No known vulnerabilities found", OpenAPI export |
+| `frontend` | `FAIL` at the last step only | 2 min 44 s | API types current, ESLint, `tsc`, **vitest 1036 passed / 3 skipped (94 files)**, build `PASS`; `npm audit --audit-level=moderate` `FAIL` (R-61: `minimatch` GHSA-g3hv-75wg-m249 in dev tooling, "no fix available"; the same audit's Vite advisory GHSA-8g5g-mxqh-grgj was fixed by `vite` 6.4.5) |
+| `e2e-real` | `PASS` | 28 min | **76 of 76** Playwright journeys against the real API + PostgreSQL 17 + Chromium (the `postgresql-client-17` step is in the `backend` job, where `pg_dump` is needed; `e2e-real` did not need it) |
+| `containers` | `PASS` | 1 min 36 s | `docker compose build` of the api/web images; images were **not started** on CI |
+
+**Not run on CI:** the mocked `test:e2e` Playwright suite (not in the workflow), `./scripts/verify.sh`, the sync-core model soak and real-API project (`ATLAS_SYNC_REAL=1`), the Compose smoke (P0-1), HTTPS/ACME (P0-2), backups/restore drill (P0-3), Firefox/Safari, mobile, the Windows workflow (separate, manual). The `spikes/` directory was not picked up by any job (verified: no job references it; the Windows workflow is `workflow_dispatch` only).
+
+Failures on the way (all root-caused; **no test skipped, weakened or suppressed**; runs 41800845203, 41803323312, 41805705739, 41807194565, 41812073078, 41815467429 are the red ones):
+
+| # | Symptom on CI | Root cause | Fix |
+|---|---|---|---|
+| 1 | `backend`: `INTERNALERROR ... PytestDeprecationWarning asyncio_default_fixture_loop_scope` | the runner resolved a `pytest-asyncio` that warns when the option is unset, and `filterwarnings = ["error"]` makes it fatal | explicit `asyncio_default_fixture_loop_scope = "function"` in `pyproject.toml` |
+| 2 | `backend`: `test_no_database_secret_reaches_the_manifest` `pg_dump ... password authentication failed` | the test dumped a real database over TCP with a made-up password; locally pg_dump runs through the container's trust socket | the test's subject is the manifest: a stand-in `pg_dump` script (commit "CI-environment fixes") |
+| 3 | `backend`: ruff E501 | my comment line in that fix | wrapped |
+| 4 | `e2e-real` J4: Enter inserted a newline instead of the `[[` completion | CodeMirror ignores accept keys for `interactionDelay` (75 ms) after the list opens; the runner pressed at once | 200 ms wait with the reason in a comment; product default kept |
+| 5 | `e2e-real` mu08 axe sweep: timeout 90 s | 80-100 s on 2 vCPU vs ~30 s locally | time budget 240 s (no check removed) |
+| 6 | `frontend`: 3 vitest failures | CI is UTC / `en-US`: `dueChip`/`TaskRow` expected "15:00" (CI prints "03:00 PM"); `taskAutosave` read a naive wall-clock string in the machine's zone | locale-tolerant regexes; `TZ=Europe/Stockholm` pinned in that test file; reproduced locally with `TZ=UTC LC_ALL=en_US.UTF-8`, passes under UTC, Stockholm and Los Angeles |
+| 7 | `e2e-real` ux10 `/week` at 1440 px: `.task-meta` 198 px of text in a 189 px card (first failure of 4 CI runs, passes locally) | product CSS defect: a long chip ("Overdue · Tue 3 Nov, 09:00") was clipped by the Week card; CI's fonts are wider than the developer's | `.week-day .task-due` wraps, plus a regression seed (an overdue task) in the journey; the failure message now names the row. Fixed in `c7a692f`; run 41819386512 passed it |
+| 8 | `frontend`: `npm audit` | R-61 minimatch (open, owner) and Vite 6.4.4 GHSA-8g5g-mxqh-grgj (fixed) | audit moved to the last step so it cannot hide other results; gate unchanged |
+| 9 | push events for two commits did not start CI | GitHub returned `Internal Server Error` / `fatal error in commit_refs_rules` on some pushes; the retry applied the ref without an event | retried; `workflow_dispatch` added to `ci.yml` for manual re-runs |
+
+Actions minutes through run 41819386512 (job minutes, each job rounded up): `ci.yml` 8 runs = **295 Linux minutes** (about 20-43 per run; `e2e-real` 19-28 min and `backend` 10-12 min dominate), `windows-spike.yml` 4 runs = **66 Windows minutes (about 132 billed at the 2x private-repo multiplier)** + 11 Linux minutes; total about 440 billed-equivalent minutes. Every later run adds about 40 Linux minutes for `ci.yml` (about 25 Windows-billed for a warm manual Windows run).

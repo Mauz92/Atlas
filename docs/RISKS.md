@@ -680,7 +680,7 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 ### R-61 - A moderate advisory in dev tooling makes the `npm audit` gate fail (minimatch, GHSA-g3hv-75wg-m249)
 - **Severity/Likelihood:** Low (dev dependencies only, no untrusted glob input) / Certain (the gate is red)
 - **Description:** the first CI run of the `frontend` job (2026-11-04) reached `npm audit --audit-level=moderate` with an advisory published 2026-10-30: `minimatch` `< 11.0.1` (denial of service via glob-part amplification).
-  Reachable only through `eslint` 9 (`minimatch` 3.x), `@typescript-eslint` (10.x) and `openapi-typescript` / `@redocly/openapi-core` (5.x): lint and API-type generation on trusted repository files, never in the shipped
+  The same audit also listed Vite 6.4.4 (GHSA-8g5g-mxqh-grgj, dev-server `fs.deny` bypass; fixed by 6.4.5, applied). The `minimatch` chain is reachable only through `eslint` 9 (`minimatch` 3.x), `@typescript-eslint` (10.x) and `openapi-typescript` / `@redocly/openapi-core` (5.x): lint and API-type generation on trusted repository files, never in the shipped
   bundle (`npm audit --omit=dev`: 0 vulnerabilities). npm reports "No fix available": the fixed 11.x line is ESM-only with a different API and none of those parents accepts it, so an `overrides` pin would break `eslint`.
   Local `npm audit` on 2026-10-19..11-03 (`DEPENDENCIES.md`, release table row 5) was 0; the advisory is newer than that evidence.
 - **Mitigation:** the gate was **not** weakened or suppressed. It now runs as the last step of the `frontend` job so lint, types, tests and build still report. Decision for the owner: (a) accept the dev-only

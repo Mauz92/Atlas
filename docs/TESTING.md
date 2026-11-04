@@ -95,7 +95,7 @@ Configuration (optional): `ATLAS_E2E_ADMIN_DATABASE_URL` (default
 (`createOwner`, `signIn`, `signOut`); use `example.com` addresses — `.test` is rejected by the server
 (`.local` is accepted since MU-08). Journeys run serially against one database and one owner; every run starts from
 an empty database, so repeated runs do not interfere. CI runs the same command in the `e2e-real` job
-of `.github/workflows/ci.yml` (PostgreSQL service). Like the mocked suite it is **not** part of the
+of `.github/workflows/ci.yml` (PostgreSQL service; first green run 2026-11-04: 76 passed in 28 min on a 2 vCPU runner, `ACCEPTANCE.md` P0-4). Like the mocked suite it is **not** part of the
 protected `scripts/verify.sh`.
 
 Current journeys: `capture-journey.spec.ts` (setup → login → capture "Buy milk" → Inbox → reload);
@@ -637,6 +637,11 @@ or `atlas_test`), and writes only under `$SPIKE_OUT` and `spikes/tauri/target`. 
 (S1 scenario in WebKitGTK and Chromium, S2 kill-9, S3 watcher/scan/scope, S4 keystore, S6 signed update, S8 sizes, X2 round trip with `packages/sync-core`) are in its README.
 Never run it against real data, the owner's `atlas` database or a published update server. Real input (IME, key events), the J1-J7 journeys in the shell and anything on Windows or
 Android are `NOT RUN` (`SYNC_PROTOCOL.md` section 13).
+
+**Windows runner (manual, `.github/workflows/windows-spike.yml`):** `gh workflow run windows-spike.yml --repo Mauz92/atlas`, then `gh run watch` and `gh run download <id> --repo Mauz92/atlas`. Jobs: `windows` (windows-latest: Rust MSVC
+build, per-user NSIS installers 0.1.0/0.2.0 signed with a key generated on the runner, `scripts/windows/headless.ps1`, `install.ps1`, `smoke.ps1`, `updater.ps1`) and `supply-chain` (ubuntu: `cargo audit`, `cargo license --filter-platform x86_64-pc-windows-msvc`).
+It never runs on push or pull request (Windows minutes are billed at a multiple on private repositories; about 11 min warm, 20 min cold). Artifacts: `TEST-ONLY-atlas-spike-windows-installers` (14 days), `atlas-spike-windows-results`, `atlas-spike-windows-supply-chain` (30 days).
+Not covered by it and `NOT RUN`: standard-user/UAC behaviour, SmartScreen, AppLocker/AV, OneDrive/Dropbox, IME, the real Atlas UI in WebView2, toast display (`SYNC_PROTOCOL.md` 13.3a).
 
 
 ## 11. Account recovery tests (AUTH-01, ADR-0067)

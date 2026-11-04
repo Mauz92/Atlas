@@ -111,6 +111,8 @@ material completeness/evidence gap; NOT RUN = not delivered):
 | `PARTIAL` | REQ-005 (tasks — capability delivered in the API; the UI can only capture and complete, ADR-0043), REQ-006 (projects — no Projects UI), REQ-010 (cross-device — mechanism + mocked E2E, no two-device run), REQ-011 (notifications — pipeline delivered; real/mobile delivery `NOT RUN`), REQ-012 (OS-agnostic — web client verified on Linux; mobile clients and desktop matrix `NOT RUN`) |
 | `NOT RUN` | REQ-007 (Google Calendar), REQ-008 (Microsoft Outlook), REQ-009 (calendar consolidation) — all blocked on real provider accounts (AR-001) |
 
+*Note 2026-11-04:* CI evidence now exists: the first GitHub Actions runs passed `backend` (pytest 4293, pip-audit clean), `e2e-real` (76 of 76), `containers` and `hygiene`, and `frontend` except its dev-dependency `npm audit` gate (R-61, owner decision). The verdicts in this table are **not** re-scored here; that needs owner review (`ACCEPTANCE.md` P0-4).
+
 A **release is labelled by its weakest mandatory requirement**: with REQ-007/008/009 `NOT RUN` and
 REQ-010/011/012 only `PARTIAL`, the release cannot be production-ready.
 
@@ -127,8 +129,7 @@ Each limitation lists its **impact** and where it is tracked. This consolidates
 The notes/tasks/projects core was smoke-tested end to end on the current code in Docker Compose (fresh install, upgrade from
 `b7d3e1a95c24` with data, HTTPS in front with Caddy, scheduled backups, a restore drill into a second empty stack):
 `ACCEPTANCE.md` P0-1/P0-2/P0-3, install steps `DEPLOYMENT.md` section 11. For **one owner on one server** that is usable.
-Still not done: `tailscale serve` and ACME were not run; no restore drill on the owner's real data; `e2e-real` has never run on
-CI (P0-4); no browser other than headless Chromium on the same host; the rate-limit, redirect and HSTS edges of R-46; backup
+Still not done: `tailscale serve` and ACME were not run; no restore drill on the owner's real data; `e2e-real` ran on CI for the first time on 2026-11-04 (76 of 76 passed, P0-4; the CI workflow is still red on one dev-tooling `npm audit` finding, R-61); no browser other than headless Chromium on the same host; the rate-limit, redirect and HSTS edges of R-46; backup
 sets are unencrypted and stay on the server's disk until copied off. Everything in 5.1 and below still applies.
 
 ### 5.1 Blocked on external resources (not defects)
