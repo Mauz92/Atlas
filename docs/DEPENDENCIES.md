@@ -100,7 +100,8 @@ THIS SOFTWARE.
 |---|---|---|
 | Google Calendar API | Free (quota-limited) | ADR-0009 |
 | Microsoft Graph | Free (throttled) | ADR-0009 |
-| Firebase Cloud Messaging (Android push) | Free | ADR-0007 |
+| Firebase Cloud Messaging (Android push) | Free, but needs a Google account/Firebase project | ADR-0007; **rejected by default for Atlas (ADR-0068 D8, PROPOSED 2026-11-04)**: local alarms + an optional self-hosted UnifiedPush hint instead |
+| ntfy (self-hosted UnifiedPush gateway) | Operator-run container; free; public `ntfy.sh` is a third-party service and not recommended | optional, off by default (ADR-0068) |
 | APNs / iOS delivery | **Apple Developer Program (annual fee)** | ADR-0007, PRODUCT_SPEC §3.1 |
 | PostgreSQL, Docker, reverse proxy | Self-hosted (existing infra) | |
 
@@ -240,3 +241,19 @@ Windows graph.** New Windows-only crates over Linux: `windows` 0.6x family, `win
 `windows-registry`, `windows-version`, `windows-threading`. `cargo audit` on the lockfile: **0 vulnerabilities**; 8 warnings (7 unmaintained, 1 unsound) which are the same eight as Linux (`proc-macro-error`, `zbus_names` x2,
 `zvariant` x2, `zvariant_derive` x2 (RUSTSEC-2026-0370/0371/0372), `glib` RUSTSEC-2024-0429); **none of those crates is in the Windows dependency graph** (checked: absent from the 329-package license list), so the
 Windows target has no advisory warning. Raw outputs: artifact `atlas-spike-windows-supply-chain` of the runs in `ACCEPTANCE.md` SYNC-07.
+
+## M8-04 device reminders and sync hints (design, 2026-11-04; nothing added to any lockfile yet)
+
+Inventory of what the design would introduce. Licences and versions marked **[VERIFIED]** were read from crates.io metadata or a project page on 2026-11-04; everything else must be checked at the pinned tag before adoption (AGENTS.md 14).
+
+| Item | Role | Licence / maintenance | Notes |
+|---|---|---|---|
+| `tauri-plugin-notification` 2.8.0 | local notifications; Android scheduling via AlarmManager | `Apache-2.0 OR MIT`, updated 2026-10-28 **[VERIFIED]** | already used in the spike; Rust 1.90+; manifest declares `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`, `WAKE_LOCK`, not the exact-alarm permissions **[VERIFIED from source]** |
+| `tauri-plugin-autostart` 2.7.0 | start at login (Windows `HKCU` Run, Linux autostart entry) | `Apache-2.0 OR MIT`, 2026-10-01 **[VERIFIED]** | AppImage path behaviour **[UNVERIFIED]**; Tauri tray (`tray-icon` feature) and `libayatana-appindicator` already in the spike graph |
+| ntfy server | optional self-hosted UnifiedPush gateway (container run by the operator) | dual `Apache-2.0` and `GPL-2.0` **[VERIFIED from the project page]**; release version/date not read | a separate service, not linked into Atlas; operating cost is the owner's (AGENTS.md 14) |
+| ntfy Android app (distributor) | UnifiedPush distributor on the phone | licence **[UNVERIFIED]** (separate repository `ntfy-android`); F-Droid and Play builds exist | the Play build may use FCM on its own side for the public instance; self-hosted use does not require it **[UNVERIFIED]** |
+| UnifiedPush Android connector library | registration, receiving and decrypting messages in the Android shell | licence and current version **[UNVERIFIED]** | RFC 8291/8292 based per unifiedpush.org; may need a small Kotlin plugin |
+| `httpx` (already in `services/api/pyproject.toml`, `>=0.27,<1.0`) | outbound hint POST; `pywebpush` (already present, M8-02) if the connector needs RFC 8291 encryption | no new Python package expected | no provider SDK |
+| Firebase / FCM | **not adopted** | — | rejected by default, ADR-0068 D8 |
+
+No telemetry, analytics or paid service is introduced. The Android permissions `USE_EXACT_ALARM`, `SCHEDULE_EXACT_ALARM`, `POST_NOTIFICATIONS` and `RECEIVE_BOOT_COMPLETED` are platform declarations, not dependencies; Google Play's exact-alarm policy applies only if the app is ever published there.

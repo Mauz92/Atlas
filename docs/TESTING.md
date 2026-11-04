@@ -659,3 +659,41 @@ Run with the rest: `./scripts/verify.sh`; the real-stack journey is `auth01-reco
 Mutation checks done once by hand on `atlas/auth/recovery.py` (each must fail a named test): no device revocation, no row lock, no failure
 counter for unknown accounts (breaks equal work), no code rotation, no session revocation: all five were caught. NOT covered: wall-clock
 timing equality (the equal-statements test is a deterministic proxy), a second API process, Safari/Firefox, a password manager's autofill.
+
+## 12. Device-local reminder and sync-hint tests (M8-04; PLANNED, design 2026-11-04, nothing here exists yet; `SYNC_PROTOCOL.md` section 14, ADR-0068 PROPOSED)
+
+### 12.1 Layers
+
+| Layer | What | Where | Runs in `verify.sh`/CI |
+|---|---|---|---|
+| Server unit/integration | `reminder` entity triggers, idempotent scan, actions endpoint, wait endpoint, hint emitter, origin validation, fake gateway | `services/api/tests` (real PostgreSQL) | yes (M8-04a, M8-04e) |
+| Scheduler unit + property | `packages/reminder-core` on a fake clock and fake ports | vitest | yes (M8-04b) |
+| Multi-device simulation | the SYNC-02/08 harness with a reminder-aware client: N devices, fault network, a fake OS scheduler, a fake notification sink | `packages/sync-core/sim` pattern | yes (M8-04b) |
+| Native adapters | Rust tick/jump logic, Kotlin receivers | cargo test / Android unit tests | with SYNC-09/10 |
+| Real devices | everything the simulation cannot show (12.4) | manual + ADB | never (`NOT RUN` until done, M8-04g) |
+
+### 12.2 Fake-clock Scheduler scenarios (each must exist before M8-04b is `DONE`; oracle in 12.3)
+
+1. **DST.** Server-computed instants for a task due 09:30 local on the day of the spring-forward (the "09:00" policy lands in the gap on some zones: instant just after the gap) and the fall-back overlap (first occurrence); Europe/Stockholm, America/New_York, Australia/Lord_Howe (30-minute shift), a zone with no DST. The Scheduler arms exactly the entity's `remind_at`; changing the *device* zone before and after the transition changes nothing.
+2. **Zone and clock changes on the device:** zone change (no reschedule, no duplicate, no loss); wall clock forward 3 h across a due reminder (catch-up shows it once); clock back 1 h after it fired (does not fire again: fired-set); NTP-like 90 s step; skew warning at >2 min and no adjustment.
+3. **Restart, reboot, update.** Kill between "write fired key" and "show" (lost, listed under Missed, never duplicated); reboot clears OS alarms (`FakeOsScheduler` reboot) and `onBoot` re-arms; an app update that clears alarms is re-armed on first start; the plugin-restore double schedule (OS list vs Scheduler map) is reconciled to one; past-due-at-boot catch-up and grouping above three.
+4. **Dedup.** Same `reminder` delivered by two pulls; a page replayed after a crash; a reschedule (new `remind_at`) fires once more, a frozen-after-`sent` reminder does not; device A and B both fire by default; `notifyOnThisDevice=false` fires on one only; A dismisses -> B (after its sync) clears the shown notification and cancels the pending alarm; A and B snooze simultaneously -> server order decides, both converge, each fires at most once per `key`.
+5. **Snooze round trip.** Offline snooze arms a local alarm; the action is queued; response lost then replayed (same `action_id`, `Idempotency-Replayed`); server `snoozed_until` differs from the optimistic one -> device re-arms; a snooze on a `cancelled` reminder; a snooze after a dismiss re-arms; dismiss after snooze.
+6. **Edits that change the schedule.** Complete/archive/delete offline cancels at once; offline re-date cancels until the next `reminder` revision; recurring task completed offline: the next occurrence appears only after sync (asserted, not hidden); a task completed on another device while this one is off: after boot the restored alarm fires stale once (documented, asserted as accepted L1/C4 behaviour) and the next sync clears it.
+7. **Limits.** More than `maxScheduled` armed reminders (nearest first, refill after each reconcile); horizon edges; burst grouping (6 due within a minute -> 5 + 1 grouped or 1 grouped, per the option); quiet hours defer to one summary; `contentMode=generic` never passes a title to the port (spy asserts the strings handed to `schedule`/`show` and the stored schedule map contain no title).
+8. **Permissions.** Denied: no schedule calls, status `blocked`, nothing fired; granted later: catch-up; exact alarm unavailable: schedules as inexact, status `late-possible`; permission revoked: alarms cancelled by the OS (fake) and re-armed when granted.
+9. **Desktop tick.** Hidden-window jitter of up to 60 s still fires once; resume after a 2 h sleep; two ticks racing (single-flight).
+
+### 12.3 Property test and planted defects
+
+Random sequences of {pull page, local edit, complete, snooze, dismiss, clock step, zone change, reboot, update, crash, permission toggle} over 2-3 devices with a fault network. Oracle: for each `key` that was ever `armed` and not later cancelled/acknowledged, a device with notifications on shows **at most once**, and **exactly once** if it was running and permitted within the horizon at `effective_at` or later (catch-up); never for a task completed/deleted before the device synced that fact **and** was online; never from a title when `generic`. Planted defects that must be caught by a named test: write the fired key after showing; key without `effective_at`; trust `server_delivered_at`; ignore `acknowledged_at`; use `Date.now()`; keep an alarm after a local completion; skip `types_synced` backfill.
+
+### 12.4 Needs real devices (cannot be simulated; M8-04g checklist, each `NOT RUN` until performed)
+
+Android (two versions, one aggressive vendor): fires with the app swiped away and offline; in forced Doze (`dumpsys deviceidle force-idle`) with exact vs inexact permission and the measured delay; after reboot (and the ~15 s catch-up of past-due alarms); after an app update (are alarms cleared? receiver re-arms); `POST_NOTIFICATIONS` denied twice; exact-alarm revoked while running; battery-optimisation restricted; "force stop"; vendor kill list; action buttons without opening the UI; lock-screen content with `Private`; channel importance changed by the user; Do Not Disturb; hint arrival through the ntfy distributor with the screen off; a hint from a stranger on an open topic (throttle). Desktop: Windows (installed app, standard user; toast shown or suppressed by Focus Assist), Linux KDE (and GNOME with/without tray extension), WebView2/WebKitGTK timer throttling with a hidden window for 30 minutes, sleep/resume, autostart after reboot (AppImage path), tray quit semantics, notification permission ACL, a server restart and a network drop with the app resident. Cross-device: phone and desktop both on, the same reminder, dismiss on one.
+
+### 12.5 Server tests (summary; details in ROADMAP M8-04a/e)
+
+Feed triggers and no-churn scan; actions idempotency/later-wins/cross-user; exact-set-of-device-endpoints test extended on purpose; wait endpoint (immediate, timeout, revoked token mid-wait, per-user cap, 426/epoch); coalescing key; byte-identical hint payload; SSRF table; fake-gateway failures (timeout, 5xx, 429 + `Retry-After`, redirect, 410) with bounded retries and the circuit breaker; log-capture test (no endpoint, token or title in logs/errors); device revoke removes the hint row; compose-env test for the new settings.
+
+Result vocabulary as section 9. Nothing in this section has been run.

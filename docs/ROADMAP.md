@@ -487,11 +487,11 @@ push-token management; notification preferences.
 | M8-01 | Reminder scheduler (durable) | M1-08,M3-05 | Reminders fire once; cancelled entities skipped | Integration | `DONE` |
 | M8-02 | Web Push (VAPID) desktop | M8-01,M8-03 | Notification delivered; permission handled | E2E | `DONE` |
 | M8-03 | Device token registry + invalidation | M8-01 | Invalid tokens pruned | Integration | `DONE` |
-| M8-04 | Push delivery (FCM/APNs or Expo relay) | M8-03 | Delivered on real devices; receipts handled | Manual on devices | `BACKLOG` |
+| M8-04 | ~~Push delivery (FCM/APNs or Expo relay)~~ **Replaced 2026-11-04** by M8-04a to M8-04g below (owner decision: local scheduling + opt-in self-hosted UnifiedPush hint; FCM rejected by default; ADR-0068 PROPOSED) | M8-03 | see the M8-04 plan | see below | `BACKLOG` (split) |
 | M8-05 | Notification preferences UI | M8-01 | Per-entity timing configurable | Frontend | `DONE` |
-| M8-06 | Android client (Expo) | M1-07,M7-03 | Core task workflows work | Device E2E | `BACKLOG` |
-| M8-07 | iOS client (Expo) | M8-06 | Core workflows; push via APNs | Device E2E | `BACKLOG` |
-| M8-08 | Desktop verify Linux/Windows/macOS | M8-02 | PWA works on all three | Manual | `BACKLOG` |
+| M8-06 | ~~Android client (Expo)~~ **Re-scoped (proposal, ADR-0068 D10):** = SYNC-10 (Tauri 2 Android, ADR-0055) + M8-04d + M8-04g; Expo is not used | SYNC-10 | Core task workflows work | Device E2E | `BACKLOG` |
+| M8-07 | iOS client (Expo) | — | **Out of scope** (ADR-0055); the M8 exit criterion that names iOS needs the owner's amendment (ADR-0068 Q9) | — | `BACKLOG` (out of scope) |
+| M8-08 | Desktop verify Linux/Windows/macOS | M8-02 | PWA works on all three. **Proposed re-scope (ADR-0068 D10):** the Tauri desktop client on Linux and Windows (macOS not planned), verified through M8-04g | Manual | `BACKLOG` |
 
 **Order note (2026-10-27).** M5/M6 remain blocked on real provider accounts (AR-001) and M7 is `DONE`,
 so work continues with M8's backend-deliverable tasks (M8-01 reminder scheduler, M8-02 Web Push,
@@ -511,6 +511,50 @@ pure ordering clarification, not a scope change.
 **M8-02 verification (2026-10-27).** Web Push desktop delivery is implemented. Full evidence: `ACCEPTANCE.md`.
 
 **M8-05 verification (2026-10-27).** Reminder timing is configurable end to end. Full evidence: `ACCEPTANCE.md`.
+
+### M8-04 plan — device-local reminders plus an optional sync hint (design 2026-11-04; PROPOSED, ADR-0068; nothing below is implemented)
+
+**Goal.** REQ-011 on the native clients: Android and desktop show the owner's reminders without the web app and without FCM/Google, and a self-hosted gateway can wake the Android app to sync. Design, gap analysis
+(G1-G14), protocol and security: `SYNC_PROTOCOL.md` section 14 (the single source; not repeated here). Decisions and open questions Q1-Q9: ADR-0068. Tests: `TESTING.md` section 12. Evidence plan: `ACCEPTANCE.md` REQ-011 (M8-04). Risks R-59, R-63 to R-67.
+**Order and rules.** Server and core work first (needs no native shell, no hardware): **M8-04a -> M8-04b -> M8-04e**; then the native tasks, which are blocked: **M8-04c** (SYNC-09), **M8-04d** (SYNC-10 and an Android device), **M8-04g** (hardware). M8-04f has a web half (after 04a/04e) and a native half (with 04c/04d).
+WIP: one task at a time; every task needs its tests before `DONE`; any unmeasured platform behaviour stays `NOT RUN`. No task starts before the owner has answered Q1 (04a), Q6 (04a sub-step), Q7 (04a/04b), Q8 (04e).
+
+| ID | Title | Depends on | Status |
+|---|---|---|---|
+| M8-04a | `reminder` feed entity and the reminder actions endpoint (server) | SYNC-03, M8-01, M8-05; ADR-0068 accepted for D2/D7; Q1, Q7 | `BACKLOG` -> `READY` once ADR-0068 D2/D7 are accepted. **First slice.** |
+| M8-04b | `packages/reminder-core`: device Scheduler with simulated clock; sync-core support for the `reminder` type and the action operation | M8-04a, SYNC-08 | `BACKLOG` (needs 04a) |
+| M8-04e | Server sync hints: `GET /api/sync/wait`, `device_hints`, emitter job, `HintGateway` + ntfy adapter, config | SYNC-06 (04a only for the optional reminder-time hint) | `BACKLOG` (can run before 04b; needs Q8) |
+| M8-04c | Desktop (Windows, Linux): tray, close-to-tray, autostart, live long-poll, Scheduler adapter, "Due now" panel | M8-04b, M8-04e (wait endpoint), **SYNC-09** | `BLOCKED` on SYNC-09 (which waits for the owner's Windows result, R-36) |
+| M8-04d | Android: local alarms, permissions, receivers, battery status, UnifiedPush connector | M8-04b, M8-04e, **SYNC-10**, an Android device | `BLOCKED` on SYNC-10 and hardware |
+| M8-04f | Settings UI: web (hint status, test) and native (per-device notification section, test notification, permissions, diagnostics) | web half: M8-04a, M8-04e; native half: M8-04c/d | `BACKLOG` (web half can start after 04e) |
+| M8-04g | Real-device verification matrix and the REQ-011 re-score | M8-04c, M8-04d, M8-04e | `BLOCKED` on hardware (Windows machine, Linux desktop, two Android versions incl. one aggressive vendor) |
+
+**M8-04a — `reminder` feed entity and actions endpoint.**
+*Problem.* Devices cannot know when a task reminds (G1, G4, G6, G7). *Scope.* Migration (reversible, additive): `reminders.revision int default 1`, `snoozed_until`, `acknowledged_at` (nullable); `ChangeRecorder` calls in `sync_task`, `cancel_for_task`, `scan_reminders`, the preference reschedule path and `deliver_reminder`
+**only when a value changed** (`state`, `remind_at`, `snoozed_until`, `acknowledged_at`); `reminder` in `changes/data.py` (`include=data`) and in `instance.sync.entities` (schema 1); `state` derivation (`armed|cancelled`, never `sent`); `POST /api/reminders/{id}/actions` (14.5) open to devices
+(exact-set test updated on purpose), `Idempotency-Key` + stored result, user-scoped, other user's id is `404`; `GET /api/reminders?state=armed` for the web diagnostics. Sub-step 04a-ii (needs Q6): `preferences.time_zone` used when `tasks.time_zone` is NULL. *Out of scope:* policies in the feed, hints, any client.
+*Acceptance.* A task with a due date and a policy/default yields one `reminder` upsert in the feed with the same `remind_at` the delivery job uses; editing due date/zone/policy/status changes it in the same transaction and a scan with no change records nothing (cursor does not move); `sent` is never exposed; completion, archive and delete produce `cancelled`;
+a snooze/dismiss replay (same `action_id`) returns the stored result and does not bump the revision twice; later action wins; a snooze after a dismiss re-arms; another user's reminder is `404`; a device token can call the actions endpoint and nothing else new; `types=task` clients are unaffected.
+*Tests.* Unit (state derivation, action rules); integration against PostgreSQL (feed assertions for each trigger, idempotent scan, cross-user, concurrency of two actions with the cursor lock as in `test_change_concurrency.py`); extend the SYNC-02 model server (`tests/sim/model*.py`) and conformance with the entity; migration clean/populated/downgrade; OpenAPI/`schema.d.ts` regenerated. *Evidence:* `ACCEPTANCE.md` M8-04a.
+
+**M8-04b — device Scheduler core.**
+*Problem.* No code decides what to arm, fire, cancel or deduplicate on a device (14.4). *Scope.* New `packages/reminder-core` (wired into vitest/eslint/tsc like sync-core; a `framework-free` test): ports, `reconcile`, `tick`, `onAction`, `onClockChange`, `onBoot`, `testNotification`, fired-set, horizon and cap, catch-up/missed list, burst grouping, quiet hours, `contentMode`, in-memory fakes for all ports and a **simulated OS** (`FakeOsScheduler` with alarm firing, reboot clearing, force-stop, inexact delay, a permission switch).
+sync-core: consume `reminder` (`types=`, **`types_synced` backfill**, G7), local overlay for task edits that cancel alarms (14.2 rule 2), a queued **action operation** with the idempotency key = `action_id` and the optimistic snooze. *Out of scope:* any Tauri/Kotlin code, UI.
+*Acceptance.* The scenarios of `TESTING.md` 12.2 pass on a fake clock: one notification per key across restarts/reboots/updates/duplicate reconciles; DST gap and overlap instants fire at the server-computed instant; zone change of the device changes nothing; clock jump forward/back; offline completion cancels; offline re-date cancels until sync; recurrence next occurrence appears after sync; two simulated devices: both fire, dismiss on one clears the other after its sync; snooze round trip incl. a lost response and a replay; horizon/cap; burst grouping; permission denied then granted catches up; no `Date.now()`/`setTimeout` outside the ports.
+*Tests.* Vitest unit + property tests (random edit/clock/reboot sequences against an oracle: "fired exactly once per key, never for a cancelled reminder, never after being acknowledged"), plus the multi-client simulation extended with a reminder-aware client and a planted-defect check (e.g. writing the fired key after showing must fail a named test). *Evidence:* `ACCEPTANCE.md` M8-04b.
+
+**M8-04e — server sync hints and the UnifiedPush adapter.**
+*Problem.* Cross-device changes arrive only on the next sync; the running desktop and a backgrounded phone cannot be told (G9, G10). *Scope.* 04e-i `GET /api/sync/wait` (14.7) and the nginx check (no proxy change needed, verified against the shipped `nginx.conf`; record the 60 s default); 04e-ii `device_hints`, `PUT/GET/DELETE /api/devices/current/hint`, `POST .../test`, purge/cascade, masking, no logging of endpoints; 04e-iii `atlas/hints` (`HintGateway`, `NtfyGateway`, origin pinning, SSRF rules), the coalesced `sync.hint` job, the optional reminder-time hint, retries, circuit breaker, status; 04e-iv settings (env, Compose, `.env.example`, `test_compose_env.py`), `DEPLOYMENT.md`/`OPERATOR_GUIDE.md` section for a self-hosted ntfy with the ACL hardening;
+04e-v **first step before building the adapter**: a throwaway ntfy container and the UnifiedPush test app on the owner's approval to answer the plain-vs-encrypted question (14.8) and the licence/maintenance check (`DEPENDENCIES.md`). *Out of scope:* the Android receiver (04d), any FCM code, any change to the owner's dev stack.
+*Acceptance.* The wait endpoint returns within the timeout, immediately when behind, enforces auth/revocation/limits/versioning; a hint job is enqueued once per 30 s bucket per user and never to the writing device; the payload is byte-identical for every event (a test compares payloads from a task edit, a note edit and a reminder); a destination whose origin/path is not the configured one is `422` (SSRF cases: other host, other port, userinfo, redirect, `http`, path traversal, IPv6/IP-literal, DNS name resolving elsewhere is irrelevant because only the configured origin is accepted); unreachable gateway: bounded retries, circuit open, no impact on the request that caused the change or on reminder delivery; `404/410` disables the destination; revoking a device deletes its hint row; no endpoint or token in logs/errors/exports (log-capture test like T24); the feature is inert when `SYNC_HINT_ENABLED=false`.
+*Tests.* Unit (payload, origin validation table, backoff, breaker); integration with PostgreSQL and a local fake gateway (an in-process HTTP server that records and can fail, delay, redirect, 410); concurrency of the coalescing key; optional integration against a real ntfy container (`NOT RUN` unless approved). *Evidence:* `ACCEPTANCE.md` M8-04e.
+
+**M8-04c — desktop resident client** (`BLOCKED` on SYNC-09). *Scope:* tray + close-to-tray, `tauri-plugin-autostart` (AppImage path check), single-instance interplay, Rust 30 s tick event, clock-jump/resume detection, long-poll loop with backoff, the `NotificationPort` over `tauri-plugin-notification` 2.8.0 (`show` only; permission handling incl. the ACL finding of X2), "Due now" panel and tray snooze/complete, quit semantics ("Quit" really quits; a notice that reminders stop). *Acceptance:* with the app resident (window hidden) a reminder fires within 60 s of `effective_at` for 30 minutes on Windows (WebView2) and Linux (WebKitGTK) (throttling measured), after sleep/resume catch-up works, autostart survives a reboot as a standard user without admin, a second launch focuses the first, with the server stopped the app still fires armed reminders. *Tests:* Rust unit tests for the tick/jump logic, Vitest for the adapter against the fake `invoke`, manual matrix in M8-04g.
+**M8-04d — Android** (`BLOCKED`). *Scope:* manifest permissions, `POST_NOTIFICATIONS` flow, exact-alarm check and grant intent, channel `atlas-reminders-v1`, receivers (`MY_PACKAGE_REPLACED`, time, zone, exact-alarm-state), reconcile against `listPending`, battery-optimisation status/link, action buttons (verify the no-UI behaviour), UnifiedPush connector receiver + registration flow, headless-sync decision (G12) with SYNC-10. *Acceptance:* S5 of 13.4 plus: fires with the app swiped away, offline, in forced Doze, after reboot and after an app update; exact vs inexact delay recorded; denial paths handled; tap opens the task. *Tests:* Kotlin unit tests where logic exists, instrumented/ADB scripts, manual matrix in M8-04g.
+**M8-04f — Settings UI.** Web half: "Instant updates" status/test, per-device hint state, masked endpoints, gateway-not-configured explanation; native half: 14.6. *Acceptance:* every state (unsupported, denied, granted, exact unavailable, gateway off/unreachable/ok) has copy and a test; axe sweeps at 1440/768/390/360, both themes, 44 px targets (MU-08 rules). *Tests:* vitest component tests, Playwright real-stack journey for the web half; native half in M8-04g.
+**M8-04g — verification matrix** (`BLOCKED`). Real-device scenarios in `TESTING.md` 12.4, results recorded with the 5-state vocabulary and device/OS/WebView/vendor details in `ACCEPTANCE.md`; ends with the REQ-011 re-score proposal for the owner.
+
+**Reminder: what the owner must decide first** (ADR-0068): Q1 (cost of server-computed instants), Q6 (home time zone), Q7 (snooze presets), Q8 (ntfy hardening), Q9 (gate wording). Q2-Q5 are needed before M8-04c/d.
 
 **M8 gate status (2026-10-27).** The buildable M8 tasks are `DONE` (**M8-01 reminder scheduler**,
 **M8-03 device registry**, **M8-02 Web Push + 3 push-consent E2E**, **M8-05 reminder preferences**) and
@@ -1325,7 +1369,7 @@ folder of real `.md` files with scan-on-start/focus, OS keystore for the device 
 Windows install (no admin), signed auto-update. Costs/limits: Windows code signing is a paid certificate (an
 unsigned installer triggers SmartScreen warnings; optional for personal use); Linux AppImage/deb needs no signing.
 **Phase 4 — Android.** SYNC-10: Tauri 2 Android, or the installable web app if the spike fails (A-09); local
-reminders on-device, FCM push (M8-04, free) for server-driven alerts, sideloaded APK for personal use (Play Store
+reminders on-device (M8-04b/d), an optional self-hosted UnifiedPush/ntfy sync hint (M8-04e; FCM rejected by default, ADR-0068 PROPOSED, 2026-11-04), sideloaded APK for personal use (Play Store
 has a one-time developer fee); notes live in app-private storage unless the spike proves a shared folder works.
 **Phase 5 — Conflict UI and release gate.** SYNC-11 (text-conflict resolver, "changed on another device" undo,
 devices list), SYNC-12 (real-device matrix, restore with devices attached).
@@ -1345,8 +1389,8 @@ work. Everything else is blocked on a resource this environment does not have:
 - **M5-00** — validate Microsoft tenant + Google publishing mode with **real accounts** (AR-001). Until
   it unblocks, **M5-03/M5-04** → **M5-05/M5-07/M5-09** and all of **M6** stay `BACKLOG`; they resume
   after MU so calendar events land in already-usable Today/Day/Week views.
-- **M8-04 / M8-06 / M8-07 / M8-08** — native push, Android/iOS clients and the desktop matrix need
-  **real devices** and a live push service (decision A-09).
+- **M8-04 / M8-06 / M8-07 / M8-08** — M8-04 was split on 2026-11-04 (plan in the M8 section; **M8-04a, M8-04b, M8-04e need no hardware and are next once the owner accepts ADR-0068 D2/D7**); native push, Android/iOS clients and the desktop matrix need
+  **real devices** (decision A-09, ADR-0068).
 
 The M0–M9 `DONE` statuses mean "buildable backend scope verified by API tests". They do **not** mean the
 owner can use the feature; the release table (`ACCEPTANCE.md`) is the user-reachable view and currently

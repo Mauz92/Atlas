@@ -3956,3 +3956,21 @@ Failures on the way (all root-caused; **no test skipped, weakened or suppressed*
 | 9 | push events for two commits did not start CI | GitHub returned `Internal Server Error` / `fatal error in commit_refs_rules` on some pushes; the retry applied the ref without an event | retried; `workflow_dispatch` added to `ci.yml` for manual re-runs |
 
 Actions minutes through run 41819386512 (job minutes, each job rounded up): `ci.yml` 8 runs = **295 Linux minutes** (about 20-43 per run; `e2e-real` 19-28 min and `backend` 10-12 min dominate), `windows-spike.yml` 4 runs = **66 Windows minutes (about 132 billed at the 2x private-repo multiplier)** + 11 Linux minutes; total about 440 billed-equivalent minutes. Every later run adds about 40 Linux minutes for `ci.yml` (about 25 Windows-billed for a warm manual Windows run).
+
+## REQ-011 evidence plan for the native clients (M8-04; PLAN ONLY, written 2026-11-04; no item below has been run; ADR-0068 PROPOSED)
+
+REQ-011 stays `PARTIAL`. Today's evidence (M8-01/02/03/05) covers the server scheduler and the browser Web Push; it says nothing about the desktop app or Android. **What would turn REQ-011 into `PASS`** (all must be recorded with device, OS, WebView version and vendor; a criterion that cannot be run stays `NOT RUN`, none is waived; the owner re-scores, the agent only proposes):
+
+| # | Criterion | Evidence needed | Task | Status |
+|---|---|---|---|---|
+| E1 | Server exposes reminder state to devices; at-most-once server delivery unchanged | M8-04a integration tests incl. feed triggers, idempotent scan, actions endpoint, cross-user | M8-04a | `NOT RUN` |
+| E2 | Scheduler arms, fires once, cancels, re-arms correctly under restart/reboot/update, DST, zone and clock changes, dedup, snooze round trip | M8-04b fake-clock suite, property test, simulation with planted defects | M8-04b | `NOT RUN` |
+| E3 | Hint endpoint and emitter are content-free, coalesced, SSRF-safe, inert when off | M8-04e tests incl. byte-identical payload and fake-gateway failures | M8-04e | `NOT RUN` |
+| E4 | Desktop (Windows and Linux) fires reminders while resident with the window hidden, after sleep/resume, after autostart, within 60 s | M8-04g manual log; timer throttling numbers | M8-04c/g | `NOT RUN` (blocked on SYNC-09) |
+| E5 | Android fires with the app swiped away, offline, in Doze, after reboot and after an update; exact and inexact delays recorded; permission denials handled | M8-04g ADB log on two Android versions, one aggressive vendor | M8-04d/g | `NOT RUN` (blocked on SYNC-10 and a device) |
+| E6 | Snooze/dismiss/complete from the notification (Android) or tray/panel (desktop) sync back and clear the other device | M8-04g two-device run | M8-04g | `NOT RUN` |
+| E7 | Optional UnifiedPush hint wakes the Android app with the screen off; gateway-down behaviour observed | M8-04g with a self-hosted ntfy (owner-approved container) | M8-04e/d/g | `NOT RUN` |
+| E8 | Real (non-mocked) browser Web Push delivery (carried over from M8-02) | a browser with real VAPID keys | M8-02 follow-up | `NOT RUN` |
+| E9 | Known limits written for the owner: desktop must run, vendor kills, exact-alarm permission, offline-created tasks, stale-once after boot | `USER_GUIDE.md`, Settings copy | M8-04f | `NOT RUN` |
+
+Proposed re-score rule: `PASS` only if E1-E6 and E8 are `PASS` and E9 exists; E7 is optional (the hint is opt-in) and only affects the claim "instant cross-device wake-up". If the owner amends the gate (iOS and macOS out of scope), REQ-012 changes with it (ADR-0068 Q9).

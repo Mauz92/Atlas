@@ -200,6 +200,7 @@ Detailed semantics: `CALENDAR_SYNC.md`.
 - Backend owns scheduling and durable reminder state; delivery is platform-appropriate
   (Web Push for PWA, native push for mobile).
 - No reminder for a cancelled entity; no duplicate delivery after retries; time-zone correct.
+- *Proposed amendment (ADR-0068, 2026-11-04, awaiting the owner; this approved text is unchanged until then):* for the native clients "native push for mobile" is replaced by **device-local scheduling from synced reminder data** (desktop while the app runs; Android through OS alarms), plus an optional self-hosted UnifiedPush hint for instant sync; no FCM by default; iOS out of scope.
 
 ### 5.7 UX
 

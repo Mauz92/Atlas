@@ -83,7 +83,7 @@ its *buildable* scope; it is not a local-first sync layer.
 | Note content in the sync path | Feed carries `entity_id` + `operation` + `cursor` only; no payload, no revision, no hash. Content via `GET /api/notes/{id}` one by one. | Metadata+hash inline; content on demand | Medium |
 | Feed payload | Feed items carry no entity data, so a bootstrap is N+1 GETs (and the M7 client only stores "change metadata", ADR-0035). | `include=data` | Medium |
 | Retention / bootstrap | The purge deletes **all** `change_log` rows older than 30 days, upserts included (`ChangePurgeService`, `DELETE … WHERE changed_at < cutoff`), and raises `change_purge_floor` to the highest seq removed. Afterwards `since=0 < floor` ⇒ `resync_required`: **a brand-new device can no longer bootstrap from the feed**, and the client's `fullResync` hook is an optional callback that no production code supplies (`grep fullResync apps/web/src`: only the engine and tests). The task-only `GET /api/tasks/changes` still works from 0, which is a second, overlapping feed. | Snapshot from `since=0`; resync only for real gaps | **High** |
-| Entities not in the feed | `reminder_policies` and the per-task reminder override, user preferences, display name, task tags (carried inside the task, fine), calendar projections, folders. `task_note_link` is recorded; `note_project_link` is recorded. | Policies and preferences yes; calendar read-only later; empty folders no | Medium |
+| Entities not in the feed | (2026-11-04: reminder sync decision proposed in §14.2) `reminder_policies` and the per-task reminder override, user preferences, display name, task tags (carried inside the task, fine), calendar projections, folders. `task_note_link` is recorded; `note_project_link` is recorded. | Policies and preferences yes; calendar read-only later; empty folders no | Medium |
 | Per-entity revision | `tasks.revision`, `projects.revision`, `notes.revision` (int, +1 per change; notes also +1 on external reconcile, rename, delete, revive). Links have **no** revision and no tombstone row (`note_projects` rows are deleted; the only record of the removal is the `change_log` delete row). | Links: presence set diffed on resync | Low |
 | Tombstones | Tasks/projects/notes: soft delete in own table, kept forever. Links: only in `change_log`. | OK; see retention | — |
 | Ordering | `users.change_seq` increment takes a row lock held until commit, so seq order = commit order, gap-free. Verified by reading `ChangeRecorder` and ADR-0032; **concurrency under real contention was not exercised by a test** — **now proven by SYNC-01** (`tests/integration/test_change_concurrency.py`: blocking observed in `pg_stat_activity`, rollback leaves no gap, seeded stress with a paging reader; a negative control shows an out-of-band allocator does let a reader skip). The lock also serialises all of a user's mutations, including note writes done while the transaction is open. | Keep | Done |
@@ -119,8 +119,9 @@ its *buildable* scope; it is not a local-first sync layer.
 | `project` | PostgreSQL | `revision` | `deleted_at` | ProjectOut fields (no derived progress) | same |
 | `note` | file + index | `revision`, `content_hash`, `size_bytes` | `deleted_at` | metadata only: `path`, `title`, `revision`, `content_hash`, `size_bytes` | same |
 | `note_project_link`, `task_note_link` | PostgreSQL | none | feed `delete` row only | ids | [EXISTS] |
-| `reminder_policy` | PostgreSQL | add `revision` | hard delete → feed `delete` | fields | [NEW] |
-| `preferences` (one per user: reminder default, display name, time zone when it exists) | PostgreSQL | add `revision` | none | fields | [NEW] |
+| `reminder_policy` | PostgreSQL | add `revision` | hard delete → feed `delete` | fields | [NEW] — **deferred**: not needed by device scheduling if `reminder` below is synced (§14.2, ADR-0068 PROPOSED) |
+| `reminder` (server-derived, device read-only: `remind_at`, `state`, snooze/ack) | PostgreSQL | add `revision` | `state=cancelled` row kept | §14.2 | **[PLANNED]** M8-04a, design PROPOSED |
+| `preferences` (one per user: reminder default, display name, time zone when it exists) | PostgreSQL | add `revision` | none | fields | [NEW] — **deferred** with `reminder_policy` (§14.2); a home time zone is open question Q6 of ADR-0068 |
 | `resolution` | PostgreSQL | 1, 2 once undone (a state number, no entity revision) | none (purged with its feed row) | §9 record | **[DONE]** SYNC-05 |
 | calendar `external_event` | provider | — | `deleted_at` | — | **Out of v1**: calendar views stay online-only on local-first clients (ADR-0059 D10) |
 | note attachments, empty folders | — | — | — | — | **Out of v1** (D10) |
@@ -763,3 +764,208 @@ before `npx tauri android init` / `npx tauri android build --apk --debug` / `npx
 
 **Cross-compiling only** (`cargo ndk -t arm64-v8a build`, or `npx tauri android build` without a device) would tell whether the crates compile for Android (bundled SQLite and `ring` need NDK clang), the `.so`/APK size and the Gradle toolchain, and would
 surface the mobile-entry-point and `cfg(desktop)` gaps above. It would **not** tell anything about WebView behaviour, Keystore, scheduling, Doze, SAF or vendor battery managers.
+
+## 14. Device-local reminders and sync hints (M8-04; design PROPOSED in ADR-0068, 2026-11-04; NOTHING in this section is implemented)
+
+**Status.** Design only. Owner decision of 2026-11-04: the hybrid "C as baseline plus B as an opt-in option" (ADR-0068, PROPOSED until the owner
+answers its open questions). (C) every device schedules its own reminder notifications from synced reminder data; (B) an optional, self-hosted
+UnifiedPush gateway (ntfy) carries only a content-free "sync now" hint to the Android app. No FCM, no Firebase, no Google account by default; iOS out
+of scope; the browser Web Push of M8-02 stays for the web app. Tasks: `ROADMAP.md` M8-04a to M8-04g. Test plan: `TESTING.md` section 12. Threats:
+`SECURITY.md` section 14. Risks: R-63 to R-67. Legend as in the header of this file; every `[UNVERIFIED]` must be checked at implementation time.
+
+### 14.1 Gap analysis: what exists and what the design needs (read from the code on 2026-11-04)
+
+| # | Topic | Exists today [EXISTS] | Needed | Severity |
+|---|---|---|---|---|
+| G1 | Reminder data in the feed | `reminders` (one row per task: `remind_at` UTC, `status` scheduled/sent/cancelled/failed, `attempts`), `reminder_policies` (`days_before`, `at_time`, `is_default`) and `reminder_deliveries` are **server tables only**. The `task` feed payload carries `due_at`, `time_zone`, `status`, `reminder_policy_id` (`changes/data.py`), but a task **without** a policy id inherits the user's `is_default` policy (`resolve_policy`), and that default is not in the feed. A device therefore **cannot know** whether and when a task reminds. `sync_task`/`scan_reminders` do not call `ChangeRecorder`. | A feed entity that carries the **already computed** fire instant (14.2) | **High** (blocks everything else) |
+| G2 | Where the wall-clock arithmetic lives | Python only: `reminders/schedule.py` (`remind_at_for`: due instant -> task zone -> minus `days_before` -> pin `at_time` -> UTC; DST gap rolls to the first instant after the gap; fall-back overlap takes the first occurrence) on `tasks/timezones.py` (ADR-0014). The web has no copy. | Do not write a second copy in TypeScript/Kotlin (AGENTS.md 7.4); devices schedule an **absolute UTC instant** | Medium |
+| G3 | Task zone fallback | A task whose `time_zone` is `NULL` is interpreted in **UTC** (`to_local(due_at, None)`); a reminder "09:00" then fires at 09:00 UTC. The web client sends the browser zone when it sets a due date (`apps/web/src/lib/tasks.ts`); there is **no user-level zone preference** (SYNC_PROTOCOL 3 mentions "time zone when it exists"). Tasks created by other clients, imports or the API can have `NULL`. | A home-zone preference used when the task has none (open question Q6) | Medium |
+| G4 | `sent` means "the server's channel delivered" | `deliver_reminder` writes one `reminder_deliveries` row and sets `status=sent` even when the only channel is the logging notifier (a user with no registered destination). After `sent`, `sync_task` leaves the row alone (a due-date edit does not re-notify). A device that was off at 09:00 and syncs at 09:05 would see `sent` and could wrongly conclude "already shown". | `sent` must **not** gate device firing; devices decide by their own fired-set (14.4) | **High** |
+| G5 | Server dedupe is per reminder, not per device | At-most-once is a unique `reminder_deliveries(reminder_id)`; web-push fan-out is inside one delivery. Nothing knows that a phone or desktop also showed it. | Per-device fired-set + cross-device acknowledgements (14.4) | **High** |
+| G6 | Snooze, dismiss, "done from the notification" | **No snooze exists anywhere** (grep over `services/api`, `apps/web/src`). Completing a task is the normal task write. The Web Push payload has `title`, `body`, `dedupe_key` only (`reminders/push.py`). | A synced, idempotent reminder action (14.5) | Medium |
+| G7 | Reminder rows are not a sync entity type | `types=` negotiation exists, but `types_synced` backfill for a new entity type is **[PLANNED]** in sync-core (status table, "types_synced backfill"). | Implement the backfill before shipping `reminder` to an installed client | Medium |
+| G8 | Reminder timing editing on devices | Policies and the default timing are edited through task/preferences endpoints (M8-05) that are online-only; policies are not feed entities. | Decision: stays online-only on devices in v1 (14.2, consequence C4) | Low |
+| G9 | Live connection | No SSE/WebSocket/long-poll endpoint anywhere (grep `text/event-stream`, `StreamingResponse`, `websocket`, `EventSource` in `services/api` and `apps/web/src`: none). The shipped nginx (`apps/web/nginx.conf`) sets no `proxy_read_timeout` (nginx default 60 s) and does not disable buffering, which suits a 25 s long-poll and would break SSE unless changed. | `GET /api/sync/wait` (14.7) | Medium |
+| G10 | Hints | None. The durable job queue (M1-08, `SKIP LOCKED`, idempotency key, `run_at`) exists and can carry a coalesced `sync.hint` job. `notification_devices` channels are `web|android|ios`; the registry is **closed to devices** (`403 forbidden_scope`, 10.1). | A per-device hint destination that a device may set for itself, and a gateway adapter (14.8) | Medium |
+| G11 | Native shell notification capability | Desktop: `show()` only, no scheduling, no actions (spike S5; R-59). Android: scheduling exists in the plugin (14.3). Neither was run on a device. | Platform limits recorded (14.3) | Medium |
+| G12 | Headless sync on Android | `sync-core` is TypeScript in the webview. With the app closed (a UnifiedPush message, a WorkManager job) there is **no webview**. Spike check S8 is `NOT RUN`. | SYNC-10 must answer "how does a sync run with no UI"; until then a hint can only start the app or be ignored | **High** for the hint half; none for local alarms |
+| G13 | Per-device notification settings | None. `notification_devices` is a server registry of push endpoints; the Settings page (`NotificationSettings.tsx`) handles the browser subscription only. | Device-local settings store (14.6) | Low |
+| G14 | Server clock/skew data | `Date` header exists; no skew estimate in sync-core. | Estimate from the pull response; warn, do not adjust (14.4) | Low |
+
+### 14.2 Decision proposal: reminder sync timing (replaces the SYNC-03 deferral "reminder_policy and preferences are not feed entities")
+
+**Proposal (ADR-0068 D2).** Add one **server-derived, device-read-only feed entity `reminder`**; keep `reminder_policy` and the default-timing preference **off** the feed
+for now.
+
+| Field (`include=data`) | Meaning |
+|---|---|
+| `id` | the `reminders.id` (stable, one per task; `UNIQUE(entity_type, entity_id)` already) |
+| `task_id` | the task (`entity_type` is always `task` in v1; `event` is reserved for M5/M6) |
+| `remind_at` | UTC instant computed by `remind_at_for` in the task's zone, **frozen once the server marked it `sent`** (existing rule) |
+| `state` | `armed` (task deliverable and a policy resolves) or `cancelled` (done, archived, deleted, no due date, no policy). Derived from `status`: `scheduled`/`failed`/`sent` -> `armed` when the task is still deliverable, `cancelled` otherwise. **Never `sent`.** |
+| `snoozed_until`, `acknowledged_at` | the synced snooze/dismiss state (14.5), both nullable |
+| `server_delivered_at` | informational only (the `reminder_deliveries` time); devices must not use it to suppress a local notification |
+| `revision` | integer, +1 on every change of any field above (new column; `field_revisions` is not needed: the entity is server-written) |
+
+Why the server computes and the device does not: a TypeScript or Kotlin copy of `remind_at_for` would have to reproduce the DST-gap roll-forward, the fold rule and the
+tzdata of three runtimes (Python `zoneinfo`, WebView `Intl`, Android ICU); the three would drift. A device that schedules an **absolute instant** is immune to
+DST and to its own zone changes by construction. Recurrence needs nothing on the device either: each occurrence is its own task row (`recurrence_parent_id`) created by the
+server when the previous one is completed, so each has its own reminder.
+
+*Changes recorded in the feed* (all in the transaction that changes them, through `ChangeRecorder`, and only when a value actually changed, so
+`scan_reminders` stays idempotent and does not churn the cursor): `sync_task` create/update/cancel, `cancel_for_task`, the scan's cancellations, a policy or default-timing
+edit that reschedules tasks (M8-05), a tzdata-driven recompute found by the scan, an action (14.5). A `cancelled` row is kept (not deleted) so a device cancels its alarm;
+rows follow the task's lifetime.
+
+*Costs, stated honestly (the price of "the server computes").*
+1. **A reminder exists on a device only after the server has seen the task.** A task created or re-dated **offline** has no alarm until the next sync (L1 below).
+2. An offline **due-date, zone or status edit** makes the local alarm stale. Rule: on a local edit of `due_at`, `time_zone`, `status`, `reminder_policy_id` or deletion, the Scheduler **cancels**
+   that task's pending alarm at once (a stale reminder for a completed or moved task is worse than a late one) and re-arms it from the next `reminder` revision. A task completed offline never reminds.
+3. The next occurrence of a recurring task that was completed offline appears only after the sync (the server creates it).
+4. Policies are not on the device: choosing a task's timing is online-only on native clients in v1 (G8).
+Alternative considered and rejected for v1: put `reminder_policy` and `preferences` in the feed and port `remind_at_for` to TypeScript with shared test vectors. It removes costs 1 to 3 but
+creates the second copy of the date arithmetic AGENTS.md 7.4 forbids; revisit only if L1 hurts in practice (ADR-0068).
+
+*Open limitation L1.* "I created a task with a reminder on the phone in a tunnel" yields no reminder until the phone syncs. Mitigation: sync on reconnect is immediate (hint/long-poll/foreground), the Settings status
+shows "N tasks waiting for a reminder schedule" (tasks with a due date and a policy-or-default but no `reminder` row yet), and the diagnostics list them.
+
+### 14.3 Platform capabilities and limits (researched 2026-11-04; marks: [VERIFIED-DOC] read in vendor docs, [VERIFIED-SRC] read in plugin source via GitHub, [SPIKE] observed in SYNC-07, [UNVERIFIED])
+
+**Tauri 2 notification plugin.** `tauri-plugin-notification` 2.8.0 (crates.io, updated 2026-10-28, `Apache-2.0 OR MIT`, requires Rust 1.90+); the spike used 2.8.0 (`DEPENDENCIES.md`). Pin 2.x, no 3.0 alphas.
+
+| Capability | Desktop (Windows/Linux) | Android | Source |
+|---|---|---|---|
+| Show now | yes; Windows "only works for installed apps" (dev builds show the PowerShell name/icon); Linux via `org.freedesktop.Notifications` seen by `dbus-monitor` | yes | docs [VERIFIED-DOC]; spike S5 [SPIKE] (toast display on Windows `NOT RUN`) |
+| Scheduling (`Schedule` `At`/`Every`/cron-like) | **none**: the desktop implementation has no scheduling | yes (AlarmManager) | spike [SPIKE]; plugin source [VERIFIED-SRC] |
+| Action buttons / `registerActionTypes` / `onAction` | **mobile only** ("The Actions API is only available on mobile platforms") | yes; action `PendingIntent`s target the launcher **Activity** (opens the app UI), plus a dismiss broadcast receiver | docs [VERIFIED-DOC]; source [VERIFIED-SRC] (summarised read; **confirm on a device whether a "Snooze" button can run without showing the UI**) |
+| Click on the notification | **not documented** for desktop; assume no callback and design without it [UNVERIFIED] | tap delivers action id `tap` with notification id and JSON extras to the app | docs, source |
+| Channels (`createChannel` id/name/importance/visibility/vibration/sound, `channels()`, `removeChannel`) | API exists "for consistency", meaningful on Android | yes; `sendNotification` with an unknown `channelId` shows nothing, so create channels first | docs [VERIFIED-DOC] |
+| Pending/active lists, cancel, remove active | permission ids `allow-cancel`, `allow-get-pending`, `allow-get-active`, `allow-remove-active` exist | yes | docs (names only) |
+| Runtime permission | `isPermissionGranted`/`requestPermission` | declares `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`, `WAKE_LOCK`; **does not declare `SCHEDULE_EXACT_ALARM` or `USE_EXACT_ALARM`** | manifest [VERIFIED-SRC] |
+| Alarm calls | n/a | exact (`setExactAndAllowWhileIdle`, `setExact`) **only if `canScheduleExactAlarms()`** on API 31+; otherwise inexact `setAndAllowWhileIdle`/`set` | source [VERIFIED-SRC] |
+| After reboot | n/a | `LocalNotificationRestoreReceiver` (listens for `LOCKED_BOOT_COMPLETED`, `BOOT_COMPLETED`, `QUICKBOOT_POWERON`; direct-boot aware) reloads the plugin's own saved notifications and re-registers them; **past-due `At` schedules are moved to about 15 s after boot** (so an alarm missed while the phone was off fires shortly after boot). **No `MY_PACKAGE_REPLACED` receiver** | source [VERIFIED-SRC] |
+
+*Consequences for the design.* (1) Because the plugin only gets exact alarms when the **app** declares and holds the permission, our `AndroidManifest` must declare it (manifest merge in the SYNC-10 Android project)
+or every reminder is inexact: Android documents that an inexact alarm may be delivered **within one hour** of the trigger time on API 31+ [VERIFIED-DOC]. (2) Desktop needs our own timer (14.9); the webview and a
+hidden window may be throttled [UNVERIFIED; measured in M8-04c]. (3) Desktop has no notification actions: snooze/complete on desktop are done from the tray menu and a small "Due now" panel in the main
+window, not from the toast. (4) The plugin's saved notifications are a **second copy of the schedule**; our Scheduler remains the source of truth and reconciles the plugin's pending list against its own (14.9),
+because a restore after boot can resurrect a reminder that was completed on another device while the phone was off (accepted, 14.4). (5) After an app update the plugin has no replace receiver: reconcile on
+the first start after an update and add a `MY_PACKAGE_REPLACED` receiver in our Kotlin plugin (whether the update clears alarms is [UNVERIFIED]: test on a device, M8-04g).
+
+**Android (all [VERIFIED-DOC] from developer.android.com "Schedule alarms" unless marked).**
+- Exact alarms need `SCHEDULE_EXACT_ALARM` (user-granted "Alarms & reminders" special access; **not pre-granted to fresh installs targeting API 33+**; denied after a backup-and-restore onto Android 14) or, from API 33,
+  `USE_EXACT_ALARM` (granted automatically, cannot be revoked, subject to a Google Play policy with "limited use cases"). Check `canScheduleExactAlarms()`; if the permission is **revoked, the app is stopped and all future
+  exact alarms are cancelled**, and `ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED` is the cue to reschedule. `Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM` opens the grant page.
+  *Atlas default (proposal):* sideloaded APK declares both, `USE_EXACT_ALARM` for API 33+; if Atlas is ever distributed through Google Play the policy review is an unknown (R-63).
+- Inexact alarms: never before the trigger time, on API 31+ within one hour unless Doze/Battery Saver apply. Exact alarms from `setExactAndAllowWhileIdle` fire in Doze; **the per-app frequency cap in Doze (commonly
+  cited as about once per 9 minutes) and the concurrent-alarm cap (commonly cited as 500 per app on API 31+) were not in the pages read: [UNVERIFIED]**. Design parameters stay far below both (14.9).
+- Alarms are **cancelled when the device shuts down** [VERIFIED-DOC]; `RECEIVE_BOOT_COMPLETED` + a receiver re-arms (the plugin has one). Force-stop clears alarms until the app is launched again [standard Android behaviour, not on the page read: UNVERIFIED here].
+- `POST_NOTIFICATIONS` is a runtime permission from Android 13 (API 33) [Android platform behaviour, not re-read today: UNVERIFIED in this run]; after repeated denials the system stops prompting, so the UI must link to the app's notification settings.
+- Notification channels: importance and sound are the **user's** after creation; changing defaults needs a new channel id (`atlas-reminders-v1`, `-v2`). Lock-screen visibility per channel: the plugin exposes `visibility` (Secret/Private/Public).
+- Vendor battery managers (Xiaomi, Huawei, Oppo, OnePlus, Samsung "sleeping apps" and others) may kill the app or revoke background rights; this is outside the platform contract. dontkillmyapp.com is the community list [UNVERIFIED, not read]. Mitigation is detection and honesty (14.9, R-63), not a promise.
+
+**Windows/Linux desktop.**
+- A scheduled notification while the app is closed **does not exist** (spike S5, R-59). The webview has **no Web Push and no service worker** (`script URL protocol must be HTTP or HTTPS`, spike X2).
+- So the desktop app must be **resident**: a tray icon with "close to tray", optional start at login. `tauri-plugin-autostart` 2.7.0 (crates.io, 2026-10-01, `Apache-2.0 OR MIT`) writes the Windows `HKCU\...\Run` value (no admin) and a Linux
+  `~/.config/autostart` entry; **for an AppImage the registered path must be `$APPIMAGE`, not the temporary mount path** [UNVERIFIED: check the plugin's behaviour with the spike AppImage]. Tray icons need `libayatana-appindicator`
+  on Linux (present on the owner's machine, spike) and **stock GNOME shows no tray icons without an extension** [general knowledge, UNVERIFIED here]; KDE (the owner's desktop) does.
+- Single instance (X1, `PASS` on Linux and Windows runner) makes "start at login" and a manual launch converge on one process.
+
+**Never promised:** a reminder while the desktop app is not running; a reminder on a phone whose vendor killed the app (unless the optional hint arrives and wakes it, 14.8); exact timing without the exact-alarm permission.
+
+### 14.4 Scheduling semantics on a device (the contract the Scheduler core implements)
+
+Notation: `effective_at = snoozed_until ?? remind_at`; `key = reminder_id + ":" + effective_at (ISO UTC)`.
+
+1. **Desired set.** Every `reminder` with `state=armed`, `acknowledged_at` empty (or older than `effective_at`), whose task is open locally (not done, archived, deleted, and not edited-dirty per 14.2 rule 2), `effective_at` within
+   the horizon (default: from 24 h in the past to 14 days ahead) and `key` **not** in the device's fired-set. Capped at `maxScheduled` (default 64, nearest first); the rest are armed by the next reconcile.
+2. **Reconcile** (idempotent, run on: app start, after every pull that changed a `reminder` or its task, after a local edit, after a settings change, on foreground, on a clock/zone jump, on reboot or update, and at least hourly)
+   diffs the desired set against the OS schedule (`listPending`) and issues `schedule`/`cancel` only for differences. Notification ids are derived from `key` (a stable 31-bit hash plus a persisted collision map), so re-running changes nothing.
+3. **Fire.** Android: the OS alarm shows it. Desktop (no OS scheduling): `tick(now)` every 30 s, on window focus, on resume and on a detected clock jump shows everything with `effective_at <= now`. Before showing, check `key` against the
+   fired-set; **write the key to the fired-set before calling the port** (a crash then loses a notification rather than duplicating it; for reminders this is the safe side, and the missed-reminder summary below catches it).
+4. **Late and missed.** A reminder due in the past, still armed and not fired (app not running, phone off, permission denied then granted) is **caught up** at the next start or reconcile if its `effective_at` is within the horizon: shown immediately,
+   grouped in one summary notification when more than three. Older ones are listed in the in-app "Missed" list but not pushed. Constants are Scheduler options.
+5. **Dedup on one device.** The fired-set (persisted) guarantees one notification per `key` across restarts, reboots, app updates and repeated reconciles. A reschedule (a new `remind_at` or snooze) is a new `key` and fires again, matching the server rule that a *moved* time re-arms only before delivery: after `sent` the server freezes `remind_at`, so no new key appears from a due-date edit (same rule as the Web Push path).
+6. **Dedup across devices.** Default (proposal, Q3): **every device that has notifications enabled fires**; there is no cross-device suppression because it could only be best effort (it needs both devices to have synced). What *is* synced is the
+   outcome: a dismiss, snooze or completion on one device (14.5) removes the shown notification and the pending alarm on the others at their next sync. Per-device switch `notifyOnThisDevice` (default on) lets the owner keep, say, only the phone.
+   The Web Push destination of M8-02 is separate: a browser tab and the phone can both notify; the Settings page lists destinations so the owner can disable one (the existing registry `disabled_at`).
+7. **Clock, zone and skew.** The fire instant is absolute, so a **device zone change needs no reschedule** (only display strings change; test: no duplicate, no loss). A **device clock change** (manual, NTP step, DST of the device is irrelevant): Android re-reconciles on
+   `ACTION_TIME_CHANGED`/`ACTION_TIMEZONE_CHANGED` (RTC alarms are absolute); desktop detects `|delta wall - delta monotonic| > 60 s` and reconciles with catch-up. **Skew:** the pull response's `Date` header gives an estimate; if
+   `|skew| > 2 min` the Settings status warns "this device's clock is N min off" and the Scheduler does **not** adjust fire times (adjusting would hide a wrong clock and break the OS alarm model); sync order never depends on clocks (11a).
+8. **Quiet hours** (pure Scheduler option, default off, Q4): reminders inside the device's quiet window are deferred to its end as one summary, never dropped.
+9. **Burst control.** At most 5 individual notifications per minute; beyond that one grouped "N reminders due" notification. Android's own caps on active notifications [UNVERIFIED] are not relied on.
+10. **Privacy of content.** Per-device `contentMode`: `full` (task title and due time) or `generic` ("Atlas: a task is due"). The text is chosen **when the alarm is scheduled**, so with `generic` the title is never handed to the OS, stored
+    in the plugin's saved notification JSON, or shown on a lock screen; changing the setting reschedules all. On Android the reminders channel is created with `visibility: Private` (the OS hides content on a secure lock screen when the user's own
+    lock-screen setting says so); whether the plugin also sets a public version is [UNVERIFIED]. Desktop has no equivalent, only the OS "hide content on lock screen" setting. Proposed default `full` + channel `Private` (Q5). The title text of a `full` notification
+    stays on the device and the OS; it is never sent to a push provider (14.8).
+
+### 14.5 Snooze, dismiss and complete: one idempotent action
+
+`POST /api/reminders/{id}/actions` (browser session and device scope `sync`; both CSRF/bearer as elsewhere) `{ "action_id": "<client uuid>", "kind": "snooze" | "dismiss", "snooze_for_seconds": 600 | 3600 | 10800 (snooze only), "base_revision": n }`.
+`Idempotency-Key` = `action_id`; a replay returns the stored result (`Idempotency-Replayed: true`). The server writes, in one transaction and under the existing user-row cursor lock: `snooze` -> `snoozed_until = now + seconds` (server clock; the device's clock
+is only used for its local optimistic alarm), `acknowledged_at` cleared; `dismiss` -> `acknowledged_at = now`. Revision +1, feed `upsert`. Rules: the **later action in server order wins** and a snooze after a dismiss re-arms (an explicit user act beats an earlier one); no
+`409` on a stale `base_revision` (an action is intent, not a field edit), the response returns the current entity so the device re-reconciles; an action on a `cancelled` reminder answers `200` with the unchanged entity; snooze presets are durations only (no "tomorrow at 9":
+that would put wall-clock arithmetic on the device, Q7).
+**Complete** is not a reminder action: it is the normal task completion (queued, idempotent by the task write key, recurrence advanced by the server). The Scheduler listens to the resulting local task change, cancels the alarm at once and clears shown notifications.
+Offline: the device applies the snooze locally (arms an alarm for `now + n`) and queues the action in the sync-core queue (a new operation type, M8-04b); on sync the server's `snoozed_until` replaces the optimistic one (they differ by at most the offline time; if they differ the device re-arms).
+Android action buttons (Snooze 10 min, Snooze 1 h, Done) are registered with `registerActionTypes`; whether they run without opening the activity is to be measured (14.3). Desktop: tray menu entries and the "Due now" panel.
+The server-side Web Push notification is not re-sent for a snooze in v1 (it keeps at-most-once).
+
+### 14.6 Device-local notification settings (not synced, not in `notification_devices`)
+
+Stored in the native local store next to the cursor (`notify_settings`): `enabled`, `contentMode`, `quietHours`, `horizonDays`, `maxScheduled`, `catchUp`, `hintEnabled`, `autostart` (desktop), `closeToTray` (desktop), `lastHeartbeatAt`, `firedKeys`, `scheduleMap`.
+Reason for local-only: they are properties of a device, and a synced setting would need conflict rules for no benefit. Cost: the web Settings page cannot show what a native device is set to (accepted).
+Settings UI (native shells, same bundle behind an `isNativeShell` capability; M8-04f): permission status rows (notifications granted/denied with a button to the system settings; Android exact alarms granted/not and why it matters; battery optimisation unrestricted/restricted with a link),
+**Send a test notification** (shows one now and arms one for 1 minute ahead, to exercise the OS scheduling path, and reports the result), content mode, quiet hours, desktop tray/autostart, **Live updates** (hint gateway status, last hint, "Rotate hint topic", "Disable"), a **diagnostics** list (next 10 alarms, missed list, tasks waiting for a schedule, last reconcile, clock skew).
+Web Settings (M8-04f, server part): hint gateway configured yes/no, per-device hint status, "Send test hint". The gateway URL itself is an **operator** setting (env), not a user setting (14.8).
+
+### 14.7 Live connection for the running desktop app: long-poll `GET /api/sync/wait`
+
+Chosen over SSE for v1: the shipped nginx has default buffering and a 60 s read timeout (G9), a long-poll that always ends within 25 s works through it unchanged, needs no streaming support in `reqwest` handling and no server state per connection. SSE stays the alternative if latency or load ever matters.
+- `GET /api/sync/wait?since=<cursor>&timeout=25` -> `200 {"head": <int>, "changed": <bool>}`. Returns immediately if `head > since`; otherwise waits up to `min(timeout, SYNC_WAIT_MAX_SECONDS)` and returns `changed:false`. Open to devices and browser sessions (`SyncUser`; added to the exact-set test);
+  `Atlas-Sync`/`426`/epoch checks as for `/api/changes`; authentication re-checked at the start of every poll (a revoked token ends the loop with `401 token_revoked`, the client stops as in 10.1). Counted by the per-device limiter (about 2.4 requests a minute, far under 600); keeps `last_seen_at` current.
+- Server implementation: read `users.change_seq` for the caller every 2 s (one indexed single-row read) or wait on an in-process event set after the commit that appended to `change_log`; at most `SYNC_WAIT_MAX_CONNECTIONS` (default 4) concurrent waits per user (the oldest is answered `changed:false` when a fifth arrives). No new infrastructure (no broker, no LISTEN/NOTIFY needed).
+- Client loop (Rust or TS, M8-04c): poll with the last applied cursor; on `changed:true` run a normal pull; on error back off 2 s x 2^n with full jitter to 5 min (sync-core `backoff`); a pull is not started more than once per 5 s from this loop. Additionally a plain periodic sync every 5 min and on focus/resume, so a dead connection costs freshness, not correctness.
+- The result is a **hint**, never data: `head` is only compared with the cursor. Versioned by the endpoint path and `instance.sync.features` (`["wait"]`, additive).
+
+### 14.8 Sync hints and the optional UnifiedPush/ntfy adapter (Android, opt-in, self-hosted)
+
+**Rule.** The only thing that ever leaves the server toward a push gateway is the same constant, content-free message. No task, note, title, count, cursor, user id, device name or time. Payload (versioned): `{"v":1,"k":"sync"}` (about 20 bytes). A receiver treats the **arrival** as the hint and ignores the body (`k` may gain values;
+unknown `v`/`k` still means "sync now"), then pulls with its own bearer token. If the connector requires an encrypted body (RFC 8291, `aes128gcm`: the UnifiedPush docs say connector libraries generate keys at registration and decrypt automatically) the server encrypts this same constant with the registered keys; **whether ntfy-as-distributor accepts a plain POST for a connector that
+expects encryption is [UNVERIFIED]** and is the first step of M8-04e (run a throwaway ntfy container and the UnifiedPush test app; no change to the owner's stack).
+
+**Components.**
+- *Interface* `atlas/hints/base.py`: `HintGateway.send(destination) -> HintResult(delivered|invalid|retry|failed, retry_after)`; the application depends only on it (AGENTS.md 7.3). *Adapter* `atlas/hints/ntfy.py` (a plain HTTPS `POST` to the endpoint URL, headers `Cache: no`; no title/tags/priority headers, no `Firebase` forwarding on our side). A second adapter (a generic Web Push endpoint, a different UnifiedPush server) fits the same interface.
+- *Registration* `PUT /api/devices/current/hint` `{kind: "unifiedpush", endpoint, [p256dh, auth]}`, `GET`, `DELETE`, `POST .../test` (device scope; *not* via `notification_devices`, whose channels stay web-push/FCM-token shaped and which stays closed to devices). Table `device_hints(device_id PK/FK ON DELETE CASCADE, kind, endpoint, keys, created_at, last_ok_at, last_error_class, failures)`: revoking, expiring or purging a device removes its hint destination in the same step (no orphan secret). One destination per device.
+- *Emitter*: after a commit that appended to `change_log`, enqueue one durable job `sync.hint` per user with idempotency key `sync.hint:<user>:<30 s bucket>` and `run_at = now + 5 s` (coalescing: a burst of 200 edits yields one hint per 30 s at most; `SYNC_HINT_MIN_INTERVAL_SECONDS`); the job sends to every destination of the user **except the device that wrote** (known from the bearer on the request; browser-session writes hint all) and records `last_ok_at`/`last_error_class`.
+  Optional second trigger (default on when enabled): the existing `reminder.deliver` job at `remind_at` also enqueues a hint, so a phone whose alarm was killed by a battery manager but whose distributor still runs gets a "sync now" at the reminder time, syncs, and the Scheduler's reconcile **catches up** (14.4 item 4). It is the same constant message; the *time* is already known to the gateway from the hint send.
+- *Delivery failure.* Gateway unreachable, `5xx`, timeout (5 s), `429`: job retry with bounded exponential backoff and jitter (3 attempts, at most about 10 min), then the hint is **dropped** (a hint is lossy by design; the next change, the client's periodic sync and its foreground sync cover it); circuit breaker: after 5 consecutive failures stop sending for 5 min; `404`/`410` (topic unknown/expired: with `visitor-subscriber-rate-limiting` ntfy answers `410 Gone` after 4 days without a subscriber, `507` with no rate visitor [VERIFIED-DOC]) mark the destination `invalid` and stop (the device re-registers when it next runs). Status is visible, with no URL: `last_ok_at`, `last_error_class`, failure count.
+  The reminder path never waits for a hint (it is a side effect after the commit).
+- *Client behaviour on a hint* (Android, SYNC-10): the connector's receiver starts a sync, throttled to once per 15 s with jitter; **if no headless sync exists (G12) the hint is ignored except to refresh the alarm schedule from the last pulled data**, and the status says "live updates need the app to run in the background".
+- *Android registration flow*: Settings -> Live updates -> "Enable" -> the app asks the installed UnifiedPush distributor (the ntfy Android app, F-Droid or Play build) via the connector library to register; on `onNewEndpoint` the app `PUT`s the endpoint; `onUnregistered` -> `DELETE`. No distributor installed -> the row explains and offers nothing else (no FCM).
+
+**Topic secrecy and rotation.** The endpoint URL contains the topic chosen by the distributor (ntfy: `up` + random). Treat the URL as a **secret**: stored server-side only in `device_hints` and never in logs, exports, error messages, the Settings page (shown masked, last 4 characters) or backups of the web UI; a `pg_dump` contains it (the dump already holds device hashes; add to `OPERATIONS.md` that restoring an old backup may restore old endpoints, which harmlessly fail or are re-registered). Rotation: the device re-registers a fresh endpoint (UnifiedPush `register` again) on user request ("Rotate hint topic"), on every device-token rotation (10.1), after `invalid`, and every 90 days; the old row is overwritten at once. Hardening to document for the operator: ntfy `auth-default-access: deny-all`, anonymous **write-only** for `up*` (`ntfy access '*' 'up*' write-only`, from the ntfy docs [VERIFIED-DOC]) so that a stranger can publish but only the authenticated distributor can subscribe; the distributor's ntfy credentials live in the ntfy app.
+What a leaked topic gives an attacker, with content-free hints: (publish) spurious wake-ups, bounded by the client throttle and by ntfy's own limits; (subscribe, if the instance is open) the *timing* of the owner's edits. No content. That is why content-free is a rule and not a preference.
+
+**SSRF and gateway configuration.** The server makes outbound requests to a URL a device supplied, which is an SSRF primitive. Controls: (1) the gateway **origin is operator configuration only** (`SYNC_HINT_GATEWAY_URL`, e.g. `https://ntfy.example.net`); a registered `endpoint` is accepted only if scheme, host and port equal it exactly and its path matches `^/up[A-Za-z0-9_-]{8,64}$`; (2) `https` only (a loopback `http` origin only when `ATLAS_ENV` is not `production`); (3) redirects are never followed; (4) 5 s total timeout, response body not read beyond 1 KiB and never logged; (5) no credentials in the URL (userinfo rejected); (6) the optional publish credential `SYNC_HINT_GATEWAY_TOKEN` is an env secret, sent only to that origin, never logged. Because the origin is pinned by the operator, a private/tailnet/LAN ntfy address is fine and no private-range blocking is needed (and would break the main use). Default: feature **off** (`SYNC_HINT_ENABLED=false`, empty origin).
+**Third-party service note (AGENTS.md 11, 14).** Pointing the origin at the public `ntfy.sh` is the operator's explicit choice and sends the *fact and timing* of changes to a third party (and, for the Google Play build of the ntfy app, possibly via FCM on the distributor's side); this is documented as not recommended; the recommended deployment is a self-hosted ntfy container. No telemetry, no analytics, no user content to external services in any configuration.
+
+**Settings (env, forwarded in `deploy/docker-compose.yml` and `.env.example`, guarded by `test_compose_env.py`):** `SYNC_HINT_ENABLED` (false), `SYNC_HINT_GATEWAY_URL` (empty), `SYNC_HINT_GATEWAY_TOKEN` (empty), `SYNC_HINT_MIN_INTERVAL_SECONDS` (30), `SYNC_HINT_TIMEOUT_SECONDS` (5), `SYNC_WAIT_MAX_SECONDS` (25), `SYNC_WAIT_MAX_CONNECTIONS` (4).
+Rate limits: hint registration and test shared with the device write limit (120/min) plus a dedicated 1/min for `.../test`; wait polls as 14.7.
+
+### 14.9 Components
+
+| Component | Where | Responsibility |
+|---|---|---|
+| `reminder` feed entity, actions endpoint | `services/api/atlas/{reminders,changes,api}` (M8-04a) | 14.2, 14.5 |
+| Scheduler core | new package `packages/reminder-core` (framework-free TypeScript like sync-core, ADR-0066; depends on sync-core **types only**) (M8-04b) | `reconcile`, `tick`, `onAction`, `onClockChange`, `onBoot`, `testNotification`; ports `Clock {now()}`, `NotificationPort {capabilities(), permission(), schedule(), cancel(), listPending(), show(), clearShown()}`, `SchedulerStore {firedKeys, scheduleMap, settings, heartbeat}`, `ReminderSource {armed(), tasks()}` from the sync-core view; capabilities decide the strategy (`os` scheduling vs engine `tick`). No Tauri/DOM/`Date.now()` outside `Clock` (a lint test, like sync-core's `framework-free.test.ts`) |
+| Desktop adapter + tray + autostart + live loop | `spikes/tauri` is evidence only; real code in SYNC-09's shell (M8-04c) | resident process; Rust-driven 30 s tick event to the webview (so a hidden window is not at the mercy of timer throttling [UNVERIFIED]); close-to-tray; `tauri-plugin-autostart`; long-poll loop; sleep/wake and clock-jump detection; "Due now" panel and tray snooze/complete |
+| Android adapter + permissions | SYNC-10's Kotlin plugin + `tauri-plugin-notification` (M8-04d) | exact-alarm check and request, `POST_NOTIFICATIONS`, channel `atlas-reminders-v1`, `MY_PACKAGE_REPLACED`/time/zone receivers, battery-optimisation status and link, UnifiedPush connector receiver |
+| Hint core + ntfy adapter | `services/api/atlas/hints/` (M8-04e) | 14.8 |
+| Settings UI | `apps/web` (M8-04f) | 14.6 |
+
+Local-store additions (native `LocalStore`, SYNC-09/10): one table `reminder` (mirror of the feed entity) and the Scheduler's own small tables (`notify_settings`, `fired`, `schedule_map`), all inside the per-row store with the cursor transaction rule (a pulled `reminder` page and its cursor commit atomically, as for every entity).
+
+### 14.10 What is deliberately not done
+
+Server-side content in any push; FCM/Firebase/APNs; iOS; reminders on a closed desktop app (no mechanism exists, R-59); a desktop custom toast window; a cross-device "first device wins" suppression; policies as feed entities; wall-clock arithmetic on devices; per-device settings synced through the server; analytics of any kind.

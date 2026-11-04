@@ -666,7 +666,8 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
   with the shell closed needs the app resident (tray, autostart) or another delivery path. The existing browser Web Push (ADR-0039) does not exist inside the shell's webview.
 - **Mitigation:** decide in SYNC-09 between a resident background process with tray/autostart (and its own scheduler fed by the synced reminders) and keeping the browser/PWA for
   push; document that the desktop client does not remind while closed until then. Android scheduling is `NOT RUN` (13.4).
-- **Owner milestone:** SYNC-09/SYNC-10. **Status:** Open.
+- **Update 2026-11-04 (ADR-0068 PROPOSED, owner decision for the hybrid):** the chosen mitigation is the resident desktop app (tray, close-to-tray, optional autostart, own 30 s tick, `SYNC_PROTOCOL.md` 14.9); "no notification while the app is not running" becomes a documented accepted limit. Remaining uncertainty: autostart path for an AppImage, tray visibility on GNOME, hidden-window timer throttling (R-64).
+- **Owner milestone:** M8-04c (needs SYNC-09). **Status:** Open (mitigation designed, not built).
 
 ### R-60 - Whole-state local store and TLS trust in the Tauri client
 - **Severity/Likelihood:** Medium / High if not acted on
@@ -697,6 +698,37 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
   CI and passed on four other CI runs and locally; see `ACCEPTANCE.md` P0-4 for its current state.
 - **Mitigation:** CI is now the second environment; keep tests independent of locale, zone and speed; the failing assertion's message names the row, class, text and widths.
 - **Owner milestone:** P0-4. **Status:** Mitigated (see ACCEPTANCE for the open layout item).
+
+### R-63 - Missed Android reminders: Doze, vendor battery managers, exact-alarm permission (M8-04d)
+- **Severity/Likelihood:** High / Medium-High on aggressive vendors (Xiaomi, Huawei, Oppo, some Samsung/OnePlus settings), Low on stock Android
+- **Description:** local reminders depend on `AlarmManager` alarms surviving. Without the exact-alarm permission the plugin falls back to inexact alarms, documented as possibly delivered within an hour on API 31+; revoking `SCHEDULE_EXACT_ALARM` stops the app and cancels exact alarms; shutdown cancels alarms (the plugin re-arms after boot, not after an app update); a vendor "app freezer", force-stop or aggressive optimisation can remove alarms or block receivers outside the platform contract. Doze frequency cap and the concurrent-alarm cap were not verified. `USE_EXACT_ALARM` is subject to a Google Play policy if the app is ever published there.
+- **Mitigation (designed, `SYNC_PROTOCOL.md` 14.3/14.4/14.8):** declare both exact-alarm permissions in the sideloaded build; status row and test notification; missed list and catch-up on start; heartbeat to detect "the app was not alive"; optional reminder-time hint to wake a phone whose alarms were removed; user guidance; real-device matrix with one aggressive vendor (M8-04g). **No promise** that every reminder fires on every device; FCM, the only stronger option, is rejected by default (ADR-0068 D8).
+- **Owner milestone:** M8-04d/g. **Status:** Open.
+
+### R-64 - Desktop reminders depend on a resident, running app (M8-04c)
+- **Severity/Likelihood:** Medium / High
+- **Description:** no notification while the app is not running; a user who quits, a crash, a logout without autostart, a stock GNOME without tray icons, a hidden window whose timers are throttled, or sleep can all silence reminders. A forgotten "Quit" is silent.
+- **Mitigation:** tray + close-to-tray, optional autostart (first-run prompt, Q2), Rust-driven tick, catch-up at start/resume with a "missed" list, a visible "reminders are off while Atlas is closed" notice at Quit, hidden-window lateness measured (M8-04c). Web Push in a browser remains an independent channel for the owner who also runs the web app.
+- **Owner milestone:** M8-04c. **Status:** Open.
+
+### R-65 - Clock and zone problems on devices (M8-04b)
+- **Severity/Likelihood:** Medium / Low-Medium
+- **Description:** fire instants are absolute but fire on the device's clock: a wrong device clock shifts every reminder; a manual clock change, NTP step, sleep or a tzdata update can change when "now" is relative to the instant. The server computes the instant with its own tzdata; a government rule change after computation is fixed only by the scan and a sync. A task with no zone is interpreted in UTC (G3).
+- **Mitigation:** absolute instants only; reconcile on time/zone/resume events; skew estimate and warning, no silent adjustment; hourly reconcile; scan recompute records the change in the feed; home-zone preference proposed (Q6); fake-clock tests incl. DST (TESTING 12.2).
+- **Owner milestone:** M8-04a/b. **Status:** Open.
+
+### R-66 - Duplicate or stale notifications across devices (M8-04b)
+- **Severity/Likelihood:** Medium / High (by design all enabled devices fire)
+- **Description:** the owner gets the same reminder on phone, desktop and possibly a browser tab; outcomes sync only on the next sync, so a task completed elsewhere can still fire stale once (also the plugin's boot restore). Offline edits/creates leave no or a stale alarm until sync (L1).
+- **Mitigation:** per-device fired-set; per-device switch; synced dismiss/snooze/complete clearing other devices; local cancellation on any local schedule-affecting edit; destinations listed so the web push can be disabled; limitation shown in the status row; Q1/Q3 are owner decisions.
+- **Owner milestone:** M8-04b. **Status:** Open (accepted behaviour pending the owner).
+
+### R-67 - The hint channel: third-party gateway, topic secrecy, SSRF, headless sync (M8-04e/d)
+- **Severity/Likelihood:** Medium / Low (opt-in, off by default)
+- **Description:** a self-hosted ntfy is a new service the owner must run, patch and secure; a public instance would leak change timing; the topic URL is a secret and the server posts to a device-supplied URL (SSRF primitive); a hint is lossy by design and, on Android, useful only if a headless sync exists (G12); the plain-vs-encrypted payload question for UnifiedPush is unverified.
+- **Mitigation:** content-free constant payload; feature off by default; operator-pinned origin and path pattern; no redirects; rotation; ntfy ACL guidance (Q8); lossy-safe client design (periodic and foreground sync remain); fake-gateway failure tests; log-capture test; `DEPENDENCIES.md` records licences and maintenance; the ntfy licence for the Android app was **not** verified.
+- **Owner milestone:** M8-04e. **Status:** Open.
+
 
 ---
 
@@ -737,3 +769,4 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 | 2026-11-03 | SYNC-05 (resolution log) | R-41 closed on the server; R-47 (log keeps overwritten simple values 90 days) and R-48 (strict undo is often refused on busy fields) added; R-28 updated. Found and fixed: a retried refused note `DELETE` replayed status `0` (key committed without its answer, SYNC-04 code). The conformance traces found two model/real disagreements (`kept_revision` of revive and collision, `detail` of `path_later_wins`), fixed on both sides. |
 | 2026-11-03 | P0-1/P0-2/P0-3 | R-46 added (smoke test of the Compose stack found and fixed six defects; four accepted edges). R-34 verified through the real web container (1.5/5/10 MiB `201`, 12 MiB `413`). First restore drill of a set that contains note history. |
 | 2026-11-04 | P0-4 / SYNC-07 Windows | First GitHub Actions runs: R-61 (npm audit finding in dev tooling, owner decision) and R-62 (CI-only environment differences, fixed) added; R-36 updated with the hosted-Windows-runner results (build, per-user installer, signed update, headless checks, supply chain; admin/UAC/SmartScreen/AV/OneDrive/IME still the owner's). |
+| 2026-11-04 | M8-04 design (ADR-0068 PROPOSED) | R-63 to R-67 added (Android missed reminders, resident desktop app, clock/zone, duplicates/stale across devices, the hint channel); R-59 updated (resident app chosen as mitigation). Design only, nothing built. |
