@@ -160,7 +160,7 @@ fn wait_for(rx: &Receiver<(Instant, Event)>, needle: &str, since: Instant) -> Op
     while let Some(left) = deadline.checked_duration_since(Instant::now()) {
         match rx.recv_timeout(left) {
             Ok((t, ev)) => {
-                if ev.paths.iter().any(|p| p.to_string_lossy().ends_with(needle)) {
+                if ev.paths.iter().any(|p| p.to_string_lossy().replace('\\', "/").ends_with(needle)) {
                     return Some(ms(t.saturating_duration_since(since)));
                 }
             }
@@ -220,7 +220,7 @@ fn notes_watch(root: &Path) {
         match rx.recv_timeout(left.min(Duration::from_millis(700))) {
             Ok((t, ev)) => {
                 for p in ev.paths {
-                    let s = p.to_string_lossy().into_owned();
+                    let s = p.to_string_lossy().replace('\\', "/");
                     if (s.contains("/f05/") || s.contains("/f06/")) && s.ends_with(".md") {
                         seen.insert(s);
                         last = ms(t.saturating_duration_since(t0));
@@ -253,7 +253,7 @@ fn notes_watch(root: &Path) {
         }
     }
     rows.push(json!({"scenario":"own atomic write (temp+rename)","events_total":total,"events_after_name_filter":after_filter,"reconcile_actions_after_hash_check":reconcile_actions,"scan_sees_new_file":notes::diff(&before,&notes::scan(&root)).added.len()}));
-    println!("{}", json!({"check":"S3.watch","files":2000,"scan_2000_files_size_mtime_ms":scan_ms,"snapshot_len":snapshot.len(),"rows":rows,"backend":"notify RecommendedWatcher (inotify)"}));
+    println!("{}", json!({"check":"S3.watch","files":2000,"scan_2000_files_size_mtime_ms":scan_ms,"snapshot_len":snapshot.len(),"rows":rows,"backend":format!("notify RecommendedWatcher ({})", if cfg!(windows) { "ReadDirectoryChangesW" } else { "inotify" })}));
     drop(w);
 
     // Watcher missed events: stop watching, change things, a scan must find every change.
