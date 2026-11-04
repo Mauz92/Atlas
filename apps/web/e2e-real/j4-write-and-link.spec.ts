@@ -50,6 +50,11 @@ test("J4: [[ autocomplete, task from a line, project and backlinks, rename and u
   await page.keyboard.type("[[seed");
   const option = page.getByRole("option", { name: /j4\/seed-list/ });
   await expect(option).toBeVisible();
+  // CodeMirror ignores accept keys for `interactionDelay` (default 75 ms) after the list opens, so a fast
+  // runner that presses Enter at once gets a plain newline instead of the completion (seen on the first CI
+  // run). Wait past that documented delay; the product keeps the default so a keystroke meant for the text
+  // cannot accept a suggestion by accident.
+  await page.waitForTimeout(200);
   await page.keyboard.press("Enter");
   await expect(editor).toContainText("See: [[j4/seed-list]]");
 
