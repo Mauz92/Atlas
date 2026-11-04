@@ -438,7 +438,29 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   **Found again by the note simulation (seed 109, 700 steps, SYNC-04):** the same applies to a *delete* acknowledgement (a `204`
   replayed after another device revived the entity by an edit and this client already pulled that): the tombstone is the user's
   intent but the entity must be queued for a re-read, or the client keeps a deleted copy of a live entity. The model client does
-  that now for every kind. **Status:** Mitigating (client work).
+  that now for every kind. **SYNC-08:** implemented in `packages/sync-core` (`entities.ts` `applyAck`/`applyDeleteAck`/
+  `applyTombstone`, re-read in `commitPage`) and proven by the TS simulation: the planted defect `trustAckState` is caught
+  (`cursor_safety`), the honest core passes the model soak and the real-API runs. **Status:** Mitigated in the shared client core;
+  the web app's own engine does not send writes in sync mode, so it does not need it (R-54).
+
+### R-54 - The web app still runs its M7 engine, not `sync-core`
+- **Severity/Likelihood:** Low / High (a known, deliberate gap)
+- **Description:** `apps/web/src/lib/syncEngine.ts` and `offlineQueue.ts` speak the legacy protocol (no `Atlas-Sync`; a stale `409` keeps
+  the operation in the queue as `conflict`) and the UI (`SyncStatusPanel`, `useConflictResolution`) depends on that. No production code
+  enqueues into it. Moving it to sync mode changes what a user sees on a conflict, which is the product decision of SYNC-11.
+- **Mitigation:** `packages/sync-core/src/adapters` (`KeyValueLocalStore`, `createFetchTransport`, `legacyQueueSnapshot`) are the
+  incremental path; nothing in the web app was changed except test/lint/typecheck wiring. **Status:** Open (SYNC-11 / SYNC-09 consume the core).
+
+### R-55 - Properties of `sync-core` the simulation does not prove
+- **Severity/Likelihood:** Medium / Low
+- **Description:** (a) Three planted defects were not caught even at 250 seeds x 300 steps x 4 clients: server `notesConflictNotStored`
+  (needs a lost answer to a conflicting save), server `undoRevivesDeleted`, client `applyStaleRevisions` (a single-request client never
+  receives an older state than it holds, so the guard is defence in depth). (b) A chained operation whose predecessor was merged over foreign
+  changes falls back to the user's base and may report a conflict with the user's own earlier edit (noise, no loss). (c) Several
+  entities in flight at once, crash points inside a single transaction (only before commit), history pruning, `types_synced` backfill and
+  a real SQLite/Android store are not exercised. (d) Restore (`confirmRestore`) is covered by a 6-seed scenario and a unit test, not by
+  the random schedule.
+- **Mitigation:** listed in `TESTING.md` 10.0e; SYNC-09/10 re-run the harness over their stores. **Status:** Open.
 
 ### R-41 - Automatic resolutions exist only in the response until SYNC-05
 - **Severity/Likelihood:** Medium / Medium
@@ -627,6 +649,7 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 | 2026-11-03 | SYNC-03 | R-37 mitigated (row lock before the revision check on tasks, projects, notes; lock order documented; tests). R-34 fixed in the shipped nginx config with a static and a live-container test; JSON-escaping worst case recorded. Reconcile now removes a note exactly like `NotesService.delete` (project links dropped and announced). New findings, all fixed: reconcile-vs-edit lock order, task-into-deleted-project race, `FOR UPDATE` vs foreign-key deadlock, nginx 6m too small for escaped notes (now 11m). Harness: model-sim seed 482 was a missing client rule (an acknowledgement, possibly a replay, is a historical snapshot), not a server flaw; fixed in the model client, protocol rule recorded in `SYNC_PROTOCOL.md` section 8.1. |
 | 2026-11-03 | SYNC-02 | R-37 added: concurrent PATCHes with one `base_revision` both succeed (lost update). Also learned: a retried request must be byte-identical including `base_revision`, because the server fingerprints the whole body; a client that re-reads the base revision on retry gets `409` on its own key. The production `fullResync` hook is still not supplied (model client implements it by listing). |
 | 2026-11-03 | SYNC-01 | R-34 verified as a real defect (shipped nginx rejects bodies above 1 MiB with `413`; fix proposed, not applied). R-32 ordering proven by a concurrency test. R-30: server side of `cursor_ahead` delivered. New finding: `NotesReconciler` tombstones a removed note but, unlike `NotesService.delete`, does not drop its `note_projects` rows or announce the link removal (pre-existing; recorded in `ROADMAP.md` SYNC-03 scope, not changed in SYNC-01). |
+| 2026-11-04 | SYNC-08 (`sync-core`) | R-40 mitigated in the shared client core; R-54 (web app stays on the M7 engine) and R-55 (what the TS simulation does not prove) added. |
 | 2026-11-03 | SYNC-04 (note history and merge) | R-42 closed (server side); R-28 and R-40 updated (the note simulation found that a replayed *delete* acknowledgement needs the same re-read rule as a create, seed 109); R-44 (history keeps overwritten and deleted text; disk) and R-45 (conservative merge, conflict-copy volume) added. |
 | 2026-11-03 | SYNC-03 (protocol v1) | R-38 (snapshot walk vs floor, sim seed 29) found and closed; R-39 (restore regrowth, `epoch`), R-40 (late ack vs tombstone, sim seed 681), R-41 (resolutions response-only until SYNC-05), R-42 (notes not merge/delete-safe until SYNC-04), R-43 (idempotency purge scan) added. R-28, R-29, R-30, R-31 moved to Mitigating (server side). |
 | 2026-11-03 | SYNC-05 (resolution log) | R-41 closed on the server; R-47 (log keeps overwritten simple values 90 days) and R-48 (strict undo is often refused on busy fields) added; R-28 updated. Found and fixed: a retried refused note `DELETE` replayed status `0` (key committed without its answer, SYNC-04 code). The conformance traces found two model/real disagreements (`kept_revision` of revive and collision, `detail` of `path_later_wins`), fixed on both sides. |

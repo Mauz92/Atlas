@@ -28,7 +28,24 @@ SYNC-03; **[PLANNED]** specified, owned by a later task; **[UNVERIFIED]** not ch
 | §9 resolution log, `resolution` feed entity, list, undo | **[DONE]** SYNC-05 | ADR-0061; table `sync_resolutions`; refused deletes are not logged (nothing was written); `device_id` is filled from SYNC-06 on (`NULL` for a browser session) |
 | §10.1 devices | **[DONE]** SYNC-06 | ADR-0065; table `devices`; per-device rate limits are 600 requests and 120 writes a minute; the feed-page (60/min) and snapshot-start (10/hour) limits of §8.3 are **not built** (R-53) |
 | §10.2 versioning: `Atlas-Sync`, `426`, `GET /api/instance` `sync` block, `Atlas-Epoch` | **[DONE]** | |
-| §11 desktop folder rules | client obligations, **[PLANNED]** SYNC-09 | |
+| §11 desktop folder rules | client obligations, **[PLANNED]** SYNC-09 | portable-path check is in `sync-core` (`portable.ts`); the folder watcher/scanner is SYNC-09 |
+
+### Client implementation status (`packages/sync-core`, SYNC-08, 2026-11-04)
+
+| Section | Client | Notes |
+|---|---|---|
+| §4 pull: pages, `include=data`, `types=`, atomic page+cursor, `snapshot=true` continuation | **[DONE]** | page and cursor commit in one transaction (`engine.ts` `commitPage`) |
+| §6.1 sync mode: header, idempotency key from enqueue, frozen base, byte-identical retries, client ids | **[DONE]** | |
+| §6.2 task/project: coalescing, chained bases, `409 conflict` and `sync.conflicts` kept as `Problem` data (both versions) | **[DONE]** | field-level overlay in `view.ts`; unsent patches advance their base when no touched field changed |
+| §6.3 notes: pinned working copy, `base_hash`, merged/conflict-copy answers, rebase of text typed in flight, portable-path check | **[DONE]** | history reads (`GET .../history`) are not used by the core (the simulation reads them) |
+| §7.3 `below_floor` shadow resync | **[DONE]** | entities with pending edits are kept (rule 4) |
+| §7.4 `cursor_ahead` / `epoch_mismatch` | **[DONE]** as a state + `confirmRestore()` | never automatic; re-creates lost entities with their ids |
+| §7.5 storm control | **[DONE]** | `resyncMinIntervalMs` (default 10 min) |
+| §8.1 status mapping: 426, 401/403, 429 + `Retry-After`, 5xx/network, 409 family | **[DONE]** | 426/401/restore are stored halts |
+| §8.2 backoff | **[DONE]** | base 2 s, factor 2, cap 5 min, full jitter |
+| §9 notices and undo | **[DONE]** | notices stored from the `resolution` feed entity; `undoResolution()`; UI is SYNC-11 |
+| §10.2 versioning: `Atlas-Sync`, epoch learned from `GET /api/instance`, `Atlas-Epoch` header | **[DONE]** | `types_synced` backfill for a new entity type is **[PLANNED]** |
+| §10.1 device token handling, HTTPS-only | token via `Credentials` port; HTTPS-only in `createFetchTransport` | keystore and sign-in screen: SYNC-09 |
 
 ---
 

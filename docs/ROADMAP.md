@@ -1016,11 +1016,22 @@ none is `DONE` until its tests ran. WIP limit: one task at a time except the spi
 | SYNC-05 | Resolution log, feed entity and undo | SYNC-03, ADR-0059 D7 | `DONE` (2026-11-03, local, 7 sub-steps 05a-05g all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-05; ADR-0061) |
 | SYNC-06 | Device credentials: table, bearer auth, rotation, revoke, Settings → Devices | SYNC-03, ADR-0059 D8; AUTH-01 consumes the revoke function | `DONE` (2026-11-03, local, 8 sub-steps 06a-06h all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-06; ADR-0065) |
 | SYNC-07 | Tauri 2 spike (Linux, Windows, Android) and Electron-fallback decision | — (hardware: Windows machine, Android device) | `READY` for Linux; Windows/Android `BLOCKED` on hardware |
-| SYNC-08 | `packages/sync-core`: framework-free TS client core (queue, pull/apply, rebase, backoff, conflict states) over a `LocalStore` interface; web IndexedDB adapter keeps M7 behaviour | SYNC-03, SYNC-02 | `BACKLOG` |
+| SYNC-08 | `packages/sync-core`: framework-free TS client core (queue, pull/apply, rebase, backoff, conflict states) over a `LocalStore` interface; web adapters keep M7 behaviour | SYNC-03, SYNC-02 | `DONE` for the core, simulation and adapters (2026-11-04, local, not committed, CI not run; evidence `ACCEPTANCE.md` SYNC-08; ADR-0066). **Not done:** migrating `apps/web/src/lib/syncEngine.ts` to the core (deliberately, R-54) |
 | SYNC-09 | Desktop client: Tauri shell, SQLite store, notes-folder engine, keystore, device sign-in | SYNC-04, SYNC-05, SYNC-06, SYNC-07 pass, SYNC-08 | `BACKLOG` |
 | SYNC-10 | Android client (or PWA fallback per A-09) with background sync | SYNC-09, SYNC-07 Android pass | `BACKLOG` |
 | SYNC-11 | Conflict and "changed on another device" UI (text-conflict resolver, undo, devices list) | SYNC-05, SYNC-08 | `BACKLOG` |
 | SYNC-12 | Release gate: real-device matrix, backup/restore with devices attached, docs (USER_GUIDE, OPERATIONS) | SYNC-09, SYNC-11 | `BACKLOG` |
+
+### SYNC-08 — `packages/sync-core` (`DONE` locally 2026-11-04)
+- **Plan (written first).** (1) Ports and types; (2) store with real transactions + in-memory store; (3) apply rules (R-40); (4) engine: FIFO
+  push with frozen bases and chained bases, pull with atomic page+cursor, snapshot/restore, halts (426, 401, epoch); (5) notes: pinned
+  working copy, rebase; (6) notices/undo/status; (7) unit tests; (8) TS model server (port of `tests/sim/model*.py`), fault network,
+  invariants, planted defects; (9) real-API conformance; (10) adapters; (11) wiring into the existing vitest/eslint/tsc; (12) docs.
+- **Scope kept out:** web UI change, desktop/Android stores, conflict UI (SYNC-11), concurrency across entities, `types_synced` backfill.
+- **Web app:** left on the M7 engine; exact reasons in ADR-0066 point 8 and R-54. What remains: SYNC-11 decides the conflict UX, then
+  `KeyValueLocalStore` + `createFetchTransport` + `legacyQueueSnapshot` are the incremental path.
+- **Wiring:** `apps/web/vite.config.ts` projects `web`/`sync-core`/`sync-core-real`; `tsconfig.json` includes the package; the web
+  `lint` script also lints the package. `scripts/verify.sh` is unchanged and picks the tests up through `npm run test`.
 
 ### SYNC-01 — Feed correctness fixes
 - **Problem.** (a) `NotesReconciler` changes revisions/tombstones without recording feed changes; (b) a client whose cursor

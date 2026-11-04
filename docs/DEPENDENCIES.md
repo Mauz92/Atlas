@@ -171,3 +171,9 @@ vulnerabilities"), and `npm audit --audit-level=high` on a scratch project pinne
 - M9-04 scan (2026-10-27): `pip-audit` → 0 advisories over 91 packages; `npm audit` → 0 advisories
   over 370 packages. Exact commands and evidence in `ACCEPTANCE.md` M9-04; the recurring risk is
   tracked as `RISKS.md` R-17.
+
+
+## packages/sync-core (SYNC-08, 2026-11-04)
+
+No runtime or new dev dependency. Tests, type check and lint use the web app's existing `vitest`, `typescript` and `eslint` (all
+already in `apps/web/package.json`). `node:` modules are used only under `sim/` (test code).

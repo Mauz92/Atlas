@@ -3353,3 +3353,37 @@ meaning for the browser, so no existing endpoint's behaviour changed. Rollback: 
 again) and clears `sync_resolutions.device_id`. **Not decided here:** HTTPS-only enforcement for native clients (client side,
 SYNC-09; the server is behind the operator's TLS), the keystore mechanism per platform (SYNC-07), a pairing flow, per-endpoint
 token scopes finer than "sync", reuse detection on rotation (R-52).
+
+## ADR-0066 — `packages/sync-core`: a tick-driven client core over injected ports (SYNC-08)
+
+**Status:** ACCEPTED as the implementation of ADR-0055/0059/0060/0061/0065 on the client (2026-11-04, local, not committed, CI not
+run). Contract: `SYNC_PROTOCOL.md`; evidence: `ACCEPTANCE.md` SYNC-08; risks R-40 (now implemented), R-54, R-55.
+
+1. **One package, no dependencies, ports for everything.** `packages/sync-core` imports nothing from React, the DOM or a runtime. The
+   host supplies `Transport`, `LocalStore`, `Clock`, `Random`, `IdGenerator`, `Logger`. The monotonic clock times backoff and request
+   deadlines; the wall clock is display only, so no decision depends on a device clock (D11). Tests run in plain node.
+2. **Tick-driven.** `tick()` starts at most one request and returns; the host decides when to call it (timer, focus, network
+   change). One request in flight per client, strict FIFO, hence one per entity (concurrency across entities is a later optimisation,
+   not needed by any measured case). The same engine runs on virtual time in the simulation and on real timers in a host.
+3. **Durable vs volatile** as in the Python model clients: queue (idempotency key from enqueue, base frozen at the first send), mirror,
+   drafts, notices, cursor, epoch and halt are in the `LocalStore`; the request in flight, a half-done pull and timers are not. A
+   page and its cursor commit in **one** transaction; a halt is stored before it is believed.
+4. **Acknowledgements are historical** (R-40): they fill a gap, never overwrite newer or tombstoned state, and the entity is read
+   again at the next pull; a delete acknowledgement is re-read too; a tombstone is remembered for an id never held.
+5. **Chained bases.** An operation queued behind an unacknowledged one of the same entity takes its base from the predecessor's
+   answer when that answer is exactly `base + 1` (nobody else wrote in between); otherwise it keeps the revision the user saw (the
+   server may then report a conflict with the user's own earlier edit: noise, never loss).
+6. **Notes keep a pinned working copy** (`NoteDraft`): text, the revision/hash it derives from, and the text of the save in flight.
+   Text typed while a save is in flight is rebased with the client's `merge3` onto the answer; if that is not clean, the text is kept as a
+   `Problem` (`mineLatestText`) and the server's text is shown. A rejected save keeps its text and the server's conflict copy pointer.
+7. **Restore is never automatic** (D12): `epoch_mismatch` and `cursor_ahead` stop the engine in `restore_confirmation`; after
+   `confirmRestore()` it walks a snapshot, adopts the server's state also where its revisions are lower, and re-creates what the
+   server lost with the same ids (7.4). `below_floor` is a non-destructive shadow resync (7.3). 426 and 401 are halts, stored.
+8. **The web app stays on the M7 code** (R-54). Its engine speaks the legacy (non-sync-mode) protocol with an operation-keeps-
+   `conflict`-status contract used by `useConflictResolution`/`SyncStatusPanel`; no production code enqueues into it (ROADMAP). Moving
+   it to sync mode changes user-visible conflict behaviour (field merge instead of a 409 per revision), which is a product decision
+   (SYNC-11), not a refactor. `adapters/` give it the pieces it needs (`KeyValueLocalStore`, `legacyQueueSnapshot`).
+9. **Test infrastructure choices.** Tests run through `apps/web`'s vitest (projects `web`, `sync-core`, `sync-core-real`), lint and
+   tsc, so `./scripts/verify.sh` picks them up unchanged. The real-API conformance is opt-in (it needs the virtualenv, PostgreSQL and a
+   container), with a wrapper `sim/real/serve.py` that only lifts the per-device rate limits for the run. Planted client defects live
+   in the engine behind `options.plantedBugs` (default off), as in the Python model clients.

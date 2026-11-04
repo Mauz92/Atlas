@@ -1,3 +1,15 @@
+- **SYNC-08 (`packages/sync-core`) is `DONE` locally (2026-11-04, not committed, CI not run).** Framework-free TS client core with ports,
+  in-memory store, adapters and a TS simulation (model server + real-API conformance). Evidence `docs/ACCEPTANCE.md` SYNC-08, decisions
+  ADR-0066, risks R-40 (mitigated), R-54, R-55, status table `docs/SYNC_PROTOCOL.md` ("Client implementation status"). Verification:
+  `./scripts/verify.sh` PASS (pytest 4251, vitest 1016), model soak 150x250 PASS, real API 8 seeds PASS, `test:e2e:real` 71, `e2e` 7.
+  **Web app NOT migrated** (R-54). Not caught by the planted-defect checks: 3 (R-55). Wiring: `apps/web` `vite.config.ts` projects,
+  `tsconfig.json` include, `lint` script; `scripts/verify.sh` untouched. Commands: `packages/sync-core/README.md`.
+  **Next:** SYNC-07 (Tauri spike) or SYNC-09/11 (they consume the core), then AUTH-01.
+
+---
+
+## Previous state (before SYNC-08)
+
 - **SYNC-06 (device credentials) is `DONE` locally (2026-11-04, not committed, CI not run).** Eight verified sub-steps 06a-06h
   (`docs/ROADMAP.md` SYNC-06, evidence `docs/ACCEPTANCE.md` SYNC-06, decisions **ADR-0065**, contract `docs/SYNC_PROTOCOL.md` 10.1,
   data `docs/DATA_MODEL.md` `Device`, threats `docs/SECURITY.md` T13/T17/T22-T24, risks R-35 (narrowed), R-52, R-53).

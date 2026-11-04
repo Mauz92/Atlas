@@ -15,12 +15,45 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "jsdom",
-    globals: true,
-    setupFiles: "./src/test/setup.ts",
-    css: false,
-    env: { NODE_ENV: "test" },
-    // The Playwright E2E specs live in `e2e/` and must not be picked up by Vitest (M7-06).
-    exclude: [...configDefaults.exclude, "e2e/**", "e2e-real/**"],
+    // Two projects: the web app (jsdom) and the framework-free sync core (plain node, so a
+    // stray `window`/`document` in `packages/sync-core` fails there instead of passing in jsdom).
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "web",
+          environment: "jsdom",
+          globals: true,
+          setupFiles: "./src/test/setup.ts",
+          css: false,
+          env: { NODE_ENV: "test" },
+          // The Playwright E2E specs live in `e2e/` and must not be picked up by Vitest (M7-06).
+          exclude: [...configDefaults.exclude, "e2e/**", "e2e-real/**"],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "sync-core",
+          environment: "node",
+          globals: true,
+          include: ["../../packages/sync-core/{src,sim}/**/*.test.ts"],
+          exclude: [...configDefaults.exclude, "../../packages/sync-core/sim/real/**"],
+          testTimeout: 60_000,
+        },
+      },
+      {
+        // Opt-in conformance run against the real API (`ATLAS_SYNC_REAL=1`; its tests skip otherwise).
+        extends: true,
+        test: {
+          name: "sync-core-real",
+          environment: "node",
+          globals: true,
+          include: ["../../packages/sync-core/sim/real/**/*.test.ts"],
+          testTimeout: 600_000,
+          hookTimeout: 120_000,
+        },
+      },
+    ],
   },
 });

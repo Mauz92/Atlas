@@ -538,6 +538,31 @@ rename and sign out from Settings, immediate `token_revoked`; the Devices sectio
 list, rename, confirm and sign-out-all states, 44 px targets and no clipping); `ux08` and `ux11` sweeps include the new section.
 Unit (vitest): `DevicesSection.test.tsx`, the password-change flag in `Settings.test.tsx`.
 
+#### 10.0e The TypeScript client core (SYNC-08)
+
+Location `packages/sync-core/` (`src/*.test.ts` unit tests, `sim/` simulation). The simulation runs the **real** `sync-core` (not a
+model of it) in N clients over `MemoryStore`, with a seeded virtual-time schedule, against (a) a TS model server (`sim/model/`, a port of
+`tests/sim/model*.py`: sync mode, field merge, edit-wins, feed/snapshot/floor, notes with history, `merge3`, conflict copies, resolution
+log and undo, epoch, device revocation) and (b) the real API (`sim/real/`, opt-in). Faults: drop request, drop response after apply,
+duplicate, delay/reorder, 5xx after apply, offline periods, client restart losing volatile state, a transaction lost before commit
+(`MemoryStore.crashBeforeCommit`), jumping clock skew (sent as `X-Client-Time`, which must not matter), feed purge, late joiner,
+unsupported protocol client, revoked device, server restore. Invariants (`sim/invariants.ts`): convergence, no acknowledged loss, no
+duplicates, no resurrection except edit-wins, cursor safety, revision identifies state, byte-identical retries/key stability, exactly-once
+(model), no silent text/note loss (every typed line is somewhere or was removed by an edit), conflict copy holds the losing text, unique and
+portable paths, resolution logged once / no log without write / log has no text / undo once / undo never overwrites newer / notices
+converge, stop on 426, stop on revoked and never served, log lines carry no content, idempotence, bounded work, clock independence.
+
+| Command | Effect |
+|---|---|
+| `cd apps/web && npm run test` | everything above at default size (12 seeds per scenario, 120 steps) plus 34 planted-defect tests |
+| `ATLAS_SYNC_SEEDS=150 ATLAS_SYNC_STEPS=250 npx vitest run --project sync-core model.sim` | model soak |
+| `ATLAS_SYNC_SEED=<n> ...` | one seed |
+| `ATLAS_SYNC_REAL=1 ATLAS_SYNC_REAL_SEEDS=8 ATLAS_SYNC_STEPS=150 npx vitest run --project sync-core-real` | real API on a throwaway `atlas_e2e_*` database: conformance scenario (model vs real outcomes equal), seeds, revocation |
+
+Planted defects (`sim/planted.sim.test.ts`): 24 in the model server, 8 in the client core (`options.plantedBugs`), each must trip the named
+invariant, and a failure reproduces from its seed. **Not caught** at 250 seeds x 300 steps x 4 clients: server `notesConflictNotStored`,
+server `undoRevivesDeleted`, client `applyStaleRevisions` (RISKS R-55). Not exercised: see R-55.
+
 ### 10.1 Layers
 
 | Layer | What | Where | Runs |

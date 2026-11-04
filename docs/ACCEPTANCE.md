@@ -3831,3 +3831,22 @@ Local verification, 2026-11-03, uncommitted tree, CI not run. Isolated Compose p
 
 Not covered: a browser on a second device, a real tailnet or ACME name, behaviour across a Docker host reboot
 (`restart: unless-stopped` only), long-running disk growth, Windows/macOS Docker hosts.
+
+## SYNC-08 — `packages/sync-core` (2026-11-04, local, not committed, CI not run)
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Framework-free core (no React/DOM/window/fetch/localStorage/clock/timer/random globals) | PASS | `framework-free.test.ts` (8), ESLint `no-restricted-globals`, vitest `node` environment |
+| Queue, frozen bases, byte-identical retries, backoff/429/5xx, 426/401/epoch halts, atomic page+cursor, snapshot/below_floor, cursor_ahead restore state, gap-fill acks, tombstones, notes rebase, notices/undo, status | PASS | 108 vitest tests in project `sync-core` (unit + simulation), `npm run test` in `apps/web` |
+| Simulation on the TS model server | PASS | default 12 seeds x 120 steps per scenario; soak `ATLAS_SYNC_SEEDS=150 ATLAS_SYNC_STEPS=250` 9 tests PASS (219 s) |
+| Simulation on the real API | PASS | `ATLAS_SYNC_REAL=1 ATLAS_SYNC_REAL_SEEDS=8 ATLAS_SYNC_STEPS=150`: 3 tests PASS (38 s; conformance scenario model == real, 8 seeds, revocation); throwaway `atlas_e2e_*` DBs, none left |
+| Planted defects fail the named invariant, reproducible from the seed | PASS for 32; **3 NOT caught** (R-55) | `planted.sim.test.ts` |
+| `./scripts/verify.sh` | PASS | pytest 4251 passed / 14 skipped, vitest 1016 passed / 3 skipped (1 file skipped = opt-in real run), lint, typecheck; script unchanged |
+| `npm run test:e2e:real` / `npm run e2e` (web config touched) | PASS | 71 passed / 7 passed |
+| Web app migrated to the core | **NOT DONE (deliberate)** | ADR-0066 point 8, R-54 |
+| Server bugs found | none | the real-API runs and the conformance scenario found no divergence |
+
+Client bugs the simulation found while building it (all fixed): a user edit allowed in the view of a tombstoned note was refused by the
+mirror check (view and check now share `materialise`); a halt was believed before it was stored (a lost transaction left the engine
+halted without a durable halt); `cursor_safety` had to excuse a local create whose id the feed deleted (placeholder without server state).
+NOT RUN: SQLite/Android stores, concurrent entities in flight, real devices.
