@@ -214,5 +214,29 @@ which fetches `https://static.rust-lang.org/rustup`; `--profile minimal --no-mod
 
 Licence summary of the 577 crates: ~351 `Apache-2.0 OR MIT`, 127 `MIT`, 24 `Apache-2.0 OR MIT OR Zlib`, 18 `Unicode-3.0`, 11 `MIT OR Unlicense`, **5 `MPL-2.0`** (`cssparser`,
 `cssparser-macros`, `dtoa-short`, `option-ext`, `selectors`: file-level copyleft, unmodified use, no distribution obligation beyond keeping the notices), 2 `CDLA-Permissive-2.0`
-(`webpki-roots`, `webpki-root-certs`), 2 `Apache-2.0 OR LGPL-2.1-or-later OR MIT` (`r-efi`: LGPL is an alternative, MIT chosen); the rest are BSD/ISC/Zlib/CC0 variants. Windows and Android
-dependency graphs were **not** checked (`SYNC_PROTOCOL.md` 13.3, 13.4). External services: none (the local update server and API never left `127.0.0.1`).
+(`webpki-roots`, `webpki-root-certs`), 2 `Apache-2.0 OR LGPL-2.1-or-later OR MIT` (`r-efi`: LGPL is an alternative, MIT chosen); the rest are BSD/ISC/Zlib/CC0 variants. The Windows graph was checked later (below); the Android graph was **not** (`SYNC_PROTOCOL.md` 13.4). External services: none for the Linux runs (the local update server and API never left `127.0.0.1`).
+
+### SYNC-07 Windows runner (`.github/workflows/windows-spike.yml`, 2026-11-04): actions, tools, Windows graph
+
+Manual only (`workflow_dispatch`), throwaway, no repository secrets. **GitHub Actions pinned to commit SHAs** (each tag resolved with `gh api repos/<owner>/<repo>/git/ref/tags/<tag>`, annotated tags dereferenced; newer
+releases exist and were deliberately not taken: they were not needed and the pins are re-verified per release, see `SECURITY.md` supply chain):
+
+| Action | Pin | Released | Licence | Purpose |
+|---|---|---|---|---|
+| `actions/checkout` | `v4.2.2` = `11bd71901bbe5b1630ceea73d27597364c9af683` | 2024-10 | MIT | source (same major as `ci.yml`, which still uses the floating `@v4`) |
+| `actions/setup-node` | `v4.4.0` = `49933ea5288caeca8642d1e84afbd3f7d6820020` | 2025-04 | MIT | Node 22 |
+| `Swatinem/rust-cache` | `v2.8.0` = `98c8021b550208e191a6a3145459bfc9fb29c4c0` | 2025-06-25 | LGPL-3.0 (an Action used as a service in a workflow; it is not linked into or shipped with any build output) | caches `~/.cargo` and `spikes/tauri/target` (the 13 minute cold build becomes about 3 minutes warm) |
+| `actions/upload-artifact` | `v4.6.2` = `ea165f8d65b6e75b540449e92b4886f43607fa02` | 2025-03 | MIT | installers, results |
+
+Rust is installed with the runner's own `rustup` (`rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc`; 1.99.1 on the first runs), not a third-party action. The runner image
+(`windows-latest` = `win25-vs2026`, image 20261030.294.1, Windows Server 2025) provides MSVC, Node and WebView2 (runtime 156.0.4314.50). `tauri build` downloads NSIS and the WebView2 bootstrapper
+tooling from GitHub/Microsoft at build time (unpinned downloads in the Tauri CLI; fine for a spike, pin before any release build). `cargo-audit` 0.22.2 and `cargo-license` 0.7.0 are
+`cargo install --locked` on an `ubuntu-latest` job (they work from the lockfile and `cargo metadata --filter-platform x86_64-pc-windows-msvc`, no Windows host needed). One crate change in the spike:
+`keyring` gets the `windows-native` feature on `cfg(windows)` (without a platform feature `keyring` 3 falls back to a **mock** store, which would have faked the S4 result).
+
+**Windows graph (`cargo license --filter-platform x86_64-pc-windows-msvc`, 329 packages):** `Apache-2.0 OR MIT` 203, `MIT` 63, `Unicode-3.0` 18, `MIT OR Unlicense` 10, `Apache-2.0 OR MIT OR Zlib` 6,
+**`MPL-2.0` 5** (the same five as Linux), `Apache-2.0` 2 (`tao`, `sync_wrapper`), `BSD-3-Clause`, `ISC`, `Zlib`, `CC0-1.0` (`notify`), `CDLA-Permissive-2.0` (`webpki-roots`) and the rest permissive; **no GPL, AGPL or LGPL in the
+Windows graph.** New Windows-only crates over Linux: `windows` 0.6x family, `windows-sys` (two versions), `webview2-com*` (MIT), `tauri-winres`, `embed-resource`, `winreg`, `tauri-winrt-notification`, `static_vcruntime`,
+`windows-registry`, `windows-version`, `windows-threading`. `cargo audit` on the lockfile: **0 vulnerabilities**; 8 warnings (7 unmaintained, 1 unsound) which are the same eight as Linux (`proc-macro-error`, `zbus_names` x2,
+`zvariant` x2, `zvariant_derive` x2 (RUSTSEC-2026-0370/0371/0372), `glib` RUSTSEC-2024-0429); **none of those crates is in the Windows dependency graph** (checked: absent from the 329-package license list), so the
+Windows target has no advisory warning. Raw outputs: artifact `atlas-spike-windows-supply-chain` of the runs in `ACCEPTANCE.md` SYNC-07.

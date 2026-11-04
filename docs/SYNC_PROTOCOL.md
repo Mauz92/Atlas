@@ -584,7 +584,7 @@ Whether the batch endpoint is ever needed; pairing-code
 flow; Android notes storage location (D10); calendar projection on devices; whether the web app opts into
 sync mode to benefit from field merge; the restore notice UX (D12). All are tracked in ADR-0059 or the SYNC tasks.
 
-## 13. Tauri 2 spike (SYNC-07): results (Linux part, 2026-11-04; Windows and Android not run)
+## 13. Tauri 2 spike (SYNC-07): results (Linux part, 2026-11-04; GitHub-hosted Windows runner results in 13.3a; the owner's Windows machine and Android not run)
 
 Code and raw outputs: `spikes/tauri/` (README, scripts, `results/`); it is outside every workspace and is not run by `./scripts/verify.sh`,
 `npm run lint`, `vitest` or CI. Numbering follows the plan in `ROADMAP.md` (S1-S10); the extra checks asked for on this run are X1
@@ -649,6 +649,10 @@ as the rollback; decide `synchronous=FULL` vs `NORMAL` (0.71 vs 0.16 ms per page
 Goal: S1, S2, S3, S4, S5, S6, S7, S9, S10 and X1 on Windows 10/11 x64. Record Windows build, WebView2 version, and whether the account
 is a standard user. Do **not** run this against real data: use the throwaway stack from the Linux machine.
 
+**Shortcut since 13.3a: nothing needs to be built on the work laptop.** A GitHub-hosted runner already builds the per-user installers v0.1.0 and v0.2.0 and the signed update set; download
+them (commands in 13.3a, "What the owner does") and start at step 6 (install as a standard user) and step 7 (X1, S9). Steps 1-2 (tools, code) and the headless parts of 4 are then only needed for S1 (the
+real Atlas UI in the shell) and for the OneDrive/Dropbox watcher repeat, which need the Rust toolchain or an extra build on a machine where one is allowed.
+
 1. **Tools.** Node 22+; Rust via `rustup-init.exe` (default MSVC toolchain needs "Visual Studio Build Tools, Desktop development with C++": installing it needs admin; if that is
    impossible on the work laptop, record it and use the personal Windows machine for S1-S6, the work laptop only for S7: install and run a *prebuilt* installer).
    WebView2: check `(Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}').pv`.
@@ -675,6 +679,67 @@ is a standard user. Do **not** run this against real data: use the throwaway sta
 **Cross-compiling from Linux only** (`cargo xwin build --target x86_64-pc-windows-msvc`, needs the Microsoft CRT/SDK download and its licence acceptance, and `nsis` for bundling: owner approval and `sudo`) would tell: whether
 every crate and plugin compiles for Windows (keyring's Credential Manager backend, notify's `ReadDirectoryChangesW`), the binary size, and the extra supply-chain surface. It would **not** tell anything about WebView2, Credential Manager, installation, UAC,
 the updater, watcher behaviour, antivirus or OneDrive, which is where the risk is; Wine does not stand in for them. Not attempted.
+
+### 13.3a Windows runner results (GitHub-hosted `windows-latest`, 2026-11-04, workflow `.github/workflows/windows-spike.yml`)
+
+**What this is.** A manual workflow (`gh workflow run windows-spike.yml --repo Mauz92/atlas`; never on push or pull request; no repository secrets) builds the spike on a hosted Windows runner (image `win25-vs2026`
+20261030.294.1, Windows Server 2025 build 26100, WebView2 runtime 156.0.4314.50, 2 vCPU, runner user `runneradmin` = **administrator**, UTC, en-US), generates a **fresh throwaway updater key pair per run**
+(the private key and its password stay on the runner and are never uploaded; the artifact holds the public key, the signed installers, the `.sig` files and prebuilt `latest.json` sets), builds
+the harness and the Tauri app twice (0.1.0 and 0.2.0) as a **per-user NSIS installer** (`installMode: currentUser`), installs 0.1.0, launches it and runs headless checks, then runs the three updater cases. Scripts:
+`spikes/tauri/scripts/windows/*.ps1`. First green run: [41808348307](https://github.com/Mauz92/atlas/actions/runs/41808348307) (all steps passed, one harness gap: watcher path separators); final run
+[41810645362](https://github.com/Mauz92/atlas/actions/runs/41810645362) (everything below unless stated). Two earlier runs failed on my own script bugs (a quoted registry path; run 41803343231, 41805706305), fixed in the repo.
+
+**What the hosted runner can and cannot prove.**
+
+| It proves | It does NOT prove (stays with the owner; the checklist above remains valid for these) |
+|---|---|
+| the spike (all crates, plugins, `keyring` with the Credential Manager backend, `notify` with `ReadDirectoryChangesW`, bundled SQLite) **compiles and links for `x86_64-pc-windows-msvc`** with Rust 1.99.1 | **standard-user, UAC-free install** on the owner's managed laptop: the runner user is an administrator, so "no prompt" is meaningless here. What it shows: the installer lands in `%LOCALAPPDATA%\Atlas Spike`, registers only under `HKCU` (no `HKLM` entry), and its manifest requests `asInvoker` (no elevation requested) |
+| a per-user NSIS installer is produced (3.0 MB), installs silently, uninstalls | **SmartScreen / "Windows protected your PC"** (binaries are unsigned; no Mark-of-the-Web on a runner-built file) |
+| the signed update flow works on Windows: valid accepted, tampered and wrong-key refused | **corporate AppLocker / WDAC / antivirus / EDR** behaviour, quarantine, proxy or policy blocking the WebView2 bootstrapper download |
+| headless behaviour: SQLite bench and kill test, keyring set/get/delete, scan, watcher, atomic write, ACL/capability refusals | **OneDrive / Dropbox** "files on demand", sync clients touching mtimes, folder redirection |
+| the app starts, the installed WebView2 renders the harness, single instance works | **IME** (CJK composition), real key input and caret keys, typing latency p95 in the real editor (S1.5), the J1-J7 journeys in WebView2, focus/DND behaviour of toasts |
+| supply chain for the Windows graph (`cargo audit`, `cargo license`) | memory over 10 minutes with 5 000 notes, cold start on a non-fresh profile, battery, sleep/resume |
+
+**Results (final run; durations are from this runner).**
+
+| # | Check | Result | Evidence |
+|---|---|---|---|
+| Build | `cargo build` + `tauri build` for MSVC | `PASS` | cold: core crate 2 min 34 s, 0.1.0 NSIS build 616 s, 0.2.0 172 s (cache of `Swatinem/rust-cache`); warm (final run): 183 s and 165 s. Bare `atlas-spike.exe` 8 028 160 bytes (8.0 MB; the Linux release binary was 10.0 MB). Installer **3 006 623 bytes (2.9 MiB)** vs the Linux AppImage 109.86 MiB: the WebView2 runtime is the OS's, not bundled |
+| S7 (partial) | per-user install | `PASS` for what a runner can show; standard-user UAC `NOT RUN` | `install.json`: exit 0 in 1.7 s, `HKCU` uninstall entry yes, `HKLM` entry no, install dir `C:\Users\runneradmin\AppData\Local\Atlas Spike` (under `%LOCALAPPDATA%`), 8.1 MB installed, manifest `requestedExecutionLevel = asInvoker`, version registered 0.1.0 |
+| S6 | signed update, three cases | `PASS` (all three cases behaved as required) | local `http://127.0.0.1:18777` server (`dangerousInsecureTransportProtocol`, spike only). **valid:** 0.1.0 -> installer ran passively, registry and exe `ProductVersion` read **0.2.0**; the app is ended by the installer so no `updater.json` is written (expected). **tampered** (one byte flipped after signing): `The signature verification failed`, stays 0.1.0. **signed by another key:** `The signature was created with a different key than the one provided`, stays 0.1.0. Not tested: update when the app is running as a standard user, SmartScreen on the downloaded installer, rollback |
+| S2 | SQLite | `PASS` | bundled SQLite 3.50.2. 50 000 rows in one transaction 76.5 ms (`synchronous=FULL`; Linux NVMe 42.8 ms); "apply 50-row page + cursor" 0.68 ms; single autocommit row 0.33 ms; indexed point query 0.07 ms. **Kill test: 100 `TerminateProcess` kills at random points (15-135 ms), 0 inconsistent states, cursor advanced in 100/100** (34 s). Via IPC in the app: `invoke` round trip p50 1.9 ms / p95 2.2 ms (1 000 calls), page apply p50 2.5 ms / p95 2.8 ms (200 pages) |
+| S3 | notes folder | `PASS` with a **defect found and fixed**, and limits | **Defect W1 (real, Windows-only):** `notes::atomic_write` ended with `File::open(dir).sync_all()`, which Windows refuses (`Access is denied. (os error 5)`) **after the rename had succeeded**, so every Atlas write would have reported failure and deleted its (already renamed) temp name. Found by the first run (`own_atomic_ok` failed, `notes-watch` panicked); fixed with `#[cfg(unix)]` (commit f584fc6); `own_atomic_ok` now `ok`. The consequence for SYNC-09: no directory fsync on Windows through `std`, durability of the rename after a power cut is whatever NTFS journals; document it. **Harness gap:** the watcher matcher compared `/` separators, fixed (25f8740). 2 000 files scanned in 3.1 ms, 5 000 in 7.2 ms, `ReadDirectoryChangesW` latency after the command (Git-Bash `sh`/`mv`/`touch`, local disk, quiet machine): create 30.5 ms, in-place append 26.9, temp+`mv` over 49.4, rename 34.7, delete 43.1, new folder+file 55.0 (about 25 ms slower than inotify; the `sh` start-up is inside these numbers); a 200-file bulk rewrite: **200/200 seen, last event 3 065 ms after the command** (the harness waits up to 3 s; treat as "events straggle, a rescan is still needed"); own atomic write produced 7 raw events, 4 after the name filter, 0 reconcile actions after the hash check. Rescan finds 4 added / 11 modified / 6 removed exactly (279 ms for the 2 000-file corpus incl. hashing); a same-size same-mtime edit is still **not** detected by size+mtime (same as Linux: hashes needed). `fsscope` suite: plugin reads before the grant refused, `..` traversal refused by Tauri ("Unsafe PathBuf"), sibling-prefix refused, symlink to outside and symlinked directory refused (symlinks were creatable on the runner), `own_scan` 4 files. **OneDrive/Dropbox: NOT RUN** (a runner has neither) |
+| S4 | keystore | `PASS` on a runner; locked-profile and roaming behaviour `NOT RUN` | Credential Manager via `keyring` `windows-native`: set 13.3 ms, get equals, exists, delete, gone afterwards; the app's own `keystore` suite: set/exists/delete ok, **`token_get` is not a command** ("not allowed by ACL"); nothing remained in `cmdkey /list` |
+| S5 | notifications | `PARTIAL` | the `notify` suite returned ok (the plugin call succeeded). A toast cannot be observed on a headless runner; whether it is shown, or suppressed by Focus Assist, `NOT RUN`. Scheduled-with-app-closed: unchanged (`FAIL` by design on desktop, R-59) |
+| X1 | single instance | `PASS` | second launch exited in **0.03 s** (code 0); exactly one `atlas-spike.exe` remained; the first instance received the second's argv (`--second-launch marker`) and cwd |
+| S9 | footprint | `PASS` start, memory `review` | **first launch after install: 7.5-10.6 s to the harness report** (WebView2 profile creation), then **1.1-2.0 s** for the next launches (Linux: 0.18-0.23 s to page JS; the Windows number includes process start, window creation and an IPC report, measured from outside, so not comparable one-to-one). Idle 30 s with the harness window: `atlas-spike.exe` 30 MB + six `msedgewebview2.exe` processes, **sum of working sets 316 MB** (working set double-counts shared pages; a runner has no GPU and the window may be unfocused; the checklist asks for 10 minutes with 5 000 notes). Installer 2.9 MiB |
+| S10 | supply chain, Windows graph | `PASS` | `cargo audit` 0 vulnerabilities, 8 warnings that are all outside the Windows graph; 329 packages, no GPL/AGPL/LGPL, 5 MPL-2.0 (details `DEPENDENCIES.md`). Artifact `atlas-spike-windows-supply-chain` |
+| S1 | the Atlas UI in WebView2 | `NOT RUN` | the harness page (probe) ran in WebView2 156 (`Chrome/156 Edg/156`, secure context `http://tauri.localhost`; every CSS/API feature in S1.1 reports present, including `:has()`, Popover, `dvh`, `color-mix`, `light-dark()`, subgrid, `inert`). That shows the feature probe, **not** the 20-step scenario against a running Atlas, IME or typing latency |
+
+**Verdict effect.** Windows has now cleared its **mechanical** part: the build works, a 2.9 MiB per-user installer exists, the signed update flow is correct, and the only Windows-specific code defect found (W1) was a one-line, cheaply fixed bug.
+The verdict in 13.2 stays **conditional**: the criteria that could trigger the Electron fallback (S6/S7 "unusable on the owner's work laptop": a UAC prompt, a policy block, WebView2 not installable, SmartScreen or AV
+blocking an unsigned binary) are exactly the ones a hosted administrator runner cannot test. Nothing here moves the decision towards Electron; nothing here removes the condition. No ADR changes.
+
+**What the owner does (about 20 minutes, on the work laptop, as the normal standard user; no build tools needed).**
+
+```sh
+gh run list --repo Mauz92/atlas --workflow windows-spike.yml --limit 5           # pick the latest green run id
+gh run download <id> --repo Mauz92/atlas -n TEST-ONLY-atlas-spike-windows-installers -D atlas-spike-win
+gh run download <id> --repo Mauz92/atlas -n atlas-spike-windows-results -D atlas-spike-win-results     # optional: the numbers above
+```
+
+In `atlas-spike-win` look for `v1\Atlas Spike_0.1.0_x64-setup.exe` (the installer, 3.0 MB), `v2\Atlas Spike_0.2.0_x64-setup.exe` (+ `.sig`), `updater-test-set\{valid,tampered,wrongkey}\latest.json` (each folder holds the
+0.2.0 installer; `latest.json` points at `http://127.0.0.1:18777/`), `updater-public-key.txt`, `update-server.mjs` and the `.ps1` scripts. The artifact is **TEST-ONLY**: signed by a key that existed only on that runner, binaries
+unsigned (expect SmartScreen), retention 14 days. Then (checklist steps 6-7): (1) **double-click the 0.1.0 installer as the standard user and write down every prompt** (UAC, SmartScreen, AV, "WebView2 is
+required"), the install folder (expect `%LOCALAPPDATA%\Atlas Spike`) and whether Start-menu shortcut and uninstall entry appear under your user; (2) start the app twice (X1), note the cold start with a stopwatch; (3) for the updater, install 0.1.0, then
+run `node update-server.mjs updater-test-set\valid 18777` (needs Node; or `python -m http.server 18777 --bind 127.0.0.1` inside that folder), set `SPIKE_SUITE=updater` and `SPIKE_OUT=C:\tmp\upd` in the same console and start the installed
+`atlas-spike.exe`: PASS = it ends, the version becomes 0.2.0 (Settings > Apps, or the exe's Details tab) with no elevation prompt; repeat for `tampered` and `wrongkey` after reinstalling 0.1.0 (expect it to stay 0.1.0). (4) Optional: the OneDrive/Dropbox
+watcher repeat needs `spike-headless.exe` (built by the workflow into `target\release`, not uploaded; ask for it to be added to the artifact if the work laptop may run it). A FAIL on (1) or (3) (admin needed, policy
+blocks the exe or the WebView2 download, AV quarantine) is the Electron trigger in 13.2.
+
+**Actions minutes used (private repository, so Windows minutes are billed at 2x).** Four manual Windows runs, windows-latest job time rounded up per job: 17 + 18 + 20 + 11 = **66 job minutes = about 132 billed minutes**
+(two of the runs failed on script bugs; the first build is cold, later ones use the cache); the four `ubuntu-latest` supply-chain jobs used about 11 more. Each future run costs about 11-12 Windows minutes (about 24 billed) with a warm cache, about 18-20
+(about 40 billed) cold, and the job is time-boxed (`timeout-minutes: 75`, 15 for each of the smoke and updater steps). The workflow is not triggered by push or pull request. The GitHub plan's included minutes are not visible to this account (the billing API needs the `user` token scope); on GitHub Free the allowance is 2 000 minutes per month.
 
 ### 13.4 Android checklist (owner's phone; two Android versions if possible; one with an aggressive vendor battery manager)
 
