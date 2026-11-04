@@ -45,7 +45,13 @@ pub fn atomic_write(root: &Path, rel: &str, content: &[u8]) -> Result<(), String
         f.write_all(content)?;
         f.sync_all()?;
         fs::rename(&tmp, &target)?;
-        File::open(dir)?.sync_all()
+        // POSIX: fsync the directory so the rename itself is durable. Windows cannot open a directory with
+        // File::open (os error 5, "Access is denied": found on the first Windows runner, after the rename had
+        // already succeeded, which made a good write report failure); std's rename there is MoveFileExW with
+        // MOVEFILE_REPLACE_EXISTING and no directory flush is available through std.
+        #[cfg(unix)]
+        File::open(dir)?.sync_all()?;
+        Ok(())
     })();
     if r.is_err() {
         let _ = fs::remove_file(&tmp);

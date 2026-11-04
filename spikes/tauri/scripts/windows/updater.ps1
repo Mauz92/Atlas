@@ -33,7 +33,7 @@ foreach ($case in 'valid', 'tampered', 'wrongkey') {
   Start-Sleep -Seconds 1
   $env:SPIKE_SUITE = 'updater'; $env:SPIKE_OUT = "$run\out"
   $sw = [Diagnostics.Stopwatch]::StartNew()
-  $app = Start-Process $inst.exe -PassThru
+  $app = Start-Process (Get-AtlasInstall).exe -PassThru
   $exited = $app.WaitForExit(150000)
   $appSecs = [math]::Round($sw.Elapsed.TotalSeconds, 1)
   Remove-Item Env:\SPIKE_SUITE, Env:\SPIKE_OUT

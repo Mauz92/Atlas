@@ -44,8 +44,9 @@ foreach ($s in 'ipc', 'keystore', 'fsscope', 'notify') { $res["suite_$s"] = Run-
 
 # Single instance (X1) + idle memory (S9)
 $si = "$Work\si"; Remove-Item -Recurse -Force $si -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force $si | Out-Null
-$env:SPIKE_OUT = $si; $env:SPIKE_DB = "$si\app.db"
+$env:SPIKE_SUITE = 'hold'; $env:SPIKE_OUT = $si; $env:SPIKE_DB = "$si\app.db"
 $first = Start-Process $exe -PassThru
+Remove-Item Env:\SPIKE_SUITE   # the second launch must not inherit it (harmless either way)
 Start-Sleep -Seconds 10
 $second = Start-Process $exe -ArgumentList '--second-launch', 'marker' -PassThru
 $sw = [Diagnostics.Stopwatch]::StartNew(); $secondExited = $second.WaitForExit(20000)
