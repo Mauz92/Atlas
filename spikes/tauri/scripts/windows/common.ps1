@@ -15,6 +15,7 @@ function Get-AtlasInstall {
   if ($null -eq $u) { return $null }
   $dir = $u.InstallLocation
   if (-not $dir) { $dir = Split-Path -Parent ($u.UninstallString -replace '"', '') }
+  $dir = ($dir -replace '"', '')
   [ordered]@{ display_name = $u.DisplayName; display_version = $u.DisplayVersion; install_dir = $dir.TrimEnd('\'); exe = (Join-Path $dir.TrimEnd('\') 'atlas-spike.exe'); uninstall = ($u.UninstallString -replace '"', '') }
 }
 
