@@ -26,6 +26,10 @@ keyring = { version = "3", default-features = false, features = ["sync-secret-se
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tokio = { version = "1", features = ["rt", "macros", "time"] }
 
+# Windows: Credential Manager backend (without a platform feature keyring 3 silently uses a mock store).
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", default-features = false, features = ["windows-native", "crypto-rust"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 webkit2gtk = "2"
 gtk = "0.18"

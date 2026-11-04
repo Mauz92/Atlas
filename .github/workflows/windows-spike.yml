@@ -1,0 +1,169 @@
+# SYNC-07 Windows evidence from a GitHub-hosted runner. MANUAL ONLY (workflow_dispatch): never on push or pull_request,
+# because Windows minutes are billed at a multiple on private repositories. See docs/SYNC_PROTOCOL.md section 13.3a.
+# Everything here is throwaway: a fresh updater key pair is generated on every run, the private key never leaves the runner,
+# and no repository secrets are used or needed.
+name: Windows spike (SYNC-07)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-spike
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows build, installers, headless and smoke checks
+    runs-on: windows-latest
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: spikes/tauri
+    env:
+      OUT: ${{ github.workspace }}\spike-out
+      DIST: ${{ github.workspace }}\spike-dist
+      WORK: ${{ github.workspace }}\spike-work
+      CARGO_TERM_COLOR: never
+    steps:
+      # Action versions are pinned to commit SHAs (tags verified with `gh api`); recorded in docs/DEPENDENCIES.md.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - name: Rust stable (MSVC)
+        run: |
+          rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc
+          rustup default stable-x86_64-pc-windows-msvc
+          rustc -Vv; cargo -V; node -v; npm -v
+
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+        with:
+          workspaces: spikes/tauri -> target
+
+      - name: Runner facts
+        run: |
+          New-Item -ItemType Directory -Force $env:OUT, $env:DIST, $env:WORK | Out-Null
+          $wv = Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -ErrorAction SilentlyContinue
+          [ordered]@{ image = $env:ImageOS; image_version = $env:ImageVersion; webview2 = $wv.pv; processors = $env:NUMBER_OF_PROCESSORS
+                      os = (Get-CimInstance Win32_OperatingSystem).Caption; build = (Get-CimInstance Win32_OperatingSystem).BuildNumber } |
+            ConvertTo-Json | Tee-Object "$env:OUT\runner.json"
+
+      - name: npm ci (spike tooling only)
+        run: npm ci
+
+      - name: Headless core crate (build, S2 sqlite, S3 notes, S4 keyring)
+        id: headless
+        run: |
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          cargo build -p atlas-spike-core --release --locked
+          if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
+          "core_build_seconds=$([math]::Round($sw.Elapsed.TotalSeconds,1))" | Tee-Object "$env:OUT\core-build.txt"
+          cargo test -p atlas-spike-core --release --locked 2>&1 | Tee-Object "$env:OUT\cargo-test-core.txt"
+          .\scripts\windows\headless.ps1 -Out $env:OUT
+
+      - name: Build web harness and per-user NSIS installers (v0.1.0 and v0.2.0)
+        id: build
+        run: .\scripts\windows\build.ps1 -Work $env:WORK -Dist $env:DIST
+
+      - name: Install v0.1.0 per user
+        id: install
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          $setup = (Get-Item "$env:DIST\v1\*_0.1.0_x64-setup.exe").FullName
+          .\scripts\windows\install.ps1 -Setup $setup -Out "$env:OUT\install.json"
+
+      - name: Smoke launch, harness suites, single instance, idle memory
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        timeout-minutes: 15
+        run: .\scripts\windows\smoke.ps1 -Out $env:OUT -Work $env:WORK
+
+      - name: Updater test (valid, tampered, wrong key)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        timeout-minutes: 15
+        run: .\scripts\windows\updater.ps1 -Dist $env:DIST -Work $env:WORK -Out $env:OUT -Srv "$env:DIST\updater-test-set"
+
+      - name: Package owner reproduction helpers
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          Copy-Item scripts\windows\*.ps1 "$env:DIST\" -Force
+          Copy-Item scripts\update-server.mjs "$env:DIST\" -Force
+          Set-Content -Encoding utf8 "$env:DIST\README-TEST-ONLY.txt" @"
+          TEST-ONLY artefacts from a throwaway Windows runner build of the SYNC-07 spike (run ${{ github.run_id }}).
+          Signed with a key pair generated on the runner for this run only; the private key is NOT included.
+          The binaries are unsigned (no Authenticode): SmartScreen is expected to warn. Not a product build.
+          v1\*_0.1.0_x64-setup.exe      per-user NSIS installer (installs under %LOCALAPPDATA%\Atlas Spike)
+          v2\*_0.2.0_x64-setup.exe(.sig) the update target; updater-test-set\{valid,tampered,wrongkey}\latest.json point at http://127.0.0.1:18777/
+          updater-public-key.txt         the public key baked into both builds
+          "@
+
+      - name: Disk usage of what is uploaded
+        if: ${{ !cancelled() }}
+        run: |
+          foreach ($d in $env:DIST, $env:OUT) { "{0}: {1:N1} MB" -f $d, ((Get-ChildItem -Recurse -File $d -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum / 1MB) }
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        with:
+          name: TEST-ONLY-atlas-spike-windows-installers
+          path: ${{ github.workspace }}/spike-dist
+          retention-days: 14
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        with:
+          name: atlas-spike-windows-results
+          path: ${{ github.workspace }}/spike-out
+          retention-days: 30
+          if-no-files-found: warn
+
+  supply-chain:
+    name: cargo audit and cargo license (Windows target)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: spikes/tauri
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc -V
+
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+        with:
+          workspaces: spikes/tauri -> target
+
+      - name: Install cargo-audit and cargo-license (pinned)
+        run: cargo install --locked cargo-audit --version 0.22.2 && cargo install --locked cargo-license --version 0.7.0
+
+      - name: cargo audit (lockfile, Windows x86_64 advisories only; Linux-only crates are filtered)
+        run: |
+          mkdir -p ../../out
+          set -o pipefail
+          cargo audit --target-os windows --target-arch x86_64 2>&1 | tee ../../out/cargo-audit-windows.txt
+          cargo audit --json --target-os windows --target-arch x86_64 > ../../out/cargo-audit-windows.json || true
+          cargo audit 2>&1 | tee ../../out/cargo-audit-all-targets.txt || true
+
+      - name: cargo license (resolve for x86_64-pc-windows-msvc)
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p ../../out
+          cargo license --filter-platform x86_64-pc-windows-msvc --manifest-path Cargo.toml -t > ../../out/cargo-license-windows.tsv
+          cargo license --filter-platform x86_64-pc-windows-msvc --manifest-path Cargo.toml | tee ../../out/cargo-license-windows-summary.txt
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        with:
+          name: atlas-spike-windows-supply-chain
+          path: out
+          retention-days: 30
