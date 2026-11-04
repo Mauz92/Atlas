@@ -1308,7 +1308,7 @@ and devices, not for the notes/tasks core.
 - **P0-3 `IN_REVIEW`.** Scheduled backups (start-up plus every 24 h, keep 7), off-machine copy and a full restore drill into a second
   empty stack `PASS` on smoke data, including note history and `record-restore`. **Still to do by the owner: one drill on the real
   data, an off-machine copy job, and `.env` stored safely.**
-P0-4 `IN_REVIEW` (2026-11-04): `master` pushed to the private repo `Mauz92/atlas` (owner's decision) and the workflow run. **Result of CI run [41819386512](https://github.com/Mauz92/atlas/actions/runs/41819386512)
+P0-4 `IN_REVIEW` (2026-11-04): `master` pushed to the private repo `Mauz92/atlas` (owner's decision) and the workflow run. **Result of CI run [41823411112](https://github.com/Mauz92/atlas/actions/runs/41823411112) (final head, same outcome as) [41819386512](https://github.com/Mauz92/atlas/actions/runs/41819386512)
 (head `f5c94ee`): `e2e-real` `PASS` (76 of 76, 28 min), `backend` `PASS` (10 min: ruff, format, mypy, pytest, pip-audit, OpenAPI export), `containers` `PASS`, `hygiene` `PASS`; `frontend` `FAIL` only at its last step, `npm audit --audit-level=moderate`**
 (a `minimatch` advisory in ESLint/openapi-typescript tooling published 2026-10-30, "no fix available", dev-only, `RISKS.md` R-61, owner decision; its lint, types, 1036 vitest and build steps passed). A Vite advisory (GHSA-8g5g-mxqh-grgj) in the same audit was real and fixed
 (`vite` 6.4.4 -> 6.4.5, lockfile only). The first four runs failed for CI-only reasons that were fixed in tests/config, none skipped or weakened (`ACCEPTANCE.md` P0-4, R-62). The whole workflow is therefore **not yet green**: one owner decision (R-61) blocks it. **Release table:

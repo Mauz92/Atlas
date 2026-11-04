@@ -3928,7 +3928,7 @@ Runs: [41803343231](https://github.com/Mauz92/atlas/actions/runs/41803343231) `F
 
 ## P0-4 - First GitHub Actions runs (2026-11-04; private repo `Mauz92/atlas`, owner-authorised push and runners)
 
-Status: **`IN_REVIEW`.** Every job of `.github/workflows/ci.yml` has now run on GitHub. Four of five jobs pass completely and the fifth (`frontend`) passes everything except its last step; the workflow as a whole is **red because of one owner decision** (R-61). Evidence run: [41819386512](https://github.com/Mauz92/atlas/actions/runs/41819386512)
+Status: **`IN_REVIEW`.** Every job of `.github/workflows/ci.yml` has now run on GitHub. Four of five jobs pass completely and the fifth (`frontend`) passes everything except its last step; the workflow as a whole is **red because of one owner decision** (R-61). Final run on the head after the Vite fix: [41823411112](https://github.com/Mauz92/atlas/actions/runs/41823411112), identical outcome (only the `minimatch` audit finding remains). Evidence run: [41819386512](https://github.com/Mauz92/atlas/actions/runs/41819386512)
 (head `f5c94ee`, `ubuntu-latest` = Ubuntu 26.04 image 20261025.179.1, Python 3.13.x, Node 22, `postgres:17-alpine` service). The REQ scores in `RELEASE.md` are **not** re-scored here (owner review).
 
 | Job (run 41819386512) | Result | Duration | What ran / not run |
