@@ -685,6 +685,12 @@ export function Notes() {
     ? current.path.split("/").pop()!.replace(/\.md$/i, "")
     : "";
   const showTree = treeOpen || !selected;
+  // The tree hosts the inline "new note / new folder" name box, so it stays mounted while something
+  // is being created (and while a search is showing): otherwise the create buttons only set state,
+  // and the box they open has nowhere to render (nothing happened when the list was empty).
+  const nothingYet =
+    listState === "ready" && notes.length === 0 && folders.length === 0;
+  const treeVisible = creation !== null || (!results && !nothingYet);
 
   return (
     <section
@@ -775,35 +781,7 @@ export function Notes() {
           <div className="notes-tree-scroll">
             {listState === "loading" ? (
               <Skeleton label="Loading notes" kind="tree" rows={7} />
-            ) : results ? (
-              <div>
-                <p className="muted">{results.length} result(s)</p>
-                <ul className="tree">
-                  {results.map((note) => (
-                    <li key={note.id}>
-                      <div className="tree-row">
-                        <button
-                          type="button"
-                          className="tree-note"
-                          onClick={() => void openNote(note.id)}
-                        >
-                          <Icon name="file-text" />
-                          <span className="tree-label">{note.path}</span>
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : listState === "ready" && notes.length === 0 ? (
-              <EmptyState
-                icon="file-text"
-                compact
-                action={{ label: "Create the first note", onClick: () => beginCreation("note", activeFolder) }}
-              >
-                No notes yet.
-              </EmptyState>
-            ) : (
+            ) : treeVisible ? (
               <NoteTree
                 tree={tree}
                 selectedId={selected?.id ?? null}
@@ -829,6 +807,34 @@ export function Notes() {
                 onRename={(name) => void commitRename(name)}
                 onCancelRename={() => setRenaming(null)}
               />
+            ) : results ? (
+              <div>
+                <p className="muted">{results.length} result(s)</p>
+                <ul className="tree">
+                  {results.map((note) => (
+                    <li key={note.id}>
+                      <div className="tree-row">
+                        <button
+                          type="button"
+                          className="tree-note"
+                          onClick={() => void openNote(note.id)}
+                        >
+                          <Icon name="file-text" />
+                          <span className="tree-label">{note.path}</span>
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <EmptyState
+                icon="file-text"
+                compact
+                action={{ label: "Create the first note", onClick: () => beginCreation("note", activeFolder) }}
+              >
+                No notes yet.
+              </EmptyState>
             )}
           </div>
         </div>

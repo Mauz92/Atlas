@@ -6,6 +6,12 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Fixed (UX-05): **Creating a note or folder works again when the notes list is empty.** The **New note**, **New folder** and
+  **New from template** buttons in the tree header, and the empty state's **Create the first note**, set the "name this new note" state,
+  but the box that asks for the name is drawn inside the note tree - which was replaced by the empty state when there were no notes yet,
+  so the click looked like it did nothing. The tree now stays on screen while something is being created (and when a folder exists but
+  there are no notes yet). No data, sync or settings change.
+
 - Added (AUTH-01): **You can now recover a forgotten password in the browser.** At first-run setup Atlas shows a **recovery code** once
   (copy it or download it, then tick "I have saved my recovery code"; the app waits for that). On the sign-in page, **Forgot password?**
   takes your email, the recovery code and a new password; it signs you out of **every browser and every desktop or phone app**, and shows a
