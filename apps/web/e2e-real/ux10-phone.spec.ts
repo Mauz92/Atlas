@@ -171,7 +171,8 @@ test("layout, axe, 16 px fields and 44 px targets on Today, Inbox, Upcoming, Wee
             }
             return {
               columns,
-              inner: inner.map((el) => el.className),
+              // Class, text and widths, so a failure on a slow runner names the offending row instead of only its class.
+              inner: inner.map((el) => `${el.className} [${(el.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 80)}] scroll ${el.scrollWidth} client ${el.clientWidth}`),
               clipped,
               outside,
               midWord,

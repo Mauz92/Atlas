@@ -9,6 +9,18 @@ import {
   type SendUpdate,
 } from "./taskAutosave";
 
+// The fake server in this file answers with naive wall-clock strings ("2026-11-08T23:59:00") that the code under
+// test reads in the machine's zone, and the cases use Europe/Stockholm: pin the process zone so the result does
+// not depend on where the suite runs (the CI runner is UTC; the first CI run failed one case because of it).
+const originalTz = process.env.TZ;
+beforeAll(() => {
+  process.env.TZ = "Europe/Stockholm";
+});
+afterAll(() => {
+  if (originalTz === undefined) delete process.env.TZ;
+  else process.env.TZ = originalTz;
+});
+
 /**
  * The save coordinator behind the task detail (UX-04, ADR-0053). A fake server applies each PATCH
  * to its copy of the task and bumps the revision, and can be told to hold, fail or reject requests.

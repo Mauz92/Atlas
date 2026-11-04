@@ -14,7 +14,8 @@ describe("dueChip", () => {
     });
     expect(dueChip({ ...base, due_at: "2026-11-03T15:00:00Z", due_state: "today" }, "UTC")).toEqual({
       kind: "today",
-      text: expect.stringMatching(/15/),
+      // "15:00" in a 24-hour locale, "03:00 PM" in en-US (the CI runner): same instant, locale-dependent text.
+      text: expect.stringMatching(/15|0?3:00/),
     });
   });
 

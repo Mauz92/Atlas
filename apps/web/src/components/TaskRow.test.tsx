@@ -52,7 +52,8 @@ describe("TaskRow", () => {
     ["a date-only due without a clock time", { due_at: "2026-11-03T23:59:00Z", time_zone: "UTC" }, /^[^:]*\b3\b[^:]*$/],
     ["a priority", { priority: "urgent" }, "Urgent"],
     ["subtask progress", { subtasks_total: 3, subtasks_done: 1 }, "1/3 subtasks"],
-    ["a due-today state with the word Today", { due_at: "2026-11-03T15:00:00Z", due_state: "today" }, /Today\s·\s.*15/],
+    // 15:00 renders as "15:00" in a 24-hour locale and "03:00 PM" in en-US (CI): accept both, the instant is the same.
+    ["a due-today state with the word Today", { due_at: "2026-11-03T15:00:00Z", due_state: "today" }, /Today\s·\s.*(15|0?3:00)/],
     ["tags", { tags: ["money"] }, "money"],
   ])("shows %s in the meta line", (_, overrides, text) => {
     const { row } = renderRow(overrides);
