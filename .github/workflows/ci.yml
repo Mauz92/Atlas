@@ -150,11 +150,13 @@ jobs:
       - name: Tests
         run: npm run test
 
-      - name: Dependency audit
-        run: npm audit --audit-level=moderate
-
       - name: Build
         run: npm run build
+
+      # Last on purpose: a new advisory must not hide the lint/type/test/build results. The gate itself is
+      # unchanged (moderate and above, dev dependencies included, no exceptions).
+      - name: Dependency audit
+        run: npm audit --audit-level=moderate
 
   e2e-real:
     name: Real-stack journeys (Playwright, real API + PostgreSQL)
