@@ -40,6 +40,8 @@ async function seed(page: Page) {
   await apiCall(page, "POST", "/api/tasks", { title: LONG, status: "next", priority: "urgent", project_id: project.id, tags: ["finance", "quarterly"], ...when(0, "09:00:00") });
   await apiCall(page, "POST", "/api/tasks", { title: "UX10 call the plumber about the boiler", status: "next", priority: "high", project_id: project.id, ...when(1, "10:30:00") });
   await apiCall(page, "POST", "/api/tasks", { title: "UX10 later this week", status: "next", ...when(2, "23:59:00") });
+  // The longest due chip a Week card gets ("Overdue · Wed 28 Oct, 09:00"): the first CI run clipped one by 9 px at 1440 px.
+  await apiCall(page, "POST", "/api/tasks", { title: "UX10 overdue with a long chip", status: "next", ...when(-1, "09:00:00") });
   await apiCall(page, "POST", "/api/tasks", { title: "UX10 inbox item one", priority: "medium", tags: ["a", "b"] });
   await apiCall(page, "POST", "/api/tasks", { title: "UX10 inbox item two" });
   seeded = project.id;

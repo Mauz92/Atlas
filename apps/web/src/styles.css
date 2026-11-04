@@ -3487,6 +3487,19 @@ button.project-summary-toggle .icon {
   .week-day .task-meta > * {
     flex: 0 1 auto;
     min-width: 0;
+    max-width: 100%;
+  }
+
+  /* A long chip ("Overdue · Tue 3 Nov, 09:00") must wrap inside a narrow card instead of being clipped by the
+     meta's overflow (found on the first CI run: 198 px of text in a 189 px card at 1440 px). */
+  .week-day .task-due {
+    white-space: normal;
+    flex-wrap: wrap;
+  }
+
+  .week-day .task-due-text {
+    overflow: visible;
+    text-overflow: clip;
   }
 }
 

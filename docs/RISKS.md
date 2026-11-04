@@ -635,6 +635,12 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 - **Mitigation:** SYNC-07 spike with pass/fail criteria and Electron fallback (desktop); pin 2.x; capability-minimal config;
   PWA fallback for Android (A-09).
 - **Owner milestone:** SYNC-07. **Status:** Open (Linux part run 2026-11-04, `SYNC_PROTOCOL.md` section 13).
+- **Update 2026-11-04 (GitHub-hosted Windows runner, `SYNC_PROTOCOL.md` 13.3a):** the spike compiles for `x86_64-pc-windows-msvc`; a 2.9 MiB per-user NSIS installer installs under
+  `%LOCALAPPDATA%` with an `HKCU` entry and an `asInvoker` manifest; the signed update works (valid applied, tampered and wrong-key refused); single instance, SQLite (100/100 `TerminateProcess` kills), Credential
+  Manager and ACL refusals behave; the Windows dependency graph has no GPL/AGPL/LGPL and **no advisory warning** (the eight Linux warnings are outside it). One Windows-only code defect found and fixed (W1: a directory
+  `fsync` that Windows refuses, which would have made every Atlas write report failure after it had succeeded). **Still open, unchanged in kind:** everything a hosted *administrator* runner cannot show: a standard-user,
+  UAC-free install and update on the work laptop, SmartScreen on an unsigned installer, AppLocker/WDAC/antivirus, the WebView2 bootstrapper under policy, OneDrive/Dropbox watching, IME. The Electron trigger therefore remains
+  possible; the owner now only needs to download and run the prebuilt installer (checklist 13.3a), not build anything.
 - **Update 2026-11-04 (Linux, WebKitGTK 2.54.1):** no core-editing failure and no Electron-fallback criterion triggered; rendering and CSS/API features match Chromium (S1.1-S1.2);
   own `rusqlite` commands are transactional (100/100 kill-9); updater signature checks work (tampered and wrong-key refused); `tauri-plugin-sql` is not usable for transactions and
   cannot be linked with `rusqlite`. **Still open and now the main risk:** Windows S6/S7 (per-user install, WebView2, SmartScreen, policy on the work laptop) and everything Android
@@ -670,6 +676,27 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 - **Mitigation:** SYNC-09 builds a per-row `LocalStore` on `rusqlite`; uses the platform trust store (`rustls-tls-native-roots` or `native-tls`) and tests with the owner's real certificate; the watcher
   rules and the hash-based periodic scan in `SYNC_PROTOCOL.md` 13.2 are acceptance criteria of the notes-folder engine.
 - **Owner milestone:** SYNC-09. **Status:** Open (design input recorded).
+
+### R-61 - A moderate advisory in dev tooling makes the `npm audit` gate fail (minimatch, GHSA-g3hv-75wg-m249)
+- **Severity/Likelihood:** Low (dev dependencies only, no untrusted glob input) / Certain (the gate is red)
+- **Description:** the first CI run of the `frontend` job (2026-11-04) reached `npm audit --audit-level=moderate` with an advisory published 2026-10-30: `minimatch` `< 11.0.1` (denial of service via glob-part amplification).
+  Reachable only through `eslint` 9 (`minimatch` 3.x), `@typescript-eslint` (10.x) and `openapi-typescript` / `@redocly/openapi-core` (5.x): lint and API-type generation on trusted repository files, never in the shipped
+  bundle (`npm audit --omit=dev`: 0 vulnerabilities). npm reports "No fix available": the fixed 11.x line is ESM-only with a different API and none of those parents accepts it, so an `overrides` pin would break `eslint`.
+  Local `npm audit` on 2026-10-19..11-03 (`DEPENDENCIES.md`, release table row 5) was 0; the advisory is newer than that evidence.
+- **Mitigation:** the gate was **not** weakened or suppressed. It now runs as the last step of the `frontend` job so lint, types, tests and build still report. Decision for the owner: (a) accept the dev-only
+  advisory for a time-boxed period and change the gate to `--omit=dev` plus a written exception here, or (b) keep the red gate until `eslint`/`typescript-eslint`/`openapi-typescript` release versions that use minimatch 11.
+  Re-check weekly (`npm audit`, Dependabot would do it automatically if enabled by the owner).
+- **Owner milestone:** release readiness. **Status:** Open (owner decision needed; the CI `frontend` job is red because of it only).
+
+### R-62 - CI environment differences found by the first GitHub Actions runs (locale, time zone, timing)
+- **Severity/Likelihood:** Medium / High until fixed
+- **Description:** the first runs (UTC clock, `en-US` locale, 2 vCPU runners) exposed tests that only pass on the developer machine (Europe/Stockholm, 24-hour locale): `dueChip`/`TaskRow` expected "15:00" (CI renders "03:00 PM"),
+  `taskAutosave` read a naive wall-clock string in the machine's zone; a backup test used a made-up database password against a server that checks passwords; two browser journeys had time budgets sized for a fast
+  machine (`J4` accepted a completion before CodeMirror's 75 ms `interactionDelay` had passed; `mu08` axe sweep took 80-100 s against a 90 s budget); `pytest-asyncio`'s deprecation warning is an error under
+  `filterwarnings = ["error"]`. All fixed in the tests or configuration, none by skipping (`ACCEPTANCE.md` P0-4). A layout assertion in `ux10-phone` (`/week` at 1440 px: `.task-meta` scrolls by more than 1 px) failed once on
+  CI and passed on four other CI runs and locally; see `ACCEPTANCE.md` P0-4 for its current state.
+- **Mitigation:** CI is now the second environment; keep tests independent of locale, zone and speed; the failing assertion's message names the row, class, text and widths.
+- **Owner milestone:** P0-4. **Status:** Mitigated (see ACCEPTANCE for the open layout item).
 
 ---
 
@@ -709,3 +736,4 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 | 2026-11-03 | SYNC-03 (protocol v1) | R-38 (snapshot walk vs floor, sim seed 29) found and closed; R-39 (restore regrowth, `epoch`), R-40 (late ack vs tombstone, sim seed 681), R-41 (resolutions response-only until SYNC-05), R-42 (notes not merge/delete-safe until SYNC-04), R-43 (idempotency purge scan) added. R-28, R-29, R-30, R-31 moved to Mitigating (server side). |
 | 2026-11-03 | SYNC-05 (resolution log) | R-41 closed on the server; R-47 (log keeps overwritten simple values 90 days) and R-48 (strict undo is often refused on busy fields) added; R-28 updated. Found and fixed: a retried refused note `DELETE` replayed status `0` (key committed without its answer, SYNC-04 code). The conformance traces found two model/real disagreements (`kept_revision` of revive and collision, `detail` of `path_later_wins`), fixed on both sides. |
 | 2026-11-03 | P0-1/P0-2/P0-3 | R-46 added (smoke test of the Compose stack found and fixed six defects; four accepted edges). R-34 verified through the real web container (1.5/5/10 MiB `201`, 12 MiB `413`). First restore drill of a set that contains note history. |
+| 2026-11-04 | P0-4 / SYNC-07 Windows | First GitHub Actions runs: R-61 (npm audit finding in dev tooling, owner decision) and R-62 (CI-only environment differences, fixed) added; R-36 updated with the hosted-Windows-runner results (build, per-user installer, signed update, headless checks, supply chain; admin/UAC/SmartScreen/AV/OneDrive/IME still the owner's). |
