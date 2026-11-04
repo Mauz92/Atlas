@@ -48,6 +48,14 @@ until the first), `revoked_at`, `token_hash` (SHA-256 hex of the bearer token, *
 > never-revoked device is kept (the owner decides). `sync_resolutions.device_id` references this table (`ON DELETE SET NULL`).
 > Indexes: unique `token_hash`; partial `prev_token_hash`; `(user_id, created_at)`. At most 25 unrevoked rows per user.
 
+**RecoveryCode** (table `recovery_codes`) — owner: PostgreSQL (AUTH-01, ADR-0067; migration `c9e4a7b2d6f1`)
+`user_id` (primary key, `users.id ON DELETE CASCADE`: at most one code per user), `code_salt` (hex of 16 random bytes, the HMAC key),
+`code_hash` (hex HMAC-SHA-256 of the normalised 30-character code), `created_at`, `last_used_at` (the last password reset with it,
+`NULL` = never), `failed_attempts` (wrong tries since it was last issued or used; diagnostic, check `>= 0`).
+> The code itself (150 random bits) is never stored or logged; it exists in clear only in the response that issues it. A backup holds
+> salt and hash, so a restore keeps the code working and hands out no credential. Existing accounts have no row until the owner
+> creates one in Settings. Replaced (not added to) by every use, regeneration and `atlas-admin recovery-code`.
+
 **ProviderCredential** (table `provider_credentials`) — owner: PostgreSQL (encrypted)
 `id`, `user_id`, `provider` (`google`|`microsoft`), `key_id` (encryption key version),
 `ciphertext` (AEAD seal of the token bundle: access/refresh token + token type), `scopes`

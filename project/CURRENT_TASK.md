@@ -1,3 +1,25 @@
+- **AUTH-01 (account recovery in the UI) is `DONE` locally (2026-11-04, not committed, CI not run).** Owner-approved design (ADR-0067):
+  one-time recovery code (30 Crockford chars = 150 bits, six groups of five; salted HMAC-SHA-256 in `recovery_codes`, migration
+  `c9e4a7b2d6f1`, **not applied to the owner's `atlas` database**), shown once at setup (the web app holds everything back until "I have
+  saved my recovery code"), regenerable in Settings -> Account (password required), "Forgot password?" on the sign-in page
+  (`POST /api/auth/recovery/reset`: unauthenticated, CSRF-exempt like login, one transaction under a row lock that changes the password,
+  revokes every session and (`revoke_all_devices`) every device and replaces the code; the browser is not signed in afterwards).
+  Refusals are one `400` with identical headers and identical SQL; throttle 10/min per address (shared login pool) + 5 per 15 min per
+  account (sliding, never a lock). New: `atlas/auth/recovery.py` (also `apply_password_reset`, now used by `atlas-admin reset-password`),
+  `atlas-admin recovery-code`, setting `RECOVERY_ENABLED` (default true; compose + `.env.example`), `RateLimiter` pruning, web
+  `RecoveryCodeReveal`/`ForgotPassword`/`RecoveryCodeSetup`/`RecoverySection`. Evidence `docs/ACCEPTANCE.md` AUTH-01; risks R-56, R-57;
+  threats `SECURITY.md` T25-T30. Verification: `./scripts/verify.sh` PASS (pytest 4294 passed / 14 skipped, vitest 1036 / 3 skipped),
+  `test:e2e:real` 76 passed, `e2e` 7 passed. NOT RUN: CI, wall-clock timing equality, Safari/Firefox, owner's DB migration.
+  **For later work:** every e2e journey now passes the recovery screen through `createOwner` (`e2e-real/helpers.ts`);
+  `auth01-recovery.spec.ts` sorts first and performs the run's setup, so `capture-journey.spec.ts` uses `ensureOwner`; the test DB
+  fixture also resets `_recovery_account_limiter`. A code regenerated after a backup is lost by a restore (`OPERATIONS.md` 2.2b).
+  Observed, not changed: the Settings "Also sign out my devices" checkbox is drawn 240 px wide (`.settings-row-control input` rule).
+  **Next:** SYNC-07 (Tauri spike, another agent) / SYNC-09/11, then Calendar (M5-00), then Core (MU close).
+
+---
+
+## Previous state (before AUTH-01)
+
 - **SYNC-08 (`packages/sync-core`) is `DONE` locally (2026-11-04, not committed, CI not run).** Framework-free TS client core with ports,
   in-memory store, adapters and a TS simulation (model server + real-API conformance). Evidence `docs/ACCEPTANCE.md` SYNC-08, decisions
   ADR-0066, risks R-40 (mitigated), R-54, R-55, status table `docs/SYNC_PROTOCOL.md` ("Client implementation status"). Verification:

@@ -8,6 +8,7 @@ import { Inbox } from "./pages/Inbox";
 import { Login } from "./pages/Login";
 import { ProjectPage } from "./pages/ProjectPage";
 import { Projects } from "./pages/Projects";
+import { RecoveryCodeSetup } from "./pages/RecoveryCodeSetup";
 import { SearchPage } from "./pages/Search";
 import { Settings } from "./pages/Settings";
 import { Setup } from "./pages/Setup";
@@ -20,7 +21,7 @@ import { Week } from "./pages/Week";
 const Notes = lazy(() => import("./pages/Notes").then((module) => ({ default: module.Notes })));
 
 export default function App() {
-  const { state } = useAuth();
+  const { state, pendingRecoveryCode } = useAuth();
 
   if (state === "loading") {
     return <div className="splash">Loading Atlas…</div>;
@@ -30,6 +31,10 @@ export default function App() {
   }
   if (state === "anonymous") {
     return <Login />;
+  }
+
+  if (pendingRecoveryCode) {
+    return <RecoveryCodeSetup code={pendingRecoveryCode} />;
   }
 
   return (

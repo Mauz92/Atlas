@@ -556,6 +556,26 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 - **Mitigation:** the general limit, the visible `last_seen_at`, immediate revocation; SYNC-08 should measure a real client's feed
   use and then set the feed numbers (one constant each in `atlas/auth/devices.py` and the changes router). **Status:** Open.
 
+### R-56 - The recovery code is a bearer secret with no leak detection, and may be lost before it is seen
+- **Severity/Likelihood:** Medium / Low
+- **Description:** whoever holds the recovery code and the e-mail can take the account over until the code is replaced (T25). Nothing
+  notices a leak before use; a use signs every session and device out, which the owner sees. Separately, the web app holds the code
+  only in memory: if the tab is closed or reloaded on the "Save your recovery code" screen before the acknowledgement, the account has
+  a code nobody saw (the server does not track acknowledgement). The owner is not locked out: they are signed in and can regenerate
+  in Settings (password required), or the operator runs `atlas-admin recovery-code`.
+- **Mitigation:** shown once with copy/download and an explicit "I have saved it" step; replaced by every use; regenerable in
+  Settings; `RECOVERY_ENABLED=false` for operators who prefer CLI-only; the user guide says to keep it like a password and not in the
+  notes folder or a synced note. A restore from an older backup brings back the older code (`OPERATIONS.md` 2.2b). **Status:** Accepted.
+
+### R-57 - Recovery attempts are throttled in process and the account throttle can be spent by a stranger
+- **Severity/Likelihood:** Low / Low
+- **Description:** the per-account limit (5 attempts per 15 minutes) and the shared per-address limit are in-process counters (reset by
+  a restart, per API process, R-SEC-1). A persistent stranger who knows the owner's e-mail can spend the 5 attempts every 15 minutes and
+  keep *recovery* throttled; sign-in, sessions and the CLI are unaffected. The cap is not what protects the code (150 bits); it bounds
+  noise and CPU.
+- **Mitigation:** a sliding window, not a lock; the CLI fallback; the audit log shows `recovery_reset_throttled`; a shared limiter
+  store is the fix if Atlas is ever scaled out. **Status:** Accepted.
+
 ### R-43 - Idempotency table growth and the purge scan
 - **Severity/Likelihood:** Low / Medium
 - **Description:** every sync-mode write stores a key; with 90-day retention at personal scale (tens of thousands of rows) the hourly

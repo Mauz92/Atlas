@@ -10,6 +10,14 @@ interface AuthValue {
   state: AuthState;
   user: UserPublic | null;
   error: string | null;
+  /** Whether the server offers recovery by code (`RECOVERY_ENABLED`); true until it says no. */
+  recoveryEnabled: boolean;
+  /**
+   * The recovery code just issued at first-run setup. Held in memory only until the owner
+   * confirms having saved it; while set, the app shows nothing else (AUTH-01, ADR-0067).
+   */
+  pendingRecoveryCode: string | null;
+  acknowledgeRecoveryCode: () => void;
   login: (email: string, password: string) => Promise<void>;
   setup: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -22,6 +30,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>("loading");
   const [user, setUser] = useState<UserPublic | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recoveryEnabled, setRecoveryEnabled] = useState(true);
+  const [pendingRecoveryCode, setPendingRecoveryCode] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -29,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const status = await api.setupStatus();
         if (!active) return;
+        setRecoveryEnabled(status.recovery_enabled ?? true);
         if (status.setup_required) {
           setState("setup");
           return;
@@ -59,13 +70,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setup = useCallback(async (email: string, password: string, displayName: string) => {
-    const me = await api.setup(email, password, displayName);
+    const { recovery_code: code, ...me } = await api.setup(email, password, displayName);
+    setPendingRecoveryCode(code ?? null);
     setUser(me);
     setState("authenticated");
   }, []);
 
+  const acknowledgeRecoveryCode = useCallback(() => setPendingRecoveryCode(null), []);
+
   const logout = useCallback(async () => {
     await api.logout();
+    setPendingRecoveryCode(null);
     setUser(null);
     setState("anonymous");
   }, []);
@@ -75,8 +90,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthValue>(
-    () => ({ state, user, error, login, setup, logout, updateDisplayName }),
-    [state, user, error, login, setup, logout, updateDisplayName],
+    () => ({
+      state,
+      user,
+      error,
+      recoveryEnabled,
+      pendingRecoveryCode,
+      acknowledgeRecoveryCode,
+      login,
+      setup,
+      logout,
+      updateDisplayName,
+    }),
+    [
+      state,
+      user,
+      error,
+      recoveryEnabled,
+      pendingRecoveryCode,
+      acknowledgeRecoveryCode,
+      login,
+      setup,
+      logout,
+      updateDisplayName,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

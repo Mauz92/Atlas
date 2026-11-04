@@ -3387,3 +3387,111 @@ run). Contract: `SYNC_PROTOCOL.md`; evidence: `ACCEPTANCE.md` SYNC-08; risks R-4
    tsc, so `./scripts/verify.sh` picks them up unchanged. The real-API conformance is opt-in (it needs the virtualenv, PostgreSQL and a
    container), with a wrapper `sim/real/serve.py` that only lifts the per-device rate limits for the run. Planted client defects live
    in the engine behind `options.plantedBugs` (default off), as in the Python model clients.
+
+## ADR-0067 — Account recovery by a one-time recovery code (AUTH-01)
+
+**Status:** ACCEPTED. The owner approved the design on 2026-11-04 (a one-time code shown once at setup and regenerable in Settings,
+stored only as a hash; "Forgot password?" on the sign-in page; a reset revokes every session and every device in the transaction of
+the password change; rate limited; the code is never logged or echoed). Implemented locally the same day, not committed, CI not run.
+Evidence `ACCEPTANCE.md` AUTH-01; threats `SECURITY.md` T25-T30; risks R-56, R-57.
+
+**Context.** A self-hosted Atlas has no e-mail service, so "send me a reset link" is not available. Until now the only recovery was
+`atlas-admin reset-password` on the server (ADR-0050 follow-up, 2026-11-03), which needs shell access. ADR-0059 D8 and ADR-0065 said
+AUTH-01 would consume the one bulk-revoke function `atlas.auth.devices.revoke_all_devices`.
+
+**Decision.**
+
+1. **Format and entropy.** 30 characters of Crockford base32 (alphabet `0-9 A-Z` without `I L O U`), **150 random bits** from
+   `secrets.choice`, displayed as six groups of five (`XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`). Entry is tolerant: case, dashes,
+   underscores, spaces and non-breaking spaces are ignored and `O`, `I`, `L` are read as `0`, `1`, `1`; anything else (wrong length,
+   `U`, non-ASCII, over 128 raw characters) is simply "not a code". Normalisation happens before hashing, so every spelling of a code
+   hashes the same.
+2. **Hash storage: salted HMAC-SHA-256, not Argon2.** The code is 150 random bits, so there is nothing for a slow hash to protect: a
+   database leak cannot be brute-forced (2^150 candidates), exactly as for the 256-bit session and device tokens (SHA-256, ADR-0065).
+   Argon2 would only add ~50 ms of CPU per request to an *unauthenticated* endpoint, which is a denial-of-service lever and would make
+   equal timing for unknown accounts more expensive. Each code gets its own 16-byte random salt used as the HMAC key, so equal codes
+   never look equal. **No server-wide pepper:** a pepper derived from `SECRET_KEY` would silently invalidate every code when the key
+   is rotated; with 150 bits it buys nothing. Comparison is `hmac.compare_digest`. No new dependency (`secrets`, `hmac`, `hashlib`).
+3. **Table `recovery_codes`** (migration `c9e4a7b2d6f1`, reversible, tested on a clean database and on a representative existing
+   installation): `user_id` (primary key, `ON DELETE CASCADE`, so at most one code per user), `code_salt`, `code_hash`, `created_at`,
+   `last_used_at`, `failed_attempts` (check `>= 0`). **Existing accounts have no row**: no code until the owner opens Settings → Account
+   → Recovery code → "Create recovery code" and confirms the current password. The upgrade changes no existing row; downgrade drops the
+   table (codes cease to exist; the CLI fallback remains).
+4. **Reset endpoint** `POST /api/auth/recovery/reset {email, recovery_code, new_password}` -> `200 {recovery_code, created_at}`.
+   In **one transaction, under a row lock on the code**: set the new password hash, revoke every browser session, call
+   `revoke_all_devices` (the shared function of ADR-0065), replace the code (new salt and hash, `created_at`, `last_used_at = now`,
+   `failed_attempts = 0`) and commit. If any step fails, nothing changes and the code is not consumed (tested by making the device
+   revocation raise). The row lock makes two simultaneous requests with one code succeed exactly once (tested with `asyncio.gather`);
+   a replay of a used code is a refusal. The new code is in the response (shown once); **the browser is not signed in** (no cookie is
+   set or read): the owner signs in with the new password. `atlas-admin reset-password` uses the same `apply_password_reset` function.
+5. **Enumeration resistance.** Unknown e-mail, an account with no code, an inactive account, a wrong code and a malformed code all
+   return the same `400 {"detail": "The email or recovery code is not correct"}` with the same headers. They also run the **same
+   statements in the same order** (select the user, `SELECT ... FOR UPDATE` on the code row of the user's id or of a random id,
+   compare in constant time against the stored hash or a dummy, `UPDATE ... SET failed_attempts + 1` on that id, commit), so the work,
+   not only the answer, is equal; a test records the SQL of each case and requires it to be identical. A refusal does no Argon2
+   work. The password hash is computed only on success. Validation of the new password (`422`) does not depend on the account.
+6. **Rate limiting, a bounded delay and never a lock.** Two in-process sliding windows (as the login limiter, so a restart resets
+   them and a multi-process deployment would need a shared store, as already noted in `SECURITY.md`): per address, the **shared
+   login pool** (`AUTH_RATE_LIMIT_PER_MINUTE`, default 10 a minute; reset attempts and sign-in attempts share it); per account,
+   **5 attempts per 15 minutes**, keyed by a SHA-256 of the lower-cased e-mail, so an unknown address is throttled exactly like a
+   real one and the limiter holds no address. A throttled call is `429` with `Retry-After`, answered **before any code is looked at**
+   (even the right code waits: the limit is not an oracle). Attempts refused by the limiter are not recorded in the window, so an
+   attacker hammering during the window cannot extend it: the owner's delay ends at most 15 minutes after the last *counted* attempt
+   (tested with a controlled clock). The limiter drops idle buckets above 4096 keys so attacker-chosen addresses cannot grow it
+   without bound. Residual: a determined attacker can keep the owner's *recovery* throttled (not sign-in, not the CLI) by spending 5
+   attempts every 15 minutes; with 150-bit codes the cap exists for noise and CPU, not for guessing resistance, and the CLI fallback
+   (point 11) is the answer (R-57). `failed_attempts` is a **diagnostic counter shown to the owner** in Settings ("3 wrong tries
+   since"); it never changes an answer.
+7. **Audit trail without secrets.** Structured log events on logger `atlas.auth.audit`: `recovery_code_issued`,
+   `recovery_code_regenerated`, `recovery_code_issued_by_operator`, `recovery_reset_succeeded` (user id, address hash, counts of sessions
+   and devices revoked), `recovery_reset_refused` (user id only when the account has a code, address hash), `recovery_reset_throttled`
+   (scope `address` or `account`). Never the code, a password, a hash, or the submitted e-mail (a mistyped password lands in an
+   e-mail field often enough). A test captures every log record of a full flow and searches for the codes, both passwords and the
+   e-mail. The persistent trace for the owner is `last_used_at`, `created_at` and `failed_attempts` in Settings.
+8. **What a used code does.** It is spent and **replaced in the same response**: the new code is shown once, the old one is dead. The
+   screen requires the explicit "I have saved my recovery code" tick before it will leave ("Back to sign in").
+9. **Regeneration in Settings** `POST /api/auth/recovery/regenerate {current_password}`: browser session only (`CurrentUser`; a
+   device gets `403 forbidden_scope`), CSRF as every authenticated write, the current password required (`400` when wrong), rate limited
+   with the password-change limiter per account. The old code stops working at once; sessions and devices are untouched. A stolen
+   session alone cannot mint a way to take the account over. `GET /api/auth/recovery` returns `enabled`, `configured`, `created_at`,
+   `last_used_at`, `failed_attempts`, never the code or the hash.
+10. **First-run setup** returns the code in the `201` response (`SetupResult`, `recovery_code`), and the web app **holds the whole app
+    back** until the owner ticks "I have saved it" and continues; the code is in memory only (not in storage, URL or console). Copy
+    and "Download as file" (`atlas-recovery-code.txt`, a client-side Blob) are offered. The app cannot show it again: if the tab is
+    closed before the acknowledgement, the account has a code nobody saw; the owner regenerates it in Settings (R-56). The server
+    does not track acknowledgement (a flag would need an unauthenticated acknowledge step after a reset, for no real gain).
+11. **Lost code and forgotten password.** `atlas-admin reset-password` on the server remains the fallback and is documented as such
+    (`OPERATOR_GUIDE.md`, `OPERATIONS.md`). New: `atlas-admin recovery-code --email E` issues or replaces an account's code and
+    prints it once to the operator's terminal (the only place the code is printed by the server side; the old one stops working). It
+    is the way to give an account created before AUTH-01 a code without its password. An operator reset does not change the code.
+12. **`RECOVERY_ENABLED`** (default `true`, forwarded in `deploy/docker-compose.yml`, `.env.example`). When `false`: setup issues no
+    code (`recovery_code: null`), `POST /api/auth/recovery/reset` and `.../regenerate` answer `404`, `GET /api/auth/recovery` says
+    `enabled: false`, the sign-in page's "Forgot password?" explains that recovery is off and names the operator command, and the
+    owner recovers with the CLI only. Existing rows stay (turning it back on re-enables them). `GET /api/setup/status` carries
+    `recovery_enabled` so the page can word its help.
+13. **Cookies, CSRF, Origin.** The reset is unauthenticated, so it is **CSRF-exempt exactly like login, setup and device sign-in**
+    (`_CSRF_EXEMPT_PATHS`): it is authorised by a secret in the body, it neither reads nor sets a cookie (a browser holding a session
+    that posts to it has that session revoked like all the others), so there is no ambient credential for a cross-site page to ride,
+    and a forged request without the code does nothing. Login has no `Origin` check either; none is added (a cross-site
+    request that cannot supply the code gains nothing, and one that can has already won). Regenerate is an ordinary authenticated
+    write and keeps CSRF. The `422` redaction handler already covers `/api/auth/`, so a validation error never echoes the code, the
+    e-mail or a password (tested).
+14. **Cross-user isolation.** Every query is keyed by the account found by e-mail or by the session's user; one account's code never
+    opens another (tested both ways with a second account), regeneration for one leaves the other's code valid, and a reset signs
+    out only its own account.
+15. **Backups.** The dump holds the salt and the hash (what a restore needs to keep the code working) and never the code; the export
+    (`GET /api/export`) holds neither. Tested with the real `pg_dump` path and by scanning every table of the database for the
+    plaintext. After restoring an older backup, a code regenerated since is lost (the old one works again): regenerate after a
+    restore if in doubt (`OPERATIONS.md`).
+
+**Rejected alternatives.** E-mail or SMS reset (no service; would add an external dependency and a secret store). Security questions
+(guessable, not secret). A permanent lock after N failures (turns the endpoint into a lock-out lever against the owner). Argon2 for
+the code (point 2). Signing the browser in after a reset (the owner just proved possession of one factor on an unauthenticated
+channel; signing in with the new password is one more step and keeps "reset" and "sign-in" separate, so no new session path exists).
+Several codes per account, or backup-code lists (more state, more to lose; one code plus the CLI is enough for a single-owner server).
+
+**Consequences.** One table, one migration, one module (`atlas/auth/recovery.py`), three endpoints, one setting, one CLI command, two
+web screens and a Settings row. No dependency. A leaked code is a full account takeover until the owner regenerates it (shown once;
+stored by the owner like a password; T25). Rollback: downgrade drops the table; set `RECOVERY_ENABLED=false` to turn the feature off
+without a migration. **Not decided here:** e-mail or push confirmation of a reset (no channel exists), a shared (multi-process)
+limiter store.

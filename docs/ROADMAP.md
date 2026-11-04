@@ -24,7 +24,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M8 | Notifications and mobile apps | `IN_PROGRESS` | Platform behaviour tested on real devices |
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
 | **MU** | **Usable core — personal-OS UX** (ADR-0043) | `IN_PROGRESS` | **Worked next.** Owner journeys J1–J7 pass in a browser against the real API |
-| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `DONE` (local PASS; CI `e2e-real` NOT RUN) | UX-01…UX-03 `DONE` 2026-11-02, UX-04…UX-08 `DONE` 2026-11-03; J1–J7 and the axe sweep pass on the finished UI. The separate `AUTH-01` row (account recovery) stays `BACKLOG` and is not part of this exit |
+| **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `DONE` (local PASS; CI `e2e-real` NOT RUN) | UX-01…UX-03 `DONE` 2026-11-02, UX-04…UX-08 `DONE` 2026-11-03; J1–J7 and the axe sweep pass on the finished UI. The separate `AUTH-01` row (account recovery) was `BACKLOG` at this exit and is `DONE` since 2026-11-04 |
 | **SYNC** | **Local-first sync** (ADR-0055, ADR-0059 ACCEPTED, `SYNC_PROTOCOL.md`) | `IN_PROGRESS` (SYNC-01…SYNC-06 `DONE` locally 2026-11-03: server protocol v1 for tasks, projects and notes incl. history/merge, the resolution log with undo and per-device bearer credentials; next SYNC-07 Tauri spike / SYNC-08 `sync-core`) | Worked **first** (owner priority order). Server protocol + deterministic multi-client simulation pass before any native-shell task; Tauri spike verdict before SYNC-09/10 |
 
 **Order change (ADR-0043, 2026-11-01).** MU is worked **before** the remaining M5/M6/M8 tasks, which stay
@@ -671,7 +671,7 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 | UX-09 | Readability tokens and the task row / section structure on Inbox, Today, Upcoming, Tasks lists, project list (phone first; evidence `UX_AUDIT.md` "Readability and mobile audit (2026-11)") | UX-08 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-09; ADR-0062; CI `e2e-real` NOT RUN; not committed) |
 | UX-10 | Week agenda layout and navigation, phone capture (FAB + sheet), phone menu as bottom sheet, 16 px inputs, viewport/safe-area | UX-09 | `DONE` (local, 2026-11-03; ADR-0063) |
 | UX-11 | Remaining phone pages: Tasks select mode and Filters sheet, project Board column tabs, Notes toolbar, Projects cards, palette sheet; standalone Board removed | UX-10 | `DONE` (local, 2026-11-03; ADR-0064; the UX series UX-01…UX-11 is complete) |
-| AUTH-01 | Account recovery in the UI: recovery code issued at setup/in Settings, "Forgot password?" on the sign-in page, reset without email (CLI `atlas-admin reset-password` exists since 2026-11-03) | UX-02 | `BACKLOG` (needs an ADR and the owner's approval of the recovery design: there is no email service in a self-hosted install, so a one-time recovery code shown once at setup and regenerable in Settings is proposed; reset must revoke all sessions **and all sync devices**, be rate limited, never log the code, and store only its hash). **Now shared with SYNC-06 (done):** `atlas.auth.devices.revoke_all_devices(session, user_id)` is the one function that signs every device out; `atlas-admin reset-password` already calls it (via `reset_password()`, which returns `(sessions, devices)`), so AUTH-01's reset endpoint must call `reset_password`-equivalent logic or that function directly, in the same transaction as the password change, and test it the way `test_the_operator_reset_revokes_every_device_token` does. Also available to AUTH-01: the shared login rate-limit pool (`_login_limiter`), the validation-error redaction prefix list in `main.py` (`_CREDENTIAL_PATH_PREFIXES`), the `CurrentUser` browser-only default (a recovery endpoint is unauthenticated, so it uses neither dependency) |
+| AUTH-01 | Account recovery in the UI: one-time recovery code at setup / in Settings, "Forgot password?" on the sign-in page, reset without email | UX-02, SYNC-06 (`revoke_all_devices`) | `DONE` (2026-11-04, local, 10 sub-steps 01a-01j all verified; owner approved the design 2026-11-04; not committed; CI not run; evidence `ACCEPTANCE.md` AUTH-01; ADR-0067; risks R-56, R-57; threats `SECURITY.md` T25-T30). `atlas-admin reset-password` stays the fallback when both password and code are lost; new `atlas-admin recovery-code`; new setting `RECOVERY_ENABLED` (default true) |
 
 ### UX-01 plan — Design tokens and base controls
 - **Scope.** Replace `:root` in `apps/web/src/styles.css` with the audit §3 tokens, using a neutral accent
@@ -1322,7 +1322,7 @@ depends on CI and the Compose stack being green.
 
 ## Immediate Next Tasks
 
-**Owner priority order (2026-11-03): 1. Sync (local-first, ADR-0055), 2. Auth (AUTH-01 plus device credentials for sync clients), 3. Calendar (M5-00 onward), 4. Core (close MU: CI run of `e2e-real` + release re-score). UX-01…UX-08 are all `DONE`. The Sync design and backlog are done (2026-11-03, see the SYNC section, `SYNC_PROTOCOL.md`, ADR-0059 PROPOSED). **Next: SYNC-01 (feed correctness fixes) then SYNC-02 (simulation harness); SYNC-07 (Tauri spike, Linux first) can run alongside; SYNC-03…06 wait for the owner's answers to ADR-0059. AUTH-01 stays `BACKLOG` and meets SYNC-06 at the shared device-revoke function (ADR-0059 D8).** Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
+**Owner priority order (2026-11-03): 1. Sync (local-first, ADR-0055), 2. Auth (AUTH-01 plus device credentials for sync clients), 3. Calendar (M5-00 onward), 4. Core (close MU: CI run of `e2e-real` + release re-score). UX-01…UX-08 are all `DONE`. The Sync design and backlog are done (2026-11-03, see the SYNC section, `SYNC_PROTOCOL.md`, ADR-0059 PROPOSED). **Next: SYNC-01 (feed correctness fixes) then SYNC-02 (simulation harness); SYNC-07 (Tauri spike, Linux first) can run alongside; SYNC-03…06 wait for the owner's answers to ADR-0059. AUTH-01 met SYNC-06 at the shared device-revoke function (ADR-0059 D8) and is `DONE` since 2026-11-04.** Milestone MU (usable core): `MU-00` (real-stack journey harness), `MU-01` (task detail and
 editing) and `MU-02` (Projects UI), `MU-03` (Tasks page) and `MU-04` (recurrence, subtasks and reminders in the UI) and `MU-05` (command palette, quick switcher and unified search) and `MU-06` (note ↔ task ↔ project linking) and `MU-07` (daily note, templates and Today as home) and `MU-08` (settings and shell polish) are `DONE`; MU itself is not closed (CI run and release re-score outstanding, see the MU exit-criteria evaluation).** See the MU section and ADR-0043 for why this precedes calendar and mobile
 work. Everything else is blocked on a resource this environment does not have:
 
@@ -1363,3 +1363,27 @@ decisions below are made.
   calendar data, which depends on M5-00.
 - `ATLAS_ENV` defaults to `development`, which accepts the placeholder secrets. Production hardening
   applies only when `ATLAS_ENV=production`; operators must set it (see `DEPLOYMENT.md`).
+
+### AUTH-01 plan — Account recovery by a one-time recovery code (sub-steps 01a-01j)
+
+Owner decision (2026-11-04): a one-time code shown once at setup and regenerable in Settings, stored only as a hash; "Forgot password?"
+asks for email + code + new password; a reset revokes every session and every device in the transaction of the password change
+(`revoke_all_devices`, ADR-0065), replaces the code, is rate limited and never logs or echoes the code. Decisions: ADR-0067. Each step
+was verified before the next (targeted tests, then the whole suite at the end).
+
+| Step | Content | Migration | Status |
+|---|---|---|---|
+| 01a | Design decisions recorded (format and entropy, hash choice, table, enumeration, limits, rotation, regenerate, CLI fallback, `RECOVERY_ENABLED`, CSRF/cookies) | none | `DONE` (ADR-0067) |
+| 01b | Model `RecoveryCode` and migration; tested clean, at the previous revision with a populated schema, constraints, cascade, downgrade, down/up/up | `c9e4a7b2d6f1` (reversible; downgrade drops the table) | `DONE` |
+| 01c | `atlas/auth/recovery.py`: generation, normalisation, salted HMAC, `issue_recovery_code`, `apply_password_reset` (shared with the CLI), limiter pruning; unit tests | none | `DONE` |
+| 01d | `POST /api/auth/recovery/reset`: one transaction under a row lock, equal work for every refusal, per-address and per-account throttle, CSRF exemption like login; integration tests incl. replay, race, atomicity, enumeration (SQL compared) and five hand mutations | none | `DONE` |
+| 01e | Setup returns the code; `GET /api/auth/recovery`, `POST /api/auth/recovery/regenerate`; `RECOVERY_ENABLED` (config, compose, `.env.example`, the compose-env test stays green); `atlas-admin recovery-code` | none | `DONE` |
+| 01f | Security and hygiene tests: no secret in logs/errors/exports/DB/dump, cross-user isolation, devices refused, other password changes unaffected | none | `DONE` |
+| 01g | `openapi.json` and `apps/web/src/api/schema.d.ts` regenerated; `recoveryApi` client | none | `DONE` |
+| 01h | Web: setup gate with `RecoveryCodeReveal` (copy, download, acknowledgement), Forgot password form, Settings → Account recovery row, CSS (tokens only); vitest | none | `DONE` |
+| 01i | Real-stack specs (`auth01-recovery.spec.ts`), `createOwner` passes the gate; axe 1440/768/390/360 both themes, 44 px and 16 px | none | `DONE` |
+| 01j | Docs (ADR, SECURITY, RISKS, DATA_MODEL, OPERATIONS, OPERATOR_GUIDE, USER_GUIDE, TESTING, ACCEPTANCE, CHANGELOG, `.env.example`), `./scripts/verify.sh`, `test:e2e:real`, `e2e` | none | `DONE` |
+
+**Not built (decided):** server-side tracking of "the owner saw the code" (R-56), e-mail or push confirmation of a reset (no channel), a
+shared limiter store (R-57), several codes per account.
+

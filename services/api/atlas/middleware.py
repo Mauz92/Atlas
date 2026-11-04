@@ -20,7 +20,11 @@ logger = logging.getLogger("atlas.http")
 _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 # ``/api/devices`` (POST) signs a device in with the account password, like login: it needs no
 # session, so there is no ambient credential to forge a request with.
-_CSRF_EXEMPT_PATHS = frozenset({"/api/auth/login", "/api/auth/setup", "/api/devices"})
+# ``/api/auth/recovery/reset`` likewise needs no session: it is authorised by the recovery code in
+# the body, issues no cookie and reads none, so there is no ambient credential to ride (ADR-0067).
+_CSRF_EXEMPT_PATHS = frozenset(
+    {"/api/auth/login", "/api/auth/setup", "/api/auth/recovery/reset", "/api/devices"}
+)
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):

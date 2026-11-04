@@ -14,8 +14,12 @@ export const OWNER = {
   password: "journey-test-password-1",
 };
 
-/** Create the owner through the real first-run setup form (which also signs the owner in). */
-export async function createOwner(page: Page): Promise<void> {
+/**
+ * Create the owner through the real first-run setup form (which also signs the owner in), then pass
+ * the recovery-code screen the way a person does: read the code, tick "I have saved it", continue
+ * (AUTH-01). Returns the setup recovery code.
+ */
+export async function createOwner(page: Page): Promise<string> {
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Create your Atlas account" }),
@@ -25,8 +29,15 @@ export async function createOwner(page: Page): Promise<void> {
   await page.getByLabel("Password").fill(OWNER.password);
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(
-    page.getByRole("heading", { name: "Create your Atlas account" }),
+    page.getByRole("heading", { name: "Save your recovery code" }),
+  ).toBeVisible();
+  const code = (await page.getByTestId("recovery-code").textContent()) ?? "";
+  await page.getByRole("checkbox", { name: "I have saved my recovery code" }).check();
+  await page.getByRole("button", { name: "Continue to Atlas" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Save your recovery code" }),
   ).toBeHidden();
+  return code;
 }
 
 /** Sign in through the real login form. */

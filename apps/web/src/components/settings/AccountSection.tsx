@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import { api } from "../../api/client";
 import { useAuth } from "../../auth/AuthProvider";
 import { errorMessage } from "../../lib/settingsFormat";
+import { RecoverySection } from "./RecoverySection";
 import { SettingsRow } from "./SettingsRow";
 
 const MIN_PASSWORD = 12;
@@ -154,6 +155,8 @@ export function AccountSection() {
           ) : null}
         </div>
       </form>
+
+      <RecoverySection />
     </>
   );
 }

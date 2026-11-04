@@ -18,6 +18,16 @@ from ..auth import (
 )
 from ..auth.devices import revoke_all_devices
 from ..auth.ratelimit import RateLimiter
+from ..auth.recovery import (
+    ACCOUNT_ATTEMPTS,
+    ACCOUNT_WINDOW_SECONDS,
+    RecoveryRefused,
+    account_key,
+    audit_event,
+    issue_recovery_code,
+    recovery_status,
+    reset_password_with_code,
+)
 from ..config import get_settings
 from ..models import AuthSession, User
 from .deps import CurrentUser, DbSession, SyncUser
@@ -25,7 +35,12 @@ from .schemas import (
     LoginRequest,
     PasswordChange,
     ProfileUpdate,
+    RecoveryCodeIssued,
+    RecoveryRegenerate,
+    RecoveryReset,
+    RecoveryStatus,
     SetupRequest,
+    SetupResult,
     SetupStatus,
     UserPublic,
 )
@@ -36,6 +51,12 @@ _login_limiter = RateLimiter(limit=get_settings().auth_rate_limit_per_minute)
 # Password changes are another way to guess the current password, so they share the login budget
 # (same limit and window) but are keyed per account rather than per address.
 _password_limiter = RateLimiter(limit=get_settings().auth_rate_limit_per_minute)
+
+
+# Forgot-password attempts are limited per address (the shared ``_login_limiter``) and per account
+# (this one, keyed by a hash of the e-mail so an unknown address is throttled identically). A
+# sliding window: the delay is bounded and ends by itself, never a permanent lock (ADR-0067).
+_recovery_account_limiter = RateLimiter(limit=ACCOUNT_ATTEMPTS, per_seconds=ACCOUNT_WINDOW_SECONDS)
 
 
 @lru_cache(maxsize=1)
@@ -108,13 +129,16 @@ async def _issue_session(
 
 @router.get("/api/setup/status", response_model=SetupStatus)
 async def setup_status(session: DbSession) -> SetupStatus:
-    return SetupStatus(setup_required=not await _users_exist(session))
+    return SetupStatus(
+        setup_required=not await _users_exist(session),
+        recovery_enabled=get_settings().recovery_enabled,
+    )
 
 
-@router.post("/api/auth/setup", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
+@router.post("/api/auth/setup", response_model=SetupResult, status_code=status.HTTP_201_CREATED)
 async def setup(
     payload: SetupRequest, request: Request, response: Response, session: DbSession
-) -> UserPublic:
+) -> SetupResult:
     if not _login_limiter.allow(_client_key(request)):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests"
@@ -130,9 +154,19 @@ async def setup(
     )
     session.add(user)
     await session.flush()
+    issued = None
+    if get_settings().recovery_enabled:
+        issued = await issue_recovery_code(session, user.id)
     await _issue_session(session, user, request, response)
     await session.commit()
-    return UserPublic(id=user.id, email=user.email, display_name=user.display_name)
+    if issued is not None:
+        audit_event("recovery_code_issued", user_id=str(user.id), ip_hash=_ip_hash(request))
+    return SetupResult(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        recovery_code=issued.code if issued is not None else None,
+    )
 
 
 @router.post("/api/auth/login", response_model=UserPublic)
@@ -232,3 +266,101 @@ async def change_password(
     await session.commit()
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
+
+
+def _require_recovery_enabled() -> None:
+    if not get_settings().recovery_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+
+@router.get("/api/auth/recovery", response_model=RecoveryStatus)
+async def recovery_code_status(user: CurrentUser, session: DbSession) -> RecoveryStatus:
+    """Whether the account has a recovery code, and when it was made and last used (ADR-0067).
+
+    Never the code or its hash. Browser sessions only (``CurrentUser``): a device cannot read it.
+    """
+    enabled = get_settings().recovery_enabled
+    row = await recovery_status(session, user.id) if enabled else None
+    return RecoveryStatus(
+        enabled=enabled,
+        configured=row is not None,
+        created_at=row.created_at if row else None,
+        last_used_at=row.last_used_at if row else None,
+        failed_attempts=row.failed_attempts if row else 0,
+    )
+
+
+@router.post("/api/auth/recovery/regenerate", response_model=RecoveryCodeIssued)
+async def regenerate_recovery_code(
+    payload: RecoveryRegenerate, request: Request, user: CurrentUser, session: DbSession
+) -> RecoveryCodeIssued:
+    """Issue a new recovery code (the first one, or a replacement that kills the old one).
+
+    Requires the current password (a stolen session alone must not be able to mint a way to take
+    the account over), rate limited per account like a password change. Sessions and devices stay
+    as they are. The response is the only time the new code is visible.
+    """
+    _require_recovery_enabled()
+    if not _password_limiter.allow(str(user.id)):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests",
+            headers={"Retry-After": str(_password_limiter.retry_after(str(user.id)))},
+        )
+    if not verify_password(user.password_hash, payload.current_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect"
+        )
+    issued = await issue_recovery_code(session, user.id)
+    await session.commit()
+    audit_event("recovery_code_regenerated", user_id=str(user.id), ip_hash=_ip_hash(request))
+    return RecoveryCodeIssued(recovery_code=issued.code, created_at=issued.created_at)
+
+
+_RECOVERY_REFUSED = "The email or recovery code is not correct"
+
+
+@router.post("/api/auth/recovery/reset", response_model=RecoveryCodeIssued)
+async def reset_password_with_recovery_code(
+    payload: RecoveryReset, request: Request, session: DbSession
+) -> RecoveryCodeIssued:
+    """Forgot password: set a new one with the recovery code (ADR-0067).
+
+    Unauthenticated, so it is CSRF-exempt like login and neither reads nor sets a cookie. On
+    success the password changes, **every** browser session and **every** device is signed out and
+    the code is replaced, all in one transaction; the response carries the new code (shown once).
+    This browser is *not* signed in: the owner signs in with the new password. Every refusal
+    (unknown e-mail, account without a code, wrong or already used code) is the same ``400``.
+    Limited per address and per account; a limited caller gets ``429`` and a ``Retry-After``,
+    before any code is looked at.
+    """
+    _require_recovery_enabled()
+    ip_key = _client_key(request)
+    if not _login_limiter.allow(ip_key):
+        audit_event("recovery_reset_throttled", scope="address", ip_hash=_ip_hash(request))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests",
+            headers={"Retry-After": str(_login_limiter.retry_after(ip_key))},
+        )
+    account = account_key(payload.email)
+    if not _recovery_account_limiter.allow(account):
+        audit_event("recovery_reset_throttled", scope="account", ip_hash=_ip_hash(request))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests",
+            headers={"Retry-After": str(_recovery_account_limiter.retry_after(account))},
+        )
+    try:
+        outcome = await reset_password_with_code(
+            session,
+            payload.email,
+            payload.recovery_code,
+            payload.new_password,
+            ip_hash=_ip_hash(request),
+        )
+    except RecoveryRefused:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=_RECOVERY_REFUSED
+        ) from None
+    return RecoveryCodeIssued(recovery_code=outcome.code, created_at=outcome.created_at)

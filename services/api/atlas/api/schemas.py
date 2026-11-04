@@ -71,6 +71,37 @@ class SetupRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
 
 
+class RecoveryReset(BaseModel):
+    """Forgot-password reset: the account's e-mail, its recovery code and a new password."""
+
+    email: Email
+    recovery_code: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=12, max_length=1024)
+
+
+class RecoveryRegenerate(BaseModel):
+    current_password: str = Field(min_length=1, max_length=1024)
+
+
+class RecoveryCodeIssued(BaseModel):
+    """A freshly issued recovery code. This response is the only place the code ever appears."""
+
+    recovery_code: str
+    created_at: datetime
+
+
+class RecoveryStatus(BaseModel):
+    enabled: bool = Field(description="False when the operator set RECOVERY_ENABLED=false.")
+    configured: bool = Field(description="Whether the account has a recovery code.")
+    created_at: datetime | None = None
+    last_used_at: datetime | None = Field(
+        default=None, description="When the code last reset the password (null: never used)."
+    )
+    failed_attempts: int = Field(
+        default=0, description="Wrong tries since the code was last used or issued."
+    )
+
+
 class ProfileUpdate(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
 
@@ -160,6 +191,22 @@ class UserPublic(BaseModel):
 
 class SetupStatus(BaseModel):
     setup_required: bool
+    recovery_enabled: bool = Field(
+        default=True,
+        description=(
+            "Whether the server issues recovery codes and accepts a forgot-password reset "
+            "(RECOVERY_ENABLED, ADR-0067). The sign-in page uses it to word its help."
+        ),
+    )
+
+
+class SetupResult(UserPublic):
+    """The new owner, plus the one-time recovery code (``null`` when recovery is disabled)."""
+
+    recovery_code: str | None = Field(
+        default=None,
+        description="Shown once, never again; the server keeps only a salted hash (ADR-0067).",
+    )
 
 
 class HealthStatus(BaseModel):

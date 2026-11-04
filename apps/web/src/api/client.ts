@@ -3,6 +3,9 @@ import type { components } from "./schema";
 
 export type UserPublic = components["schemas"]["UserPublic"];
 export type SetupStatus = components["schemas"]["SetupStatus"];
+export type SetupResult = components["schemas"]["SetupResult"];
+export type RecoveryStatus = components["schemas"]["RecoveryStatus"];
+export type RecoveryCodeIssued = components["schemas"]["RecoveryCodeIssued"];
 export type NoteSummary = components["schemas"]["NoteSummaryOut"];
 export type NoteDetail = components["schemas"]["NoteDetailOut"];
 export type NoteLink = components["schemas"]["NoteLinkOut"];
@@ -153,7 +156,7 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   setup: (email: string, password: string, displayName: string) =>
-    apiFetch<UserPublic>("/api/auth/setup", {
+    apiFetch<SetupResult>("/api/auth/setup", {
       method: "POST",
       body: JSON.stringify({ email, password, display_name: displayName }),
     }),
@@ -171,6 +174,29 @@ export const api = {
         current_password: currentPassword,
         new_password: newPassword,
         revoke_devices: revokeDevices,
+      }),
+    }),
+};
+
+/**
+ * Account recovery (AUTH-01, ADR-0067). The one-time code is in the response of `regenerate` and
+ * `reset` (and of `setup`) and nowhere else; callers keep it in memory only, never in storage.
+ */
+export const recoveryApi = {
+  status: () => apiFetch<RecoveryStatus>("/api/auth/recovery"),
+  regenerate: (currentPassword: string) =>
+    apiFetch<RecoveryCodeIssued>("/api/auth/recovery/regenerate", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword }),
+    }),
+  /** Unauthenticated: sets a new password with the code and returns the replacement code. */
+  reset: (email: string, recoveryCode: string, newPassword: string) =>
+    apiFetch<RecoveryCodeIssued>("/api/auth/recovery/reset", {
+      method: "POST",
+      body: JSON.stringify({
+        email,
+        recovery_code: recoveryCode,
+        new_password: newPassword,
       }),
     }),
 };

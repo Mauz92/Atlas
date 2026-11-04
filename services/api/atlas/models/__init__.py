@@ -11,6 +11,7 @@ from .job import Job, JobStatus
 from .note import NoteIndex, NoteLink, NoteRevision, NoteTag, Tag
 from .notification import NotificationDevice, PushChannel
 from .project import NoteProject, Project, ProjectStatus
+from .recovery import RecoveryCode
 from .reminder import (
     Reminder,
     ReminderDelivery,
@@ -43,6 +44,7 @@ __all__ = [
     "ProjectStatus",
     "ProviderCredential",
     "PushChannel",
+    "RecoveryCode",
     "RecurrenceSeries",
     "Reminder",
     "ReminderDelivery",

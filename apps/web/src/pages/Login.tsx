@@ -2,9 +2,11 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 
 import { useAuth } from "../auth/AuthProvider";
+import { ForgotPassword } from "./ForgotPassword";
 
 export function Login() {
-  const { login, error } = useAuth();
+  const { login, error, recoveryEnabled } = useAuth();
+  const [forgot, setForgot] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -21,6 +23,10 @@ export function Login() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (forgot) {
+    return <ForgotPassword enabled={recoveryEnabled} onBack={() => setForgot(false)} />;
   }
 
   return (
@@ -51,6 +57,9 @@ export function Login() {
         {submitError ? <p className="error" role="alert">{submitError}</p> : null}
         <button type="submit" className="primary" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
+        </button>
+        <button type="button" className="link-button" onClick={() => setForgot(true)}>
+          Forgot password?
         </button>
       </form>
     </main>

@@ -6,6 +6,17 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (AUTH-01): **You can now recover a forgotten password in the browser.** At first-run setup Atlas shows a **recovery code** once
+  (copy it or download it, then tick "I have saved my recovery code"; the app waits for that). On the sign-in page, **Forgot password?**
+  takes your email, the recovery code and a new password; it signs you out of **every browser and every desktop or phone app**, and shows a
+  **new recovery code once** (the old one stops working, so a code works one time). Accounts created before this release have no code:
+  open **Settings → Account → Recovery code** and **Create recovery code** (your password is asked). **Regenerate** there makes a new one
+  and ends the old. The server keeps only a salted hash of the code; wrong tries are limited and never reveal whether the email exists. New
+  setting `RECOVERY_ENABLED` (default `true`; `false` turns the feature off for operators who prefer the command line), new operator command
+  `atlas-admin recovery-code --email <email>`, new migration `c9e4a7b2d6f1` (`recovery_codes`; reversible; applied by the next
+  `atlas-migrate`). A restore from an older backup brings back the older code (`docs/OPERATIONS.md` 2.2b). `atlas-admin reset-password`
+  is unchanged and remains the fallback when both password and code are lost (ADR-0067, `docs/SECURITY.md` section 13).
+
 - Added (SYNC-06): **Devices can now sign in to your server on their own, for the coming desktop and Android apps.** An app signs
   in once with your email and password and receives its own key (shown once to the app, never stored by the server, which keeps
   only a fingerprint). With it the app can sync tasks, projects and notes, but it cannot change your password, export your data,

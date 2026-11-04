@@ -47,11 +47,20 @@ On a fresh install, Atlas shows **Create your Atlas account**. This is the first
 it owns the instance.
 
 1. Enter a **Name**, an **Email** and a **Password** (at least 12 characters).
-2. Select **Create account**. You are signed in and land on **Today**.
+2. Select **Create account**. Atlas now shows your **recovery code** (six groups of five letters and digits). **This is the only time it is
+   shown.** Use **Copy code** or **Download as file**, keep it somewhere private and safe (a password manager is ideal; not in your notes
+   folder or a synced note), tick **I have saved my recovery code** and select **Continue to Atlas**. You land on **Today**.
+   The code is what lets you set a new password if you ever forget it. If you did not save it, make a new one in **Settings → Account**.
 
 ### Signing in and out
 
 - Sign in with your **Email** and **Password** on the **Sign in to Atlas** screen.
+- **Forgot your password?** Select **Forgot password?** under the sign-in form. Enter your email, your **recovery code** (capitals, dashes and
+  spaces do not matter) and a new password twice. It signs you out **everywhere** (every browser and every desktop or phone app) and shows
+  a **new recovery code once**: your old one no longer works, so save the new one as you did the first (tick **I have saved my recovery code**).
+  Then sign in with the new password. If the message says the email and code do not match, check both; it never says which one was wrong.
+  After several wrong tries you must wait a few minutes. If you lost the code too, whoever runs your server can reset the password from the
+  server's command line (`atlas-admin reset-password`).
 - The bottom of the sidebar shows your name and a **Sign out** button (also in the palette: *Sign out*).
 
 ### Theme
@@ -395,7 +404,9 @@ Open **Settings** for:
 - **Account.** Change your **display name**. **Change password** asks for your current password and a new one
   of at least 12 characters; afterwards you stay signed in here and are **signed out in your other browsers**.
   Your desktop and phone apps keep syncing unless you tick **Also sign out my devices** (tick it if you think the old
-  password was exposed). The email cannot be changed.
+  password was exposed). The email cannot be changed. **Recovery code** shows whether a code is set, when it was made and when it was last
+  used. **Regenerate** (or **Create recovery code** on an account that has none) asks for your current password, makes a new code and shows it
+  once; the old code stops working at once. If your server's operator turned recovery off, the row says so.
 - **Devices.** The desktop and phone apps that sync with this server (coming in a later release; the list is empty until
   one signs in). Each app signs in once with your email and password and then holds its own key, which is never shown
   here. For every device you see its name, platform and when it last connected; **Rename** it, or **Sign out** a lost or

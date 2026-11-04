@@ -107,6 +107,7 @@ second-tab conflict, all fields, verbatim validation errors, delete + undo, narr
 `j6-daily-note-and-today.spec.ts` (J6: Today as home, daily note created once as a plain file, template substitution; reads the notes directory via `ATLAS_E2E_NOTES_DIR`),
 `j5-find-anything.spec.ts` (J5: Ctrl+K palette — grouped results for notes/tasks/projects, Enter opens each, go-to/theme commands, create task/note/project from the same box, verbatim server error, Search page).
 `j7-stay-in-control.spec.ts` (J7: Settings — display name, password change with the other device signed out, theme, reminder timing, export download, backup status from a manifest written to the run's backup folder, instance info, shortcut help; restores the shared owner's name, password and reminder default);
+`auth01-recovery.spec.ts` (AUTH-01: first-run setup shows the recovery code once behind an explicit acknowledgement, with copy/download, nothing in storage or the URL; Settings regenerate behind the password; the Forgot password journey: wrong code and unknown email refused alike, sloppy entry accepted, the old password stops working, another browser session and a device token are signed out, the used code is dead, the replacement works; Sign in, Forgot password and the Settings recovery row axe clean at 1440/768/390/360 in both themes with the 44 px rule and 16 px fields; it sorts first, so it performs the run's setup, and `createOwner` in `helpers.ts` passes the recovery-code screen for every other journey; it leaves the owner's password as the other specs expect);
 `mu08-a11y-and-layout.spec.ts` (MU-08: axe-core over every main page in light and dark, the task panel, palette and shortcut help; no horizontal scroll at 375 px and 800 px — violations are fixed, never suppressed; uses `@axe-core/playwright`, `DEPENDENCIES.md`).
 Journeys share one owner: start each with `ensureOwner(page)` (creates the owner or signs in) and use
 unique titles, since earlier journeys' tasks stay in the database. A journey that changes shared owner state (name, password, reminder default) must put it back before it ends. `apiCall` (helpers) performs set-up
@@ -627,3 +628,20 @@ Unicode-normalising filesystems, the real OS keystores, installers and auto-upda
 portals and flaky mobile networks. Each is a checklist item in SYNC-12 and in the Tauri spike (`ROADMAP.md` SYNC-07).
 
 Results use the §9 vocabulary. A simulation seed that was not run is `NOT RUN`, not `PASS`.
+
+
+## 11. Account recovery tests (AUTH-01, ADR-0067)
+
+Run with the rest: `./scripts/verify.sh`; the real-stack journey is `auth01-recovery.spec.ts` (section 1b).
+
+| File | What it proves |
+|---|---|
+| `tests/unit/test_recovery_code.py` | format and entropy (>= 128 bits, Crockford, six groups of five, all symbols used, no repeats), tolerant entry (case, dashes, spaces, look-alikes) and refusal of everything else, salted HMAC, account key holds no address, the limiter is a bounded delay that refused attempts cannot extend, pruning |
+| `tests/integration/test_recovery.py` (23) | setup reveal and hash-only storage; reset: password, **every** session and device revoked, code rotated, no cookie; replay; two simultaneous resets succeed once; one transaction (a failing device revocation changes nothing); ordinary password change and operator reset leave the code alone; `atlas-admin recovery-code`; enumeration (same body, headers and SQL for unknown/no code/inactive/wrong); throttle per account (also unknown addresses) and per address, `Retry-After`, window slides; regenerate needs the session, CSRF and the password and kills the old code; accounts without a code can create one; a device gets `403`; cross-user isolation both ways; `RECOVERY_ENABLED=false`; no cookie or CSRF ride; `422` never echoes; no secret in any log record and the audit events exact; no plaintext in any table or the export |
+| `tests/integration/test_recovery_migration.py` (3) | `c9e4a7b2d6f1` on a clean database and on the previous revision with a populated schema (user, session, device, task); existing accounts have no code; constraints; cascade; downgrade keeps everything else; down/up/up |
+| `tests/integration/test_recovery_backup.py` | the real `pg_dump` holds salt and hash and never the code; the manifest neither |
+| vitest `RecoveryCodeReveal`, `ForgotPassword`, `RecoverySection`, `AuthProvider.recovery` | acknowledgement gate, copy/download, nothing in storage, generic errors and 429 wording, confirmation check, recovery-off wording, the app held back at setup, regenerate flow and wrong password |
+
+Mutation checks done once by hand on `atlas/auth/recovery.py` (each must fail a named test): no device revocation, no row lock, no failure
+counter for unknown accounts (breaks equal work), no code rotation, no session revocation: all five were caught. NOT covered: wall-clock
+timing equality (the equal-statements test is a deterministic proxy), a second API process, Safari/Firefox, a password manager's autofill.

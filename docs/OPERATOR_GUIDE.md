@@ -115,6 +115,7 @@ on its next write ([`SECURITY.md`](SECURITY.md) R-SEC-3).
 |---|---|
 | `DATABASE_URL` | PostgreSQL DSN (e.g. `postgresql+psycopg://atlas:…@db:5432/atlas`). |
 | `NOTES_ROOT` | Absolute path to the Markdown notes root (in the container: `/data/atlas/notes`). |
+| `RECOVERY_ENABLED` | `true` (default): the owner gets a one-time **recovery code** at first-run setup (and can regenerate it in Settings → Account), and **Forgot password?** on the sign-in page resets the password with it. `false`: no code is issued, the reset and regenerate endpoints answer `404`, and a forgotten password can only be fixed by you on the server (`atlas-admin reset-password`). Set it to `false` if you prefer CLI-only recovery. Existing codes are kept while it is off. |
 | `NOTES_RECONCILE_SECONDS` | How often the worker re-scans the notes root (default `300`). |
 | `CHANGE_RETENTION_DAYS` | How far back the per-user change feed keeps deletion history (default `90`, minimum `30`); a device older than this is told to full-resync. The same window applies to saved-request keys and to the automatic-resolution log (the "changed on another device" notices and their undo; they keep the overwritten status, date or path of a simple field, never text). It is also how long a sync device may stay unseen before it must sign in again, and how long a signed-out device is remembered. **It never purges your task/project/note rows.** |
 | `CHANGE_PURGE_INTERVAL_SECONDS` | How often the purge job runs (default `3600`). |
@@ -274,6 +275,15 @@ Available today:
   unseen for `CHANGE_RETENTION_DAYS` (default 90) must sign in again; devices signed out longer ago than that are deleted by the
   hourly purge. **After restoring a backup, sign out again any device you revoked since that backup was taken** (the restore brings
   back the state of the backup; when unsure, `revoke-device --all`).
+
+- **Account recovery** (AUTH-01, ADR-0067). The owner resets a forgotten password in the browser with the recovery code from first-run
+  setup; you do nothing. If the owner has lost the code **and** the password, or `RECOVERY_ENABLED=false`, you fix it on the server:
+  `docker compose -f deploy/docker-compose.yml exec api atlas-admin reset-password --email you@example.com` (hidden prompt; signs out every
+  browser **and device**), then, if wanted, `... atlas-admin recovery-code --email you@example.com`, which prints a **new recovery code
+  once** (the old one stops working) for you to hand to the owner. Accounts created before AUTH-01 have no code until the owner makes one in
+  Settings or you run `recovery-code`. The server stores only a salted hash of the code, never the code. Reset attempts are limited (per
+  address 10 a minute, per account 5 per 15 minutes; in process, so a restart clears them) and logged as `recovery_reset_*` events on the
+  `atlas.auth.audit` logger without any secret. After restoring a backup, see [`OPERATIONS.md`](OPERATIONS.md) 2.2b.
 
 There is **no dedicated job-queue dashboard** in this release; inspect the `jobs` table / worker logs
 directly. Remediation guidance and the recovery-scenario table are in [`OPERATIONS.md`](OPERATIONS.md)

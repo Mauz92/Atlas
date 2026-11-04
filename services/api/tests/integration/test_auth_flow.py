@@ -9,7 +9,7 @@ PASSWORD = "correct horse battery"
 async def test_setup_status_true_on_fresh_install(client: AsyncClient) -> None:
     response = await client.get("/api/setup/status")
     assert response.status_code == 200
-    assert response.json() == {"setup_required": True}
+    assert response.json() == {"setup_required": True, "recovery_enabled": True}
 
 
 async def test_setup_creates_owner_and_session(client: AsyncClient) -> None:
@@ -18,7 +18,7 @@ async def test_setup_creates_owner_and_session(client: AsyncClient) -> None:
     assert "atlas_csrf" in client.cookies
 
     status = await client.get("/api/setup/status")
-    assert status.json() == {"setup_required": False}
+    assert status.json() == {"setup_required": False, "recovery_enabled": True}
 
     me = await client.get("/api/auth/me")
     assert me.status_code == 200

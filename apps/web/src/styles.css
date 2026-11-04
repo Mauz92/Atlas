@@ -693,6 +693,75 @@ kbd {
   margin-top: var(--s-2);
 }
 
+/* Recovery code (AUTH-01): the one-time reveal, shared by setup, forgot password and Settings. */
+.recovery-reveal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.recovery-code {
+  margin: 0;
+  padding: var(--s-4);
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  line-height: var(--lh-base);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: var(--text);
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-md);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.recovery-reveal > p,
+.recovery-panel > p {
+  margin: 0;
+}
+
+.recovery-panel {
+  max-width: var(--measure);
+  padding: var(--s-4) 0;
+  border-top: 1px solid var(--border);
+}
+
+/* A text-like action under a form (for example "Back to sign in"). */
+button.link-button {
+  align-self: center;
+  color: var(--accent-text);
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+  text-decoration: underline;
+}
+
+button.link-button:hover {
+  background: var(--bg-hover);
+}
+
+@media (pointer: coarse), (max-width: 720px) {
+  .recovery-actions button,
+  .recovery-reveal > button,
+  .auth-page button,
+  .recovery-panel button {
+    min-height: 44px;
+  }
+
+  .auth-page input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+    min-height: 44px;
+    font-size: var(--fs-md);
+  }
+}
+
 /* --- Shell (UX-02) ------------------------------------------------------ */
 /*
  * Rail (48px) | sidebar (240px, Ctrl+B) | page, with a 24px status bar fixed at the bottom. The page
@@ -5287,7 +5356,7 @@ button.task-subtask-title.done {
   gap: var(--s-2);
 }
 
-.settings-row-control input:not([type="radio"]) {
+.settings-row-control input:not([type="radio"]):not([type="checkbox"]) {
   width: 240px;
   max-width: 100%;
 }

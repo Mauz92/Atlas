@@ -238,6 +238,13 @@ signed out after the backup **works again** - run `atlas-admin revoke-device --e
 about) straight after a restore if you revoked anything since the backup. Skipping this step on a server
 that has sync clients risks silent divergence; it is harmless otherwise (idempotent, no data is touched).
 
+### 2.2b Recovery codes after a restore (AUTH-01)
+
+`recovery_codes` is part of the database, so a restore returns the code that was current when the backup was made. A code regenerated
+or rotated by a reset *after* that backup is lost, and the older code works again. After a restore, check **Settings → Account →
+Recovery code** (created date) and regenerate if in doubt, or run `atlas-admin recovery-code --email <email>`. A password reset that
+happened after the backup is also undone (the old password returns); tell the owner.
+
 ### 2.3 Restore the notes
 
 ```bash
@@ -358,7 +365,8 @@ unchanged), calendar tokens (none exist yet).
 | Failed migration | Roll back image + restore pre-upgrade backup (`DEPLOYMENT.md` §7) |
 | Lost encryption key | OAuth credentials must be re-authorised (notes/tasks unaffected) |
 | Lost or stolen laptop or phone with an Atlas app | Settings → Devices → **Sign out** (immediate), or on the server `atlas-admin list-devices --email <email>` then `atlas-admin revoke-device --email <email> --device <id>` (`--all` for every device). The token stops working on its next request; data already on the device stays there (disk encryption is the control, `SECURITY.md` T14). If the password may be known to others, also change it with "Also sign out my devices" ticked, or reset it with `atlas-admin reset-password` |
-| Forgotten password | On the server: `atlas-admin list-users`, then `atlas-admin reset-password --email <email>` (hidden prompt, 12+ characters, or the password on stdin when piped; never an argument). Every session **and every sync device** of the account is signed out. Source tree: `cd services/api && .venv/bin/python -m atlas.auth.cli …` with the usual `DATABASE_URL`; Docker: `docker compose exec api atlas-admin …` |
+| Forgotten password (browser) | The owner uses **Forgot password?** on the sign-in page with the email, the **recovery code** saved at setup and a new password (ADR-0067). It signs every browser and device out and shows a new code once. No operator action; `RECOVERY_ENABLED=false` turns this off |
+| Forgotten password **and** lost recovery code (or `RECOVERY_ENABLED=false`) | On the server: `atlas-admin list-users`, then `atlas-admin reset-password --email <email>` (hidden prompt, 12+ characters, or the password on stdin when piped; never an argument). Every session **and every sync device** of the account is signed out. Source tree: `cd services/api && .venv/bin/python -m atlas.auth.cli …` with the usual `DATABASE_URL`; Docker: `docker compose exec api atlas-admin …` |
 
 ## 6. Operational Non-Negotiables
 

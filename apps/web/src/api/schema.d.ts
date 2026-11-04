@@ -156,6 +156,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recovery Code Status
+         * @description Whether the account has a recovery code, and when it was made and last used (ADR-0067).
+         *
+         *     Never the code or its hash. Browser sessions only (``CurrentUser``): a device cannot read it.
+         */
+        get: operations["recovery_code_status_api_auth_recovery_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/recovery/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Regenerate Recovery Code
+         * @description Issue a new recovery code (the first one, or a replacement that kills the old one).
+         *
+         *     Requires the current password (a stolen session alone must not be able to mint a way to take
+         *     the account over), rate limited per account like a password change. Sessions and devices stay
+         *     as they are. The response is the only time the new code is visible.
+         */
+        post: operations["regenerate_recovery_code_api_auth_recovery_regenerate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/recovery/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Password With Recovery Code
+         * @description Forgot password: set a new one with the recovery code (ADR-0067).
+         *
+         *     Unauthenticated, so it is CSRF-exempt like login and neither reads nor sets a cookie. On
+         *     success the password changes, **every** browser session and **every** device is signed out and
+         *     the code is replaced, all in one transaction; the response carries the new code (shown once).
+         *     This browser is *not* signed in: the owner signs in with the new password. Every refusal
+         *     (unknown e-mail, account without a code, wrong or already used code) is the same ``400``.
+         *     Limited per address and per account; a limited caller gets ``429`` and a ``Retry-After``,
+         *     before any code is looked at.
+         */
+        post: operations["reset_password_with_recovery_code_api_auth_recovery_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/devices": {
         parameters: {
             query?: never;
@@ -2509,6 +2583,62 @@ export interface components {
             unchanged: number;
         };
         /**
+         * RecoveryCodeIssued
+         * @description A freshly issued recovery code. This response is the only place the code ever appears.
+         */
+        RecoveryCodeIssued: {
+            /** Recovery Code */
+            recovery_code: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** RecoveryRegenerate */
+        RecoveryRegenerate: {
+            /** Current Password */
+            current_password: string;
+        };
+        /**
+         * RecoveryReset
+         * @description Forgot-password reset: the account's e-mail, its recovery code and a new password.
+         */
+        RecoveryReset: {
+            /** Email */
+            email: string;
+            /** Recovery Code */
+            recovery_code: string;
+            /** New Password */
+            new_password: string;
+        };
+        /** RecoveryStatus */
+        RecoveryStatus: {
+            /**
+             * Enabled
+             * @description False when the operator set RECOVERY_ENABLED=false.
+             */
+            enabled: boolean;
+            /**
+             * Configured
+             * @description Whether the account has a recovery code.
+             */
+            configured: boolean;
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Last Used At
+             * @description When the code last reset the password (null: never used).
+             */
+            last_used_at?: string | null;
+            /**
+             * Failed Attempts
+             * @description Wrong tries since the code was last used or issued.
+             * @default 0
+             */
+            failed_attempts: number;
+        };
+        /**
          * RecurrencePreviewOut
          * @description The series' next occurrences as UTC instants, ascending (fewer when the series ends).
          */
@@ -2766,10 +2896,36 @@ export interface components {
             /** Display Name */
             display_name: string;
         };
+        /**
+         * SetupResult
+         * @description The new owner, plus the one-time recovery code (``null`` when recovery is disabled).
+         */
+        SetupResult: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Email */
+            email: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Recovery Code
+             * @description Shown once, never again; the server keeps only a salted hash (ADR-0067).
+             */
+            recovery_code?: string | null;
+        };
         /** SetupStatus */
         SetupStatus: {
             /** Setup Required */
             setup_required: boolean;
+            /**
+             * Recovery Enabled
+             * @description Whether the server issues recovery codes and accepts a forgot-password reset (RECOVERY_ENABLED, ADR-0067). The sign-in page uses it to word its help.
+             * @default true
+             */
+            recovery_enabled: boolean;
         };
         /**
          * SyncConflictOut
@@ -3351,7 +3507,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserPublic"];
+                    "application/json": components["schemas"]["SetupResult"];
                 };
             };
             /** @description Validation Error */
@@ -3488,6 +3644,92 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_code_status_api_auth_recovery_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryStatus"];
+                };
+            };
+        };
+    };
+    regenerate_recovery_code_api_auth_recovery_regenerate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryRegenerate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodeIssued"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_password_with_recovery_code_api_auth_recovery_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryReset"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodeIssued"];
+                };
             };
             /** @description Validation Error */
             422: {

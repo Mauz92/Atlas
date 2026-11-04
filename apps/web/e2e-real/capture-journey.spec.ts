@@ -1,14 +1,17 @@
 import { expect, test } from "./fixtures";
-import { createOwner, rail, signIn, signOut } from "./helpers";
+import { ensureOwner, rail, signIn, signOut } from "./helpers";
 
 /**
  * MU-00 trivial journey against the real API and a fresh database:
  * setup → login → capture "Buy milk" on Today → it appears in the Inbox → reload → still there.
+ * Setup is the run's first step: `auth01-recovery.spec.ts` sorts earlier and performs it (with the
+ * recovery-code screen), so here `ensureOwner` creates the owner only when nobody has yet (a run of
+ * this file alone) and otherwise signs in.
  */
 test("owner sets up, signs in, captures a task and finds it in the Inbox after a reload", async ({
   page,
 }) => {
-  await createOwner(page);
+  await ensureOwner(page);
 
   // Exercise the real login path too: sign out, then sign in again.
   await signOut(page);

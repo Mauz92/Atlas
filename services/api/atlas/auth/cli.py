@@ -4,13 +4,16 @@
     atlas-admin reset-password --email EMAIL
     atlas-admin list-devices --email EMAIL
     atlas-admin revoke-device --email EMAIL [--device ID | --all]
+    atlas-admin recovery-code --email EMAIL
     atlas-admin record-restore
 
 An **operator** tool (like ``atlas-backup``): it runs on the server with access to the database,
 so it is not reachable over the network. The new password is read from a hidden prompt (or from
 stdin when piped), never from an argument, so it cannot end up in shell history or the process
 list. Resetting revokes **every** session and **every** device token of the account. Nothing
-secret is printed or logged.
+secret is printed or logged, with one deliberate exception: ``recovery-code`` prints the new
+recovery code once, to the operator's terminal (it is the only moment the code exists in clear;
+the old one stops working at once).
 """
 
 from __future__ import annotations
@@ -20,14 +23,13 @@ import asyncio
 import getpass
 import sys
 import uuid
-from datetime import UTC, datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import AuthSession, Device, User
+from ..models import Device, User
 from .devices import revoke_all_devices, revoke_device
-from .passwords import hash_password
+from .recovery import IssuedCode, apply_password_reset, audit_event, issue_recovery_code
 
 MIN_PASSWORD_LENGTH = 12
 MAX_PASSWORD_LENGTH = 1024
@@ -49,15 +51,7 @@ async def reset_password(session: AsyncSession, email: str, new_password: str) -
     user = await session.scalar(select(User).where(func.lower(User.email) == email.strip().lower()))
     if user is None or not user.is_active:
         raise ResetError("no such active account")
-    user.password_hash = hash_password(new_password)
-    revoked = await session.execute(
-        update(AuthSession)
-        .where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
-        .values(revoked_at=datetime.now(UTC))
-        .returning(AuthSession.id)
-    )
-    devices = await revoke_all_devices(session, user.id)
-    return len(revoked.all()), devices
+    return await apply_password_reset(session, user, new_password)
 
 
 async def _find_user(session: AsyncSession, email: str) -> User:
@@ -65,6 +59,16 @@ async def _find_user(session: AsyncSession, email: str) -> User:
     if user is None:
         raise ResetError("no such account")
     return user
+
+
+async def issue_code_for(session: AsyncSession, email: str) -> IssuedCode:
+    """Issue (or replace) the account's recovery code; the old one stops working."""
+    user = await _find_user(session, email)
+    if not user.is_active:
+        raise ResetError("no such active account")
+    issued = await issue_recovery_code(session, user.id)
+    audit_event("recovery_code_issued_by_operator", user_id=str(user.id))
+    return issued
 
 
 async def list_devices(session: AsyncSession, email: str) -> list[Device]:
@@ -102,6 +106,11 @@ def _build_parser() -> argparse.ArgumentParser:
     which = revoke.add_mutually_exclusive_group(required=True)
     which.add_argument("--device", type=uuid.UUID, help="the device id (see list-devices)")
     which.add_argument("--all", action="store_true", help="every device of the account")
+    code = commands.add_parser(
+        "recovery-code",
+        help="issue a new recovery code for an account (replaces the old one; printed once)",
+    )
+    code.add_argument("--email", required=True, help="the account email")
     commands.add_parser(
         "record-restore",
         help="run after restoring a backup: tell sync clients the server went back in time",
@@ -134,6 +143,18 @@ async def _reset(email: str, password: str) -> int:
     async with session_scope() as session:
         sessions, devices = await reset_password(session, email, password)
     print(f"password reset; {sessions} session(s) and {devices} device(s) signed out")
+    return 0
+
+
+async def _recovery_code(email: str) -> int:
+    from ..db import session_scope
+
+    async with session_scope() as session:
+        issued = await issue_code_for(session, email)
+    print(
+        "New recovery code (shown once, keep it safe; any earlier code no longer works):\n"
+        f"{issued.code}"
+    )
     return 0
 
 
@@ -180,6 +201,8 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(_list_devices(args.email))
         if args.command == "revoke-device":
             return asyncio.run(_revoke_devices(args.email, args.device, args.all))
+        if args.command == "recovery-code":
+            return asyncio.run(_recovery_code(args.email))
         if args.command == "record-restore":
             return asyncio.run(_record_restore())
         return asyncio.run(_reset(args.email, _read_password()))

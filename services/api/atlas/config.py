@@ -118,6 +118,10 @@ class Settings(BaseSettings):
     csrf_cookie_name: str = "atlas_csrf"
     session_ttl_seconds: int = 60 * 60 * 24 * 14
     auth_rate_limit_per_minute: int = 10
+    # Account recovery by one-time code (AUTH-01, ADR-0067). When false, no code is issued at setup,
+    # the "forgot password" endpoint and Settings regeneration answer 404, and the owner recovers
+    # with ``atlas-admin reset-password`` on the server only.
+    recovery_enabled: bool = True
 
     cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
     # When non-empty, only these Host header values are accepted (production hardening).

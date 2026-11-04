@@ -10,6 +10,10 @@ import math
 import time
 from collections import defaultdict, deque
 
+#: above this many tracked keys, buckets with no live hit are dropped (keys may be attacker-chosen,
+#: for example an e-mail address on the recovery endpoint, so the table must not grow without bound)
+_PRUNE_AT = 4096
+
 
 class RateLimiter:
     def __init__(self, limit: int, per_seconds: float = 60.0) -> None:
@@ -19,6 +23,8 @@ class RateLimiter:
 
     def allow(self, key: str, now: float | None = None) -> bool:
         moment = time.monotonic() if now is None else now
+        if len(self._hits) >= _PRUNE_AT:
+            self._prune(moment)
         bucket = self._hits[key]
         cutoff = moment - self._per_seconds
         while bucket and bucket[0] <= cutoff:
@@ -27,6 +33,11 @@ class RateLimiter:
             return False
         bucket.append(moment)
         return True
+
+    def _prune(self, moment: float) -> None:
+        cutoff = moment - self._per_seconds
+        for key in [k for k, hits in self._hits.items() if not hits or hits[-1] <= cutoff]:
+            del self._hits[key]
 
     def retry_after(self, key: str, now: float | None = None) -> int:
         """Whole seconds (at least 1) until ``key`` may try again; for a ``Retry-After`` header."""
