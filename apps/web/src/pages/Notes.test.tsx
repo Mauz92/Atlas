@@ -375,3 +375,50 @@ describe("Notes: autosave (UX-05)", () => {
     expect(await screen.findByTitle("Revision 4")).toBeInTheDocument();
   });
 });
+
+describe("Notes: creating when the list is empty", () => {
+  function renderNotes() {
+    render(
+      <MemoryRouter initialEntries={["/notes"]}>
+        <Notes />
+      </MemoryRouter>,
+    );
+  }
+
+  it("opens the name box from 'New note' and creates the first note", async () => {
+    vi.mocked(notesApi.list)
+      .mockResolvedValueOnce({ notes: [], folders: [] })
+      .mockResolvedValue({
+        notes: [{ ...summary, id: "n1", path: "First.md", title: "First" }],
+        folders: [],
+      });
+    vi.mocked(notesApi.create).mockResolvedValue(
+      detail({ id: "n1", path: "First.md", content: "# First\n" }),
+    );
+    renderNotes();
+    expect(await screen.findByText("No notes yet.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "New note" }));
+    const input = screen.getByRole("textbox", { name: "New note name" });
+    fireEvent.change(input, { target: { value: "First" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(await screen.findByTitle("Revision 3")).toHaveTextContent("First.md");
+    expect(notesApi.create).toHaveBeenCalledWith("First", "# First\n");
+  });
+
+  it("opens the name box from the empty state's 'Create the first note'", async () => {
+    vi.mocked(notesApi.list).mockResolvedValue({ notes: [], folders: [] });
+    renderNotes();
+    fireEvent.click(await screen.findByRole("button", { name: "Create the first note" }));
+    expect(screen.getByRole("textbox", { name: "New note name" })).toBeInTheDocument();
+    expect(screen.queryByText("No notes yet.")).toBeNull();
+  });
+
+  it("shows the tree for folders even when there are no notes", async () => {
+    vi.mocked(notesApi.list).mockResolvedValue({ notes: [], folders: ["Work"] });
+    renderNotes();
+    expect(await screen.findByRole("button", { name: "Actions for folder Work" })).toBeInTheDocument();
+    expect(screen.queryByText("No notes yet.")).toBeNull();
+  });
+});
