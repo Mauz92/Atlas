@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-kv-write"
+description = "Enables the kv_write command without any pre-configured scope."
+commands.allow = ["kv_write"]
+
+[[permission]]
+identifier = "deny-kv-write"
+description = "Denies the kv_write command without any pre-configured scope."
+commands.deny = ["kv_write"]

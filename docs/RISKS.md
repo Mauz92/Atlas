@@ -634,7 +634,42 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
   Android may not allow a user-chosen shared folder (all checked 2026-11-03 against Tauri docs/releases, not by running).
 - **Mitigation:** SYNC-07 spike with pass/fail criteria and Electron fallback (desktop); pin 2.x; capability-minimal config;
   PWA fallback for Android (A-09).
-- **Owner milestone:** SYNC-07. **Status:** Open.
+- **Owner milestone:** SYNC-07. **Status:** Open (Linux part run 2026-11-04, `SYNC_PROTOCOL.md` section 13).
+- **Update 2026-11-04 (Linux, WebKitGTK 2.54.1):** no core-editing failure and no Electron-fallback criterion triggered; rendering and CSS/API features match Chromium (S1.1-S1.2);
+  own `rusqlite` commands are transactional (100/100 kill-9); updater signature checks work (tampered and wrong-key refused); `tauri-plugin-sql` is not usable for transactions and
+  cannot be linked with `rusqlite`. **Still open and now the main risk:** Windows S6/S7 (per-user install, WebView2, SmartScreen, policy on the work laptop) and everything Android
+  were not run; a Windows failure moves both desktop platforms to Electron (mixed result rejected). New observations: `cargo audit` 0 vulnerabilities but 5 unmaintained/unsound
+  transitive crates (`proc-macro-error`, `zbus_names`, `zvariant`, `zvariant_derive`, `glib` 0.18.5 unsound `VariantStrIter`, RUSTSEC-2024-0370, -2024-0429, -2026-0370/0371/0372; all
+  in Tauri's own Linux/D-Bus stack, to be re-checked at each Tauri bump); the AppImage is 110 MiB and bundles the build machine's WebKitGTK (portability to older glibc unverified);
+  `keyring` 4.2.0 exists (spike used 3.6.3).
+
+
+### R-58 - WebKitGTK display/rendering behaviour on Linux (NVIDIA/Wayland) and the post-edit frame
+- **Severity/Likelihood:** Medium / High on NVIDIA + Wayland, unknown elsewhere
+- **Description:** WebKitGTK 2.54.1 on an RTX 3080 under KDE Wayland crashes with `Gdk Error 71` (or `Failed to create GBM buffer` under Xwayland) unless
+  `WEBKIT_DISABLE_DMABUF_RENDERER=1`, which moves rendering to a slower path. In that mode the frame after an edit in a 5 103-line note was 32 ms in 2 of 5 runs and 1.1-2.3 s in 3 of 5
+  (synchronous edit cost 3-6 ms in all; headless Chromium with software raster is a steady 267 ms), cause unexplained. Two web-app defects show only in WebKitGTK: native `<select>` clipped
+  (D1) and no picker on date/time inputs (D2) (`SYNC_PROTOCOL.md` 13.1 S1.3).
+- **Mitigation:** the shell sets the environment variable itself where needed; retest the frame on a GPU-enabled setup and in a controlled display before SYNC-09 (condition in 13.2);
+  fix D1/D2 in `apps/web` as a UX task (add `appearance`/height rules for `select`; own date picker or documented ISO text entry); offer the PWA/browser as the fallback client.
+- **Owner milestone:** SYNC-07 follow-up, SYNC-09. **Status:** Open.
+
+### R-59 - Desktop reminders while the app is closed
+- **Severity/Likelihood:** Medium / High
+- **Description:** `tauri-plugin-notification` on desktop shows notifications immediately but has no scheduling (checked in its desktop implementation and by firing one); a reminder at 09:00
+  with the shell closed needs the app resident (tray, autostart) or another delivery path. The existing browser Web Push (ADR-0039) does not exist inside the shell's webview.
+- **Mitigation:** decide in SYNC-09 between a resident background process with tray/autostart (and its own scheduler fed by the synced reminders) and keeping the browser/PWA for
+  push; document that the desktop client does not remind while closed until then. Android scheduling is `NOT RUN` (13.4).
+- **Owner milestone:** SYNC-09/SYNC-10. **Status:** Open.
+
+### R-60 - Whole-state local store and TLS trust in the Tauri client
+- **Severity/Likelihood:** Medium / High if not acted on
+- **Description:** `KeyValueLocalStore` over SQLite rewrites the entire state per transaction (300 creates wrote 167 MB, 2.1 s; 20 MB state = 131 ms per write): unusable for a real vault.
+  `reqwest` with `rustls-tls` trusts only bundled Mozilla roots, so a self-hosted server behind a private CA (Caddy internal CA) would be refused; Android additionally ignores user CAs by default.
+  The watcher feedback loop (`Access` events), the same-size/same-mtime edit that a size+mtime scan misses, and the dotfile default of the fs scope are design inputs, not defects.
+- **Mitigation:** SYNC-09 builds a per-row `LocalStore` on `rusqlite`; uses the platform trust store (`rustls-tls-native-roots` or `native-tls`) and tests with the owner's real certificate; the watcher
+  rules and the hash-based periodic scan in `SYNC_PROTOCOL.md` 13.2 are acceptance criteria of the notes-folder engine.
+- **Owner milestone:** SYNC-09. **Status:** Open (design input recorded).
 
 ---
 

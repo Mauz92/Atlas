@@ -1,0 +1,290 @@
+{
+  "size": "desktop",
+  "steps": {
+    "login": {
+      "ok": true,
+      "facts": {
+        "sidebar": [
+          0,
+          0,
+          48,
+          776
+        ]
+      }
+    },
+    "today": {
+      "ok": true,
+      "facts": {
+        "main": [
+          288,
+          0,
+          992,
+          764
+        ],
+        "body": {
+          "font-family": "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Noto Sans\", sans-serif",
+          "font-size": "14px",
+          "color": "rgb(231, 231, 234)",
+          "background-color": "rgb(24, 24, 27)"
+        }
+      }
+    },
+    "inbox": {
+      "ok": true,
+      "facts": {
+        "main": [
+          288,
+          0,
+          992,
+          396
+        ]
+      }
+    },
+    "tasks": {
+      "ok": true,
+      "facts": {
+        "main": [
+          288,
+          0,
+          992,
+          816
+        ]
+      }
+    },
+    "week": {
+      "ok": true,
+      "facts": {
+        "main": [
+          288,
+          0,
+          992,
+          468
+        ]
+      }
+    },
+    "projects": {
+      "ok": true,
+      "facts": {
+        "main": [
+          288,
+          0,
+          992,
+          303
+        ]
+      }
+    },
+    "settings": {
+      "ok": true,
+      "facts": {
+        "main": [
+          288,
+          0,
+          992,
+          631
+        ]
+      }
+    },
+    "task-panel": {
+      "ok": true,
+      "facts": {
+        "dialogs": 1,
+        "panel": [
+          48,
+          0,
+          240,
+          776
+        ]
+      }
+    },
+    "task-priority-menu": {
+      "ok": true,
+      "facts": {
+        "popoversOpen": 1,
+        "menu": 1,
+        "clicked": true
+      }
+    },
+    "project-board": {
+      "ok": true,
+      "facts": {
+        "boardTab": true
+      }
+    },
+    "notes-list": {
+      "ok": true,
+      "facts": {
+        "main": [
+          288,
+          0,
+          992,
+          776
+        ]
+      }
+    },
+    "note-live": {
+      "ok": true,
+      "facts": {
+        "cmContent": [
+          585,
+          45,
+          659,
+          731
+        ],
+        "liveStrong": 1,
+        "hasTable": 3,
+        "editor": {
+          "font-family": "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Noto Sans\", sans-serif",
+          "font-size": "16px",
+          "line-height": "26px"
+        }
+      }
+    },
+    "note-source": {
+      "ok": true,
+      "facts": {
+        "liveStrong": 0,
+        "text": true
+      }
+    },
+    "note-preview": {
+      "ok": true,
+      "facts": {
+        "links": 23
+      }
+    },
+    "note-live-again": {
+      "ok": true,
+      "facts": null
+    },
+    "note-actions-menu": {
+      "ok": true,
+      "facts": {
+        "clicked": true,
+        "popoversOpen": 1,
+        "menus": 1
+      }
+    },
+    "palette": {
+      "ok": true,
+      "facts": {
+        "dialog": 1,
+        "input": true
+      }
+    },
+    "theme-toggled": {
+      "ok": true,
+      "facts": {
+        "clicked": true,
+        "button": "Switch to light theme",
+        "bg": {
+          "background-color": "rgb(255, 255, 255)",
+          "color": "rgb(31, 31, 35)"
+        }
+      }
+    },
+    "big-note": {
+      "ok": true,
+      "facts": {
+        "lines": 23,
+        "scroller": true
+      }
+    },
+    "theme-restored": {
+      "ok": true,
+      "facts": {
+        "clicked": true
+      }
+    }
+  },
+  "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+  "viewport": [
+    1280,
+    800
+  ],
+  "dpr": 1,
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "perf": {
+    "Live": {
+      "mode": "Live",
+      "docLines": 5103,
+      "dispatch_sync_ms": {
+        "n": 41,
+        "p50": 2.8,
+        "p95": 4.6,
+        "max": 5.7
+      },
+      "dispatch_plus_layout_ms": {
+        "n": 41,
+        "p50": 3.4,
+        "p95": 5.3,
+        "max": 6.5
+      },
+      "dispatch_to_frame_ms": {
+        "n": 41,
+        "p50": 266.7,
+        "p95": 283.4,
+        "max": 297.3
+      },
+      "input_path_ms": {
+        "n": 41,
+        "p50": 266.6,
+        "p95": 266.9,
+        "max": 304.5
+      },
+      "plain_contenteditable_floor_ms": {
+        "n": 100,
+        "p50": 33.3,
+        "p95": 33.6,
+        "max": 124.8
+      },
+      "undo_ms": {
+        "n": 20,
+        "p50": 33.3,
+        "p95": 33.4,
+        "max": 33.4
+      }
+    },
+    "Source": {
+      "mode": "Source",
+      "docLines": 5103,
+      "dispatch_sync_ms": {
+        "n": 42,
+        "p50": 3.2,
+        "p95": 4,
+        "max": 4.2
+      },
+      "dispatch_plus_layout_ms": {
+        "n": 42,
+        "p50": 3.2,
+        "p95": 4,
+        "max": 4.2
+      },
+      "dispatch_to_frame_ms": {
+        "n": 42,
+        "p50": 266.1,
+        "p95": 267,
+        "max": 286.4
+      },
+      "input_path_ms": {
+        "n": 41,
+        "p50": 266.6,
+        "p95": 283.2,
+        "max": 294.2
+      },
+      "plain_contenteditable_floor_ms": {
+        "n": 100,
+        "p50": 33.3,
+        "p95": 33.5,
+        "max": 122.8
+      },
+      "undo_ms": {
+        "n": 20,
+        "p50": 33.3,
+        "p95": 33.5,
+        "max": 33.5
+      }
+    }
+  }
+}

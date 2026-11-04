@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-kv-remove"
+description = "Enables the kv_remove command without any pre-configured scope."
+commands.allow = ["kv_remove"]
+
+[[permission]]
+identifier = "deny-kv-remove"
+description = "Denies the kv_remove command without any pre-configured scope."
+commands.deny = ["kv_remove"]

@@ -1,0 +1,106 @@
+{
+ "ctx": {
+  "app_version": "0.1.0",
+  "arch": "x86_64",
+  "cfg": {
+   "api": "http://127.0.0.1:36677",
+   "db": "/home/kim/Documents/Atlas/spikes/tauri/target/spike-run/app-338967.db",
+   "email": "spike-owner@example.com",
+   "notes": "/tmp/atlas-spike-run/notes",
+   "suite": "fetch"
+  },
+  "os": "linux",
+  "pid": 338978,
+  "tauri": "2.12.5",
+  "webkitgtk": "2.54.1"
+ },
+ "fetch": {
+  "direct_bearer_preflight": {
+   "body": "{\"error\":\"unauthenticated\",\"detail\":\"Not authenticated\"}",
+   "status": 401
+  },
+  "direct_health": {
+   "body": "{\"status\":\"ok\",\"version\":\"0.1.0\"}",
+   "status": 200
+  },
+  "direct_to_other_host_csp": {
+   "error": "TypeError: Load failed"
+  },
+  "origin": "tauri://localhost",
+  "rust_proxy_device_current": {
+   "ok": true,
+   "value": {
+    "body": "{\"id\":\"d8016cfa-5421-4d7f-ad9e-755437ecfa7e\",\"name\":\"spike-tauri\",\"platform\":\"linux\",\"created_at\":\"2026-11-04T06:09:44.9",
+    "status": 200
+   }
+  },
+  "rust_proxy_http_nonloopback": {
+   "error": "refused: http://192.0.2.1 (https only, http only for loopback)",
+   "ok": false
+  },
+  "rust_proxy_https_other_host": {
+   "error": "refused: not the configured Atlas origin",
+   "ok": false
+  },
+  "rust_proxy_other_origin": {
+   "error": "refused: not the configured Atlas origin",
+   "ok": false
+  },
+  "sign_in": {
+   "ok": true,
+   "value": {
+    "created_at": "2026-11-04T06:09:44.994233Z",
+    "current": false,
+    "id": "d8016cfa-5421-4d7f-ad9e-755437ecfa7e",
+    "last_seen_at": null,
+    "name": "spike-tauri",
+    "platform": "linux",
+    "revoked_at": null
+   }
+  },
+  "token_in_webview_storage": false
+ },
+ "probe": {
+  "api": {
+   "Notification": "default",
+   "clipboard": "object",
+   "dialogShowModal": "function",
+   "indexedDB": "object",
+   "inert": true,
+   "intl": "function",
+   "localStorage": true,
+   "popoverAttr": true,
+   "randomUUID": "function",
+   "resizeObserver": "function",
+   "serviceWorker": true,
+   "showPopover": "function",
+   "structuredClone": "function",
+   "subtle": "object",
+   "visualViewport": "object"
+  },
+  "css": {
+   "colorMix": true,
+   "colorScheme": true,
+   "containerQueries": true,
+   "dvh": true,
+   "envSafeArea": true,
+   "focusVisible": true,
+   "has": true,
+   "inset": true,
+   "lightDark": true,
+   "minMaxClamp": true,
+   "overscrollBehavior": true,
+   "popoverPseudo": true,
+   "subgrid": true
+  },
+  "media": {
+   "dark": true,
+   "hoverNone": false,
+   "pointerCoarse": false,
+   "reducedMotion": false
+  },
+  "origin": "tauri://localhost",
+  "secureContext": true,
+  "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15"
+ }
+}

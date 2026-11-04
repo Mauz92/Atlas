@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "The bundled harness page (tauri://localhost). Only what the spike uses; fs has NO static scope, a folder is granted at runtime.",
+  "windows": ["main"],
+  "permissions": [
+    "allow-report", "allow-snapshot", "allow-exit-app", "allow-ctx",
+    "allow-db-open", "allow-db-ping", "allow-db-apply-page", "allow-db-cursor", "allow-kv-read", "allow-kv-write", "allow-kv-remove",
+    "allow-token-set", "allow-token-exists", "allow-token-delete", "allow-device-sign-in", "allow-api-request",
+    "allow-grant-notes-folder", "allow-notes-atomic-write", "allow-notes-scan", "allow-notify-test", "allow-window-eval-probe",
+    "fs:allow-read-text-file", "fs:allow-write-text-file", "fs:allow-read-dir", "fs:allow-exists", "fs:allow-stat"
+  ]
+}

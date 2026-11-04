@@ -3883,3 +3883,26 @@ Local verification, 2026-11-04, uncommitted tree, CI not run. Decisions: ADR-006
 | Known limitations (not defects) | note | R-56 the code is a bearer secret with no leak detection, and a code can be lost if the tab is closed before the acknowledgement (regenerate in Settings or `atlas-admin recovery-code`); R-57 limiters are in-process and a stranger can keep *recovery* throttled; after a reset the browser is **not** signed in (by design); a restore from an older backup returns the older code and password (`OPERATIONS.md` 2.2b); the recovery download is a plain text file on the owner's disk; no e-mail or push notice of a reset (no channel exists) |
 | Observed, not changed (outside AUTH-01) | note | on Settings → Account the pre-existing "Also sign out my devices" checkbox is drawn 240 px wide (`.settings-row-control input:not([type="radio"])` also matches checkboxes); cosmetic, the row stays operable and axe clean |
 | Not covered | `NOT RUN` | CI; wall-clock timing equality; a second API process; Safari/Firefox rendering; a password manager's autofill of the code; a real phone; the whole flow behind the real nginx/TLS proxy |
+
+## SYNC-07 — Tauri 2 spike, Linux part (2026-11-04, local, not committed, CI not run)
+
+Status of the task: Linux part `IN_REVIEW`; Windows and Android `BLOCKED` on hardware. Numbers, environment and the verdict are in `docs/SYNC_PROTOCOL.md` section 13 (single
+source, not repeated); raw outputs in `spikes/tauri/results/`; code and commands in `spikes/tauri/README.md`. Nothing in `apps/web`, `services/api`, `packages/*` or `scripts/` was
+changed; `./scripts/verify.sh` was **not run** (another agent was using it; the spike is outside its scope).
+
+| Criterion (`ROADMAP.md` SYNC-07 plan) | Result | Where |
+|---|---|---|
+| S1 existing UI renders in WebKitGTK; CSS features; scenario vs Chromium | `PASS` (features, 20/20 desktop, 19/20 phone same as Chromium) with defects D1 select, D2 date inputs (`FAIL`, fixable) | 13.1 S1.1-S1.3 |
+| S1 J1-J7 in the shell, axe, IME, real key events, latency p95 < 50 ms | `BLOCKED` (no `WebKitWebDriver`) / `NOT RUN`; synchronous edit cost `PASS`, post-edit frame inconclusive | S1.4-S1.6 |
+| S2 SQLite, transaction page+cursor, kill-9 x100, migrations | `PASS` (`rusqlite`); `tauri-plugin-sql` `FAIL` as transaction vehicle (source reading, link conflict) | S2, S2b |
+| S3 notes folder, scan, watcher, scope | `PASS` with limits (shell-simulated editors; same-size edit missed by size+mtime scan; Access-event loop found) | S3 |
+| S4 keystore | `PASS` Secret Service/KWallet; GNOME Keyring and locked wallet `NOT RUN` | S4 |
+| S5 notifications | `PASS` immediate; scheduled-with-app-closed `FAIL` on desktop | S5 |
+| S6 auto-update, signature rejection | `PASS` Linux AppImage (valid, tampered, wrong key); Windows `NOT RUN`; `.deb` install `NOT RUN` | S6 |
+| S7 Windows install without admin; S8 Android background sync | `NOT RUN` (hardware), checklists written | 13.3, 13.4 |
+| S9 size, start, memory | `PASS` start (184-233 ms) and sizes; memory 397 MB PSS idle (above the 300 MB review line, 30 s idle, one note) | S9 |
+| S10 capabilities, audit, maintenance, licences | `PASS` with warnings (0 vulnerabilities; 5 unmaintained/unsound transitive crates) | S10, `DEPENDENCIES.md` |
+| X1 single instance; X2 HTTPS/CORS/CSP/capabilities and real `sync-core` round trip | `PASS` | X1, X2 |
+| Verdict | stay with Tauri 2, no Electron criterion triggered on Linux, **conditional** on Windows S6/S7 and real-input checks | 13.2 |
+| Isolation and cleanup | `PASS` | spike not in any workspace (configs read: `apps/web/eslint.config.js`, `tsconfig.json` `include`, `vite.config.ts` test projects, `ci.yml` working directories); throwaway DB dropped (only `atlas` and `atlas_test` remain), stack processes stopped, test Secret Service entry cleared, nothing published, no owner key used (throwaway minisign pair in the scratchpad) |
+| Not covered | `NOT RUN` | Windows, Android, macOS (not in scope); real editors (VS Code, Obsidian, vim, `git checkout`) against the watcher; dialog plugin and plugin-fs `watch`; HTTPS update and HTTPS API with a publicly trusted or private-CA certificate; AppImage on another distribution; 10-minute idle memory with 5 000 notes; CI |

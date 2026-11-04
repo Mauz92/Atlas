@@ -1,0 +1,231 @@
+{
+ "acl": {
+  "api_request": {
+   "error": "Command api_request not allowed by ACL",
+   "ok": false
+  },
+  "ctx": {
+   "error": "Command ctx not allowed by ACL",
+   "ok": false
+  },
+  "db_open": {
+   "error": "Command db_open not allowed by ACL",
+   "ok": false
+  },
+  "fs_read": {
+   "error": "Command plugin:fs|read_text_file not allowed by ACL",
+   "ok": false
+  },
+  "origin": "http://127.0.0.1:39757",
+  "token_exists": {
+   "error": "Command token_exists not allowed by ACL",
+   "ok": false
+  },
+  "window_eval_probe": {
+   "error": "Command window_eval_probe not allowed by ACL",
+   "ok": false
+  }
+ },
+ "scenario": {
+  "dpr": 1,
+  "size": "phone",
+  "steps": {
+   "big-note": {
+    "error": "timeout waiting for \"Big note\"",
+    "ok": false
+   },
+   "inbox": {
+    "facts": {
+     "main": [
+      0,
+      48,
+      390,
+      702
+     ]
+    },
+    "ok": true
+   },
+   "login": {
+    "facts": {
+     "sidebar": [
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "ok": true
+   },
+   "note-actions-menu": {
+    "facts": {
+     "clicked": true,
+     "menus": 1,
+     "popoversOpen": 2
+    },
+    "ok": true
+   },
+   "note-live": {
+    "facts": {
+     "cmContent": [
+      0,
+      157,
+      390,
+      649
+     ],
+     "editor": {
+      "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, sans-serif",
+      "font-size": "16px",
+      "line-height": "26px"
+     },
+     "hasTable": 3,
+     "liveStrong": 1
+    },
+    "ok": true
+   },
+   "note-live-again": {
+    "facts": null,
+    "ok": true
+   },
+   "note-preview": {
+    "facts": {
+     "links": 28
+    },
+    "ok": true
+   },
+   "note-source": {
+    "facts": {
+     "liveStrong": 0,
+     "text": true
+    },
+    "ok": true
+   },
+   "notes-list": {
+    "facts": {
+     "main": [
+      0,
+      48,
+      390,
+      696
+     ]
+    },
+    "ok": true
+   },
+   "palette": {
+    "facts": {
+     "dialog": 1,
+     "input": true
+    },
+    "ok": true
+   },
+   "project-board": {
+    "facts": {
+     "boardTab": true
+    },
+    "ok": true
+   },
+   "projects": {
+    "facts": {
+     "main": [
+      0,
+      48,
+      390,
+      464
+     ]
+    },
+    "ok": true
+   },
+   "settings": {
+    "facts": {
+     "main": [
+      0,
+      48,
+      390,
+      460
+     ]
+    },
+    "ok": true
+   },
+   "task-panel": {
+    "facts": {
+     "dialogs": 1,
+     "panel": [
+      0,
+      0,
+      0,
+      0
+     ]
+    },
+    "ok": true
+   },
+   "task-priority-menu": {
+    "facts": {
+     "clicked": false,
+     "menu": 0,
+     "popoversOpen": 0
+    },
+    "ok": true
+   },
+   "tasks": {
+    "facts": {
+     "main": [
+      0,
+      48,
+      390,
+      1822
+     ]
+    },
+    "ok": true
+   },
+   "theme-restored": {
+    "facts": {
+     "clicked": false
+    },
+    "ok": true
+   },
+   "theme-toggled": {
+    "facts": {
+     "bg": {
+      "background-color": "rgb(24, 24, 27)",
+      "color": "rgb(231, 231, 234)"
+     },
+     "button": "Skip to contentAtlasSearchCtrl KPlanning",
+     "clicked": false
+    },
+    "ok": true
+   },
+   "today": {
+    "facts": {
+     "body": {
+      "background-color": "rgb(24, 24, 27)",
+      "color": "rgb(231, 231, 234)",
+      "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, sans-serif",
+      "font-size": "14px"
+     },
+     "main": [
+      0,
+      48,
+      390,
+      1112
+     ]
+    },
+    "ok": true
+   },
+   "week": {
+    "facts": {
+     "main": [
+      0,
+      48,
+      390,
+      1042
+     ]
+    },
+    "ok": true
+   }
+  },
+  "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15",
+  "viewport": [
+   390,
+   800
+  ]
+ }
+}

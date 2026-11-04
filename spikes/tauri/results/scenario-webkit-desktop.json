@@ -1,0 +1,316 @@
+{
+  "acl": {
+    "api_request": {
+      "error": "Command api_request not allowed by ACL",
+      "ok": false
+    },
+    "ctx": {
+      "error": "Command ctx not allowed by ACL",
+      "ok": false
+    },
+    "db_open": {
+      "error": "Command db_open not allowed by ACL",
+      "ok": false
+    },
+    "fs_read": {
+      "error": "Command plugin:fs|read_text_file not allowed by ACL",
+      "ok": false
+    },
+    "origin": "http://127.0.0.1:41651",
+    "token_exists": {
+      "error": "Command token_exists not allowed by ACL",
+      "ok": false
+    },
+    "window_eval_probe": {
+      "error": "Command window_eval_probe not allowed by ACL",
+      "ok": false
+    }
+  },
+  "perf": {
+    "Live": {
+      "dispatch_plus_layout_ms": {
+        "max": 25,
+        "n": 6,
+        "p50": 6,
+        "p95": 25
+      },
+      "dispatch_sync_ms": {
+        "max": 24,
+        "n": 6,
+        "p50": 5,
+        "p95": 24
+      },
+      "dispatch_to_frame_ms": {
+        "max": 2206,
+        "n": 6,
+        "p50": 2156,
+        "p95": 2206
+      },
+      "docLines": 5103,
+      "input_path_ms": {
+        "max": 2210,
+        "n": 6,
+        "p50": 2186,
+        "p95": 2210
+      },
+      "mode": "Live",
+      "plain_contenteditable_floor_ms": {
+        "max": 1040,
+        "n": 100,
+        "p50": 16,
+        "p95": 17
+      },
+      "undo_ms": {
+        "max": 3221,
+        "n": 20,
+        "p50": 17,
+        "p95": 3221
+      }
+    },
+    "Source": {
+      "dispatch_plus_layout_ms": {
+        "max": 5,
+        "n": 7,
+        "p50": 4,
+        "p95": 5
+      },
+      "dispatch_sync_ms": {
+        "max": 5,
+        "n": 7,
+        "p50": 4,
+        "p95": 5
+      },
+      "dispatch_to_frame_ms": {
+        "max": 2184,
+        "n": 7,
+        "p50": 1159,
+        "p95": 2184
+      },
+      "docLines": 5103,
+      "input_path_ms": {
+        "max": 1188,
+        "n": 6,
+        "p50": 1146,
+        "p95": 1188
+      },
+      "mode": "Source",
+      "plain_contenteditable_floor_ms": {
+        "max": 1044,
+        "n": 100,
+        "p50": 16,
+        "p95": 17
+      },
+      "undo_ms": {
+        "max": 3225,
+        "n": 20,
+        "p50": 16,
+        "p95": 3225
+      }
+    }
+  },
+  "scenario": {
+    "dpr": 1,
+    "size": "desktop",
+    "steps": {
+      "big-note": {
+        "facts": {
+          "lines": 23,
+          "scroller": true
+        },
+        "ok": true
+      },
+      "inbox": {
+        "facts": {
+          "main": [
+            288,
+            0,
+            992,
+            396
+          ]
+        },
+        "ok": true
+      },
+      "login": {
+        "facts": {
+          "sidebar": [
+            0,
+            0,
+            48,
+            776
+          ]
+        },
+        "ok": true
+      },
+      "note-actions-menu": {
+        "facts": {
+          "clicked": true,
+          "menus": 1,
+          "popoversOpen": 1
+        },
+        "ok": true
+      },
+      "note-live": {
+        "facts": {
+          "cmContent": [
+            585,
+            45,
+            659,
+            731
+          ],
+          "editor": {
+            "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, sans-serif",
+            "font-size": "16px",
+            "line-height": "26px"
+          },
+          "hasTable": 3,
+          "liveStrong": 1
+        },
+        "ok": true
+      },
+      "note-live-again": {
+        "facts": null,
+        "ok": true
+      },
+      "note-preview": {
+        "facts": {
+          "links": 23
+        },
+        "ok": true
+      },
+      "note-source": {
+        "facts": {
+          "liveStrong": 0,
+          "text": true
+        },
+        "ok": true
+      },
+      "notes-list": {
+        "facts": {
+          "main": [
+            288,
+            0,
+            992,
+            776
+          ]
+        },
+        "ok": true
+      },
+      "palette": {
+        "facts": {
+          "dialog": 1,
+          "input": true
+        },
+        "ok": true
+      },
+      "project-board": {
+        "facts": {
+          "boardTab": true
+        },
+        "ok": true
+      },
+      "projects": {
+        "facts": {
+          "main": [
+            288,
+            0,
+            992,
+            303
+          ]
+        },
+        "ok": true
+      },
+      "settings": {
+        "facts": {
+          "main": [
+            288,
+            0,
+            992,
+            631
+          ]
+        },
+        "ok": true
+      },
+      "task-panel": {
+        "facts": {
+          "dialogs": 1,
+          "panel": [
+            48,
+            0,
+            240,
+            776
+          ]
+        },
+        "ok": true
+      },
+      "task-priority-menu": {
+        "facts": {
+          "clicked": true,
+          "menu": 1,
+          "popoversOpen": 1
+        },
+        "ok": true
+      },
+      "tasks": {
+        "facts": {
+          "main": [
+            288,
+            0,
+            992,
+            816
+          ]
+        },
+        "ok": true
+      },
+      "theme-restored": {
+        "facts": {
+          "clicked": true
+        },
+        "ok": true
+      },
+      "theme-toggled": {
+        "facts": {
+          "bg": {
+            "background-color": "rgb(255, 255, 255)",
+            "color": "rgb(31, 31, 35)"
+          },
+          "button": "Switch to light theme",
+          "clicked": true
+        },
+        "ok": true
+      },
+      "today": {
+        "facts": {
+          "body": {
+            "background-color": "rgb(24, 24, 27)",
+            "color": "rgb(231, 231, 234)",
+            "font-family": "system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, sans-serif",
+            "font-size": "14px"
+          },
+          "main": [
+            288,
+            0,
+            992,
+            764
+          ]
+        },
+        "ok": true
+      },
+      "week": {
+        "facts": {
+          "main": [
+            288,
+            0,
+            992,
+            468
+          ]
+        },
+        "ok": true
+      }
+    },
+    "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15",
+    "viewport": [
+      1280,
+      800
+    ]
+  }
+}

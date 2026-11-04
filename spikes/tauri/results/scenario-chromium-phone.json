@@ -1,0 +1,205 @@
+{
+ "size": "phone",
+ "steps": {
+  "login": {
+   "ok": true,
+   "facts": {
+    "sidebar": [
+     0,
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  "today": {
+   "ok": true,
+   "facts": {
+    "main": [
+     0,
+     48,
+     390,
+     1124
+    ],
+    "body": {
+     "font-family": "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Noto Sans\", sans-serif",
+     "font-size": "14px",
+     "color": "rgb(231, 231, 234)",
+     "background-color": "rgb(24, 24, 27)"
+    }
+   }
+  },
+  "inbox": {
+   "ok": true,
+   "facts": {
+    "main": [
+     0,
+     48,
+     390,
+     702
+    ]
+   }
+  },
+  "tasks": {
+   "ok": true,
+   "facts": {
+    "main": [
+     0,
+     48,
+     390,
+     1834
+    ]
+   }
+  },
+  "week": {
+   "ok": true,
+   "facts": {
+    "main": [
+     0,
+     48,
+     390,
+     1042
+    ]
+   }
+  },
+  "projects": {
+   "ok": true,
+   "facts": {
+    "main": [
+     0,
+     48,
+     390,
+     464
+    ]
+   }
+  },
+  "settings": {
+   "ok": true,
+   "facts": {
+    "main": [
+     0,
+     48,
+     390,
+     460
+    ]
+   }
+  },
+  "task-panel": {
+   "ok": true,
+   "facts": {
+    "dialogs": 1,
+    "panel": [
+     0,
+     0,
+     0,
+     0
+    ]
+   }
+  },
+  "task-priority-menu": {
+   "ok": true,
+   "facts": {
+    "popoversOpen": 0,
+    "menu": 0,
+    "clicked": false
+   }
+  },
+  "project-board": {
+   "ok": true,
+   "facts": {
+    "boardTab": true
+   }
+  },
+  "notes-list": {
+   "ok": true,
+   "facts": {
+    "main": [
+     0,
+     48,
+     390,
+     696
+    ]
+   }
+  },
+  "note-live": {
+   "ok": true,
+   "facts": {
+    "cmContent": [
+     0,
+     157,
+     390,
+     650
+    ],
+    "liveStrong": 1,
+    "hasTable": 3,
+    "editor": {
+     "font-family": "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Noto Sans\", sans-serif",
+     "font-size": "16px",
+     "line-height": "26px"
+    }
+   }
+  },
+  "note-source": {
+   "ok": true,
+   "facts": {
+    "liveStrong": 0,
+    "text": true
+   }
+  },
+  "note-preview": {
+   "ok": true,
+   "facts": {
+    "links": 28
+   }
+  },
+  "note-live-again": {
+   "ok": true,
+   "facts": null
+  },
+  "note-actions-menu": {
+   "ok": true,
+   "facts": {
+    "clicked": true,
+    "popoversOpen": 2,
+    "menus": 1
+   }
+  },
+  "palette": {
+   "ok": true,
+   "facts": {
+    "dialog": 1,
+    "input": true
+   }
+  },
+  "theme-toggled": {
+   "ok": true,
+   "facts": {
+    "clicked": false,
+    "button": "Skip to contentAtlasSearchCtrl KPlanning",
+    "bg": {
+     "background-color": "rgb(24, 24, 27)",
+     "color": "rgb(231, 231, 234)"
+    }
+   }
+  },
+  "big-note": {
+   "ok": false,
+   "error": "timeout waiting for \"Big note\""
+  },
+  "theme-restored": {
+   "ok": true,
+   "facts": {
+    "clicked": false
+   }
+  }
+ },
+ "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+ "viewport": [
+  390,
+  800
+ ],
+ "dpr": 1,
+ "consoleErrors": [
+  "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+ ]
+}

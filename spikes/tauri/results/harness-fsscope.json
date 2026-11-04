@@ -1,0 +1,154 @@
+{
+ "ctx": {
+  "app_version": "0.1.0",
+  "arch": "x86_64",
+  "cfg": {
+   "api": "http://127.0.0.1:36677",
+   "db": "/home/kim/Documents/Atlas/spikes/tauri/target/spike-run/app-338853.db",
+   "email": "spike-owner@example.com",
+   "notes": "/tmp/atlas-spike-run/notes",
+   "suite": "fsscope"
+  },
+  "os": "linux",
+  "pid": 338864,
+  "tauri": "2.12.5",
+  "webkitgtk": "2.54.1"
+ },
+ "fsscope": {
+  "grant": {
+   "ok": true,
+   "value": null
+  },
+  "own_atomic_absolute": {
+   "error": "refused: path must be relative without ..",
+   "ok": false
+  },
+  "own_atomic_dotdot": {
+   "error": "refused: path must be relative without ..",
+   "ok": false
+  },
+  "own_atomic_ok": {
+   "ok": true,
+   "value": null
+  },
+  "own_atomic_symlink_dir": {
+   "error": "refused: path leaves the notes folder",
+   "ok": false
+  },
+  "own_scan": {
+   "ok": true,
+   "value": 4
+  },
+  "plugin_shell_not_installed": {
+   "error": "Command plugin:shell|execute not allowed by ACL",
+   "ok": false
+  },
+  "plugin_write_inside": {
+   "ok": true,
+   "value": null
+  },
+  "read_dir_after_grant": {
+   "ok": true,
+   "value": 6
+  },
+  "read_dir_before_grant": {
+   "error": "forbidden path: /tmp/atlas-spike-run/notes",
+   "ok": false
+  },
+  "read_dotdot_traversal": {
+   "error": "invalid args `path` for command `read_text_file`: invalid value: string \"/tmp/atlas-spike-run/notes/sub/../../outside-secret.txt\", expected Unsafe PathBuf: cannot traverse directory, rewrite the path ",
+   "ok": false
+  },
+  "read_dotfile_inside": {
+   "error": "forbidden path: /tmp/atlas-spike-run/notes/.hidden.md",
+   "ok": false
+  },
+  "read_inside_after_grant": {
+   "ok": true,
+   "value": 4
+  },
+  "read_inside_before_grant": {
+   "error": "forbidden path: /tmp/atlas-spike-run/notes/a.md",
+   "ok": false
+  },
+  "read_nested_inside": {
+   "ok": true,
+   "value": 4
+  },
+  "read_outside_etc_hostname": {
+   "error": "forbidden path: /etc/hostname",
+   "ok": false
+  },
+  "read_outside_parent_file": {
+   "error": "invalid args `path` for command `read_text_file`: invalid value: string \"/tmp/atlas-spike-run/notes/../outside-secret.txt\", expected Unsafe PathBuf: cannot traverse directory, rewrite the path without",
+   "ok": false
+  },
+  "read_sibling_dir_prefix": {
+   "error": "forbidden path: /tmp/atlas-spike-run/notes-sibling/x.md",
+   "ok": false
+  },
+  "read_symlink_file_to_outside": {
+   "error": "forbidden path: /tmp/atlas-spike-run/notes/link-to-outside.md",
+   "ok": false
+  },
+  "read_through_symlinked_dir": {
+   "error": "forbidden path: /tmp/atlas-spike-run/notes/linkdir/outside-secret.txt",
+   "ok": false
+  },
+  "token_get_does_not_exist": {
+   "error": "Command token_get not allowed by ACL",
+   "ok": false
+  },
+  "undeclared_command": {
+   "error": "Command not_a_command not allowed by ACL",
+   "ok": false
+  },
+  "write_outside": {
+   "error": "Unsafe PathBuf: cannot traverse directory, rewrite the path without the use of `../`",
+   "ok": false
+  }
+ },
+ "probe": {
+  "api": {
+   "Notification": "default",
+   "clipboard": "object",
+   "dialogShowModal": "function",
+   "indexedDB": "object",
+   "inert": true,
+   "intl": "function",
+   "localStorage": true,
+   "popoverAttr": true,
+   "randomUUID": "function",
+   "resizeObserver": "function",
+   "serviceWorker": true,
+   "showPopover": "function",
+   "structuredClone": "function",
+   "subtle": "object",
+   "visualViewport": "object"
+  },
+  "css": {
+   "colorMix": true,
+   "colorScheme": true,
+   "containerQueries": true,
+   "dvh": true,
+   "envSafeArea": true,
+   "focusVisible": true,
+   "has": true,
+   "inset": true,
+   "lightDark": true,
+   "minMaxClamp": true,
+   "overscrollBehavior": true,
+   "popoverPseudo": true,
+   "subgrid": true
+  },
+  "media": {
+   "dark": true,
+   "hoverNone": false,
+   "pointerCoarse": false,
+   "reducedMotion": false
+  },
+  "origin": "tauri://localhost",
+  "secureContext": true,
+  "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15"
+ }
+}

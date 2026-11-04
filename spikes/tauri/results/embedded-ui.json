@@ -1,0 +1,14 @@
+{
+ "errors": [
+  "rejection: Command plugin:notification|is_permission_granted not allowed by ACL"
+ ],
+ "origin": "tauri://localhost",
+ "rootChildren": 1,
+ "scripts": [
+  "tauri://localhost/theme-init.js",
+  "tauri://localhost/assets/index-DsUKLdo0.js"
+ ],
+ "sw": true,
+ "text": "Sign in to Atlas\n\nThe string did not match the expected pattern.\n\nEmail\nPassword\nSign in",
+ "title": "Atlas"
+}

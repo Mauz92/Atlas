@@ -177,3 +177,42 @@ vulnerabilities"), and `npm audit --audit-level=high` on a scratch project pinne
 
 No runtime or new dev dependency. Tests, type check and lint use the web app's existing `vitest`, `typescript` and `eslint` (all
 already in `apps/web/package.json`). `node:` modules are used only under `sim/` (test code).
+
+## SYNC-07 Tauri spike (`spikes/tauri/`, 2026-11-04): toolchain, crates, tools
+
+**Throwaway evidence code, not a product dependency set.** Nothing here is in `apps/web`, `services/api` or `packages/*`, and none of it ships. It becomes a
+product dependency only when SYNC-09 adopts it (and then moves into this inventory's runtime sections). Versions are the resolved ones in `spikes/tauri/Cargo.lock` and
+`package-lock.json`; release dates from the crates.io API on 2026-11-04. Advisory check: `cargo audit` 0 vulnerabilities (577 crates), 8 warnings (see `RISKS.md` R-36);
+`npm audit` 0. Licences by `cargo license` / package metadata; **no GPL or AGPL anywhere in the Linux build graph.**
+
+**Installed on the owner's machine (owner-approved 2026-11-04, user-level, no sudo):** Rust stable 1.99.1 via `rustup` (installer script read first, downloaded from `https://sh.rustup.rs`
+which fetches `https://static.rust-lang.org/rustup`; `--profile minimal --no-modify-path`, so no shell profile was changed) in `~/.cargo` and `~/.rustup`; `cargo install --locked`:
+`tauri-driver` (unused: no `WebKitWebDriver` on the machine), `cargo-audit`, `cargo-license`; their build output is in `~/.cargo/registry`. Uninstall: `rustup self uninstall`
+(removes both directories) and `rm -rf ~/.local/share/app.atlas.spike` (webview profile of the spike app). `tauri build` downloads bundling tools on first use into `~/.cache/tauri`:
+`AppRun-x86_64` (tauri-apps/binary-releases), `linuxdeploy-x86_64.AppImage` (pinned build `07333c6`), `linuxdeploy-plugin-appimage` (**the `continuous` tag: an unpinned download; pin it before any release build**).
+
+| Package | Used | Released | Purpose in the spike | Licence | Notes |
+|---|---|---|---|---|---|
+| `tauri` | 2.12.5 | 2026-10-21 | shell | Apache-2.0 OR MIT | 2.x pinned; `3.0.0-alpha.*` exist and are not used |
+| `tauri-build` | 2.7.4 | 2026-10-21 | build script, app manifest (per-command permissions) | Apache-2.0 OR MIT | |
+| `wry` / `tao` | 0.57.1 / 0.37.2 | 2026-10-23 | webview / windowing (transitive) | Apache-2.0 OR MIT / Apache-2.0 | |
+| `tauri-plugin-fs` | 2.7.1 | 2026-10-14 | scoped file access (`watch` feature compiled, not exercised) | Apache-2.0 OR MIT | |
+| `tauri-plugin-dialog` | 2.8.4 | 2026-10-28 | native folder picker (compiled, not exercised) | Apache-2.0 OR MIT | |
+| `tauri-plugin-notification` | 2.8.0 | 2026-10-28 | local notification; replaces `window.Notification` | Apache-2.0 OR MIT | desktop has no scheduling |
+| `tauri-plugin-updater` | 2.14.1 | 2026-10-28 | signed updates (minisign via `minisign-verify` 0.3.0, MIT) | Apache-2.0 OR MIT | AppImage only on Linux |
+| `tauri-plugin-single-instance` | 2.5.5 | 2026-10-28 | single instance | Apache-2.0 OR MIT | |
+| `tauri-plugin-sql` | 2.6.0 | 2026-10-14 | **evaluated, not used**: read source; cannot be linked with `rusqlite` | Apache-2.0 OR MIT | |
+| `rusqlite` (+ `libsqlite3-sys` 0.35.0, bundled SQLite 3.50.2) | 0.37.0 | 2025-07-06 | local database behind own commands | MIT (SQLite: public domain) | 0.41.1 is current (2026-10-28) |
+| `keyring` (+ `dbus-secret-service` 4.1.0) | 3.6.3 | 2025-07-27 | OS keystore (Secret Service) | MIT OR Apache-2.0 | 4.2.0 exists (2026-08-29); no file fallback |
+| `notify` | 8.2.1 | 2026-10-25 | file watcher (inotify) | CC0-1.0 | `9.0.0-rc.*` not used |
+| `reqwest` | 0.12.28 | 2025-12-22 | HTTPS client in Rust, `rustls-tls` (bundled Mozilla roots: `webpki-roots` CDLA-Permissive-2.0) | MIT OR Apache-2.0 | 0.13.5 exists; trust-store decision in SYNC-09 |
+| `serde`, `serde_json` | 1.0.229, 1.0.154 | 2026-07-18, 2026-10-11 | | MIT OR Apache-2.0 | |
+| `webkit2gtk`, `gtk`, `cairo-rs` | 2.0.2, 0.18.2, 0.18.5 | 2025-12-16, 2024-12-09, 2023-12-30 | WebKitGTK snapshot (Linux only, test helper) | MIT | gtk-rs 0.18 line is Tauri's own; `glib` 0.18.5 RUSTSEC-2024-0429 |
+| `@tauri-apps/cli` | 2.12.4 | 2026-10-21 | `tauri build` | Apache-2.0 OR MIT | npm dev |
+| `esbuild` | 0.25.12 | (0.28.2 current) | bundles the harness and `packages/sync-core` | MIT | npm dev; its post-install is blocked by npm's allowScripts and not needed |
+| `playwright-core` | 1.64.1 | 2026-11-04 | drives system Chromium for the baseline | Apache-2.0 | npm dev; no browser downloaded |
+
+Licence summary of the 577 crates: ~351 `Apache-2.0 OR MIT`, 127 `MIT`, 24 `Apache-2.0 OR MIT OR Zlib`, 18 `Unicode-3.0`, 11 `MIT OR Unlicense`, **5 `MPL-2.0`** (`cssparser`,
+`cssparser-macros`, `dtoa-short`, `option-ext`, `selectors`: file-level copyleft, unmodified use, no distribution obligation beyond keeping the notices), 2 `CDLA-Permissive-2.0`
+(`webpki-roots`, `webpki-root-certs`), 2 `Apache-2.0 OR LGPL-2.1-or-later OR MIT` (`r-efi`: LGPL is an alternative, MIT chosen); the rest are BSD/ISC/Zlib/CC0 variants. Windows and Android
+dependency graphs were **not** checked (`SYNC_PROTOCOL.md` 13.3, 13.4). External services: none (the local update server and API never left `127.0.0.1`).

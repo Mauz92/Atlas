@@ -1,0 +1,102 @@
+{
+ "ctx": {
+  "app_version": "0.1.0",
+  "arch": "x86_64",
+  "cfg": {
+   "api": "http://127.0.0.1:36677",
+   "db": "/home/kim/Documents/Atlas/spikes/tauri/target/spike-run/app-339133.db",
+   "email": "spike-owner@example.com",
+   "notes": "/tmp/atlas-spike-run/notes",
+   "suite": "sync"
+  },
+  "os": "linux",
+  "pid": 339144,
+  "tauri": "2.12.5",
+  "webkitgtk": "2.54.1"
+ },
+ "probe": {
+  "api": {
+   "Notification": "default",
+   "clipboard": "object",
+   "dialogShowModal": "function",
+   "indexedDB": "object",
+   "inert": true,
+   "intl": "function",
+   "localStorage": true,
+   "popoverAttr": true,
+   "randomUUID": "function",
+   "resizeObserver": "function",
+   "serviceWorker": true,
+   "showPopover": "function",
+   "structuredClone": "function",
+   "subtle": "object",
+   "visualViewport": "object"
+  },
+  "css": {
+   "colorMix": true,
+   "colorScheme": true,
+   "containerQueries": true,
+   "dvh": true,
+   "envSafeArea": true,
+   "focusVisible": true,
+   "has": true,
+   "inset": true,
+   "lightDark": true,
+   "minMaxClamp": true,
+   "overscrollBehavior": true,
+   "popoverPseudo": true,
+   "subgrid": true
+  },
+  "media": {
+   "dark": true,
+   "hoverNone": false,
+   "pointerCoarse": false,
+   "reducedMotion": false
+  },
+  "origin": "tauri://localhost",
+  "secureContext": true,
+  "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15"
+ },
+ "sync": {
+  "bulk_300_bytes_written_mb": 167.1,
+  "bulk_300_creates_ms": 2117,
+  "bulk_300_persist_calls": 300,
+  "bulk_300_sync_ms": 4224,
+  "bulk_status": {
+   "conflicts": 0,
+   "cursor": 167,
+   "failed": 0,
+   "failures": 1,
+   "halt": null,
+   "lastSyncAt": 1793772595080,
+   "online": true,
+   "pending": 183,
+   "retryAt": 60936,
+   "state": "backoff"
+  },
+  "local_create_ms": 3,
+  "other_client_create_status": 201,
+  "pulled_other_clients_task": true,
+  "push_and_first_pull_ms": 837,
+  "restart_has_task_and_note": true,
+  "restart_sees_entities": 32,
+  "server_has_note": true,
+  "server_has_task": true,
+  "sign_in": {
+   "device": "spike-sync",
+   "ok": true
+  },
+  "status_after_push": {
+   "conflicts": 0,
+   "cursor": 164,
+   "failed": 0,
+   "failures": 0,
+   "halt": null,
+   "lastSyncAt": 1793772591462,
+   "online": true,
+   "pending": 0,
+   "retryAt": null,
+   "state": "idle"
+  }
+ }
+}

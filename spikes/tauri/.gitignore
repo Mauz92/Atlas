@@ -1,0 +1,9 @@
+target/
+node_modules/
+ui/harness.bundle.js
+ui/sync-core.bundle.js
+out/
+keys/
+*.AppImage
+*.deb
+src-tauri/gen/

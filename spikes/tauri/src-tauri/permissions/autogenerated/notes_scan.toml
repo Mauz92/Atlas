@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-notes-scan"
+description = "Enables the notes_scan command without any pre-configured scope."
+commands.allow = ["notes_scan"]
+
+[[permission]]
+identifier = "deny-notes-scan"
+description = "Denies the notes_scan command without any pre-configured scope."
+commands.deny = ["notes_scan"]

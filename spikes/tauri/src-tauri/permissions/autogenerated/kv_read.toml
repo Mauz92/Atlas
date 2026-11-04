@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-kv-read"
+description = "Enables the kv_read command without any pre-configured scope."
+commands.allow = ["kv_read"]
+
+[[permission]]
+identifier = "deny-kv-read"
+description = "Denies the kv_read command without any pre-configured scope."
+commands.deny = ["kv_read"]

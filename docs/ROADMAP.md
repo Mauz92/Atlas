@@ -1015,7 +1015,7 @@ none is `DONE` until its tests ran. WIP limit: one task at a time except the spi
 | SYNC-04 | Note history and three-way merge, move/delete/revive rules, portable paths | SYNC-03, ADR-0059 D3, D5, D10 | `DONE` (2026-11-03, local, 7 sub-steps 04a-04g all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-04; ADR-0060) |
 | SYNC-05 | Resolution log, feed entity and undo | SYNC-03, ADR-0059 D7 | `DONE` (2026-11-03, local, 7 sub-steps 05a-05g all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-05; ADR-0061) |
 | SYNC-06 | Device credentials: table, bearer auth, rotation, revoke, Settings → Devices | SYNC-03, ADR-0059 D8; AUTH-01 consumes the revoke function | `DONE` (2026-11-03, local, 8 sub-steps 06a-06h all verified; not committed; CI not run; evidence `ACCEPTANCE.md` SYNC-06; ADR-0065) |
-| SYNC-07 | Tauri 2 spike (Linux, Windows, Android) and Electron-fallback decision | — (hardware: Windows machine, Android device) | `READY` for Linux; Windows/Android `BLOCKED` on hardware |
+| SYNC-07 | Tauri 2 spike (Linux, Windows, Android) and Electron-fallback decision | — (hardware: Windows machine, Android device) | Linux part `IN_REVIEW` (2026-11-04, local, not committed; results `SYNC_PROTOCOL.md` section 13, evidence `ACCEPTANCE.md` SYNC-07, code `spikes/tauri/`): stay with Tauri 2, no Electron criterion triggered on Linux, **conditional**; Windows (S6, S7 decisive) and Android `BLOCKED` on hardware, checklists in `SYNC_PROTOCOL.md` 13.3 and 13.4 |
 | SYNC-08 | `packages/sync-core`: framework-free TS client core (queue, pull/apply, rebase, backoff, conflict states) over a `LocalStore` interface; web adapters keep M7 behaviour | SYNC-03, SYNC-02 | `DONE` for the core, simulation and adapters (2026-11-04, local, not committed, CI not run; evidence `ACCEPTANCE.md` SYNC-08; ADR-0066). **Not done:** migrating `apps/web/src/lib/syncEngine.ts` to the core (deliberately, R-54) |
 | SYNC-09 | Desktop client: Tauri shell, SQLite store, notes-folder engine, keystore, device sign-in | SYNC-04, SYNC-05, SYNC-06, SYNC-07 pass, SYNC-08 | `BACKLOG` |
 | SYNC-10 | Android client (or PWA fallback per A-09) with background sync | SYNC-09, SYNC-07 Android pass | `BACKLOG` |
@@ -1238,7 +1238,19 @@ back devices as the backup had them, so a device revoked after the backup works 
 scheduled rotation: SYNC-07/09/10), a pairing flow, reuse detection (R-52), feed/snapshot limits (R-53), "changed on another device"
 UI (SYNC-11), AUTH-01 itself.
 
-### SYNC-07 plan — Tauri 2 spike (throwaway code, in a scratch directory, not in the repo tree)
+### SYNC-07 plan — Tauri 2 spike (throwaway code; as run it lives in `spikes/tauri/`, outside every workspace)
+
+**Linux part run 2026-11-04 (`IN_REVIEW`).** Results table, verdict and the Electron-fallback criteria applied: `SYNC_PROTOCOL.md` section 13 (the single
+source; not repeated here). Refinements made while running: the check list below was kept as S1-S10 and three checks were added (X1 single instance, X2 API access with
+bearer/CORS/CSP/capabilities/real `sync-core` round trip, licence and advisory check inside S10); S1 and S2 were split into sub-results because they are
+partly `PASS`, partly `NOT RUN`; the spike lives in `spikes/tauri/` instead of a scratch directory so that a fresh session can rerun it (it is isolated:
+not in `apps/web`'s ESLint/tsc/vitest scope, not in `verify.sh`, not in CI). **Remaining before SYNC-09:** (1) Windows S6/S7 and the rest of the Windows
+checklist (owner's machine), (2) Android checklist (owner's phone), (3) on Linux the real-input checks that need a tool: manual J1-J7, IME, post-edit frame on a
+GPU-enabled WebKitGTK. **Owner `sudo` list for (3), optional:** `sudo pacman -S --needed xdotool xorg-server-xvfb gnome-keyring` (xdotool for key events into the
+shell under Xwayland, Xvfb for a controlled non-compositor display, gnome-keyring to test the second Secret Service implementation); and, to find the missing
+WebDriver for WebKitGTK (Playwright/`tauri-driver` need `WebKitWebDriver`, not shipped in the installed `webkit2gtk-4.1`): `sudo pacman -Fy && pacman -F WebKitWebDriver`.
+Nothing else needed `sudo`: `webkit2gtk-4.1`, `libsoup3`, `openssl`, `librsvg`, `gtk3`, `libayatana-appindicator` were already installed.
+
 Versions looked up on 2026-11-03 (GitHub releases API): `tauri` 2.12.5 (2026-10-21), `tauri-cli` 2.12.4, plugin `sql` 2.6.0
 (2026-10-14), `notification` 2.8.0, `updater` 2.14.1, `deep-link` 2.6.3 (2026-10-28); `sql`, `store`, `stronghold`, `single-instance`
 also have `3.0.0-alpha.3` (2026-10-14): **pin 2.x, do not adopt alphas**. Licences (Apache-2.0/MIT) are **[UNVERIFIED]**:

@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote-atlas",
+  "description": "The Atlas UI loaded from an http origin (spike S1 only): may report and take snapshots, nothing else.",
+  "windows": ["atlas"],
+  "remote": { "urls": ["http://127.0.0.1:*/*"] },
+  "permissions": ["allow-report", "allow-snapshot", "allow-exit-app"]
+}

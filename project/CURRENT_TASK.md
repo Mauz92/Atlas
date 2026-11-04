@@ -1,3 +1,18 @@
+- **SYNC-07 (Tauri 2 spike), Linux part, is `IN_REVIEW` (2026-11-04, not committed, CI not run, `verify.sh` not run).** Verdict: **stay with Tauri 2, no Electron
+  criterion triggered on Linux, conditional** (Windows S6/S7 and real-input checks not run; a Windows failure moves both desktop platforms to Electron, rule in `ROADMAP.md` plan).
+  Everything is in `spikes/tauri/` (README = commands; outside every workspace; not in `verify.sh`/CI) and `docs/SYNC_PROTOCOL.md` section 13 (results table, verdict, Windows 13.3 and
+  Android 13.4 checklists); evidence `docs/ACCEPTANCE.md` SYNC-07; risks R-36 (updated), R-58 (WebKitGTK on NVIDIA/Wayland needs `WEBKIT_DISABLE_DMABUF_RENDERER=1`, bimodal post-edit frame),
+  R-59 (no desktop scheduled notifications), R-60 (whole-state store 167 MB for 300 creates; reqwest roots); dependencies `docs/DEPENDENCIES.md`. No ADR-0068 (no accepted decision changed).
+  **Installed (owner-approved):** Rust 1.99.1 via rustup in `~/.cargo`, `~/.rustup` (uninstall `rustup self uninstall`), `cargo-audit`, `cargo-license`, `tauri-driver`; npm dev packages only inside
+  `spikes/tauri/node_modules`. Nothing needed sudo. **For SYNC-09:** per-row `LocalStore` over `rusqlite` commands (not `KeyValueLocalStore`, not `tauri-plugin-sql`); token only in the keystore, attached in Rust;
+  watcher drops `Access` events + hash-based periodic scan; platform trust store; configurable API base; D1/D2 CSS fixes are a separate `apps/web` task (select `appearance`, date inputs without picker).
+  **Owner:** run the Windows checklist (13.3, S7 on the work laptop first) and the Android one (13.4); optional `sudo pacman -S --needed xdotool xorg-server-xvfb gnome-keyring` for the remaining Linux checks.
+  **Next:** SYNC-09 waits for the Windows result; SYNC-11 (conflict UI) and Calendar (M5-00) do not.
+
+---
+
+## Previous state (before SYNC-07)
+
 - **AUTH-01 (account recovery in the UI) is `DONE` locally (2026-11-04, not committed, CI not run).** Owner-approved design (ADR-0067):
   one-time recovery code (30 Crockford chars = 150 bits, six groups of five; salted HMAC-SHA-256 in `recovery_codes`, migration
   `c9e4a7b2d6f1`, **not applied to the owner's `atlas` database**), shown once at setup (the web app holds everything back until "I have

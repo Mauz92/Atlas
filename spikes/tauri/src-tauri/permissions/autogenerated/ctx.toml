@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ctx"
+description = "Enables the ctx command without any pre-configured scope."
+commands.allow = ["ctx"]
+
+[[permission]]
+identifier = "deny-ctx"
+description = "Denies the ctx command without any pre-configured scope."
+commands.deny = ["ctx"]

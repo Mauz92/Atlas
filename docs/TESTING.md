@@ -629,6 +629,15 @@ portals and flaky mobile networks. Each is a checklist item in SYNC-12 and in th
 
 Results use the §9 vocabulary. A simulation seed that was not run is `NOT RUN`, not `PASS`.
 
+### 10.6 Tauri spike (SYNC-07): not part of `verify.sh`
+
+`spikes/tauri/` (README there) is isolated: it is outside `apps/web` (ESLint, `tsc`, `vitest` only read `apps/web` and `packages/sync-core`), outside `services/api`, not run by
+`./scripts/verify.sh` or CI. It needs a display, Rust (rustup), a throwaway database `atlas_spike_<random>` that its own `scripts/stack.mjs` creates and drops (never `atlas`
+or `atlas_test`), and writes only under `$SPIKE_OUT` and `spikes/tauri/target`. Its results are evidence for the spike decision, not regression tests; the commands to rerun them
+(S1 scenario in WebKitGTK and Chromium, S2 kill-9, S3 watcher/scan/scope, S4 keystore, S6 signed update, S8 sizes, X2 round trip with `packages/sync-core`) are in its README.
+Never run it against real data, the owner's `atlas` database or a published update server. Real input (IME, key events), the J1-J7 journeys in the shell and anything on Windows or
+Android are `NOT RUN` (`SYNC_PROTOCOL.md` section 13).
+
 
 ## 11. Account recovery tests (AUTH-01, ADR-0067)
 
