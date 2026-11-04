@@ -274,8 +274,16 @@ async def test_no_database_secret_reaches_the_manifest(
     headers = await _auth(client)
     await _create_task(client, headers, title="No secret")
     secret = "s3cr3t-db-password-xyz"
+    # The subject here is the manifest, not pg_dump: a stand-in client that "dumps" without connecting
+    # keeps the test independent of how the server authenticates (a real pg_dump over TCP with this
+    # made-up password is refused by any server that checks passwords, e.g. the CI service container).
+    stub = backup_env.root / "pg_dump_stub.sh"
+    stub.write_text("#!/bin/sh\necho '-- stub dump'\n", encoding="utf-8")
+    stub.chmod(0o755)
     config = backup_env.make(
-        database_url=f"postgresql+psycopg://atlas:{secret}@127.0.0.1:5432/atlas_test"
+        database_url=f"postgresql+psycopg://atlas:{secret}@127.0.0.1:5432/atlas_test",
+        pg_dump_binary=str(stub),
+        pg_dump_container="",
     )
     result = BackupService(config).run()
 

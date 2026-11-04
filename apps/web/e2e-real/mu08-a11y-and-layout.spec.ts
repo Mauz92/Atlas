@@ -86,8 +86,10 @@ async function violations(page: Page) {
 test("axe finds no violations on the main pages in either theme, and no page overflows on a phone", async ({
   page,
 }) => {
-  // Two themes x every page plus the overlays (UX-04 added four panel states): ~30 s of axe runs.
-  test.setTimeout(90_000);
+  // Two themes x every page plus the overlays (UX-04 added four panel states) x axe runs: about 30 s of
+  // axe on a fast machine, 80-100 s on a GitHub-hosted 2-3 vCPU runner (1.3 min and 1.7 min in the first
+  // two CI runs; the second one hit the old 90 s budget). Only the time budget grows, no check is skipped.
+  test.setTimeout(240_000);
   await ensureOwner(page);
   const { projectId, noteId } = await seed(page);
   // Collect every finding first so one run reports them all.
