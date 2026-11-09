@@ -156,6 +156,11 @@ export interface ReminderAction {
   kind: "snooze" | "dismiss";
   snooze?: SnoozePreset;
   baseRevision: number;
+  /**
+   * When the owner acted, by this device's clock (epoch ms). The sync layer sends it as `acted_at`
+   * so a snooze made offline counts from the tap, not from the sync (R-68); the server clamps it.
+   */
+  actedAt?: number;
 }
 
 export type PermissionStatus = "granted" | "denied" | "prompt";

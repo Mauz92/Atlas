@@ -26,6 +26,21 @@ import {
 import { ModelNotes } from "./notes.ts";
 import { ModelResolutions, wire } from "./resolutions.ts";
 
+/** The clamp of `acted_at` (R-68, ADR-0068 D11); the real server's `ACTED_AT_MAX_AGE`/`ACTED_AT_MAX_FUTURE`. */
+export const ACTED_AT_MAX_AGE_MS = 24 * 3_600_000;
+export const ACTED_AT_MAX_FUTURE_MS = 5 * 60_000;
+export const SNOOZE_SECONDS = [600, 3600, 10800] as const;
+/** Statuses for which a reminder may still fire (the real server's `DELIVERABLE_STATUSES`). */
+export const DELIVERABLE = ["inbox", "next", "in_progress"] as const;
+/** The real task state machine (`atlas/tasks/state.py`): a completed task may only be reopened to in_progress. */
+const TRANSITIONS: Record<string, readonly string[]> = {
+  inbox: ["next", "in_progress", "completed", "archived"],
+  next: ["inbox", "in_progress", "completed", "archived"],
+  in_progress: ["inbox", "next", "completed", "archived"],
+  completed: ["in_progress", "archived"],
+  archived: ["inbox", "next"],
+};
+
 export const PROTOCOL_MIN = 1;
 export const PROTOCOL_MAX = 1;
 const KIND_OF: Record<string, SimKind> = { tasks: "task", projects: "project" };
@@ -60,6 +75,58 @@ export interface ServerBugs {
   undoRevivesDeleted?: boolean;
   /** a 2xx reply to a retried create returns a brand new entity id (a second entity) */
   restoreKeepsNewerLog?: boolean;
+  // --- reminders (M8-04b-ii)
+  /** a reminder change is applied but never announced on the feed */
+  reminderNotAnnounced?: boolean;
+  /** `acted_at` is ignored: the snooze counts from the server clock (R-68 undone) */
+  actedAtIgnored?: boolean;
+  /** `acted_at` is not clamped to the safe window */
+  actedAtUnclamped?: boolean;
+  /** a replayed action is applied again (not idempotent) */
+  actionNotIdempotent?: boolean;
+  /** a dismissal is acknowledged but never recorded */
+  dismissNotRecorded?: boolean;
+  /** a since=0 walk restricted to `reminder` omits one reminder */
+  reminderSnapshotSkips?: boolean;
+  /** a task completion does not cancel its reminder */
+  completionKeepsReminder?: boolean;
+}
+
+export interface ModelOptions {
+  /** Tasks carry `due_at`/`status` and the server derives the `reminder` entity from them. */
+  reminders?: boolean;
+  /** Server time in epoch ms (the world's virtual wall clock); the model has none of its own. */
+  clock?: () => number;
+}
+
+export interface ModelReminder {
+  id: string;
+  taskId: string;
+  revision: number;
+  state: "armed" | "cancelled";
+  remindAt: number;
+  snoozedUntil: number | null;
+  acknowledgedAt: number | null;
+}
+
+/** What the server did with one action: the ground truth the reminder invariants read. */
+export interface ActionTruth {
+  actionId: string;
+  reminderId: string;
+  kind: "snooze" | "dismiss";
+  seconds: number | null;
+  /** `acted_at` as received (epoch ms), `null` when the request had none */
+  actedAtSent: number | null;
+  serverNow: number;
+  /** the instant the action was counted from, after clamping */
+  base: number;
+  applied: boolean;
+  /** the reminder was armed when the action arrived (an action on a cancelled reminder changes nothing, 14.5) */
+  armed: boolean;
+  /** snooze: the resulting `snoozed_until` (epoch ms) */
+  until: number | null;
+  /** how many times the action changed the reminder (must be 1 or 0) */
+  applications: number;
 }
 
 export interface Entity {
@@ -119,9 +186,15 @@ export class ModelServer {
   undoTruth: Record<string, unknown>[] = [];
   generated = 0;
   resN = 0;
+  readonly options: ModelOptions;
+  reminders = new Map<string, ModelReminder>();
+  reminderOfTask = new Map<string, string>();
+  actions = new Map<string, ActionTruth>();
+  reminderRevisions = new Map<string, number>();
 
-  constructor(bugs: ServerBugs = {}) {
+  constructor(bugs: ServerBugs = {}, options: ModelOptions = {}) {
     this.bugs = bugs;
+    this.options = options;
     this.notes = new ModelNotes(this);
     this.res = new ModelResolutions(this);
   }
@@ -155,7 +228,7 @@ export class ModelServer {
         body: {
           sync: {
             protocol: { min: PROTOCOL_MIN, max: PROTOCOL_MAX },
-            entities: { task: 1, project: 1, note: 1, resolution: 1 },
+            entities: { task: 1, project: 1, note: 1, resolution: 1, ...(this.options.reminders ? { reminder: 1 } : {}) },
             epoch: this.epoch,
           },
         },
@@ -167,6 +240,7 @@ export class ModelServer {
     if (parts[0] === "api" && parts[1] === "sync" && parts[2] === "resolutions")
       return this.res.handle(req, parts.slice(3));
     if (parts[0] === "api" && parts[1] === "notes") return this.notes.handle(req, sync, parts.slice(2));
+    if (parts[0] === "api" && parts[1] === "reminders" && this.options.reminders) return this.reminderApi(req, parts.slice(2));
     if (parts.length < 2 || parts[0] !== "api" || !(parts[1]! in KIND_OF))
       return { status: 404, body: { detail: "Not Found" } };
     const kind = KIND_OF[parts[1]!]!;
@@ -212,7 +286,7 @@ export class ModelServer {
   private epochCheck(req: Req, parts: string[]): Resp | null {
     const sent = req.headers["Atlas-Epoch"];
     if (sent === undefined || sent === this.epoch) return null;
-    if (parts[0] === "api" && ["tasks", "projects", "notes", "changes", "sync"].includes(parts[1] ?? ""))
+    if (parts[0] === "api" && ["tasks", "projects", "notes", "changes", "sync", "reminders"].includes(parts[1] ?? ""))
       return error(409, "epoch_mismatch", { epoch: this.epoch });
     return null;
   }
@@ -238,6 +312,11 @@ export class ModelServer {
 
   // --- tasks and projects (sync mode) -------------------------------------------------------
 
+  /** The writable fields of a kind: tasks also carry `due_at` and `status` when reminders are modelled. */
+  fieldsOf(kind: SimKind): string[] {
+    return kind === "task" && this.options.reminders ? [...allFields(kind), "due_at", "status"] : allFields(kind);
+  }
+
   newEntity(kind: SimKind, id: string, label: string, description: unknown): Entity {
     const entity: Entity = {
       kind,
@@ -246,16 +325,20 @@ export class ModelServer {
       revision: 1,
       deleted: false,
       lastClientTime: -1e18,
-      fieldRevs: Object.fromEntries(allFields(kind).map((f) => [f, 1])),
+      fieldRevs: Object.fromEntries(this.fieldsOf(kind).map((f) => [f, 1])),
       history: new Map(),
     };
+    if (kind === "task" && this.options.reminders) {
+      entity.fields["due_at"] = null;
+      entity.fields["status"] = "inbox";
+    }
     return entity;
   }
 
   private syncCreate(req: Req, kind: SimKind): Resp {
     if (!req.headers["Idempotency-Key"]) return error(422, "idempotency_key_required");
     const body = { ...(req.body ?? {}) };
-    const unknown = Object.keys(body).filter((k) => k !== "id" && !allFields(kind).includes(k)).sort();
+    const unknown = Object.keys(body).filter((k) => k !== "id" && !this.fieldsOf(kind).includes(k)).sort();
     if (unknown.length) return error(422, "unknown_fields", { fields: unknown });
     return this.idempotent(req, `${kind}.create`, body, () => this.createWithId(req, kind));
   }
@@ -286,8 +369,13 @@ export class ModelServer {
     }
     const entity = this.newEntity(kind, id, label, body["description"] ?? null);
     entity.fields[FLAG[kind]] = body[FLAG[kind]] ?? FLAG_DEFAULT[kind];
+    if (kind === "task" && this.options.reminders) {
+      if (body["due_at"] !== undefined) entity.fields["due_at"] = body["due_at"];
+      if (body["status"] !== undefined) entity.fields["status"] = body["status"];
+    }
     this.entities.set(entity.id, entity);
     this.record(entity, "upsert");
+    this.syncReminder(entity);
     this.addHistory(req, "create", entity);
     return { status: 201, body: this.out(entity, { sync: true }) };
   }
@@ -297,8 +385,15 @@ export class ModelServer {
     const body = { ...(req.body ?? {}) } as Record<string, unknown>;
     if (body["base_revision"] === null || body["base_revision"] === undefined)
       return error(422, "base_revision_required");
-    const unknown = Object.keys(body).filter((k) => k !== "base_revision" && !allFields(kind).includes(k)).sort();
+    const unknown = Object.keys(body).filter((k) => k !== "base_revision" && !this.fieldsOf(kind).includes(k)).sort();
     if (unknown.length) return error(422, "unknown_fields", { fields: unknown });
+    const held = this.entities.get(id);
+    const requested = body["status"];
+    if (this.options.reminders && kind === "task" && held && typeof requested === "string") {
+      const current = String(held.fields["status"]);
+      if (requested !== current && !(TRANSITIONS[current] ?? []).includes(requested))
+        return { status: 422, body: { detail: `cannot move a task from ${current} to ${requested}`, error: "invalid_transition" } };
+    }
     return this.idempotent(req, `${kind}.update`, { id, ...body }, () => this.mergePatch(req, kind, id));
   }
 
@@ -364,6 +459,7 @@ export class ModelServer {
     }
     entity.lastClientTime = Math.max(entity.lastClientTime, clientTime);
     this.record(entity, "upsert");
+    this.syncReminder(entity);
     this.addHistory(req, revived ? "revive" : "patch", entity, { base, revisionBefore: before, writes });
     if (revived)
       resolutions.push({
@@ -403,6 +499,7 @@ export class ModelServer {
     entity.deleted = true;
     entity.revision++;
     this.record(entity, "delete");
+    this.syncReminder(entity);
     this.addHistory(req, "delete", entity, { base, revisionBefore: before });
     return { status: 204, body: null };
   }
@@ -413,8 +510,163 @@ export class ModelServer {
     entity.deleted = false;
     entity.revision++;
     this.record(entity, "upsert");
+    this.syncReminder(entity);
     this.addHistory(req, "restore", entity);
     return { status: 200, body: this.out(entity) };
+  }
+
+  // --- reminders (M8-04a/b-ii): a server-derived entity, SYNC_PROTOCOL 14.2 and 14.5 ----------------
+
+  private iso(ms: number | null): string | null {
+    return ms === null ? null : new Date(ms).toISOString();
+  }
+
+  reminderOut(r: ModelReminder): Record<string, unknown> {
+    return {
+      id: r.id,
+      revision: r.revision,
+      task_id: r.taskId,
+      state: r.state,
+      remind_at: this.iso(r.remindAt),
+      snoozed_until: this.iso(r.snoozedUntil),
+      acknowledged_at: this.iso(r.acknowledgedAt),
+      effective_at: this.iso(r.snoozedUntil ?? r.remindAt),
+      server_delivered_at: null,
+    };
+  }
+
+  private publishReminder(
+    r: ModelReminder,
+    change: { state?: "armed" | "cancelled"; remindAt?: number; snoozedUntil?: number | null; acknowledgedAt?: number | null },
+  ): boolean {
+    let changed = false;
+    if (change.remindAt !== undefined && r.remindAt !== change.remindAt) {
+      r.remindAt = change.remindAt;
+      changed = true;
+      if (change.snoozedUntil === undefined) change.snoozedUntil = null; // a moved schedule supersedes the snooze
+    }
+    if (change.state !== undefined && r.state !== change.state) {
+      r.state = change.state;
+      changed = true;
+    }
+    if (change.snoozedUntil !== undefined && r.snoozedUntil !== change.snoozedUntil) {
+      r.snoozedUntil = change.snoozedUntil;
+      changed = true;
+    }
+    if (change.acknowledgedAt !== undefined && r.acknowledgedAt !== change.acknowledgedAt) {
+      r.acknowledgedAt = change.acknowledgedAt;
+      changed = true;
+    }
+    if (changed) {
+      r.revision++;
+      if (!this.bugs.reminderNotAnnounced) this.announce("reminder", r.id, "upsert", r.revision);
+    }
+    return changed;
+  }
+
+  /** `sync_task`: materialise, move or cancel the task's reminder in the writer's transaction. */
+  private syncReminder(task: Entity): void {
+    if (!this.options.reminders || task.kind !== "task") return;
+    const due = task.fields["due_at"];
+    const status = task.fields["status"];
+    const deliverable =
+      !task.deleted && typeof due === "string" && (DELIVERABLE as readonly unknown[]).includes(status);
+    const held = this.reminderOfTask.get(task.id);
+    const existing = held ? this.reminders.get(held) : undefined;
+    if (!deliverable) {
+      // planted: a completion (not a deletion) leaves the reminder armed
+      if (existing && !(this.bugs.completionKeepsReminder && !task.deleted)) this.publishReminder(existing, { state: "cancelled" });
+      return;
+    }
+    const remindAt = Date.parse(due as string);
+    if (!existing) {
+      const id = `r-${task.id}`;
+      const created: ModelReminder = {
+        id, taskId: task.id, revision: 1, state: "armed", remindAt, snoozedUntil: null, acknowledgedAt: null,
+      };
+      this.reminders.set(id, created);
+      this.reminderOfTask.set(task.id, id);
+      if (!this.bugs.reminderNotAnnounced) this.announce("reminder", id, "upsert", 1);
+      return;
+    }
+    this.publishReminder(existing, { state: "armed", remindAt });
+  }
+
+  private clampActedAt(actedAt: number | null, now: number): number {
+    if (actedAt === null || this.bugs.actedAtIgnored) return now;
+    if (this.bugs.actedAtUnclamped) return actedAt;
+    return Math.min(Math.max(actedAt, now - ACTED_AT_MAX_AGE_MS), now + ACTED_AT_MAX_FUTURE_MS);
+  }
+
+  private reminderApi(req: Req, rest: string[]): Resp {
+    if (rest.length === 0 && req.method === "GET") {
+      const state = req.params["state"];
+      const list = [...this.reminders.values()]
+        .filter((r) => !state || r.state === state)
+        .sort((a, b) => a.remindAt - b.remindAt || (a.id < b.id ? -1 : 1));
+      return { status: 200, body: { reminders: list.map((r) => this.reminderOut(r)) } };
+    }
+    if (rest.length === 2 && rest[1] === "actions" && req.method === "POST") {
+      const key = req.headers["Idempotency-Key"];
+      const body = { ...(req.body ?? {}) } as Record<string, unknown>;
+      if (key !== undefined && key !== body["action_id"]) return error(422, "idempotency_key_mismatch");
+      const payload = { reminder_id: rest[0], ...body };
+      const bad = this.invalidAction(body);
+      if (bad) return { status: 422, body: { detail: bad } };
+      if (this.bugs.actionNotIdempotent) return this.act(rest[0]!, body);
+      return this.idempotent(req, "reminder.action", payload, () => this.act(rest[0]!, body));
+    }
+    return { status: 404, body: { detail: "Not Found" } };
+  }
+
+  private invalidAction(body: Record<string, unknown>): string | null {
+    if (typeof body["action_id"] !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body["action_id"]))
+      return "action_id must be a UUID";
+    const kind = body["kind"];
+    if (kind !== "snooze" && kind !== "dismiss") return "kind";
+    const seconds = body["snooze_for_seconds"];
+    const until = body["until"];
+    if (seconds !== undefined && seconds !== null && !(SNOOZE_SECONDS as readonly unknown[]).includes(seconds)) return "snooze_for_seconds";
+    if (until !== undefined && until !== null) return "until is not modelled";
+    const given = seconds === undefined || seconds === null ? 0 : 1;
+    if (kind === "snooze" && given !== 1) return "snooze needs exactly one target";
+    if (kind === "dismiss" && given) return "dismiss takes no duration";
+    const acted = body["acted_at"];
+    if (acted !== undefined && acted !== null && !(typeof acted === "string" && /(Z|[+-]\d\d:\d\d)$/.test(acted) && Number.isFinite(Date.parse(acted))))
+      return "acted_at needs an offset";
+    return null;
+  }
+
+  private act(id: string, body: Record<string, unknown>): Resp {
+    const r = this.reminders.get(id);
+    if (!r) return error(404, "not_found");
+    const baseRevision = typeof body["base_revision"] === "number" ? (body["base_revision"] as number) : null;
+    if (baseRevision !== null && baseRevision > r.revision) return error(409, "revision_ahead", { current_revision: r.revision });
+    const stale = baseRevision !== null && baseRevision < r.revision;
+    const now = (this.options.clock ?? (() => 0))();
+    const actedAt = typeof body["acted_at"] === "string" ? Date.parse(body["acted_at"] as string) : null;
+    const base = this.clampActedAt(actedAt, now);
+    const kind = body["kind"] as "snooze" | "dismiss";
+    const seconds = typeof body["snooze_for_seconds"] === "number" ? (body["snooze_for_seconds"] as number) : null;
+    let applied = false;
+    let until: number | null = null;
+    if (r.state === "armed") {
+      if (kind === "snooze") {
+        until = base + seconds! * 1000;
+        applied = this.publishReminder(r, { snoozedUntil: until, acknowledgedAt: null });
+      } else if (!this.bugs.dismissNotRecorded) {
+        const due = r.snoozedUntil ?? r.remindAt;
+        if (r.acknowledgedAt === null || r.acknowledgedAt < due)
+          applied = this.publishReminder(r, { snoozedUntil: null, acknowledgedAt: Math.max(base, due, r.remindAt) });
+      }
+    }
+    const actionId = body["action_id"] as string;
+    const held = this.actions.get(actionId);
+    this.actions.set(actionId, {
+      actionId, reminderId: id, kind, seconds, actedAtSent: actedAt, serverNow: now, base, applied, armed: r.state === "armed" || applied, until,
+      applications: (held?.applications ?? 0) + (applied ? 1 : 0),
+    });
+    return { status: 200, body: { reminder: this.reminderOut(r), applied, stale } };
   }
 
   // --- feed ---------------------------------------------------------------------------------
@@ -490,7 +742,11 @@ export class ModelServer {
       if (this.bugs.snapshotSkipsEntity && rows.length) rows = rows.slice(1);
     }
     if (types) rows = rows.filter((r) => types.has(r.kind));
-    else if (req.headers["Atlas-Sync"] === undefined) rows = rows.filter((r) => r.kind !== "resolution");
+    else if (req.headers["Atlas-Sync"] === undefined) rows = rows.filter((r) => r.kind !== "resolution" && r.kind !== "reminder");
+    if (since === 0 && this.bugs.reminderSnapshotSkips && types && [...types].every((t) => t === "reminder")) {
+      const first = rows.find((r) => r.kind === "reminder");
+      if (first) rows = rows.filter((r) => r !== first);
+    }
     const page = rows.slice(0, limit);
     const hasMore = rows.length > limit;
     let nextSince = page.length ? page[page.length - 1]!.seq : since;
@@ -503,7 +759,11 @@ export class ModelServer {
         operation: r.operation,
         cursor: r.seq,
       };
-      if (include === "data" && r.kind === "resolution") {
+      if (include === "data" && r.kind === "reminder") {
+        const reminder = this.reminders.get(r.entityId)!;
+        item["revision"] = reminder.revision;
+        item["data"] = this.reminderOut(reminder);
+      } else if (include === "data" && r.kind === "resolution") {
         item["revision"] = r.revision;
         item["data"] = wire(this.resById.get(r.entityId)!);
       } else if (include === "data" && r.kind === "note") {
@@ -537,14 +797,17 @@ export class ModelServer {
 
   /** A backup restore: replace this server's state by an older snapshot (the operator rotates the epoch). */
   restoreFrom(snapshot: ModelServer): void {
-    const names: (keyof ModelServer)[] = ["entities", "feed", "headSeq", "floor", "idem", "history"];
+    const names: (keyof ModelServer)[] = ["entities", "feed", "headSeq", "floor", "idem", "history", "reminders", "reminderOfTask", "actions"];
     if (!this.bugs.restoreKeepsNewerLog)
       names.push("resLog", "resById", "resTruth", "undoTruth", "generated", "resN");
     for (const name of names) (this as unknown as Record<string, unknown>)[name] = (snapshot as unknown as Record<string, unknown>)[name];
   }
 
   snapshot(): ModelServer {
-    const copy = new ModelServer(this.bugs);
+    const copy = new ModelServer(this.bugs, this.options);
+    copy.reminders = clone(this.reminders);
+    copy.reminderOfTask = clone(this.reminderOfTask);
+    copy.actions = clone(this.actions);
     copy.entities = clone(this.entities);
     copy.feed = clone(this.feed);
     copy.idem = clone(this.idem);

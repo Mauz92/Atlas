@@ -31,6 +31,19 @@ export async function checkCursorSafety(world: World, client: SimClient): Promis
         );
       continue;
     }
+    if (row.kind === "reminder") {
+      // only once the type is recorded as synced: before that its rows are filtered out of the main pull
+      // on purpose and arrive through the backfill (G7); a type marked synced without it is the defect
+      const synced = (state.meta.get("types_synced") as string[] | undefined) ?? [];
+      if (!world.cfg.reminders || !synced.includes("reminder")) continue;
+      const held = state.entities.get(row.entityId);
+      if (!held || held.deleted || !held.server || held.server.revision < row.revision)
+        throw world.fail(
+          "cursor_safety",
+          `${client.cid} has cursor ${cursor} and reminders recorded as synced, but never applied reminder row #${row.seq} (${row.entityId} rev ${row.revision}); mirror has ${JSON.stringify(held)}`,
+        );
+      continue;
+    }
     const local = state.entities.get(row.entityId);
     if (local?.refetch) continue; // an acknowledged write brought it in; the next pull reads it again
     const ok =
@@ -87,7 +100,10 @@ function clientFields(entity: {
   return { [LABEL[kind]]: f[LABEL[kind]], description: f["description"], [FLAG[kind]]: f[FLAG[kind]] };
 }
 
-const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+/** An instant is the same whatever precision the server prints it with (`.696Z` or `.696000Z`). */
+const instantOrValue = (v: unknown): unknown =>
+  typeof v === "string" && /^\d{4}-\d\d-\d\dT/.test(v) && Number.isFinite(Date.parse(v)) ? new Date(Date.parse(v)).toISOString() : v;
+const same = (a: unknown, b: unknown): boolean => JSON.stringify(instantOrValue(a)) === JSON.stringify(instantOrValue(b));
 
 export async function checkInvariants(world: World): Promise<void> {
   const truth = await serverTruth(world);
@@ -99,7 +115,7 @@ export async function checkInvariants(world: World): Promise<void> {
     if (client.halted) continue;
     await checkCursorSafety(world, client);
     const state = client.store.peek();
-    const live = [...state.entities.values()].filter((e) => !e.deleted && e.server);
+    const live = [...state.entities.values()].filter((e) => !e.deleted && e.server && e.type !== "reminder");
     for (const [id, want] of truth) {
       const local = state.entities.get(id);
       if (!local || local.deleted || !local.server || !same(clientFields(local), want.fields) || local.server.revision !== want.revision)

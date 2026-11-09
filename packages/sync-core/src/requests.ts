@@ -4,12 +4,12 @@ import { PLURAL, type QueueOp } from "./types.ts";
 /** The one place that knows how a queued operation maps to HTTP (SYNC_PROTOCOL 6). */
 export function buildOpRequest(
   op: QueueOp,
-  entityType: "task" | "project" | "note" | "resolution",
+  entityType: "task" | "project" | "note" | "reminder" | "resolution",
 ): Omit<HttpRequest, "headers"> {
   if (op.action === "undo") {
     return { method: "POST", path: `/api/sync/resolutions/${op.entityId}/undo` };
   }
-  const plural = PLURAL[entityType as "task" | "project" | "note"];
+  const plural = PLURAL[entityType as "task" | "project" | "note" | "reminder"];
   const id = op.entityId;
   switch (op.action) {
     case "create":
@@ -40,6 +40,9 @@ export function buildOpRequest(
         path: `/api/notes/${id}/move`,
         body: { ...op.fields, base_revision: op.base },
       };
+    case "act":
+      // the body is fixed at enqueue (and `acted_at` at the first send): a retry is byte-identical
+      return { method: "POST", path: `/api/reminders/${id}/actions`, body: { ...op.fields } };
     default:
       throw new Error(`unknown action ${String(op.action)}`);
   }

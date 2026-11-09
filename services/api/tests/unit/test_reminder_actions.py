@@ -10,7 +10,15 @@ from pydantic import ValidationError
 
 from atlas.api.schemas import HomeTimeZone, ReminderActionRequest
 from atlas.changes.feed import ChangeEntityType, parse_types
-from atlas.reminders.actions import SNOOZE_SECONDS, effective_at, snooze_until, tomorrow_morning
+from atlas.reminders.actions import (
+    ACTED_AT_MAX_AGE,
+    ACTED_AT_MAX_FUTURE,
+    SNOOZE_SECONDS,
+    clamp_acted_at,
+    effective_at,
+    snooze_until,
+    tomorrow_morning,
+)
 from atlas.sync.protocol import ENTITY_SCHEMAS
 
 NOW = datetime(2026, 6, 10, 12, 0, tzinfo=UTC)
@@ -110,3 +118,50 @@ def test_the_reminder_entity_is_part_of_the_vocabulary() -> None:
     assert ChangeEntityType.REMINDER == "reminder"
     assert ENTITY_SCHEMAS["reminder"] == 1
     assert parse_types("reminder,task") == frozenset({"reminder", "task"})
+
+
+# --- acted_at (R-68, ADR-0068 D11) ---------------------------------------------------------
+
+
+def test_the_clamp_constants_are_the_documented_ones() -> None:
+    assert timedelta(hours=24) == ACTED_AT_MAX_AGE
+    assert timedelta(minutes=5) == ACTED_AT_MAX_FUTURE
+
+
+def test_without_acted_at_the_base_is_the_server_clock() -> None:
+    assert clamp_acted_at(None, NOW) == NOW
+
+
+def test_an_acted_at_inside_the_window_is_used_as_sent() -> None:
+    four_hours_ago = NOW - timedelta(hours=4)
+    assert clamp_acted_at(four_hours_ago, NOW) == four_hours_ago
+    assert clamp_acted_at(NOW + timedelta(minutes=5), NOW) == NOW + timedelta(minutes=5)
+    assert clamp_acted_at(NOW - timedelta(hours=24), NOW) == NOW - timedelta(hours=24)
+
+
+def test_an_acted_at_in_the_future_is_clamped_not_refused() -> None:
+    assert clamp_acted_at(NOW + timedelta(days=3), NOW) == NOW + ACTED_AT_MAX_FUTURE
+    assert clamp_acted_at(NOW + timedelta(minutes=5, seconds=1), NOW) == NOW + ACTED_AT_MAX_FUTURE
+
+
+def test_an_acted_at_older_than_the_window_is_clamped_not_refused() -> None:
+    assert clamp_acted_at(NOW - timedelta(days=30), NOW) == NOW - ACTED_AT_MAX_AGE
+    assert clamp_acted_at(NOW - timedelta(hours=24, seconds=1), NOW) == NOW - ACTED_AT_MAX_AGE
+
+
+def test_the_clamp_converts_any_offset_to_utc() -> None:
+    from datetime import timezone
+
+    local = (NOW - timedelta(hours=2)).astimezone(timezone(timedelta(hours=5, minutes=30)))
+    result = clamp_acted_at(local, NOW)
+    assert result == NOW - timedelta(hours=2) and result.utcoffset() == timedelta(0)
+
+
+def test_the_request_accepts_acted_at_only_with_an_offset() -> None:
+    ok = _req(kind="dismiss", acted_at="2026-06-10T10:00:00+02:00")
+    assert ok.acted_at == datetime(2026, 6, 10, 8, 0, tzinfo=UTC)
+    assert _req(kind="dismiss").acted_at is None
+    with pytest.raises(ValidationError):
+        _req(kind="dismiss", acted_at="2026-06-10T10:00:00")  # naive: the zone would be a guess
+    with pytest.raises(ValidationError):
+        _req(kind="dismiss", acted_at="yesterday")

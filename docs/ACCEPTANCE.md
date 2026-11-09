@@ -4013,3 +4013,22 @@ the tombstone for every entity absent from the snapshot (no `withOps`), SYNC_PRO
 `ATLAS_SYNC_SEEDS=1000 ATLAS_SYNC_STEPS=300 npx vitest run --project sync-core model.sim --testTimeout 1800000`: `PASS` 10/10 (29 min). `npx vitest run --project sync-core`:
 `PASS` 110/110 (incl. 34 planted defects, each still trips). `ATLAS_SYNC_REAL=1 ATLAS_SYNC_REAL_SEEDS=20 ATLAS_SYNC_STEPS=150 ... --project sync-core-real`: `PASS` 3/3.
 No server code changed (no deployment note); the web app and the desktop shell do not import `sync-core` (R-54), so shipped behaviour was not affected.
+
+## M8-04b-ii - sync-core consumes `reminder`, queued actions, `acted_at` (R-68) - evidence (2026-11-10, local; CI not run; nothing committed)
+
+Result vocabulary as `TESTING.md` section 9. Design `SYNC_PROTOCOL.md` 14.5 and 14.9a, ADR-0068 D11, tests `TESTING.md` 12.2a.
+
+**Acceptance (scope of the task):**
+- `types=` negotiation and the `types_synced` backfill without a full resync and without skipping a change: `PASS` (unit incl. crash before the last page, downgrade/upgrade; simulation scenario with a mid-run upgrade of running clients; planted "type recorded without the walk" and "walk omits a reminder" trip `cursor_safety`).
+- Store schema/versioning (key-value state v2 reads v1, refuses newer), apply rules (upsert, tombstone, snapshot, `below_floor` shadow walk, never re-created by a restore): `PASS` (unit + simulation with late joiner and purge).
+- Local overlay: a task edited, completed or deleted offline withdraws its alarm at once and stays `dirty` until a pull that started after the acknowledgement completes: `PASS` (unit; invariant `no_stale_show`; planted `ignoreDirtyTask` and `clearDirtyAtAck` both trip it).
+- `ReminderSource`/`ActionSink` adapters (assignable to the scheduler's ports at compile time), `pendingActionIds`: `PASS`. The `delivered()` obligation stays with the native adapters (M8-04c/d); the fake OS honours it: not verifiable here.
+- Queued, idempotent action (`action_id` as key, byte-identical retries, replay, 404/409/422/401 handled): `PASS` (unit; real API via the conformance scenario).
+- R-68: server clamp and rule `PASS` (unit + integration); client sends `acted_at` only after a minute, frozen: `PASS`; model-versus-real conformance (acted_at 4 h ago / 3 days ahead / 9 days ago) 17/17 outcomes equal: `PASS`.
+- Invariants of the task (fires at most once per device per instant across restarts and sync; never after dismissal/completion; dismissal syncs; late snooze at the right instant; no cursor skip on backfill): `PASS` in the simulation, each with a planted defect that trips the named invariant (18 checks).
+
+**What the simulation found (all fixed or recorded):** a server rule bug: a dismissal that clears a snooze ending before `remind_at` let the dismissed reminder ring again (soak seeds 176 and 367) - `acknowledged_at` is now `max(base, effective_at, remind_at)`, regression test in `test_reminder_feed.py`; harness defects only otherwise (judging a show against a later owner action, an oracle that counted a create in flight as the re-dating (seed 252), invalid task transitions, a non-UUID action id, microsecond formatting). No sync-core or scheduler defect surfaced.
+
+**Verification (final run after the last code change, 2026-11-10):** `./scripts/verify.sh` `PASS` (ruff, format, mypy 144 files; pytest 4489 passed / 14 skipped; eslint, tsc; vitest 1155 passed / 5 skipped). sync-core project at 1000 seeds x 300 steps with `--testTimeout=100000000`: `PASS` 156/156 in 91 min (14 files, incl. the 18 planted reminder defects, the earlier 34, and the reminder scenarios at 1000 / 200 seeds). reminder-core soak 1000 x 300: `PASS` 59/59. Real-API sync-core project (`ATLAS_SYNC_REAL=1`, 20 seeds x 150): `PASS` 5/5 (reminder conformance, reminder world, the earlier three). `npm run test:e2e:real`: `PASS` 76/76 (11.1 min). `npm run e2e`: `PASS` 7/7. Stray databases: none (`atlas`, `atlas_test`, system DBs). An earlier soak (before the dismissal fix) had 3 failures (seeds 176, 252, 367), all explained above.
+
+**Not done / `NOT RUN`:** Python model 1000x300 and real 20x150 simulations (no Python sim file changed and they were not extended with `reminder`); CI; any real device (Android, desktop); owner DB migration (none needed).

@@ -17,6 +17,9 @@ import type { ServerPort } from "./engineBridge.ts";
 import { toReq, toResponse } from "./engineBridge.ts";
 import { rng, type Rng } from "./prng.ts";
 import { checkCursorSafety } from "./invariants.ts";
+import { HOUR, MIN, REM_MS_PER_VMS, REM_T0, ReminderDevice } from "./reminderDevice.ts";
+import { checkReminderStep } from "./reminderInvariants.ts";
+import type { PlantedBugs as SchedulerBugs } from "../../reminder-core/src/desired.ts";
 
 export interface SimConfig {
   clients: number;
@@ -47,6 +50,23 @@ export interface SimConfig {
   revokeAt: number;
   /** Engine option overrides (page size etc.). */
   pageSize: number;
+  /** Upper bound of the one-way network latency in virtual ms (the reminder runs use a fast network). */
+  maxLatency: number;
+  /** Upper bound of the virtual time one step advances (the reminder runs use short steps). */
+  stepMs: number;
+  /** Scales the engine's timers (backoff, pull interval, request timeout) and the slow-network delay with the step length. */
+  timeScale: number;
+  /**
+   * M8-04b-ii: every client also runs the device scheduler over its engine; tasks carry `due_at` and
+   * `status`; the engine syncs the `reminder` entity. The reminder timeline is 1 virtual ms = 5 minutes.
+   */
+  reminders: boolean;
+  /** The reminder timeline is the real wall clock (a real server computes snoozes from its own clock). */
+  realClock: boolean;
+  /** Clients start WITHOUT the reminder type and are "upgraded" to it mid-run (backfill, G7). */
+  reminderUpgrade: boolean;
+  /** Test-only scheduler defects (reminder-core `PlantedBugs`). */
+  schedulerBugs: SchedulerBugs;
 }
 
 export const DEFAULT_CONFIG: SimConfig = {
@@ -75,6 +95,13 @@ export const DEFAULT_CONFIG: SimConfig = {
   revokeClient: null,
   revokeAt: 0.5,
   pageSize: 4,
+  maxLatency: 25,
+  stepMs: 15,
+  timeScale: 1,
+  reminders: false,
+  realClock: false,
+  reminderUpgrade: false,
+  schedulerBugs: {},
 };
 
 export class SimFailure extends Error {
@@ -134,9 +161,9 @@ export class Network {
   send(cid: string, req: Req, onReply: (resp: Resp) => void): void {
     const { cfg, r } = this;
     const roll = this.faults ? r.next() : 1;
-    const slow = this.faults && r.next() < cfg.pSlow ? 150 : 0;
-    const up = r.range(1, 25) + slow;
-    const down = r.range(1, 25) + (this.faults && r.next() < cfg.pSlow ? 150 : 0);
+    const slow = this.faults && r.next() < cfg.pSlow ? Math.round(150 * cfg.timeScale) : 0;
+    const up = r.range(1, cfg.maxLatency) + slow;
+    const down = r.range(1, cfg.maxLatency) + (this.faults && r.next() < cfg.pSlow ? Math.round(150 * cfg.timeScale) : 0);
     const dropReq = roll < cfg.pDropRequest;
     const edge = cfg.pDropRequest + cfg.pDropResponse;
     const dropResp = cfg.pDropRequest <= roll && roll < edge;
@@ -201,6 +228,8 @@ export class Recorder {
   /** where each typed line came from (debugging a loss) */
   origin = new Map<string, string>();
   removed = new Set<string>();
+  /** the first send of each queued reminder action: its body and the device clock at that moment (R-68) */
+  firstSendByKey = new Map<string, { wall: number; body: Record<string, unknown> }>();
   /** the entities users deleted themselves */
   logLines: { client: string; event: string; fields: Record<string, unknown> }[] = [];
 }
@@ -221,6 +250,9 @@ export class SimClient {
   sentBefore = 0;
   sentAtHalt = -1;
   private haltedFlag = false;
+  device: ReminderDevice | null = null;
+  /** The engine syncs `reminder` (false before a mid-run upgrade). */
+  remindersOn: boolean;
 
   get halted(): boolean {
     return this.haltedFlag || this.engine.debug().halted !== null;
@@ -239,7 +271,12 @@ export class SimClient {
     private readonly bugs: PlantedBugs,
   ) {
     this.rng = rng(world.seed, `user:${cid}`);
+    this.remindersOn = !world.cfg.reminderUpgrade;
     this.engine = this.build();
+    if (world.cfg.reminders) {
+      const desktop = world.cfg.clients > 1 && cid === `c${world.cfg.clients}`;
+      this.device = new ReminderDevice(this, () => world.remNow(), desktop, world.cfg.schedulerBugs, hash(`${world.seed}:${cid}:act`));
+    }
   }
 
   sentTotal(): number {
@@ -251,7 +288,8 @@ export class SimClient {
     const cid = this.cid;
     const clock: Clock = {
       monotonic: () => w.events.now,
-      wallTime: () => w.events.now + this.offset,
+      // with reminders the wall clock IS the device clock of the scheduler (R-68 reads the delay from it)
+      wallTime: () => (w.cfg.reminders ? w.remNow() + this.offset : w.events.now + this.offset),
     };
     const transport: Transport = {
       send: (request) =>
@@ -279,6 +317,8 @@ export class SimClient {
           k: request.headers["Idempotency-Key"],
         });
         const first = w.rec.firstSend.get(op.id);
+        if (op.type === "reminder" && !w.rec.firstSendByKey.has(op.key))
+          w.rec.firstSendByKey.set(op.key, { wall: clock.wallTime(), body: { ...(request.body as Record<string, unknown>) } });
         if (first === undefined) w.rec.firstSend.set(op.id, bytes);
         else if (first !== bytes)
           w.rec.selfInflicted.push(`${cid}: a retry of ${op.action} ${op.id.slice(0, 8)} was not byte-identical`);
@@ -286,7 +326,10 @@ export class SimClient {
       ack: (op, resp) => {
         w.rec.acks.push({ cid, op, status: resp.status, body: resp.body });
         this.noteResolutions(op, resp.status, resp.body);
+        this.device?.onAck(op, [...this.store.peek().queue.values()]);
       },
+      pullStarted: () => this.device?.onPullStarted(),
+      pullCompleted: () => this.device?.onPullCompleted(),
       refused: (op, resp) => {
         const body = resp.body as Record<string, unknown> | null;
         const code = typeof body?.["error"] === "string" ? (body["error"] as string) : null;
@@ -326,12 +369,13 @@ export class SimClient {
       options: {
         protocol: this.protocol,
         pageSize: w.cfg.pageSize,
-        requestTimeoutMs: w.cfg.timeout,
-        backoff: { baseMs: 40, factor: 2, capMs: 400 },
-        pullIntervalMs: 30,
-        pullJitterMs: 20,
+        requestTimeoutMs: Math.round(w.cfg.timeout * w.cfg.timeScale),
+        backoff: { baseMs: 40 * w.cfg.timeScale, factor: 2, capMs: 400 * w.cfg.timeScale },
+        pullIntervalMs: 30 * w.cfg.timeScale,
+        pullJitterMs: 20 * w.cfg.timeScale,
         resyncMinIntervalMs: 0,
         trackResolutions: w.cfg.resolutions,
+        reminders: w.cfg.reminders && this.remindersOn,
         plantedBugs: this.bugs,
       },
     });
@@ -360,6 +404,23 @@ export class SimClient {
     this.engine.dispose();
     this.gen++;
     this.engine = this.build();
+    this.device?.boot();
+  }
+
+  /** The app is updated to a build that syncs reminders: a new process with the option on (G7). */
+  upgrade(): void {
+    if (this.remindersOn) return;
+    this.remindersOn = true;
+    this.world.trace.push(`t=${this.world.events.now} ${this.cid} UPGRADES to a build that syncs reminders`);
+    this.restart();
+  }
+
+  /** What a host does after a pull, an edit or a tick: reconcile the scheduler and let the OS fire. */
+  async pumpDevice(): Promise<void> {
+    if (!this.device || !this.active) return;
+    await this.device.pump();
+    // judged at once: the owner's next action must not change the verdict on what was shown before it
+    await checkReminderStep(this.world, this);
   }
 
   async tick(): Promise<void> {
@@ -369,7 +430,7 @@ export class SimClient {
 
   // --- user actions ---------------------------------------------------------------------------
 
-  private async guarded(fn: () => Promise<unknown>): Promise<boolean> {
+  async guarded(fn: () => Promise<unknown>): Promise<boolean> {
     const saved = this.store.crashBeforeCommit;
     this.store.crashBeforeCommit = null; // a user action is not a crash point
     try {
@@ -391,6 +452,7 @@ export class SimClient {
     this.counter++;
     const opId = `${this.cid}-${this.counter}`;
     if (w.cfg.resolutions && (await this.undoAction(false))) return;
+    if (w.cfg.reminders && r.next() < 0.6 && (await this.reminderAction(opId))) return;
     if (kinds.includes("note") && r.next() < (kinds.length === 1 ? 1 : 0.4)) {
       await this.noteAction(opId);
       return;
@@ -423,6 +485,53 @@ export class SimClient {
   }
 
   counter = 0;
+
+  /** The reminder-flavoured owner actions (M8-04b-ii). Returns whether one was made. */
+  private async reminderAction(opId: string): Promise<boolean> {
+    const w = this.world;
+    const r = this.rng;
+    const dev = this.device!;
+    const roll = r.next();
+    const tasks = (await this.engine.views()).filter((v) => v.type === "task" && !v.deleted);
+    const iso = (ms: number) => new Date(ms).toISOString();
+    if (dev.os.shade.size > 0 && r.next() < 0.5) {
+      await this.guarded(() => dev.ownerActs());
+      return true;
+    }
+    if (roll < 0.28 || tasks.length === 0) {
+      const due = iso(w.remNow() + r.range(-2 * HOUR, 30 * HOUR));
+      await this.guarded(() => this.engine.createEntity("task", { title: `task:${opId}`, description: null, due_at: due, status: "inbox" }));
+      return true;
+    }
+    if (roll < 0.5) {
+      const withDue = tasks.filter((t) => typeof t.fields["due_at"] === "string" && t.fields["status"] !== "completed");
+      if (withDue.length === 0) return false;
+      const target = r.pick(withDue);
+      let due = iso(w.remNow() + r.range(-2 * HOUR, 30 * HOUR));
+      if (due === target.fields["due_at"]) due = iso(Date.parse(due) + MIN);
+      await dev.noteRedate(target.id);
+      if (!(await this.guarded(() => this.engine.updateEntity("task", target.id, { due_at: due })))) dev.dropRedate(target.id);
+      return true;
+    }
+    if (roll < 0.64) {
+      const open = tasks.filter((t) => t.fields["status"] !== "completed");
+      if (open.length === 0) return false;
+      const target = r.pick(open);
+      await this.guarded(() => this.engine.updateEntity("task", target.id, { status: "completed" }));
+      return true;
+    }
+    if (roll < 0.72) {
+      const done = tasks.filter((t) => t.fields["status"] === "completed");
+      if (done.length === 0) return false;
+      await this.guarded(() => this.engine.updateEntity("task", r.pick(done).id, { status: "in_progress" }));
+      return true;
+    }
+    if (roll < 0.95) {
+      await this.guarded(() => dev.ownerActs());
+      return true;
+    }
+    return false;
+  }
 
   async undoTap(): Promise<void> {
     this.counter++;
@@ -508,6 +617,10 @@ export class World {
   readonly net: Network;
   readonly clients: SimClient[] = [];
   stepsRun = 0;
+  /** Extra virtual time added to the reminder timeline after quiescence (the sweep). */
+  sweep = 0;
+  /** The reminder timeline stops here while the clients settle, so the sweep starts where the run ended. */
+  private remFrozen: number | null = null;
   /** The server was restored from a backup: feed rows below a client's cursor may be gone. */
   restored = false;
 
@@ -520,6 +633,10 @@ export class World {
     this.r = rng(seed, "net");
     this.clockRng = rng(seed, "clock");
     this.net = new Network(this.events, server, this.r, cfg, this.trace);
+    if (cfg.reminders) {
+      const model = (server as { constructor: { name: string }; options?: { clock?: () => number } });
+      if (model.constructor.name === "ModelServer" && model.options) model.options.clock = () => this.remNow();
+    }
     const names = Array.from({ length: cfg.clients }, (_, i) => `c${i + 1}`);
     if (cfg.oldClient) names.push("old");
     for (const cid of names) {
@@ -531,6 +648,12 @@ export class World {
     for (const client of this.clients) {
       client.store.crashBeforeCommit = null;
     }
+  }
+
+  /** The reminder timeline: 1 virtual ms = 5 minutes, plus the post-quiescence sweep. */
+  remNow(): number {
+    if (this.cfg.realClock) return Date.now() + this.sweep;
+    return (this.remFrozen ?? REM_T0 + this.events.now * REM_MS_PER_VMS) + this.sweep;
   }
 
   fail(invariant: string, detail: string): SimFailure {
@@ -575,11 +698,20 @@ export class World {
         this.trace.push(`t=${this.events.now} OWNER revokes the device of ${cfg.revokeClient}`);
       }
       if (hooks.onStep) await hooks.onStep(step);
-      this.events.now += r.range(1, 15);
+      if (cfg.reminders && cfg.reminderUpgrade) {
+        this.clients.forEach((client, i) => {
+          if (step === Math.floor(cfg.steps * 0.35) + i * 4) client.upgrade();
+        });
+      }
+      this.events.now += r.range(1, cfg.stepMs);
       await this.events.runDue();
       await this.settle();
+      for (const client of this.clients) await client.pumpDevice();
       for (const client of this.clients) {
-        if (r.next() < cfg.actionP) await client.userAction(cfg.kinds);
+        if (r.next() < cfg.actionP) {
+          await client.userAction(cfg.kinds);
+          await client.pumpDevice();
+        }
       }
       for (const client of this.clients) {
         if (client === joiner && !joiner.active) continue;
@@ -590,6 +722,17 @@ export class World {
           if (online) client.engine.retryNow();
         }
         if (r.next() < cfg.pRestart) client.restart();
+        if (cfg.reminders && client.device && client.active) {
+          const dev = client.device;
+          const roll = client.rng.next();
+          if (roll < 0.015) {
+            this.trace.push(`t=${this.events.now} ${client.cid} OS reboot`);
+            await dev.reboot(client.rng.next() < 0.8);
+          } else if (roll < 0.03) {
+            dev.os.permissionState = dev.os.permissionState === "granted" ? "denied" : "granted";
+            this.trace.push(`t=${this.events.now} ${client.cid} notification permission ${dev.os.permissionState}`);
+          }
+        }
         const jump = this.clockRng.next() < cfg.pClockJump;
         const amount = this.clockRng.range(-cfg.maxClockSkew, cfg.maxClockSkew);
         if (jump && cfg.skew) client.offset = amount;
@@ -603,6 +746,7 @@ export class World {
       for (const client of this.clients) await client.tick();
       await this.settle();
       for (const client of this.clients) await checkCursorSafety(this, client);
+      for (const client of this.clients) await client.pumpDevice();
     }
   }
 
@@ -612,12 +756,14 @@ export class World {
   }
 
   async quiesce(): Promise<void> {
+    if (this.cfg.reminders && this.remFrozen === null) this.remFrozen = REM_T0 + this.events.now * REM_MS_PER_VMS;
     this.net.faults = false;
     for (const cid of this.net.online.keys()) this.net.online.set(cid, true);
     for (const client of this.clients) client.engine.retryNow();
     this.trace.push(`t=${this.events.now} --- quiescence (faults off, all online) ---`);
+    const tickMs = Math.max(1, Math.round(10 * this.cfg.timeScale));
     for (let i = 0; i < this.cfg.maxQuiesceTicks; i++) {
-      this.events.now += 10;
+      this.events.now += tickMs;
       await this.events.runDue();
       await this.settle();
       for (const client of this.clients) await client.tick();
@@ -627,7 +773,7 @@ export class World {
     const stuck = await Promise.all(
       this.clients.map(async (c) => {
         const status = await c.engine.getStatus();
-        return `${c.cid}: pending=${status.pending} state=${status.state} cursor=${status.cursor} clean=${c.engine.cleanPulls}`;
+        return `${c.cid}: pending=${status.pending} state=${status.state} cursor=${status.cursor} clean=${c.engine.cleanPulls} engine=${JSON.stringify(c.engine.debug())}`;
       }),
     );
     throw this.fail("bounded_work", `did not quiesce within ${this.cfg.maxQuiesceTicks} ticks after faults stopped: ${stuck.join("; ")}`);

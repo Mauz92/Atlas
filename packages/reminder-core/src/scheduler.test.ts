@@ -367,8 +367,12 @@ describe("snooze and dismiss on this device", () => {
     expect(await r.sched.snooze("a", { kind: "seconds", seconds: 600 })).toBe(true);
     expect(r.os.shade.size).toBe(0);
     expect([...r.os.alarms.values()].map((a) => a.at)).toEqual([r.clock.now() + 10 * MIN]);
+    // `actedAt` is the device clock at the tap: the sync layer sends it as `acted_at` (R-68)
     expect(r.actions.queue).toEqual([
-      { actionId: "act-1", reminderId: "a", kind: "snooze", snooze: { kind: "seconds", seconds: 600 }, baseRevision: 1 },
+      {
+        actionId: "act-1", reminderId: "a", kind: "snooze", snooze: { kind: "seconds", seconds: 600 }, baseRevision: 1,
+        actedAt: r.clock.now(),
+      },
     ]);
     r.clock.advance(10 * MIN);
     r.os.fireDueAlarms();

@@ -4,10 +4,14 @@ A device shows a reminder from its own schedule; what the owner *does* with it (
 is the only thing that has to reach the other devices. This module holds the pure rules and the
 transactional application:
 
-* ``snooze`` -> ``snoozed_until = now + n`` (server clock; the device clock only drives its own
-  optimistic alarm) and the dismissal is cleared, so a snooze after a dismiss re-arms;
-* ``dismiss`` -> ``acknowledged_at = max(now, effective_at)`` and the snooze is cleared. Taking the
-  larger value makes a dismissal that arrives *before* the occurrence is due cover that occurrence
+* ``snooze`` -> ``snoozed_until = base + n`` and the dismissal is cleared, so a snooze after a
+  dismiss re-arms. ``base`` is the server clock, or - when the device sends ``acted_at`` - that
+  instant *clamped* to a safe window around the server clock (:func:`clamp_acted_at`, R-68), so a
+  snooze made offline at 10:00 for an hour and synced at 14:00 rings the other devices at once
+  instead of at 15:00;
+* ``dismiss`` -> ``acknowledged_at = max(base, effective_at, remind_at)`` and the snooze is cleared.
+  Taking the larger value makes a dismissal that arrives *before* the occurrence is due cover that
+  occurrence
   (a device rule "acknowledged at or after effective_at" then needs no special case);
 * the later action in server order wins; there is no ``409`` for a stale ``base_revision`` (an
   action is intent, not a field edit) - the answer carries the current entity and ``stale``;
@@ -41,6 +45,13 @@ logger = logging.getLogger("atlas.reminders")
 SNOOZE_SECONDS: frozenset[int] = frozenset({600, 3600, 10800})
 #: The local time "tomorrow morning" resolves to.
 TOMORROW_MORNING_AT = DEFAULT_AT_TIME
+#: R-68 / ADR-0068 D11: how far back a device-reported ``acted_at`` is believed. An action queued
+#: longer ago than this is treated as made this long ago (the snooze then ends no later than
+#: ``server now - 24 h + n``, i.e. a missed snooze rings at once). Constants, not settings: they
+#: bound the damage of a wrong device clock and have no operational reason to change.
+ACTED_AT_MAX_AGE = timedelta(hours=24)
+#: How far *ahead* of the server clock a device-reported ``acted_at`` is believed (clock skew).
+ACTED_AT_MAX_FUTURE = timedelta(minutes=5)
 
 ActionKind = Literal["snooze", "dismiss"]
 
@@ -68,6 +79,23 @@ class ReminderActionResult:
 def effective_at(remind_at: datetime, snoozed_until: datetime | None) -> datetime:
     """The instant a device fires: the snooze when there is one, else the reminder time."""
     return snoozed_until or remind_at
+
+
+def clamp_acted_at(acted_at: datetime | None, now: datetime) -> datetime:
+    """The instant a snooze or dismissal is based on (R-68).
+
+    ``acted_at`` is when the owner tapped, by the *device* clock, and is only a hint about the
+    delay between the tap and the sync. It is clamped, never rejected, to
+    ``[now - ACTED_AT_MAX_AGE, now + ACTED_AT_MAX_FUTURE]``; absent means ``now``. It is never used
+    to order actions (arrival order decides, ADR-0059 D11) and never stored: it only moves the
+    instant that ``snooze_for_seconds`` is added to. A device with a clock that is wrong by more
+    than the window gets the window's edge, so a wrong clock can shift a snooze by at most 24 h
+    earlier or 5 min later than the server's own reading.
+    """
+    if acted_at is None:
+        return now
+    acted_at = acted_at.astimezone(UTC)
+    return min(max(acted_at, now - ACTED_AT_MAX_AGE), now + ACTED_AT_MAX_FUTURE)
 
 
 def snooze_until(now: datetime, *, seconds: int) -> datetime:
@@ -99,6 +127,7 @@ async def apply_action(
     snooze_for_seconds: int | None = None,
     until: Literal["tomorrow_morning"] | None = None,
     base_revision: int | None = None,
+    acted_at: datetime | None = None,
     device_id: uuid.UUID | None = None,
     now: datetime | None = None,
 ) -> ReminderActionResult:
@@ -107,7 +136,8 @@ async def apply_action(
     Raises :class:`ReminderNotFoundError` for an unknown or foreign id and
     :class:`ReminderRevisionAheadError` when ``base_revision`` exceeds the stored revision.
     """
-    moment = now or datetime.now(UTC)
+    server_now = now or datetime.now(UTC)
+    moment = clamp_acted_at(acted_at, server_now)
     found = await session.scalar(
         select(Reminder).where(Reminder.id == reminder_id, Reminder.user_id == user_id)
     )
@@ -131,8 +161,15 @@ async def apply_action(
         else:
             due = effective_at(found.remind_at, found.snoozed_until)
             if found.acknowledged_at is None or found.acknowledged_at < due:
+                # ``remind_at`` as well: dismissing clears the snooze, so the occurrence that
+                # becomes effective again is ``remind_at``; a snooze that ends before it (an old
+                # ``acted_at`` from a device clock that was behind) must not let the dismissed
+                # reminder ring again.
                 applied = await publish(
-                    session, found, snoozed_until=None, acknowledged_at=max(moment, due)
+                    session,
+                    found,
+                    snoozed_until=None,
+                    acknowledged_at=max(moment, due, found.remind_at),
                 )
             # else: already dismissed - a repeat (another device, a retry with a new id) is a no-op
     # Audit without content: ids, the kind and the outcome - never the task title or text.
@@ -146,6 +183,8 @@ async def apply_action(
             "state": found.state,
             "revision": found.revision,
             "device_id": str(device_id) if device_id else None,
+            # seconds the base was moved back from the server clock (0 without acted_at): audit only
+            "acted_lag_s": int((server_now - moment).total_seconds()),
         },
     )
     delivered_at = await session.scalar(
@@ -155,12 +194,15 @@ async def apply_action(
 
 
 __all__ = [
+    "ACTED_AT_MAX_AGE",
+    "ACTED_AT_MAX_FUTURE",
     "CANCELLED",
     "SNOOZE_SECONDS",
     "ReminderActionResult",
     "ReminderNotFoundError",
     "ReminderRevisionAheadError",
     "apply_action",
+    "clamp_acted_at",
     "effective_at",
     "snooze_until",
     "tomorrow_morning",

@@ -118,6 +118,7 @@ async def reminder_action(
             snooze_for_seconds=payload.snooze_for_seconds,
             until=payload.until,
             base_revision=payload.base_revision,
+            acted_at=payload.acted_at,
             device_id=current_device_id(request),
         )
     except ReminderNotFoundError as exc:

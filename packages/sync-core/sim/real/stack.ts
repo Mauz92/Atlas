@@ -120,6 +120,16 @@ export class RealServer implements ServerPort {
     this.csrf = jar.get("atlas_csrf") ?? "";
   }
 
+  /** The owner's default reminder timing (09:00 on the due date), so the server derives reminders. */
+  async setReminderDefault(): Promise<void> {
+    const r = await fetch(`${this.stack.baseUrl}/api/notifications/reminders`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Cookie: this.cookie, "X-CSRF-Token": this.csrf },
+      body: JSON.stringify({ default: { days_before: 0, at_time: "09:00" } }),
+    });
+    if (r.status !== 200) throw new Error(`default reminder timing failed: ${r.status} ${await r.text()}`);
+  }
+
   async addDevice(cid: string): Promise<void> {
     const r = await fetch(`${this.stack.baseUrl}/api/devices`, {
       method: "POST", headers: { "Content-Type": "application/json" },

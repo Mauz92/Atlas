@@ -10,6 +10,7 @@ import email_validator
 from email_validator import EmailNotValidError, validate_email
 from pydantic import (
     AfterValidator,
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -1336,6 +1337,11 @@ class ReminderActionRequest(BaseModel):
     ``dismiss`` takes neither. ``base_revision`` is the reminder revision the device acted on: an
     older one is accepted (an action is intent, not a field edit) and flagged ``stale``; one ahead
     of the server's is ``409 revision_ahead``.
+
+    ``acted_at`` (R-68) is when the owner acted, by the device clock, ISO-8601 with an offset. A
+    device that queued the action offline sends it so the snooze counts from the tap and not from
+    the sync. The server clamps it to ``[now - 24 h, now + 5 min]`` (an out-of-range value is
+    clamped, not refused), never orders actions by it and does not store it.
     """
 
     action_id: uuid.UUID
@@ -1343,6 +1349,10 @@ class ReminderActionRequest(BaseModel):
     snooze_for_seconds: Literal[600, 3600, 10800] | None = None
     until: Literal["tomorrow_morning"] | None = None
     base_revision: int | None = Field(default=None, ge=1)
+    acted_at: AwareDatetime | None = Field(
+        default=None,
+        description="When the owner acted (device clock, with an offset). Clamped by the server.",
+    )
 
     @model_validator(mode="after")
     def _shape(self) -> ReminderActionRequest:

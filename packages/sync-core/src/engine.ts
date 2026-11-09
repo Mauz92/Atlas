@@ -22,6 +22,12 @@ import {
   type ApplyOptions,
 } from "./entities.ts";
 import { merge3 } from "./merge3.ts";
+import {
+  buildReminderViews,
+  DIRTY_FIELDS,
+  type ReminderActionData,
+  type ReminderViewData,
+} from "./reminders.ts";
 import { checkPortable, normalizeNotePath } from "./portable.ts";
 import type {
   Clock,
@@ -67,6 +73,14 @@ export interface PlantedBugs {
   ignoreRevoked?: boolean;
   /** A retry of a frozen operation takes a fresh base (not byte-identical). */
   rebaseFrozenOps?: boolean;
+  /** A type new to this client is recorded as synced without the `since=0` backfill (G7). */
+  typeSyncedWithoutBackfill?: boolean;
+  /** The reminder views never report a task as `dirty` (a stale alarm survives a local edit). */
+  ignoreDirtyTask?: boolean;
+  /** A queued reminder action is sent without `acted_at` (R-68: a late snooze counts from the sync). */
+  omitActedAt?: boolean;
+  /** `dirty` is dropped when the edit is acknowledged, not after a pull that follows it. */
+  clearDirtyAtAck?: boolean;
 }
 
 export interface EngineOptions {
@@ -81,6 +95,11 @@ export interface EngineOptions {
   trackResolutions: boolean;
   /** The device id (`GET /api/devices/current`); notices of other devices are "elsewhere". */
   deviceId: string | null;
+  /**
+   * Sync the `reminder` entity (M8-04b-ii). Off by default so existing hosts are unchanged. Turning
+   * it on for a client that already has a cursor backfills the type first (`types_synced`, G7).
+   */
+  reminders: boolean;
   plantedBugs: PlantedBugs;
 }
 
@@ -94,8 +113,12 @@ export const DEFAULT_OPTIONS: EngineOptions = {
   resyncMinIntervalMs: 600_000,
   trackResolutions: true,
   deviceId: null,
+  reminders: false,
   plantedBugs: {},
 };
+
+/** An action sent less than this long after the tap carries no `acted_at`: the server clock is better. */
+export const ACTED_AT_MIN_DELAY_MS = 60_000;
 
 /** What a host or a test can watch. All callbacks are optional and must not throw. */
 export interface EngineObserver {
@@ -107,6 +130,13 @@ export interface EngineObserver {
   undoRefused?(op: QueueOp, response: HttpResponse): void;
   halted?(halt: Halt): void;
   pageApplied?(info: { cursor: number; changes: number }): void;
+  /** A pull of the main feed (or a resync) began; `index` counts them in this process. */
+  pullStarted?(info: { index: number }): void;
+  /**
+   * The pull numbered `index` reached the head and committed its last page: every reminder row it
+   * could see is applied, so a host reconciles its scheduler now. A backfill is not a pull.
+   */
+  pullCompleted?(info: { index: number }): void;
   resynced?(info: { mode: "snapshot" | "restore"; entities: number; cursor: number }): void;
 }
 
@@ -138,8 +168,20 @@ interface Shadow {
   restore: boolean;
 }
 
+/** A walk from 0 of entity types this client has not synced yet (G7); the main cursor is untouched. */
+interface Backfill {
+  types: string[];
+  entities: Map<string, { type: EntityType; data: Record<string, Json> }>;
+  resolutions: Map<string, ResolutionRecord>;
+}
+
 interface PullJob {
   since: number;
+  /** The `types=` of every page of this job. */
+  types: string[];
+  /** Types to record as synced when the first page commits (a client with no cursor yet). */
+  recordTypes?: string[];
+  backfill?: Backfill;
   stage: "feed" | "get";
   page?: WirePage;
   todo: string[];
@@ -208,6 +250,14 @@ export class SyncEngine {
   private offline = false;
   private pullChanged = false;
   private restoreRequested = false;
+  /**
+   * Pulls started by this process, and the number of the one in progress. `dirty_tasks` entries
+   * name the pull whose completion clears them. The counter is volatile: `init` renumbers what a
+   * previous process left to 1, so the first pull that starts after a restart (and completes the
+   * walk that was interrupted) clears it.
+   */
+  private pullSeq = 0;
+  private currentGen = 0;
   private listeners = new Set<StatusListener>();
   private lastStatusJson = "";
   /** Requests sent (for tests: a halted engine must send nothing more). */
@@ -247,6 +297,10 @@ export class SyncEngine {
     await this.store.transaction(async (tx) => {
       this.halt = ((await tx.getMeta<Json>("halt")) as unknown as Halt | undefined) ?? null;
       this.epoch = ((await tx.getMeta<string>("epoch")) as string | undefined) ?? null;
+      const dirty = await tx.getMeta<Record<string, number>>("dirty_tasks");
+      if (dirty && Object.keys(dirty).length > 0) {
+        await tx.setMeta("dirty_tasks", Object.fromEntries(Object.keys(dirty).map((id) => [id, 1])));
+      }
     });
     this.initDone = true;
   }
@@ -537,6 +591,15 @@ export class SyncEngine {
         await tx.putDraft(draft);
       } else if (op.action === "patch" || op.action === "delete" || op.action === "move") {
         op.base = op.chainBase ?? op.userBase;
+      } else if (op.action === "act") {
+        // R-68: `acted_at` only helps when the action waited; sent promptly, the server clock is
+        // better than a device clock that may be off. Decided once, at the first send, and then
+        // part of the frozen request, so every retry is byte-identical.
+        const tapped = typeof op.fields["acted_at"] === "string" ? Date.parse(op.fields["acted_at"]) : NaN;
+        const waited = this.clock.wallTime() - tapped;
+        if (this.bugs.omitActedAt || !Number.isFinite(waited) || waited < ACTED_AT_MIN_DELAY_MS) {
+          delete op.fields["acted_at"];
+        }
       }
       op.frozen = true;
     }
@@ -574,6 +637,17 @@ export class SyncEngine {
     await tx.removeOp(op.id);
     const type = op.type as EntityType;
     const body = asRecord(response.body);
+    if (op.type === "reminder") {
+      await this.ackReminderAction(tx, body);
+      return;
+    }
+    if (type === "task" && op.action !== "delete" && (op.action === "restore" || Object.keys(op.fields).some((k) => DIRTY_FIELDS.has(k)))) {
+      // The server recomputed (or cancelled) the reminder in the transaction of this write; it
+      // reaches us with a pull that STARTS after now. Until that pull completes the task is stale.
+      if (!this.bugs.clearDirtyAtAck) {
+        await this.markDirty(tx, op.entityId, this.pullSeq + 1);
+      }
+    }
     if (op.action === "delete") {
       await applyDeleteAck(tx, type, op.entityId, this.applyOptions);
     } else if (body) {
@@ -598,6 +672,17 @@ export class SyncEngine {
     if (type === "note" && (op.action === "put" || op.action === "create")) {
       await this.settleNoteSave(tx, op, body);
     }
+  }
+
+  /**
+   * The answer to an action carries the reminder as the server now holds it. Unlike a task write
+   * (R-40) it is safe to apply: the entity is server-written and its revision only grows, so the
+   * revision guard of `applyLive` keeps a late or replayed answer from overwriting newer state.
+   */
+  private async ackReminderAction(tx: StoreTx, body: Record<string, Json> | null): Promise<void> {
+    const reminder = asRecord(body?.["reminder"]);
+    if (!reminder || typeof reminder["id"] !== "string") return;
+    await applyLive(tx, "reminder", reminder["id"] as string, reminder, this.applyOptions);
   }
 
   private async recordPartialConflicts(
@@ -662,6 +747,20 @@ export class SyncEngine {
     const body = asRecord(response.body);
     const code = errorCode(response.body);
     await tx.removeOp(op.id);
+    if (op.type === "reminder") {
+      // An action is intent, not an edit (14.5): nothing to rebase and the reminder has no GET to
+      // refetch from. A reminder the server no longer knows (404) makes the action moot; anything
+      // else (revision_ahead after a restore, a 422) is shown so the owner can act again.
+      if (response.status !== 404) {
+        await tx.putProblem(
+          this.problem(op, "failed", response.status, code, {
+            detail: typeof body?.["detail"] === "string" ? (body["detail"] as string).slice(0, 300) : null,
+          }),
+        );
+      }
+      this.log.info("reminder_action_refused", { status: response.status, code });
+      return;
+    }
     // later operations of this entity lose the chained base this one would have produced
     for (const later of queue) {
       if (later.entityId === op.entityId && later.seq > op.seq && later.chainBase !== null) {
@@ -844,9 +943,58 @@ export class SyncEngine {
 
   // --- pull ---------------------------------------------------------------------------------
 
+  /** The entity types this client wants (`types=`), in a fixed order. */
+  private wantedTypes(): string[] {
+    const types = [...ENTITY_TYPES] as string[];
+    if (this.options.trackResolutions) types.push("resolution");
+    if (this.options.reminders) types.push("reminder");
+    return types;
+  }
+
+  private newJob(since: number, extra: Partial<PullJob> = {}): PullJob {
+    return {
+      since,
+      types: this.wantedTypes(),
+      stage: "feed",
+      todo: [],
+      fetched: new Map(),
+      refetch: [],
+      ...extra,
+    };
+  }
+
   private async startPull(): Promise<void> {
-    const cursor = await this.store.transaction(async (tx) => (await tx.getMeta<number>("cursor")) ?? 0);
-    this.job = { since: cursor, stage: "feed", todo: [], fetched: new Map(), refetch: [] };
+    const wanted = this.wantedTypes();
+    const planned = await this.store.transaction(async (tx) => {
+      const cursor = (await tx.getMeta<number>("cursor")) ?? 0;
+      const synced = (await tx.getMeta<string[]>("types_synced")) ?? undefined;
+      return { cursor, synced };
+    });
+    this.currentGen = ++this.pullSeq;
+    this.observer.pullStarted?.({ index: this.currentGen });
+    const { cursor } = planned;
+    let job: PullJob;
+    if (cursor === 0) {
+      // nothing synced yet: the first page is a snapshot of every wanted type
+      job = this.newJob(0, { types: wanted, recordTypes: wanted });
+    } else {
+      // A store that predates `types_synced` was written by a client without reminders.
+      const have = planned.synced ?? wanted.filter((t) => t !== "reminder");
+      const missing = wanted.filter((t) => !have.includes(t));
+      if (missing.length > 0 && !this.bugs.typeSyncedWithoutBackfill) {
+        // G7: a type new to this client is walked from 0 on its own, BEFORE the main cursor moves
+        // again, and recorded as synced in the transaction that applies its last page. The main pull
+        // never asks for it earlier, so the cursor cannot pass a row of it that was not applied.
+        job = this.newJob(0, {
+          types: missing,
+          backfill: { types: missing, entities: new Map(), resolutions: new Map() },
+        });
+      } else {
+        const types = wanted.filter((t) => have.includes(t) || this.bugs.typeSyncedWithoutBackfill);
+        job = this.newJob(cursor, { types, recordTypes: types });
+      }
+    }
+    this.job = job;
     this.pullChanged = false;
     if (this.epoch === null) {
       await this.send("epoch", { method: "GET", path: "/api/instance" });
@@ -878,9 +1026,10 @@ export class SyncEngine {
         since: job.since,
         limit: this.options.pageSize,
         include: "data",
-        types: this.options.trackResolutions ? "task,project,note,resolution" : "task,project,note",
+        types: job.types.join(","),
       };
-      if (job.shadow && job.since > 0) query["snapshot"] = true; // a continuation of a snapshot walk
+      // a continuation of a snapshot walk (resync or backfill)
+      if ((job.shadow || job.backfill) && job.since > 0) query["snapshot"] = true;
       await this.send("feed", { method: "GET", path: "/api/changes", query });
     } else if (job.todo.length > 0) {
       const id = job.todo[0]!;
@@ -903,8 +1052,21 @@ export class SyncEngine {
       return;
     }
     const page = response.body as WirePage;
-    if (page.resync_required) {
+    if (page.resync_required && !job.backfill) {
       await this.onResyncRequired(page);
+      return;
+    }
+    if (job.backfill) {
+      if (page.resync_required) {
+        this.log.warn("backfill_resync", { reason: page.resync_reason ?? "unknown" });
+        this.failed(null);
+        return;
+      }
+      job.page = page;
+      job.refetch = [];
+      job.todo = [];
+      job.stage = "get";
+      await this.jobStep();
       return;
     }
     job.page = page;
@@ -946,18 +1108,13 @@ export class SyncEngine {
       return;
     }
     this.lastResyncAt = now;
-    this.job = {
-      since: 0,
-      stage: "feed",
-      todo: [],
-      fetched: new Map(),
-      refetch: [],
+    this.job = this.newJob(0, {
       shadow: {
         entities: new Map(),
         resolutions: new Map(),
         restore: this.restoreRequested,
       },
-    };
+    });
     await this.jobStep();
   }
 
@@ -978,6 +1135,10 @@ export class SyncEngine {
     if (!page) return;
     if (job.shadow) {
       await this.shadowPage(job, page);
+      return;
+    }
+    if (job.backfill) {
+      await this.backfillPage(job, page);
       return;
     }
     let changed = false;
@@ -1004,7 +1165,7 @@ export class SyncEngine {
           continue;
         }
         const type = change.entity_type as EntityType;
-        if (!ENTITY_TYPES.includes(type)) continue;
+        if (!this.isFeedType(type)) continue;
         if (refreshed.has(change.entity_id)) continue; // the re-read above is newer than this row
         const data = change.data ?? null;
         if (change.operation === "delete" || isDeletedPayload(data)) {
@@ -1012,7 +1173,14 @@ export class SyncEngine {
           const revision = this.revisionOf(change, data);
           changed = (await applyTombstone(tx, type, change.entity_id, revision, this.applyOptions)) || changed;
         } else {
+          const before = type === "task" && page.has_more ? await tx.getEntity(change.entity_id) : undefined;
           changed = (await applyLive(tx, type, change.entity_id, data!, this.applyOptions)) || changed;
+          // A task whose reminder-relevant fields changed in a page that is not the last: its
+          // reminder row may still be on a later page, so it counts as stale until this pull ends.
+          if (type === "task" && page.has_more) {
+            const after = await tx.getEntity(change.entity_id);
+            if (this.reminderFieldsDiffer(before, after)) await this.markDirty(tx, change.entity_id, this.currentGen);
+          }
         }
         const entity = await tx.getEntity(change.entity_id);
         if (entity?.refetch) {
@@ -1022,12 +1190,17 @@ export class SyncEngine {
       }
       await this.rebasePending(tx);
       await tx.setMeta("cursor", page.next_since);
-      if (!page.has_more) await tx.setMeta("lastSyncAt", this.clock.wallTime());
+      if (job.recordTypes) await tx.setMeta("types_synced", job.recordTypes);
+      if (!page.has_more) {
+        await tx.setMeta("lastSyncAt", this.clock.wallTime());
+        await this.clearDirty(tx, this.currentGen);
+      }
     });
     changed = changed || page.changes.length > 0;
     this.pullChanged ||= changed;
     this.observer.pageApplied?.({ cursor: page.next_since, changes: page.changes.length });
     this.finishPage(page.has_more, page.next_since);
+    if (!page.has_more) this.observer.pullCompleted?.({ index: this.currentGen });
   }
 
   private revisionOf(change: WireChange, data: Record<string, Json> | null): number | null {
@@ -1038,7 +1211,9 @@ export class SyncEngine {
 
   private finishPage(hasMore: boolean, cursor: number): void {
     if (hasMore) {
-      this.job = { since: cursor, stage: "feed", todo: [], fetched: new Map(), refetch: [] };
+      // continuation pages of the same pull ask for the same types; the first page recorded them
+      const types = this.job?.types ?? this.wantedTypes();
+      this.job = this.newJob(cursor, { types });
       return;
     }
     this.job = null;
@@ -1065,6 +1240,84 @@ export class SyncEngine {
     }
   }
 
+  private isFeedType(type: string): boolean {
+    return (ENTITY_TYPES as readonly string[]).includes(type) || (type === "reminder" && this.options.reminders);
+  }
+
+  // --- backfill of a type new to this client (G7) -----------------------------------------------
+
+  /**
+   * One page of a `since=0&types=<new>` walk. Rows are collected and applied together with the
+   * last page, in the same transaction that records the types as synced: a crash in between leaves
+   * the old state (the walk is repeated), never a type marked synced that was not applied. The main
+   * cursor is not touched: rows of the new type between it and `head` are re-delivered by the main
+   * pull that follows (applied by revision, so a repeat is a no-op).
+   */
+  private async backfillPage(job: PullJob, page: WirePage): Promise<void> {
+    const backfill = job.backfill!;
+    for (const change of page.changes) {
+      if (change.entity_type === "resolution") {
+        if (change.data) backfill.resolutions.set(change.entity_id, change.data as unknown as ResolutionRecord);
+        continue;
+      }
+      const type = change.entity_type as EntityType;
+      if (!this.isFeedType(type) || !backfill.types.includes(type)) continue;
+      const data = change.data ?? null;
+      if (change.operation === "delete" || isDeletedPayload(data) || data === null) continue; // a snapshot has none
+      backfill.entities.set(change.entity_id, { type, data });
+    }
+    if (page.has_more) {
+      this.job = this.newJob(page.next_since, { types: job.types, backfill });
+      return;
+    }
+    await this.store.transaction(async (tx) => {
+      for (const [id, item] of backfill.entities) {
+        await applyLive(tx, item.type, id, item.data, this.applyOptions);
+      }
+      // what the store holds of these types but the walk did not return is gone (a downgrade and
+      // re-upgrade may have missed its tombstone)
+      for (const entity of await tx.listEntities()) {
+        if (!backfill.types.includes(entity.type) || entity.deleted || backfill.entities.has(entity.id)) continue;
+        entity.deleted = true;
+        entity.deletedRevision = null;
+        await tx.putEntity(entity);
+      }
+      for (const record of backfill.resolutions.values()) await this.putResolutionByState(tx, record);
+      const have = (await tx.getMeta<string[]>("types_synced")) ?? this.wantedTypes().filter((t) => t !== "reminder");
+      await tx.setMeta("types_synced", [...new Set([...have, ...backfill.types])]);
+    });
+    this.log.info("types_backfilled", { entities: backfill.entities.size });
+    this.job = null;
+    this.pullChanged = true;
+    this.cleanPulls = 0;
+    this.nextPullAt = this.clock.monotonic(); // the main pull, now including the new types
+  }
+
+  // --- reminders: dirty tasks (14.2 rule 2) ---------------------------------------------------------
+
+  private reminderFieldsDiffer(before: LocalEntity | undefined, after: LocalEntity | undefined): boolean {
+    if (!after?.server) return false;
+    const was = before?.server?.fields;
+    if (!was) return false; // a task we never held has no reminder here yet
+    return [...DIRTY_FIELDS].some((f) => JSON.stringify(was[f] ?? null) !== JSON.stringify(after.server!.fields[f] ?? null));
+  }
+
+  /** Mark a task stale until the pull numbered `need` (or any pull started later) has completed. */
+  private async markDirty(tx: StoreTx, taskId: string, need: number): Promise<void> {
+    const dirty = (await tx.getMeta<Record<string, number>>("dirty_tasks")) ?? {};
+    dirty[taskId] = Math.max(dirty[taskId] ?? 0, need);
+    await tx.setMeta("dirty_tasks", dirty);
+  }
+
+  private async clearDirty(tx: StoreTx, completedGen: number): Promise<void> {
+    const dirty = await tx.getMeta<Record<string, number>>("dirty_tasks");
+    if (!dirty) return;
+    const kept = Object.fromEntries(Object.entries(dirty).filter(([, need]) => need > completedGen));
+    if (Object.keys(kept).length === Object.keys(dirty).length) return;
+    if (Object.keys(kept).length === 0) await tx.removeMeta("dirty_tasks");
+    else await tx.setMeta("dirty_tasks", kept);
+  }
+
   // --- snapshot / resync ----------------------------------------------------------------------
 
   private async shadowPage(job: PullJob, page: WirePage): Promise<void> {
@@ -1075,7 +1328,7 @@ export class SyncEngine {
         continue;
       }
       const type = change.entity_type as EntityType;
-      if (!ENTITY_TYPES.includes(type)) continue;
+      if (!this.isFeedType(type)) continue;
       const data = change.data ?? null;
       if (change.operation === "delete" || isDeletedPayload(data)) {
         shadow.entities.set(change.entity_id, { type, data: null, revision: this.revisionOf(change, data) });
@@ -1084,7 +1337,7 @@ export class SyncEngine {
       }
     }
     if (page.has_more) {
-      this.job = { since: page.next_since, stage: "feed", todo: [], fetched: new Map(), refetch: [], shadow };
+      this.job = this.newJob(page.next_since, { types: job.types, shadow });
       return;
     }
     const restore = shadow.restore;
@@ -1092,6 +1345,9 @@ export class SyncEngine {
     await this.store.transaction(async (tx) => {
       lost = await this.commitShadow(tx, shadow, restore);
       await tx.setMeta("cursor", page.next_since);
+      // a snapshot of every wanted type has just been applied: they are all synced now
+      await tx.setMeta("types_synced", job.types);
+      await this.clearDirty(tx, this.currentGen);
     });
     this.log.info("snapshot_applied", { entities: shadow.entities.size, lost });
     this.observer.resynced?.({
@@ -1101,6 +1357,7 @@ export class SyncEngine {
     });
     this.restoreRequested = false;
     this.job = null;
+    this.observer.pullCompleted?.({ index: this.currentGen });
     this.pullChanged = true;
     this.cleanPulls = 0;
     this.nextPullAt = this.clock.monotonic();
@@ -1132,7 +1389,13 @@ export class SyncEngine {
         await tx.putEntity(entity);
         continue;
       }
-      if (restore) {
+      if (entity.type === "reminder") {
+        // server-derived: never re-created from a client. Absent from the snapshot = gone.
+        if (!inSnapshot) {
+          entity.deleted = true;
+          entity.deletedRevision = null;
+        }
+      } else if (restore) {
         const held = shadow.entities.get(entity.id);
         const behind = held?.data ? Number(held.data["revision"]) < entity.server.revision : true;
         if (!held?.data && !held) {
@@ -1161,6 +1424,7 @@ export class SyncEngine {
 
   /** SYNC_PROTOCOL 7.4: re-create what the restored server lost, with the same ids. */
   private async recreateLost(tx: StoreTx, entity: LocalEntity, queue: QueueOp[]): Promise<void> {
+    if (entity.type === "reminder") return; // server-derived: never re-created by a client
     const server = entity.server!;
     let fields: Record<string, Json> = {};
     if (entity.type === "note") {
@@ -1215,14 +1479,7 @@ export class SyncEngine {
     this.retryAt = 0;
     await this.store.transaction(async (tx) => tx.removeMeta("halt"));
     // a snapshot walk from 0 is the next pull; the resync_required answer is not needed for it
-    this.job = {
-      since: 0,
-      stage: "feed",
-      todo: [],
-      fetched: new Map(),
-      refetch: [],
-      shadow: { entities: new Map(), resolutions: new Map(), restore: true },
-    };
+    this.job = this.newJob(0, { shadow: { entities: new Map(), resolutions: new Map(), restore: true } });
     this.lastResyncAt = this.clock.monotonic();
     void this.notify();
   }
@@ -1428,6 +1685,60 @@ export class SyncEngine {
     });
   }
 
+  // reminders (M8-04b-ii)
+
+  /**
+   * Queue a snooze or dismissal of a reminder. Durable and idempotent: the operation's
+   * `Idempotency-Key` IS the `action_id`, so submitting the same action again (a host that crashed
+   * after submitting) queues nothing new and a retry of the request is replayed by the server.
+   */
+  async submitReminderAction(action: ReminderActionData): Promise<void> {
+    await this.user(async (tx) => {
+      const queue = await tx.listQueue();
+      if (queue.some((o) => o.type === "reminder" && o.key === action.actionId)) return;
+      const reminder = await tx.getEntity(action.reminderId);
+      if (!reminder || reminder.type !== "reminder") throw new SyncUserError(`unknown reminder ${action.reminderId}`);
+      const fields: Record<string, Json> = {
+        action_id: action.actionId,
+        kind: action.kind,
+        base_revision: action.baseRevision,
+      };
+      if (action.kind === "snooze") {
+        if (!action.snooze) throw new SyncUserError("a snooze needs a preset");
+        if (action.snooze.kind === "seconds") fields["snooze_for_seconds"] = action.snooze.seconds;
+        else fields["until"] = "tomorrow_morning";
+      } else if (action.snooze) {
+        throw new SyncUserError("a dismissal takes no snooze");
+      }
+      if (action.actedAt !== undefined) fields["acted_at"] = new Date(action.actedAt).toISOString();
+      const op = this.makeOp(
+        { type: "reminder", action: "act", entityId: action.reminderId, fields, userBase: null },
+        await this.nextSeq(tx),
+      );
+      op.key = action.actionId;
+      await tx.putOp(op);
+    });
+  }
+
+  /** Action ids still in the outbound queue (the scheduler keeps its optimistic overlay for them). */
+  async pendingReminderActionIds(): Promise<string[]> {
+    return this.store.transaction(async (tx) =>
+      (await tx.listQueue()).filter((o) => o.type === "reminder" && o.action === "act").map((o) => o.key),
+    );
+  }
+
+  /** The reminders with the state of their tasks, local edits laid over the mirror (14.2, 14.4). */
+  async reminderViews(): Promise<ReminderViewData[]> {
+    return this.store.transaction(async (tx) =>
+      buildReminderViews(
+        await tx.listEntities(),
+        await tx.listQueue(),
+        (await tx.getMeta<Record<string, number>>("dirty_tasks")) ?? {},
+        { ignoreDirty: this.bugs.ignoreDirtyTask === true },
+      ),
+    );
+  }
+
   /** Ask the server to undo an automatic resolution (SYNC_PROTOCOL 9). */
   async undoResolution(resolutionId: string): Promise<void> {
     await this.user(async (tx) => {
@@ -1527,6 +1838,7 @@ export class SyncEngine {
       const queue = await tx.listQueue();
       const out: EntityView[] = [];
       for (const entity of await tx.listEntities()) {
+        if (entity.type === "reminder") continue; // read through reminderViews()
         out.push(materialise(entity, queue, await tx.getDraft(entity.id)));
       }
       return out;

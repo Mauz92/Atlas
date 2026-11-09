@@ -9,7 +9,15 @@ export interface KeyValue {
 }
 
 const KEY = "atlas-sync-core-state";
-const VERSION = 1;
+/**
+ * Store schema version. 2 (M8-04b-ii) adds `reminder` entities, the `types_synced` and
+ * `dirty_tasks` meta keys and the `act` queue action: all additive, so a version-1 state is read as
+ * it is (a missing `types_synced` means "the types of a client without reminders", which makes the
+ * engine backfill `reminder` before relying on it). A state NEWER than the code is refused (treated
+ * as empty and re-pulled; SYNC_PROTOCOL 10.2: no downgrade of a local database).
+ */
+const VERSION = 2;
+const READABLE_VERSIONS: readonly unknown[] = [1, 2];
 
 function serialise(state: State): string {
   return JSON.stringify({
@@ -26,7 +34,7 @@ function serialise(state: State): string {
 function deserialise(raw: string): State | null {
   try {
     const d = JSON.parse(raw) as Record<string, unknown>;
-    if (d["version"] !== VERSION) return null;
+    if (!READABLE_VERSIONS.includes(d["version"])) return null;
     const m = <T>(k: string) => new Map(d[k] as [string, T][]);
     return {
       entities: m("entities"), queue: m("queue"), meta: m("meta"),

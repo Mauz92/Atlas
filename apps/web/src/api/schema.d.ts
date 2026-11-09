@@ -2900,6 +2900,11 @@ export interface components {
          *     ``dismiss`` takes neither. ``base_revision`` is the reminder revision the device acted on: an
          *     older one is accepted (an action is intent, not a field edit) and flagged ``stale``; one ahead
          *     of the server's is ``409 revision_ahead``.
+         *
+         *     ``acted_at`` (R-68) is when the owner acted, by the device clock, ISO-8601 with an offset. A
+         *     device that queued the action offline sends it so the snooze counts from the tap and not from
+         *     the sync. The server clamps it to ``[now - 24 h, now + 5 min]`` (an out-of-range value is
+         *     clamped, not refused), never orders actions by it and does not store it.
          */
         ReminderActionRequest: {
             /**
@@ -2918,6 +2923,11 @@ export interface components {
             until?: "tomorrow_morning" | null;
             /** Base Revision */
             base_revision?: number | null;
+            /**
+             * Acted At
+             * @description When the owner acted (device clock, with an offset). Clamped by the server.
+             */
+            acted_at?: string | null;
         };
         /** ReminderListOut */
         ReminderListOut: {

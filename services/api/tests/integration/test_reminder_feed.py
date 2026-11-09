@@ -405,6 +405,103 @@ async def test_snooze_sets_the_synced_instant_from_the_server_clock(c) -> None:
     assert feed["revision"] == 2 and feed["snoozed_until"] == out["reminder"]["snoozed_until"]
 
 
+def _iso(moment: datetime) -> str:
+    return moment.astimezone(UTC).isoformat()
+
+
+async def test_a_late_synced_snooze_counts_from_the_tap_not_from_the_sync(c) -> None:
+    """R-68: made 4 h ago for 1 h, so it ended 3 h ago: the other devices ring at once."""
+    _task, rid = await armed(c)
+    tapped = datetime.now(UTC) - timedelta(hours=4)
+    r = await act(c, rid, action("snooze", snooze_for_seconds=3600, acted_at=_iso(tapped)))
+    assert r.status_code == 200, r.text
+    snoozed = datetime.fromisoformat(r.json()["reminder"]["snoozed_until"])
+    assert abs((snoozed - (tapped + timedelta(hours=1))).total_seconds()) < 1
+    assert snoozed < datetime.now(UTC)  # already due: a device catches it up immediately
+    feed = (await reminders_of(c))[0]
+    assert feed["effective_at"] == feed["snoozed_until"] and feed["revision"] == 2
+
+
+async def test_acted_at_is_clamped_to_the_window_and_never_refused(c) -> None:
+    _task, rid = await armed(c)
+    before = datetime.now(UTC)
+    far_future = await act(
+        c, rid, action("snooze", snooze_for_seconds=600, acted_at=_iso(before + timedelta(days=2)))
+    )
+    assert far_future.status_code == 200, far_future.text
+    got = datetime.fromisoformat(far_future.json()["reminder"]["snoozed_until"])
+    # clamped to now + 5 min, then + 10 min
+    assert timedelta(minutes=14, seconds=50) < got - before < timedelta(minutes=15, seconds=10)
+    ancient = await act(
+        c, rid, action("snooze", snooze_for_seconds=600, acted_at=_iso(before - timedelta(days=9)))
+    )
+    assert ancient.status_code == 200, ancient.text
+    got = datetime.fromisoformat(ancient.json()["reminder"]["snoozed_until"])
+    # clamped to now - 24 h, then + 10 min
+    expected = before - timedelta(hours=24) + timedelta(minutes=10)
+    assert abs((got - expected).total_seconds()) < 30
+
+
+async def test_acted_at_never_orders_actions(c) -> None:
+    """Arrival order decides: an older acted_at that arrives later still wins (D11)."""
+    _task, rid = await armed(c)
+    now = datetime.now(UTC)
+    await act(c, rid, action("snooze", snooze_for_seconds=3600, acted_at=_iso(now)))
+    second = await act(
+        c, rid, action("snooze", snooze_for_seconds=600, acted_at=_iso(now - timedelta(hours=3)))
+    )
+    out = second.json()["reminder"]
+    assert out["revision"] == 3
+    got = datetime.fromisoformat(out["snoozed_until"])
+    assert abs((got - (now - timedelta(hours=3) + timedelta(minutes=10))).total_seconds()) < 30
+
+
+async def test_a_dismiss_with_acted_at_still_covers_the_occurrence(c) -> None:
+    _task, rid = await armed(c)
+    first = (await reminders_of(c))[0]
+    out = (
+        await act(c, rid, action("dismiss", acted_at=_iso(datetime.now(UTC) - timedelta(hours=5))))
+    ).json()["reminder"]
+    due = datetime.fromisoformat(first["effective_at"])
+    assert datetime.fromisoformat(out["acknowledged_at"]) >= due  # max(base, effective_at)
+    assert out["snoozed_until"] is None
+
+
+async def test_dismissing_a_snooze_that_ended_before_the_reminder_does_not_let_it_ring_again(
+    c,
+) -> None:
+    """Found by the soak (seeds 176, 367): an old acted_at put the snooze before remind_at."""
+    _task, rid = await armed(c)
+    first = (await reminders_of(c))[0]
+    due = datetime.fromisoformat(first["remind_at"])
+    early = _iso(datetime.now(UTC) - timedelta(days=30))  # clamped to now - 24 h
+    await act(c, rid, action("snooze", snooze_for_seconds=600, acted_at=early))
+    out = (await act(c, rid, action("dismiss", acted_at=early))).json()["reminder"]
+    assert out["snoozed_until"] is None
+    assert (
+        datetime.fromisoformat(out["acknowledged_at"]) >= due
+    )  # covers the occurrence that is effective again
+
+
+async def test_a_replay_with_acted_at_is_byte_identical_and_a_changed_one_is_refused(c) -> None:
+    _task, rid = await armed(c)
+    tapped = _iso(datetime.now(UTC) - timedelta(hours=2))
+    body = action("snooze", snooze_for_seconds=600, acted_at=tapped)
+    first = await act(c, rid, body)
+    again = await act(c, rid, body)
+    assert again.headers.get("Idempotency-Replayed") == "true"
+    assert again.json() == first.json() and again.json()["reminder"]["revision"] == 2
+    other = await act(c, rid, {**body, "acted_at": _iso(datetime.now(UTC))})
+    assert other.status_code == 409 and other.json()["error"] == "idempotency_mismatch"
+
+
+async def test_acted_at_without_an_offset_is_422_and_changes_nothing(c) -> None:
+    _task, rid = await armed(c)
+    r = await act(c, rid, action("snooze", snooze_for_seconds=600, acted_at="2026-06-10T10:00:00"))
+    assert r.status_code == 422
+    assert (await reminders_of(c))[0]["revision"] == 1
+
+
 async def test_tomorrow_morning_is_computed_in_the_task_zone(c) -> None:
     _task, rid = await armed(c)
     r = await act(c, rid, action("snooze", until="tomorrow_morning"))

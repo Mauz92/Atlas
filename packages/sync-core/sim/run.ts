@@ -1,5 +1,6 @@
 import type { PlantedBugs } from "../src/engine.ts";
 import { checkIdempotence, checkInvariants } from "./invariants.ts";
+import { checkReminderQuiescent, reminderSweep } from "./reminderInvariants.ts";
 import { DEFAULT_CONFIG, World, type SimConfig } from "./world.ts";
 import type { ServerPort } from "./engineBridge.ts";
 
@@ -26,6 +27,10 @@ export async function runWorld(
   if (options.invariants !== false) {
     await checkInvariants(world);
     await checkIdempotence(world);
+    if (world.cfg.reminders) {
+      await checkReminderQuiescent(world);
+      await reminderSweep(world);
+    }
   }
   return world;
 }

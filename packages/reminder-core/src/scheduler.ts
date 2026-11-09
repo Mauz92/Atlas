@@ -220,6 +220,7 @@ export class Scheduler {
         kind: what.action.kind,
         ...(what.action.snooze ? { snooze: what.action.snooze } : {}),
         baseRevision: view.reminder.revision,
+        actedAt: this.deps.clock.now(),
       });
     } catch (error) {
       // The intent could not be queued: undo the local effect rather than pretend it will sync.

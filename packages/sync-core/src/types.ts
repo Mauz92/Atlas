@@ -2,7 +2,12 @@
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
-export type EntityType = "task" | "project" | "note";
+/**
+ * `reminder` (M8-04b-ii) is a server-derived, read-only feed entity: a client never creates, edits
+ * or deletes one; it only mirrors it and queues `act` operations (snooze/dismiss) against it.
+ */
+export type EntityType = "task" | "project" | "note" | "reminder";
+/** The entity types every client syncs. `reminder` is opt-in (`EngineOptions.reminders`). */
 export const ENTITY_TYPES: readonly EntityType[] = ["task", "project", "note"];
 
 /** The state of an entity as the server last reported it (never a pending local edit). */
@@ -31,7 +36,8 @@ export interface LocalEntity {
   refetch: boolean;
 }
 
-export type OpAction = "create" | "patch" | "delete" | "restore" | "put" | "move" | "undo";
+/** `act` is a reminder snooze/dismiss (`POST /api/reminders/{id}/actions`, keyed by its `action_id`). */
+export type OpAction = "create" | "patch" | "delete" | "restore" | "put" | "move" | "undo" | "act";
 
 export interface QueueOp {
   /** Local operation id (never sent). */
@@ -170,6 +176,7 @@ export const PLURAL: Record<EntityType, string> = {
   task: "tasks",
   project: "projects",
   note: "notes",
+  reminder: "reminders",
 };
 
 /** Text fields: a concurrent change is a conflict that keeps both versions (SYNC_PROTOCOL 6.2). */
@@ -177,4 +184,5 @@ export const TEXT_FIELDS: Record<EntityType, ReadonlySet<string>> = {
   task: new Set(["title", "description"]),
   project: new Set(["name", "description"]),
   note: new Set(),
+  reminder: new Set(),
 };
