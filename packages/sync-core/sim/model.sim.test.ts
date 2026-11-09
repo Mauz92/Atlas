@@ -50,6 +50,14 @@ describe("clients converge under faults (model server)", () => {
     await many(200, { kinds: ["task", "project", "note"], resolutions: true, lateJoiner: true, pPurge: 0.1 });
   });
 
+  it("regression: a snapshot taken while an edit or delete of an absent entity is pending records its tombstone (seed 983)", async () => {
+    // cursor_safety used to fail here: the snapshot left a note with a pending delete live while the cursor moved past its tombstone
+    const server = new ModelServer();
+    await runWorld(983, server, {
+      steps: 300, kinds: ["task", "project", "note"], resolutions: true, lateJoiner: true, pPurge: 0.1,
+    });
+  });
+
   it("an unsupported client stops at the first 426 and writes nothing", async () => {
     await many(300, { kinds: ["task", "project", "note"], oldClient: true });
   });

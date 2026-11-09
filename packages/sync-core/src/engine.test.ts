@@ -172,7 +172,7 @@ describe("pull", () => {
     expect((await engine.views()).length).toBe(3);
   });
 
-  it("below_floor walks a snapshot with snapshot=true, keeps entities with pending edits, tombstones the rest", async () => {
+  it("below_floor walks a snapshot with snapshot=true, shows entities with pending edits as live, tombstones the rest", async () => {
     const { engine, transport, clock } = setup({ pageSize: 1 });
     const row = (n: number, rev = 1) => ({ entity_type: "task", entity_id: `t${n}`, operation: "upsert", cursor: n, revision: rev, data: taskData(`t${n}`, rev, `T${n}`) });
     transport.reply("GET /api/changes", page({ changes: [row(1), row(2), row(3)], next_since: 3 }));
@@ -192,6 +192,29 @@ describe("pull", () => {
     expect(views.get("t2")!.deleted).toBe(false); // pending edit: the edit will bring it back
     expect(views.get("t3")!.deleted).toBe(true); // deleted while away
     expect((await engine.getStatus()).cursor).toBe(9);
+  });
+
+  it("a snapshot tombstones an absent entity in the store even when an edit or a delete of it is pending (cursor safety, seed 983)", async () => {
+    const { engine, transport, store, clock } = setup({ pageSize: 1 });
+    const row = (n: number) => ({ entity_type: "task", entity_id: `t${n}`, operation: "upsert", cursor: n, revision: 1, data: taskData(`t${n}`, 1, `T${n}`) });
+    transport.reply("GET /api/changes", page({ changes: [row(1), row(2), row(3)], next_since: 3 }));
+    await drive(engine, clock, 10);
+    await engine.updateEntity("task", "t2", { title: "mine" }); // pending edit
+    await engine.deleteEntity("task", "t3"); // pending delete of something already deleted on the server
+    transport.reply("GET /api/changes",
+      page({ resync_required: true, resync_reason: "below_floor", next_since: 9 }),
+      page({ changes: [row(1)], next_since: 1, has_more: true }),
+      page({ changes: [], since: 1, next_since: 9 }));
+    engine.requestPull();
+    await drive(engine, clock, 30);
+    expect((await engine.getStatus()).cursor).toBe(9);
+    const entities = new Map((await store.transaction(async (tx) => tx.listEntities())).map((e) => [e.id, e]));
+    // The cursor moved past the server's tombstones of t2 and t3, so the store must record them (as the
+    // feed path does); the view still lets the pending edit of t2 bring it back (edit wins).
+    expect(entities.get("t2")!.deleted).toBe(true);
+    expect(entities.get("t3")!.deleted).toBe(true);
+    expect((await engine.views()).find((v) => v.id === "t2")!.deleted).toBe(false);
+    expect(entities.get("t1")!.deleted).toBe(false);
   });
 });
 

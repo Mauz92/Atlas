@@ -459,7 +459,9 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   changes falls back to the user's base and may report a conflict with the user's own earlier edit (noise, no loss). (c) Several
   entities in flight at once, crash points inside a single transaction (only before commit), history pruning, `types_synced` backfill and
   a real SQLite/Android store are not exercised. (d) Restore (`confirmRestore`) is covered by a 6-seed scenario and a unit test, not by
-  the random schedule.
+  the random schedule. (e) Defects can hide at depths the default run does not reach: the 1000 x 300 soak found one at seed 983 (a snapshot
+  walk left an entity with a pending delete live while the cursor passed its tombstone; fixed, regression in the default run, `ACCEPTANCE.md`
+  SYNC-08 follow-up), so the soak is part of every sync-core change, not only of releases.
 - **Mitigation:** listed in `TESTING.md` 10.0e; SYNC-09/10 re-run the harness over their stores. **Status:** Open.
 
 ### R-41 - Automatic resolutions exist only in the response until SYNC-05

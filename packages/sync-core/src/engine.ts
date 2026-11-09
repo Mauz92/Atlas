@@ -1108,7 +1108,6 @@ export class SyncEngine {
 
   private async commitShadow(tx: StoreTx, shadow: Shadow, restore: boolean): Promise<number> {
     const queue = await tx.listQueue();
-    const withOps = new Set(queue.filter((o) => o.action !== "create").map((o) => o.entityId));
     for (const [id, item] of shadow.entities) {
       if (item.data === null) {
         // Remember the tombstone even for an id never held: a create of it may still be in flight
@@ -1145,8 +1144,11 @@ export class SyncEngine {
           // the server lost revisions of this entity; the snapshot state is already applied
           lost++;
         }
-      } else if (!inSnapshot && !withOps.has(entity.id)) {
-        // absent from the snapshot: deleted while we were away (a pending edit would revive it)
+      } else if (!inSnapshot) {
+        // Absent from the snapshot: deleted while we were away. Recorded even while an edit or a delete
+        // of it is pending, exactly as the feed path records a tombstone (the cursor is about to move
+        // past it, so the store must know); the view lets a pending edit revive it (edit wins), and the
+        // queued write is answered by the server as usual.
         entity.deleted = true;
         entity.deletedRevision = null;
       }

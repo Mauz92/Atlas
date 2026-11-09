@@ -351,9 +351,13 @@ SYNC-02's harness measures a problem.
 7.3 **`below_floor`**: the client has pending local operations and a cursor older than the retained tombstones.
 It must not discard anything: (a) keep the pending queue; (b) pull a fresh snapshot from 0 into a *shadow*
 server-state; (c) when the walk completes at `head`, diff: entities in the old local server-state but absent from
-the snapshot were deleted while away. For each: if it has no pending operation, delete it locally (a note file
-goes to the client's trash folder, never `rm`); if it has pending edits, **rule 4** — keep it, the edit will
-restore it when pushed; (d) replace server-state, set cursor to `head`. Links are diffed as sets.
+the snapshot were deleted while away. For each: record the tombstone locally (a note file goes to the client's
+trash folder, never `rm`) **whether or not it has a pending operation**, exactly as a tombstone row of the feed
+is applied: the cursor is about to move past that deletion, so the local state must know about it (cursor safety,
+AGENTS.md section 10; found by sim seed 983, where a pending *delete* kept the entity live in the store). A pending
+edit is **rule 4**: the entity is shown as live again (the view lays the pending operation over the tombstone) and
+the edit restores it when pushed; a pending delete of it is answered by the server as an already-deleted
+success or `404`; (d) replace server-state, set cursor to `head`. Links are diffed as sets.
 
 7.4 **`cursor_ahead`** (server restored from an older backup): the server lost changes. The client keeps its
 local state, marks all entities whose local `revision` exceeds the snapshot's (or are absent from it) as

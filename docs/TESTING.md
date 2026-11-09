@@ -557,7 +557,8 @@ converge, stop on 426, stop on revoked and never served, log lines carry no cont
 |---|---|
 | `cd apps/web && npm run test` | everything above at default size (12 seeds per scenario, 120 steps) plus 34 planted-defect tests |
 | `ATLAS_SYNC_SEEDS=150 ATLAS_SYNC_STEPS=250 npx vitest run --project sync-core model.sim` | model soak |
-| `ATLAS_SYNC_SEED=<n> ...` | one seed |
+| `ATLAS_SYNC_SEEDS=1000 ATLAS_SYNC_STEPS=300 npx vitest run --project sync-core model.sim --testTimeout 1800000` | full soak (about 29 min; raise the timeout, vitest's default 60 s fails the long tests without any invariant failing; `PASS` 10/10 on 2026-11-09 after the seed-983 fix) |
+| `ATLAS_SYNC_SEED=<n> ...` | one seed (every test then runs that seed; the count assertions of the first test may fail in this mode, which is not a defect; seed 983 has a fixed regression test) |
 | `ATLAS_SYNC_REAL=1 ATLAS_SYNC_REAL_SEEDS=8 ATLAS_SYNC_STEPS=150 npx vitest run --project sync-core-real` | real API on a throwaway `atlas_e2e_*` database: conformance scenario (model vs real outcomes equal), seeds, revocation |
 
 Planted defects (`sim/planted.sim.test.ts`): 24 in the model server, 8 in the client core (`options.plantedBugs`), each must trip the named
