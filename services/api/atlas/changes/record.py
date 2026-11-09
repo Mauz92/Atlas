@@ -71,6 +71,11 @@ class ChangeRecorder:
                 set_={"operation": operation_value, "seq": seq, "changed_at": now},
             )
         )
+        # A committed feed change may be announced to the owner's other devices as a content-free
+        # hint (M8-04e). One coalesced job per transaction/bucket; a no-op unless enabled.
+        from ..hints.service import maybe_enqueue
+
+        await maybe_enqueue(self.session, self.user_id)
         return seq
 
     async def record_many(

@@ -26,8 +26,10 @@ from .api import (
     notes_router,
     notifications_router,
     projects_router,
+    reminders_router,
     resolutions_router,
     search_router,
+    sync_wait_router,
     tasks_router,
 )
 from .api.sync_gate import sync_error_response, sync_gate
@@ -127,7 +129,9 @@ def create_app() -> FastAPI:
     app.include_router(calendar_router)
     app.include_router(changes_router)
     app.include_router(resolutions_router)
+    app.include_router(sync_wait_router)
     app.include_router(notifications_router)
+    app.include_router(reminders_router)
     app.include_router(export_router)
     app.include_router(instance_router)
 

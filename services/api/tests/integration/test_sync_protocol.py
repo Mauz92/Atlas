@@ -36,6 +36,7 @@ async def test_the_instance_advertises_the_sync_block(authed: AsyncClient) -> No
         "note_project_link",
         "task_note_link",
         "resolution",  # SYNC-05
+        "reminder",  # M8-04a
     }
     assert sync["tombstone_retention_days"] == 90
     assert sync["idempotency_retention_days"] >= sync["tombstone_retention_days"]

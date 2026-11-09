@@ -254,9 +254,16 @@ async def test_the_set_of_endpoints_open_to_devices_is_exactly_this() -> None:
         "instance",
         "notes",
         "projects",
+        "reminders",
         "search",
         "sync",
         "tasks",
+    }
+    # M8-04a: the reminder actions (snooze/dismiss) and the list are the only reminder routes a
+    # device may call; the timing preferences stay browser-only
+    assert {p for _m, p in open_to_devices if p.startswith("/api/reminders")} == {
+        "/api/reminders",
+        "/api/reminders/{reminder_id}/actions",
     }
     # the account-level surface is closed to devices
     for method, path in [

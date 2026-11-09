@@ -81,7 +81,7 @@ all to avoid a second source of truth (AGENTS.md §2, §15).
 | REQ-009 | Calendar consolidation | Multiple calendars viewable in one interface. |
 | REQ-010 | Cross-device sync | Changes propagate across authorised clients without manual export/import. |
 | REQ-011 | Notifications | Supported desktop and mobile platforms receive task/event reminders. |
-| REQ-012 | OS agnostic | Linux, Windows, macOS, Android and iOS are product targets. |
+| REQ-012 | OS agnostic | Linux, Windows, Android and the web (PWA) are product targets. **Amended 2026-11-04 (ADR-0068 Q9, owner):** iOS and macOS are out of scope for the native clients; the PWA works in any modern browser, including on those systems. |
 | REQ-013 | Security | Strong authentication, protected credentials, access control, recoverable backups. |
 | REQ-014 | Low maintenance | One documented deployment, automated migrations, straightforward updates. |
 | REQ-015 | Data portability | Complete export of notes, tasks, projects and relevant metadata. |
@@ -200,7 +200,7 @@ Detailed semantics: `CALENDAR_SYNC.md`.
 - Backend owns scheduling and durable reminder state; delivery is platform-appropriate
   (Web Push for PWA, native push for mobile).
 - No reminder for a cancelled entity; no duplicate delivery after retries; time-zone correct.
-- *Proposed amendment (ADR-0068, 2026-11-04, awaiting the owner; this approved text is unchanged until then):* for the native clients "native push for mobile" is replaced by **device-local scheduling from synced reminder data** (desktop while the app runs; Android through OS alarms), plus an optional self-hosted UnifiedPush hint for instant sync; no FCM by default; iOS out of scope.
+- **Amendment (ADR-0068, ACCEPTED by the owner 2026-11-04):** for the native clients "native push for mobile" is replaced by **device-local scheduling from synced reminder data** (desktop while the app runs; Android through OS alarms), plus an optional self-hosted UnifiedPush hint for instant sync; no FCM by default; iOS and macOS are out of scope (Q9). Desktop = Linux + Windows, plus Android. Home time zone, snooze presets (10 min, 1 h, 3 h, tomorrow morning), per-device enable toggle, no quiet hours by default, titles shown on lock screens with a setting to hide them: see ADR-0068.
 
 ### 5.7 UX
 

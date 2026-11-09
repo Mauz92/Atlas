@@ -52,6 +52,7 @@ def test_the_entity_types_match_the_documented_set() -> None:
         "note_project_link",
         "task_note_link",
         "resolution",
+        "reminder",
     }
 
 

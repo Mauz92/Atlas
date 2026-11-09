@@ -660,7 +660,9 @@ Mutation checks done once by hand on `atlas/auth/recovery.py` (each must fail a 
 counter for unknown accounts (breaks equal work), no code rotation, no session revocation: all five were caught. NOT covered: wall-clock
 timing equality (the equal-statements test is a deterministic proxy), a second API process, Safari/Firefox, a password manager's autofill.
 
-## 12. Device-local reminder and sync-hint tests (M8-04; PLANNED, design 2026-11-04, nothing here exists yet; `SYNC_PROTOCOL.md` section 14, ADR-0068 PROPOSED)
+## 12. Device-local reminder and sync-hint tests (M8-04; server tests and the Scheduler core suite EXIST since 2026-11-09, native/hardware parts are PLANNED; `SYNC_PROTOCOL.md` section 14, ADR-0068 ACCEPTED)
+
+**Implemented (2026-11-09):** `services/api/tests/unit/test_reminder_actions.py`, `tests/integration/test_reminder_feed.py` (feed triggers, `sent`, actions, home zone, concurrency), `test_reminder_feed_convergence.py` (seeded random walk against an independent oracle, `ATLAS_REMINDER_SEEDS/STEPS`), `test_reminder_feed_migration.py` (empty, populated, downgrade, second round trip), `tests/unit/test_hints.py` (SSRF table, adapter, breaker, registry), `tests/integration/test_sync_hints.py` (long poll, registration, emitter, sender, fake loopback gateway), `tests/unit/test_nginx_config.py` (read timeout). `packages/reminder-core/src/scheduler.test.ts` (41 scenarios), `framework-free.test.ts`, `sim/scenario.sim.test.ts` (`ATLAS_REMINDER_SEEDS/STEPS/SEED`; soak `npm run test:soak` in the package) and `sim/planted.sim.test.ts` (seven planted defects, each caught by a named invariant). Invariants: `at_most_once`, `no_stale_show`, `no_orphan_alarm`, `bounded_alarms`, `nothing_lost`. A Python planted-defect check of the feed (a cancellation not announced; a moved schedule keeping its snooze) was run by hand and both were caught by the convergence test. **Not extended:** the SYNC-02 model server (`tests/sim/model*.py`) and the sync-core conformance with the `reminder` type (that belongs to M8-04b-ii).
 
 ### 12.1 Layers
 

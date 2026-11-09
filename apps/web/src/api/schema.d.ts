@@ -342,6 +342,56 @@ export interface paths {
         patch: operations["rename_device_api_devices__device_id__patch"];
         trace?: never;
     };
+    "/api/devices/current/hint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Hint
+         * @description This device's hint destination and its delivery status (never the endpoint).
+         */
+        get: operations["get_hint_api_devices_current_hint_get"];
+        /**
+         * Put Hint
+         * @description Register (replace) this device's endpoint. It must be a topic URL on the operator's
+         *     configured gateway (`422 invalid_hint_endpoint` otherwise); `409 hints_disabled` when the
+         *     server has hints switched off. The endpoint is stored encrypted and never returned.
+         */
+        put: operations["put_hint_api_devices_current_hint_put"];
+        post?: never;
+        /**
+         * Delete Hint
+         * @description Forget this device's hint destination (idempotent).
+         */
+        delete: operations["delete_hint_api_devices_current_hint_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/current/hint/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Hint
+         * @description Send one hint to this device now (at most one a minute) and report the outcome.
+         */
+        post: operations["test_hint_api_devices_current_hint_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notes": {
         parameters: {
             query?: never;
@@ -1336,6 +1386,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sync/wait": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Wait For Changes
+         * @description Long poll for the caller's feed head: see the module docstring.
+         */
+        get: operations["wait_for_changes_api_sync_wait_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notifications/config": {
         parameters: {
             query?: never;
@@ -1429,6 +1499,79 @@ export interface paths {
          */
         put: operations["set_reminder_preferences_api_notifications_reminders_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/time-zone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Home Time Zone
+         * @description The caller's home time zone (ADR-0068 Q6): the zone reminders use for tasks without their
+         *     own. ``null`` means UTC (the behaviour before the preference existed).
+         */
+        get: operations["get_home_time_zone_api_notifications_time_zone_get"];
+        /**
+         * Set Home Time Zone
+         * @description Set (or clear, with `null`) the home time zone and recompute the reminders of the caller's
+         *     tasks that have no zone of their own. Idempotent; an unknown zone is `422` and changes nothing.
+         *     Browser sessions only (account-level, closed to device credentials).
+         */
+        put: operations["set_home_time_zone_api_notifications_time_zone_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Reminders
+         * @description The caller's reminders, soonest first (diagnostics for the web app; devices use the feed).
+         */
+        get: operations["list_reminders_api_reminders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reminders/{reminder_id}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reminder Action
+         * @description Snooze or dismiss one reminder (SYNC_PROTOCOL.md 14.5).
+         *
+         *     Idempotent: a replay of the same `action_id` returns the stored answer with
+         *     `Idempotency-Replayed: true` and does not bump the revision again. The later action in server
+         *     order wins and a snooze after a dismiss re-arms. A stale `base_revision` is answered, not
+         *     refused (`stale: true`); one ahead of the server is `409 revision_ahead`. A cancelled reminder
+         *     answers `200` with `applied: false`. Another user's reminder is `404`.
+         */
+        post: operations["reminder_action_api_reminders__reminder_id__actions_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1613,7 +1756,7 @@ export interface components {
              * Data
              * @description With `include=data`: the entity's stored state as of this response, which may be newer than `cursor`; apply by `revision`. Links carry no data; `null` also when the entity no longer exists.
              */
-            data?: components["schemas"]["TaskSyncData"] | components["schemas"]["ProjectSyncData"] | components["schemas"]["NoteSyncData"] | components["schemas"]["ResolutionOut"] | null;
+            data?: components["schemas"]["TaskSyncData"] | components["schemas"]["ProjectSyncData"] | components["schemas"]["NoteSyncData"] | components["schemas"]["ResolutionOut"] | components["schemas"]["ReminderOut"] | null;
         };
         /**
          * ChangesOut
@@ -1852,6 +1995,73 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * HintRegisterRequest
+         * @description Register this device's UnifiedPush endpoint (a topic URL on the operator's gateway).
+         */
+        HintRegisterRequest: {
+            /**
+             * Kind
+             * @default unifiedpush
+             * @constant
+             */
+            kind: "unifiedpush";
+            /** Endpoint */
+            endpoint: string;
+        };
+        /**
+         * HintStatusOut
+         * @description This device's hint destination. The endpoint is a secret: only its last 4 characters.
+         */
+        HintStatusOut: {
+            /**
+             * Enabled
+             * @description The server has sync hints switched on and a usable gateway.
+             */
+            enabled: boolean;
+            /** Registered */
+            registered: boolean;
+            /** Kind */
+            kind?: string | null;
+            /** Endpoint Tail */
+            endpoint_tail?: string | null;
+            /** Last Ok At */
+            last_ok_at?: string | null;
+            /** Last Error Class */
+            last_error_class?: string | null;
+            /**
+             * Failures
+             * @default 0
+             */
+            failures: number;
+            /**
+             * Invalid
+             * @description The gateway forgot the topic; register a fresh endpoint.
+             * @default false
+             */
+            invalid: boolean;
+        };
+        /** HintTestOut */
+        HintTestOut: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "delivered" | "invalid" | "retry" | "failed";
+            /** Error Class */
+            error_class?: string | null;
+        };
+        /**
+         * HomeTimeZone
+         * @description The owner's home time zone (ADR-0068 Q6): the IANA zone used when a task has none.
+         *
+         *     ``null`` keeps the historic behaviour (UTC). Changing it re-computes the reminders of tasks
+         *     that have no zone of their own.
+         */
+        HomeTimeZone: {
+            /** Time Zone */
+            time_zone?: string | null;
         };
         /** InstanceInfo */
         InstanceInfo: {
@@ -2667,6 +2877,105 @@ export interface components {
              */
             limit: number;
         };
+        /** ReminderActionOut */
+        ReminderActionOut: {
+            reminder: components["schemas"]["ReminderOut"];
+            /**
+             * Applied
+             * @description False when the reminder was cancelled: nothing changed (still 200).
+             */
+            applied: boolean;
+            /**
+             * Stale
+             * @description The action was based on an older revision; re-reconcile from `reminder`.
+             */
+            stale: boolean;
+        };
+        /**
+         * ReminderActionRequest
+         * @description Snooze or dismiss a reminder. Idempotent by ``action_id`` (also the `Idempotency-Key`).
+         *
+         *     ``snooze`` needs exactly one of ``snooze_for_seconds`` (600, 3600 or 10800) and ``until``
+         *     (``tomorrow_morning``: 09:00 the next day in the task's zone, computed by the server);
+         *     ``dismiss`` takes neither. ``base_revision`` is the reminder revision the device acted on: an
+         *     older one is accepted (an action is intent, not a field edit) and flagged ``stale``; one ahead
+         *     of the server's is ``409 revision_ahead``.
+         */
+        ReminderActionRequest: {
+            /**
+             * Action Id
+             * Format: uuid
+             */
+            action_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "snooze" | "dismiss";
+            /** Snooze For Seconds */
+            snooze_for_seconds?: (600 | 3600 | 10800) | null;
+            /** Until */
+            until?: "tomorrow_morning" | null;
+            /** Base Revision */
+            base_revision?: number | null;
+        };
+        /** ReminderListOut */
+        ReminderListOut: {
+            /** Reminders */
+            reminders: components["schemas"]["ReminderOut"][];
+        };
+        /**
+         * ReminderOut
+         * @description A reminder as a device sees it: server-computed, read-only, never any task text.
+         *
+         *     ``remind_at`` is the UTC instant computed by the server in the task's zone (or the owner's home
+         *     zone); ``effective_at`` is ``snoozed_until`` when set, else ``remind_at``. ``state`` is
+         *     ``armed`` or ``cancelled`` and is **never** "sent": ``server_delivered_at`` only says that the
+         *     server's own channel (Web Push or the logging notifier) handled it, and must not suppress a
+         *     notification on a device. A device fires an armed reminder unless ``acknowledged_at`` is at or
+         *     after ``effective_at``.
+         */
+        ReminderOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Revision
+             * @description +1 whenever state, remind_at, snooze or dismissal changes.
+             */
+            revision: number;
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "armed" | "cancelled";
+            /**
+             * Remind At
+             * Format: date-time
+             */
+            remind_at: string;
+            /** Snoozed Until */
+            snoozed_until: string | null;
+            /** Acknowledged At */
+            acknowledged_at: string | null;
+            /**
+             * Effective At
+             * Format: date-time
+             */
+            effective_at: string;
+            /**
+             * Server Delivered At
+             * @description Informational only; never gates a device notification.
+             */
+            server_delivered_at?: string | null;
+        };
         /**
          * ReminderPreferencesOut
          * @description The caller's reminder preferences: the default timing, or ``null`` when none is set.
@@ -3015,6 +3324,22 @@ export interface components {
          * @enum {string}
          */
         SyncState: "never_synced" | "in_progress" | "idle" | "error";
+        /**
+         * SyncWaitOut
+         * @description The answer of the long poll: a hint, never data. Compare ``head`` with your cursor.
+         */
+        SyncWaitOut: {
+            /**
+             * Head
+             * @description The caller's last allocated feed cursor.
+             */
+            head: number;
+            /**
+             * Changed
+             * @description True when `head` differs from `since`; pull then.
+             */
+            changed: boolean;
+        };
         /**
          * TaskChangeOut
          * @description A task in the incremental change feed (M3-09).
@@ -3945,6 +4270,97 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_hint_api_devices_current_hint_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HintStatusOut"];
+                };
+            };
+        };
+    };
+    put_hint_api_devices_current_hint_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HintRegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HintStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_hint_api_devices_current_hint_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    test_hint_api_devices_current_hint_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HintTestOut"];
                 };
             };
         };
@@ -5551,7 +5967,7 @@ export interface operations {
                 limit?: number | null;
                 /** @description `data`: add each entity's `revision` and stored state to its item (max 200 items per page). Notes carry metadata only. */
                 include?: "data" | null;
-                /** @description Comma-separated entity types to return (`task`, `project`, `note`, `note_project_link`, `task_note_link`, `resolution`). The cursor still advances over the rest. Without `types`, `resolution` entries are returned only in sync mode (`Atlas-Sync`). */
+                /** @description Comma-separated entity types to return (`task`, `project`, `note`, `note_project_link`, `task_note_link`, `resolution`, `reminder`). The cursor still advances over the rest. Without `types`, `resolution` and `reminder` entries are returned only in sync mode (`Atlas-Sync`). */
                 types?: string | null;
                 /** @description Send `true` on every page of a snapshot walk after the first (the one at `since=0`): a purge floor above the walk's position then cannot interrupt it. */
                 snapshot?: boolean;
@@ -5671,6 +6087,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResolutionUndoOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wait_for_changes_api_sync_wait_get: {
+        parameters: {
+            query: {
+                /** @description The cursor the client has applied. */
+                since: number;
+                /** @description Seconds to hold; capped by the server (25 default). */
+                timeout?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncWaitOut"];
                 };
             };
             /** @description Validation Error */
@@ -5829,6 +6279,129 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReminderPreferencesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_home_time_zone_api_notifications_time_zone_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeTimeZone"];
+                };
+            };
+        };
+    };
+    set_home_time_zone_api_notifications_time_zone_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HomeTimeZone"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeTimeZone"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reminders_api_reminders_get: {
+        parameters: {
+            query?: {
+                /** @description Only reminders in this device-visible state. */
+                state?: ("armed" | "cancelled") | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reminder_action_api_reminders__reminder_id__actions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                reminder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderActionOut"];
                 };
             };
             /** @description Validation Error */

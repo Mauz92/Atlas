@@ -19,7 +19,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import NoteIndex, Project, Tag, Task, TaskTag
+from ..models import NoteIndex, Project, Reminder, ReminderDelivery, Tag, Task, TaskTag
 from ..sync.fields import PROJECT_FIELDS, TASK_FIELDS
 from .feed import ChangeEntityType
 
@@ -41,6 +41,22 @@ def _ids(entity_ids: Iterable[str]) -> list[uuid.UUID]:
         except ValueError:  # a pair id of a link; those carry no payload
             continue
     return found
+
+
+def reminder_data(reminder: Reminder, delivered_at: object) -> dict[str, Any]:
+    """The device-visible payload of a reminder (SYNC_PROTOCOL.md 14.2): the stored feed fields, the
+    derived ``effective_at`` and the informational ``server_delivered_at``. Never the task text."""
+    return {
+        "id": reminder.id,
+        "revision": reminder.revision,
+        "task_id": reminder.entity_id,
+        "state": reminder.state,
+        "remind_at": reminder.remind_at,
+        "snoozed_until": reminder.snoozed_until,
+        "acknowledged_at": reminder.acknowledged_at,
+        "effective_at": reminder.snoozed_until or reminder.remind_at,
+        "server_delivered_at": delivered_at,
+    }
 
 
 async def load_entity_data(
@@ -87,6 +103,18 @@ async def load_entity_data(
             result[(ChangeEntityType.NOTE, str(note.id))] = (
                 note.revision,
                 _row(note, _NOTE_COLUMNS),
+            )
+    reminder_ids = _ids(wanted.get(ChangeEntityType.REMINDER, ()))
+    if reminder_ids:
+        rows = await session.execute(
+            select(Reminder, ReminderDelivery.delivered_at)
+            .outerjoin(ReminderDelivery, ReminderDelivery.reminder_id == Reminder.id)
+            .where(Reminder.user_id == user_id, Reminder.id.in_(reminder_ids))
+        )
+        for reminder, delivered_at in rows:
+            result[(ChangeEntityType.REMINDER, str(reminder.id))] = (
+                reminder.revision,
+                reminder_data(reminder, delivered_at),
             )
     resolution_ids = _ids(wanted.get(ChangeEntityType.RESOLUTION, ()))
     if resolution_ids:

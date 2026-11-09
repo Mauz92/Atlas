@@ -338,6 +338,10 @@ note paths/revisions/hashes, task titles) identical; `sha256sum` of every file u
 `restore recorded: …` (run twice, no error). Not covered: sessions (browser logins continue only if `SESSION_SECRET` is
 unchanged), calendar tokens (none exist yet).
 
+### 2.3 Restoring and the reminder/hint state (M8-04)
+
+A restore brings back the reminder feed rows (`reminders` revisions, snoozes, dismissals) with the database, and the feed epoch rotation (`ADR-0059`) makes devices ask the owner before adopting it. `device_hints` holds each device's UnifiedPush endpoint **encrypted with `TOKEN_ENCRYPTION_KEY`**: restoring a backup with another key leaves those rows unreadable, which marks them invalid (devices register again). An old backup may restore old endpoints; they fail harmlessly (`410`) or are replaced. Hint sending is lossy by design and needs no recovery.
+
 ## 3. Monitoring
 
 - Health endpoints polled (api, db, worker).

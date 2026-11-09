@@ -39,6 +39,11 @@ class User(Base, TimestampMixin):
         BigInteger, nullable=False, default=0, server_default="0"
     )
 
+    #: M8-04a (ADR-0068 Q6): the IANA zone in which a task without its own ``time_zone`` is
+    #: interpreted for reminders ("09:00" means 09:00 here, not in UTC). ``NULL`` keeps the older
+    #: behaviour (UTC). The web app fills it from the browser zone at first sign-in.
+    home_time_zone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
     sessions: Mapped[list[AuthSession]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

@@ -6,6 +6,8 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (M8-04a/e, server only; no app uses it yet): **reminders are now part of what a device can sync.** The server computes the exact UTC moment of each task reminder and exposes it (never the task text) to signed-in devices, with the owner's snooze and dismissal; completing, archiving or deleting a task cancels it. New **Home time zone** setting (Settings -> Notifications): reminders for tasks without their own time zone now use it instead of UTC; the browser's zone is adopted automatically the first time you sign in. Devices can snooze (10 min, 1 h, 3 h, tomorrow morning) or dismiss a reminder. Optional and **off by default**: a long-poll endpoint for running apps and a content-free "sync now" message to your own ntfy server (see the operator guide; hardening required). Migrations `d3a5c8e1b7f2` and `e5b8f2a4c1d9` (reversible); not applied to your live database. Native desktop/Android reminder clients are not built yet.
+
 - Fixed (UX-05): **Creating a note or folder works again when the notes list is empty.** The **New note**, **New folder** and
   **New from template** buttons in the tree header, and the empty state's **Create the first note**, set the "name this new note" state,
   but the box that asks for the name is drawn inside the note tree - which was replaced by the empty state when there were no notes yet,

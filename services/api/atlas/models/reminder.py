@@ -28,6 +28,7 @@ from enum import StrEnum
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -118,6 +119,19 @@ class Reminder(Base, TimestampMixin):
     )
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: M8-04a (the ``reminder`` feed entity, ADR-0068 D2): the device-visible state, ``armed`` or
+    #: ``cancelled`` (never ``sent``; ``status`` above is the *server's* delivery bookkeeping and
+    #: is not a statement about any device, SYNC_PROTOCOL.md 14.1 G4). Maintained only through
+    #: :mod:`atlas.reminders.service`, which records a feed change when a feed value moves.
+    state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="armed", server_default="armed"
+    )
+    #: +1 whenever ``state``, ``remind_at``, ``snoozed_until`` or ``acknowledged_at`` changes.
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    #: The synced snooze (SYNC_PROTOCOL.md 14.5): the instant the reminder fires again, or ``NULL``.
+    snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: The synced dismissal: the occurrence due at or before this instant needs no notification.
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         # One reminder per entity: re-scheduling edits the row in place rather than piling up
@@ -125,6 +139,8 @@ class Reminder(Base, TimestampMixin):
         UniqueConstraint("entity_type", "entity_id", name="uq_reminders_entity_type_entity_id"),
         # Serves the recurring scan's "which reminders are due" query.
         Index("ix_reminders_due", "status", "remind_at"),
+        CheckConstraint("state IN ('armed','cancelled')", name="state_known"),
+        CheckConstraint("revision >= 1", name="revision_positive"),
     )
 
 

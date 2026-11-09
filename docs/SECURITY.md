@@ -386,7 +386,9 @@ password. *Authorisation after a reset:* the browser is not signed in; the owner
 a restore from an older backup brings back the older code (`OPERATIONS.md` 2.2b).
 
 
-## 14. Reminder notifications and the sync-hint channel (M8-04; DESIGN ONLY, ADR-0068 PROPOSED, 2026-11-04; none of the mitigations below exists yet)
+## 14. Reminder notifications and the sync-hint channel (M8-04; ADR-0068 ACCEPTED; server-side mitigations implemented and tested 2026-11-09, device-side ones are planned)
+
+**Implementation status (2026-11-09).** T31 (content): constant payload, byte-identical across task, note and reminder triggers (`test_sync_hints.py`); the `reminder` feed carries no task text (`test_reminder_feed.py`). T32 (SSRF): operator-pinned origin, topic-path pattern, 28-case refusal table, no redirects, token only to the pinned origin, re-validated at send (`tests/unit/test_hints.py`, `test_sync_hints.py`); decision on private ranges: **not blocked**, because the origin is the operator's explicit choice and a LAN/tailnet ntfy is the main use; `http` needs an explicit opt-in. T33: endpoint encrypted at rest (AES-GCM bound to the device id), masked, not in logs (log-capture test), rotation = re-register; ntfy ACL hardening documented and verified (OPERATOR_GUIDE 4.7). T34: coalescing per (user, 30 s, writer), `/test` 1/min, wait cap 4 per user, breaker, bounded retries. T35: hint row deleted on revoke/revoke-all/cascade; a wait in flight ends with `401 token_revoked`. T38: `SyncUser` auth, epoch and version gates, content-free answer. T36/T37 (lock screen, deep links) need the native clients: `NOT RUN`. Residual: the breaker is process-local; per-user wait caps are per API process.
 
 Design: `SYNC_PROTOCOL.md` section 14. Rules carried from AGENTS.md 11 and 15: no telemetry, no user content to external services, nothing leaves the server toward a push provider except a constant, content-free message.
 

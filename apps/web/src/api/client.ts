@@ -37,6 +37,7 @@ export type WebPushConfig = components["schemas"]["WebPushConfigOut"];
 export type ReminderTiming = components["schemas"]["ReminderTiming"];
 export type ReminderPreferences = components["schemas"]["ReminderPreferencesOut"];
 export type TaskReminder = components["schemas"]["TaskReminderOut"];
+export type HomeTimeZone = components["schemas"]["HomeTimeZone"];
 export type SearchResults = components["schemas"]["SearchOut"];
 export type SearchTask = components["schemas"]["SearchTaskOut"];
 export type InstanceInfo = components["schemas"]["InstanceInfo"];
@@ -592,6 +593,14 @@ export const notificationsApi = {
     apiFetch<ReminderPreferences>("/api/notifications/reminders", {
       method: "PUT",
       body: JSON.stringify({ default: timing }),
+    }),
+  /** The owner's home time zone (ADR-0068 Q6): used for tasks that carry no zone; `null` = UTC. */
+  homeTimeZone: () => apiFetch<HomeTimeZone>("/api/notifications/time-zone"),
+  /** Set (or clear, with `null`) the home time zone; the server recomputes affected reminders. */
+  setHomeTimeZone: (timeZone: string | null) =>
+    apiFetch<HomeTimeZone>("/api/notifications/time-zone", {
+      method: "PUT",
+      body: JSON.stringify({ time_zone: timeZone }),
     }),
   /** One task's reminder: its override, the timing in force and when it fires (M8-05). */
   taskReminder: (taskId: string) => apiFetch<TaskReminder>(`/api/tasks/${taskId}/reminder`),

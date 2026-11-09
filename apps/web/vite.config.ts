@@ -43,6 +43,18 @@ export default defineConfig({
         },
       },
       {
+        // The framework-free device scheduler (M8-04b): plain node on a fake clock, like sync-core.
+        extends: true,
+        test: {
+          name: "reminder-core",
+          environment: "node",
+          globals: true,
+          include: ["../../packages/reminder-core/{src,sim}/**/*.test.ts"],
+          exclude: [...configDefaults.exclude],
+          testTimeout: 60_000,
+        },
+      },
+      {
         // Opt-in conformance run against the real API (`ATLAS_SYNC_REAL=1`; its tests skip otherwise).
         extends: true,
         test: {

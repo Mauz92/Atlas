@@ -31,7 +31,18 @@ from ..auth.devices import (
     revoke_all_devices,
     revoke_device,
 )
-from ..models import Device, User
+from ..auth.ratelimit import RateLimiter
+from ..hints.origin import InvalidHintEndpointError
+from ..hints.service import (
+    HintsDisabledError,
+    configured_origin,
+    get_gateway,
+    send_to,
+)
+from ..hints.service import register as register_hint
+from ..hints.service import unregister as unregister_hint
+from ..models import Device, DeviceHint, User
+from ..sync.protocol import SyncError
 from .auth import _dummy_password_hash, _login_limiter
 from .deps import CurrentUser, DbSession, SyncUser, current_device_id
 from .schemas import (
@@ -41,6 +52,9 @@ from .schemas import (
     DeviceRevokeAllOut,
     DeviceSignedIn,
     DeviceSignIn,
+    HintRegisterRequest,
+    HintStatusOut,
+    HintTestOut,
 )
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
@@ -196,3 +210,82 @@ async def revoke_one_device(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- the device sync-hint destination (M8-04e; SYNC_PROTOCOL.md 14.8) ---------------
+
+_hint_test_limiter = RateLimiter(limit=1, per_seconds=60)
+
+
+def _hint_out(hint: DeviceHint | None) -> HintStatusOut:
+    enabled = configured_origin() is not None
+    if hint is None:
+        return HintStatusOut(enabled=enabled, registered=False)
+    return HintStatusOut(
+        enabled=enabled,
+        registered=True,
+        kind=hint.kind,
+        endpoint_tail=hint.endpoint_tail,
+        last_ok_at=hint.last_ok_at,
+        last_error_class=hint.last_error_class,
+        failures=hint.failures,
+        invalid=hint.invalid_at is not None,
+    )
+
+
+@router.get("/current/hint", response_model=HintStatusOut)
+async def get_hint(request: Request, user: SyncUser, session: DbSession) -> HintStatusOut:
+    """This device's hint destination and its delivery status (never the endpoint)."""
+    device_id = _require_device(request)
+    await _own(session, user, device_id)
+    return _hint_out(await session.get(DeviceHint, device_id))
+
+
+@router.put("/current/hint", response_model=HintStatusOut)
+async def put_hint(
+    payload: HintRegisterRequest, request: Request, user: SyncUser, session: DbSession
+) -> HintStatusOut:
+    """Register (replace) this device's endpoint. It must be a topic URL on the operator's
+    configured gateway (`422 invalid_hint_endpoint` otherwise); `409 hints_disabled` when the
+    server has hints switched off. The endpoint is stored encrypted and never returned."""
+    device_id = _require_device(request)
+    await _own(session, user, device_id)
+    try:
+        hint = await register_hint(session, device_id, payload.endpoint, kind=payload.kind)
+    except HintsDisabledError as exc:
+        raise SyncError(409, "hints_disabled", "sync hints are not enabled on this server") from exc
+    except InvalidHintEndpointError as exc:
+        raise SyncError(422, "invalid_hint_endpoint", str(exc)) from exc
+    await session.commit()
+    return _hint_out(hint)
+
+
+@router.delete("/current/hint", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_hint(request: Request, user: SyncUser, session: DbSession) -> Response:
+    """Forget this device's hint destination (idempotent)."""
+    device_id = _require_device(request)
+    await _own(session, user, device_id)
+    await unregister_hint(session, device_id)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/current/hint/test", response_model=HintTestOut)
+async def test_hint(request: Request, user: SyncUser, session: DbSession) -> HintTestOut:
+    """Send one hint to this device now (at most one a minute) and report the outcome."""
+    device_id = _require_device(request)
+    await _own(session, user, device_id)
+    gateway = get_gateway()
+    hint = await session.get(DeviceHint, device_id)
+    if gateway is None:
+        raise SyncError(409, "hints_disabled", "sync hints are not enabled on this server")
+    if hint is None:
+        raise SyncError(404, "no_hint_destination", "this device has not registered an endpoint")
+    if not _hint_test_limiter.allow(str(device_id)):
+        error = SyncError(429, "rate_limited", "Too many requests")
+        error.headers = {"Retry-After": str(_hint_test_limiter.retry_after(str(device_id)))}
+        raise error
+    summary = await send_to(session, [hint], gateway)
+    await session.commit()
+    outcome = next(k for k in ("delivered", "invalid", "retry", "failed") if getattr(summary, k))
+    return HintTestOut(outcome=outcome, error_class=hint.last_error_class)

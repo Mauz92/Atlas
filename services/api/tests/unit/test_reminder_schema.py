@@ -40,6 +40,10 @@ REMINDER_COLUMNS = {
     "status",
     "attempts",
     "last_attempt_at",
+    "state",
+    "revision",
+    "snoozed_until",
+    "acknowledged_at",
     "created_at",
     "updated_at",
 }

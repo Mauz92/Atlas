@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . && (cd ../../packages/sync-core && ../../apps/web/node_modules/.bin/eslint .) && node scripts/check-css-scale.mjs",
+    "lint": "eslint . && (cd ../../packages/sync-core && ../../apps/web/node_modules/.bin/eslint .) && (cd ../../packages/reminder-core && ../../apps/web/node_modules/.bin/eslint .) && node scripts/check-css-scale.mjs",
     "test": "vitest run",
     "e2e": "playwright test",
     "test:e2e:real": "playwright test -c playwright.real.config.ts",

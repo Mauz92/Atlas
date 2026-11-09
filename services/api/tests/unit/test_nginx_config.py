@@ -77,6 +77,21 @@ def test_api_location_allows_a_maximum_size_note_plus_json_overhead() -> None:
     )
 
 
+def test_the_api_location_outwaits_the_longest_long_poll() -> None:
+    """GET /api/sync/wait holds up to SYNC_WAIT_MAX_SECONDS (at most 55): nginx must wait longer
+    (M8-04e), and must not turn response buffering off for the API (no streaming is used)."""
+    from atlas.config import Settings
+
+    block = _blocks(NGINX_CONF.read_text())["/api/"]
+    match = re.search(r"proxy_read_timeout\s+(\d+)s\s*;", block)
+    assert match, "location /api/ must state proxy_read_timeout explicitly"
+    longest = Settings.model_fields["sync_wait_max_seconds"].metadata
+    ceiling = max(m.le for m in longest if hasattr(m, "le"))
+    assert ceiling == 55
+    assert int(match.group(1)) >= ceiling + 15
+    assert "proxy_buffering off" not in block
+
+
 def test_the_limit_stays_small_everywhere_else() -> None:
     blocks = _blocks(NGINX_CONF.read_text(encoding="utf-8"))
     server_limit = _limit(blocks[""])

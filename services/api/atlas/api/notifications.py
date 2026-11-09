@@ -37,6 +37,7 @@ from .schemas import (
     DeviceListOut,
     DeviceOut,
     DeviceRegisterRequest,
+    HomeTimeZone,
     ReminderPreferencesOut,
     ReminderPreferencesRequest,
     ReminderTiming,
@@ -178,3 +179,24 @@ async def set_reminder_preferences(
         await service.set_default_timing(payload.default.to_domain())
     await session.commit()
     return ReminderPreferencesOut(default=_timing_out(await service.get_default_timing()))
+
+
+@router.get("/time-zone", response_model=HomeTimeZone)
+async def get_home_time_zone(user: CurrentUser, session: DbSession) -> HomeTimeZone:
+    """The caller's home time zone (ADR-0068 Q6): the zone reminders use for tasks without their
+    own. ``null`` means UTC (the behaviour before the preference existed)."""
+    return HomeTimeZone(
+        time_zone=await ReminderPreferencesService(session, user.id).get_home_time_zone()
+    )
+
+
+@router.put("/time-zone", response_model=HomeTimeZone)
+async def set_home_time_zone(
+    payload: HomeTimeZone, user: CurrentUser, session: DbSession
+) -> HomeTimeZone:
+    """Set (or clear, with `null`) the home time zone and recompute the reminders of the caller's
+    tasks that have no zone of their own. Idempotent; an unknown zone is `422` and changes nothing.
+    Browser sessions only (account-level, closed to device credentials)."""
+    zone = await ReminderPreferencesService(session, user.id).set_home_time_zone(payload.time_zone)
+    await session.commit()
+    return HomeTimeZone(time_zone=zone)

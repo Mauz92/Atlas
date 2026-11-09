@@ -15,6 +15,7 @@ from ..auth.devices import purge_revoked_devices
 from ..changes import ChangePurgeService
 from ..changes.retention import retention_cutoff
 from ..config import get_settings
+from ..hints.base import SYNC_HINT_TASK
 from ..idempotency import purge_expired
 from ..models import Job, JobStatus, User
 from ..notes import NotesReconciler, NotesStorage
@@ -236,6 +237,15 @@ async def deliver_reminder_job(session: AsyncSession, payload: dict[str, Any]) -
     raw_remind_at = payload.get("remind_at")
     expected = datetime.fromisoformat(raw_remind_at) if raw_remind_at else None
     outcome = await deliver_reminder(session, reminder_id, expected_remind_at=expected)
+    if outcome.delivered and get_settings().sync_hint_on_reminder:
+        # A phone whose alarm a battery manager killed may still have its distributor: the same
+        # constant "sync now" at the reminder time lets it catch up (SYNC_PROTOCOL.md 14.8).
+        from ..hints.service import maybe_enqueue
+        from ..models import Reminder
+
+        owner = await session.scalar(select(Reminder.user_id).where(Reminder.id == reminder_id))
+        if owner is not None:
+            await maybe_enqueue(session, owner, source="reminder")
     logger.info(
         "reminder processed",
         extra={
@@ -244,6 +254,14 @@ async def deliver_reminder_job(session: AsyncSession, payload: dict[str, Any]) -
             "reason": outcome.reason,
         },
     )
+
+
+@handler(SYNC_HINT_TASK)
+async def sync_hint_job(session: AsyncSession, payload: dict[str, Any]) -> None:
+    """Send the content-free sync hint to a user's registered destinations (M8-04e)."""
+    from ..hints.service import run_hint_job
+
+    await run_hint_job(session, payload)
 
 
 @handler(REMINDERS_SCAN_TASK)

@@ -363,6 +363,12 @@ User 1─* NotificationDevice
 - External events: a provider deletion removes/marks the projection; the projection is never
   re-created from stale local data.
 
+## 5a. Reminder feed state and sync hints (M8-04a/e, 2026-11-09)
+
+- `reminders` gained `state` (`armed|cancelled`, the device-visible state; `status` stays the server's delivery bookkeeping and is never shown to devices), `revision` (+1 on any change of state, `remind_at`, `snoozed_until`, `acknowledged_at`), `snoozed_until`, `acknowledged_at` (migration `d3a5c8e1b7f2`, reversible, with a backfill of one `reminder` `change_log` row per existing reminder). Written only through `atlas/reminders/service.py::publish`, under the user-then-reminder lock order; the feed entry is recorded in the same transaction and only when a value moved. Rows are never deleted by the feed: `cancelled` is the tombstone.
+- `users.home_time_zone` (nullable IANA name): the zone for tasks without `time_zone`.
+- `device_hints` (migration `e5b8f2a4c1d9`): one row per device, cascade-deleted, endpoint encrypted (AES-GCM, AAD = device id), `endpoint_tail`, delivery diagnostics, `invalid_at`. Also deleted when the device is revoked.
+
 ## 6. Ownership Rules (restated for implementers)
 
 1. Markdown files own note content. PostgreSQL owns only metadata.

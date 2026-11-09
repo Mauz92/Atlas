@@ -730,6 +730,15 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 - **Owner milestone:** M8-04e. **Status:** Open.
 
 
+### R-68 - A snooze that syncs late rings other devices later than the owner meant (M8-04a, found by simulation)
+- **Severity/Likelihood:** Low-Medium / Medium
+- **Description:** `snoozed_until = server now + n` (SYNC_PROTOCOL 14.5). A snooze made offline and synced hours later is applied from the *server* clock, so the other devices ring `n` minutes after the sync, not after the owner's tap; the device that snoozed already rang its optimistic alarm and suppresses the duplicate (revision +1 rule). Seen in the reminder-core simulation (`nothing_lost` oracle needed an explicit exception).
+- **Mitigation:** none yet; accepted for the first slice. Proposed (owner decision): an optional `acted_at` on the action, clamped to `[now - 24 h, now]`, used only as the base of the snooze.
+- **Owner milestone:** M8-04b-ii. **Status:** Open.
+
+### Status updates (2026-11-09)
+R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and tested (absolute instants, `reminder` feed with no churn, `sent` never a device state, cross-device dismissal/snooze, device fired-set and fired-before-show in `packages/reminder-core`); device half still needs M8-04c/d and hardware. R-67: SSRF origin pinning, no redirects, encrypted endpoint, coalescing, breaker, log-capture test and the ntfy ACL hardening verified against ntfy 2.37.2 on loopback; headless sync (G12) and the Android distributor remain open.
+
 ---
 
 ## Review log

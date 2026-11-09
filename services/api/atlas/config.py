@@ -114,6 +114,28 @@ class Settings(BaseSettings):
     vapid_private_key: str = ""
     vapid_subject: str = ""
 
+    # Live updates and sync hints (M8-04e, ADR-0068; SYNC_PROTOCOL.md 14.7, 14.8).
+    # ``GET /api/sync/wait`` is a long poll: it holds a request up to ``sync_wait_max_seconds``
+    # (below nginx's 60 s ``proxy_read_timeout``), re-reading the caller's feed head every
+    # ``sync_wait_poll_seconds``; at most ``sync_wait_max_connections`` waits per user are held.
+    sync_wait_max_seconds: int = Field(default=25, ge=1, le=55)
+    sync_wait_poll_seconds: float = 2.0
+    sync_wait_max_connections: int = Field(default=4, ge=1, le=16)
+    # The optional content-free "sync now" hint to a self-hosted UnifiedPush gateway (ntfy). Off by
+    # default: with ``sync_hint_enabled`` false nothing is sent and no endpoint is accepted. The
+    # gateway **origin** is operator configuration only; a device may register only an endpoint
+    # whose scheme, host and port equal it exactly. ``sync_hint_gateway_token`` is an optional
+    # publish credential (a secret, sent only to that origin, never logged). ``http`` is refused
+    # unless ``sync_hint_allow_insecure_http`` is set (a LAN or tailnet gateway) or the environment
+    # is not production and the host is loopback.
+    sync_hint_enabled: bool = False
+    sync_hint_gateway_url: str = ""
+    sync_hint_gateway_token: str = ""
+    sync_hint_allow_insecure_http: bool = False
+    sync_hint_min_interval_seconds: int = Field(default=30, ge=1)
+    sync_hint_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    sync_hint_on_reminder: bool = True
+
     session_cookie_name: str = "atlas_session"
     csrf_cookie_name: str = "atlas_csrf"
     session_ttl_seconds: int = 60 * 60 * 24 * 14

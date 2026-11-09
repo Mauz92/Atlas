@@ -454,3 +454,10 @@ audit.
 - [`CALENDAR_SYNC.md`](CALENDAR_SYNC.md) — calendar semantics (not yet user-facing).
 - [`ROADMAP.md`](ROADMAP.md) — milestone status (what is done, in progress or blocked).
 - [`CHANGELOG.md`](CHANGELOG.md) — user-visible changes per release.
+
+
+## Home time zone for reminders (new, M8-04a)
+
+**Settings -> Notifications -> Home time zone.** Reminder times such as "09:00" are read in the time zone of the task. A task without one used to be read in UTC; it now uses your home time zone. Atlas fills it in from your browser the first time you sign in; change it here if you moved or want another zone. "Not set (UTC)" keeps the old behaviour. Changing it recomputes the reminders of tasks that have no zone of their own; reminders that were already delivered are not repeated.
+
+Known limits of the coming device reminders (ADR-0068): the desktop app must be running (it can stay in the tray); a task created or re-dated while offline gets its reminder only after the next sync; every device you enable rings, and dismissing on one clears the others after their next sync.

@@ -180,6 +180,55 @@ received with `docker compose -f deploy/docker-compose.yml exec api env | sort`.
 
 ---
 
+### 4.7 Instant updates with a self-hosted ntfy (optional; the hardening below is REQUIRED)
+
+Reminders on a phone or desktop do **not** need this: each device schedules its own notifications from synced data (ADR-0068). This section is only for the optional **content-free "sync now" hint**, so a backgrounded Android app refreshes sooner. Atlas sends the constant message `{"v":1,"k":"sync"}` and nothing else (no task, title, count, id or cursor) to **your own** ntfy server. It is off by default (`SYNC_HINT_ENABLED=false`); with it off nothing is sent and no endpoint is accepted. Pointing it at the public `ntfy.sh` is allowed but **not recommended**: that server would learn *when* you edit (never what).
+
+**Required hardening (Atlas does not enforce it; an open ntfy would let a stranger read the timing of your edits and flood your phone with wake-ups):**
+1. **Authentication on, default deny.** `auth-default-access: "deny-all"` and an `auth-file`.
+2. **Least-privilege accounts.** One *subscriber* account for the phone's ntfy app (read-only on `up*`), one *publisher* account for Atlas (write-only on `up*`) with an **access token**. Nobody else gets access; signup stays off.
+3. **HTTPS** in front of ntfy (your reverse proxy, a tailnet certificate or a private CA). Plain `http` is accepted by Atlas only with `SYNC_HINT_ALLOW_INSECURE_HTTP=true` (a LAN or tailnet gateway you control) or on loopback outside production.
+4. **No upstream relay.** Leave `upstream-base-url` empty so ntfy never forwards to ntfy.sh or Firebase.
+
+`server.yml` (ntfy 2.x; verified with ntfy 2.37.2 on loopback, 2026-11-09):
+
+```yaml
+base-url: "https://ntfy.example.net"
+listen-http: ":80"                       # behind your TLS proxy; add `behind-proxy: true` there
+auth-file: "/var/lib/ntfy/user.db"
+auth-default-access: "deny-all"
+cache-file: "/var/lib/ntfy/cache.db"
+upstream-base-url: ""
+enable-signup: false
+enable-login: true
+visitor-subscriber-rate-limiting: true
+```
+
+Accounts and the token (run inside the ntfy container; each `user add` prompts for a password, or set `NTFY_PASSWORD`):
+
+```sh
+ntfy user add --role=admin admin
+ntfy user add phone                         # the phone's ntfy app logs in as this user
+ntfy user add atlas-publisher               # the account behind Atlas's token
+ntfy access phone 'up*' read-only
+ntfy access atlas-publisher 'up*' write-only
+ntfy token add --label atlas-server atlas-publisher     # prints tk_...: put it in SYNC_HINT_GATEWAY_TOKEN
+```
+
+Atlas `.env`:
+
+```sh
+SYNC_HINT_ENABLED=true
+SYNC_HINT_GATEWAY_URL=https://ntfy.example.net      # an origin only: no path, no credentials
+SYNC_HINT_GATEWAY_TOKEN=tk_...                       # a secret; never commit it
+```
+
+What was checked against a real ntfy 2.37.2 (throwaway container on loopback, removed afterwards): anonymous publish `403`; publish with the token `200`; anonymous subscribe `403`; the phone user subscribes `200` and sees the message; the phone user and the publisher cannot do each other's job (`403`); a topic outside `up*` is `403`; Atlas's adapter reports `rejected` without the token and `delivered` with it. **Not checked here:** TLS termination, the Android ntfy app and UnifiedPush distributor behaviour (`NOT RUN`, M8-04g).
+
+How Atlas treats the gateway: a device may register only a topic URL (`<origin>/up<random>`) on exactly the origin configured here (another host, port, scheme, credentials, query or dot-segments is `422`); redirects are never followed; the topic URL is a secret, stored encrypted and shown only as its last four characters; a hint is sent at most once per 30 seconds per writer, never to the device that made the change; if the gateway is down the hints are dropped after three tries and a circuit breaker pauses sending for five minutes; none of this can delay or fail a save. Rotating a topic = the device registers a new endpoint. **Backups** contain the (encrypted) endpoints; restoring an old backup may bring back an old endpoint that simply fails (`410`) until the device registers again.
+
+Long poll: `GET /api/sync/wait` holds a request up to `SYNC_WAIT_MAX_SECONDS` (default 25, at most 55). The shipped nginx waits 75 s for the API (`proxy_read_timeout`); if you put another proxy in front, give `/api/` a read timeout above 60 s.
+
 ## 5. Secure it
 
 Follow [`SECURITY.md`](SECURITY.md) (threat model + the M9-05 review of the delivered surface). The
@@ -329,7 +378,7 @@ Do not promise or document these as working; they are tracked in [`ROADMAP.md`](
 - **Mobile apps (Android/iOS) and native push (M8-06/07, M8-04)** — need real devices.
 - **Real desktop push delivery** — needs VAPID keys configured *and* has not been verified end to end
   on a real install (only consent states and the pipeline are tested).
-- **Desktop matrix (Linux/Windows/macOS, M8-08)** — not verified.
+- **Desktop matrix (Linux/Windows, M8-08)** — not verified. macOS and iOS are out of scope (owner decision 2026-11-04). The native reminder clients (M8-04c/d) are not built yet; only the server side (reminder feed entity, actions, long poll, optional hint) and the device scheduler core exist.
 - **Projects / Tasks / Search / Settings pages**, in-app export button, task editing (due date,
   priority, recurrence, subtasks), task search/filters UI, per-task reminder override UI — API-only
   today.

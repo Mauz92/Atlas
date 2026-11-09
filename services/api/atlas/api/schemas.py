@@ -831,13 +831,15 @@ class ChangeOut(BaseModel):
     revision: int | None = Field(
         default=None, description="With `include=data`: the entity's current revision."
     )
-    data: TaskSyncData | ProjectSyncData | NoteSyncData | ResolutionOut | None = Field(
-        default=None,
-        description=(
-            "With `include=data`: the entity's stored state as of this response, which may be "
-            "newer than `cursor`; apply by `revision`. Links carry no data; `null` also when the "
-            "entity no longer exists."
-        ),
+    data: TaskSyncData | ProjectSyncData | NoteSyncData | ResolutionOut | ReminderOut | None = (
+        Field(
+            default=None,
+            description=(
+                "With `include=data`: the entity's stored state as of this response, which may be "
+                "newer than `cursor`; apply by `revision`. Links carry no data; `null` also "
+                "when the entity no longer exists."
+            ),
+        )
     )
 
 
@@ -1291,6 +1293,135 @@ class TaskReminderOut(BaseModel):
     override: ReminderTiming | None
     effective: ReminderTiming | None
     remind_at: datetime | None
+
+
+# --- Reminder feed entity and actions (M8-04a; SYNC_PROTOCOL.md 14.2, 14.5) -----------------------
+
+
+class ReminderOut(BaseModel):
+    """A reminder as a device sees it: server-computed, read-only, never any task text.
+
+    ``remind_at`` is the UTC instant computed by the server in the task's zone (or the owner's home
+    zone); ``effective_at`` is ``snoozed_until`` when set, else ``remind_at``. ``state`` is
+    ``armed`` or ``cancelled`` and is **never** "sent": ``server_delivered_at`` only says that the
+    server's own channel (Web Push or the logging notifier) handled it, and must not suppress a
+    notification on a device. A device fires an armed reminder unless ``acknowledged_at`` is at or
+    after ``effective_at``.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    revision: int = Field(description="+1 whenever state, remind_at, snooze or dismissal changes.")
+    task_id: uuid.UUID
+    state: Literal["armed", "cancelled"]
+    remind_at: datetime
+    snoozed_until: datetime | None
+    acknowledged_at: datetime | None
+    effective_at: datetime
+    server_delivered_at: datetime | None = Field(
+        default=None, description="Informational only; never gates a device notification."
+    )
+
+
+class ReminderListOut(BaseModel):
+    reminders: list[ReminderOut]
+
+
+class ReminderActionRequest(BaseModel):
+    """Snooze or dismiss a reminder. Idempotent by ``action_id`` (also the `Idempotency-Key`).
+
+    ``snooze`` needs exactly one of ``snooze_for_seconds`` (600, 3600 or 10800) and ``until``
+    (``tomorrow_morning``: 09:00 the next day in the task's zone, computed by the server);
+    ``dismiss`` takes neither. ``base_revision`` is the reminder revision the device acted on: an
+    older one is accepted (an action is intent, not a field edit) and flagged ``stale``; one ahead
+    of the server's is ``409 revision_ahead``.
+    """
+
+    action_id: uuid.UUID
+    kind: Literal["snooze", "dismiss"]
+    snooze_for_seconds: Literal[600, 3600, 10800] | None = None
+    until: Literal["tomorrow_morning"] | None = None
+    base_revision: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _shape(self) -> ReminderActionRequest:
+        given = (self.snooze_for_seconds is not None) + (self.until is not None)
+        if self.kind == "snooze" and given != 1:
+            msg = "snooze needs exactly one of snooze_for_seconds and until"
+            raise ValueError(msg)
+        if self.kind == "dismiss" and given:
+            msg = "dismiss takes no snooze duration"
+            raise ValueError(msg)
+        return self
+
+
+class ReminderActionOut(BaseModel):
+    reminder: ReminderOut
+    applied: bool = Field(
+        description="False when the reminder was cancelled: nothing changed (still 200)."
+    )
+    stale: bool = Field(
+        description="The action was based on an older revision; re-reconcile from `reminder`."
+    )
+
+
+class HomeTimeZone(BaseModel):
+    """The owner's home time zone (ADR-0068 Q6): the IANA zone used when a task has none.
+
+    ``null`` keeps the historic behaviour (UTC). Changing it re-computes the reminders of tasks
+    that have no zone of their own.
+    """
+
+    time_zone: str | None = Field(default=None, max_length=64)
+
+    @field_validator("time_zone")
+    @classmethod
+    def _known(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value or not is_valid_time_zone(value):
+            msg = "unknown IANA time zone"
+            raise ValueError(msg)
+        return value
+
+
+# --- Live updates and sync hints (M8-04e; SYNC_PROTOCOL.md 14.7, 14.8) ----------------
+
+
+class SyncWaitOut(BaseModel):
+    """The answer of the long poll: a hint, never data. Compare ``head`` with your cursor."""
+
+    head: int = Field(description="The caller's last allocated feed cursor.")
+    changed: bool = Field(description="True when `head` differs from `since`; pull then.")
+
+
+class HintRegisterRequest(BaseModel):
+    """Register this device's UnifiedPush endpoint (a topic URL on the operator's gateway)."""
+
+    kind: Literal["unifiedpush"] = "unifiedpush"
+    endpoint: str = Field(min_length=1, max_length=512)
+
+
+class HintStatusOut(BaseModel):
+    """This device's hint destination. The endpoint is a secret: only its last 4 characters."""
+
+    enabled: bool = Field(description="The server has sync hints switched on and a usable gateway.")
+    registered: bool
+    kind: str | None = None
+    endpoint_tail: str | None = None
+    last_ok_at: datetime | None = None
+    last_error_class: str | None = None
+    failures: int = 0
+    invalid: bool = Field(
+        default=False, description="The gateway forgot the topic; register a fresh endpoint."
+    )
+
+
+class HintTestOut(BaseModel):
+    outcome: Literal["delivered", "invalid", "retry", "failed"]
+    error_class: str | None = None
 
 
 # --- Unified search (MU-05) ----------------------------------------------

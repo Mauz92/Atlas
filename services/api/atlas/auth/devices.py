@@ -32,7 +32,7 @@ from starlette.requests import Request
 
 from ..config import get_settings
 from ..db import get_session_factory
-from ..models import Device
+from ..models import Device, DeviceHint
 from .ratelimit import RateLimiter
 
 logger = logging.getLogger("atlas.auth.devices")
@@ -228,6 +228,8 @@ async def revoke_device(session: AsyncSession, user_id: uuid.UUID, device_id: uu
         device.revoked_at = datetime.now(UTC)
         device.prev_token_hash = None
         device.prev_valid_until = None
+    # A sync-hint destination is a secret registered by this credential: it dies with it.
+    await session.execute(delete(DeviceHint).where(DeviceHint.device_id == device_id))
     return True
 
 
@@ -243,7 +245,10 @@ async def revoke_all_devices(session: AsyncSession, user_id: uuid.UUID) -> int:
         .values(revoked_at=func.now(), prev_token_hash=None, prev_valid_until=None)
         .returning(Device.id)
     )
-    return len(revoked.all())
+    revoked_ids = [row[0] for row in revoked.all()]
+    if revoked_ids:
+        await session.execute(delete(DeviceHint).where(DeviceHint.device_id.in_(revoked_ids)))
+    return len(revoked_ids)
 
 
 async def purge_revoked_devices(session: AsyncSession, *, cutoff: datetime) -> int:

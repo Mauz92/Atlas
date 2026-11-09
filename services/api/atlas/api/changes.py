@@ -34,6 +34,7 @@ from .schemas import (
     ChangesOut,
     NoteSyncData,
     ProjectSyncData,
+    ReminderOut,
     ResolutionOut,
     TaskSyncData,
 )
@@ -82,9 +83,9 @@ async def list_changes(
             max_length=200,
             description=(
                 "Comma-separated entity types to return (`task`, `project`, `note`, "
-                "`note_project_link`, `task_note_link`, `resolution`). The cursor still advances "
-                "over the rest. Without `types`, `resolution` entries are returned only in sync "
-                "mode (`Atlas-Sync`)."
+                "`note_project_link`, `task_note_link`, `resolution`, `reminder`). The cursor "
+                "still advances over the rest. Without `types`, `resolution` and `reminder` "
+                "entries are returned only in sync mode (`Atlas-Sync`)."
             ),
         ),
     ] = None,
@@ -167,4 +168,6 @@ def _data_out(entity_type: str, data: dict[str, Any] | None) -> Any:
         return ProjectSyncData.model_validate(data)
     if entity_type == "resolution":
         return ResolutionOut.model_validate(data)
+    if entity_type == "reminder":
+        return ReminderOut.model_validate(data)
     return NoteSyncData.model_validate(data)

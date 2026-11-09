@@ -57,6 +57,9 @@ class ChangeEntityType(StrEnum):
     TASK_NOTE_LINK = "task_note_link"
     #: an automatic-resolution log entry (SYNC-05): a notice, never a tombstone, purged with its row
     RESOLUTION = "resolution"
+    #: the server-derived, device-read-only reminder state of a task (M8-04a; SYNC_PROTOCOL 14.2).
+    #: ``cancelled`` is a state of an ``upsert``, never a tombstone: a device cancels its alarm.
+    REMINDER = "reminder"
 
 
 class ChangeOperation(StrEnum):

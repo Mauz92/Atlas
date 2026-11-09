@@ -20,17 +20,90 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 
-from sqlalchemy import or_, select
+from sqlalchemy import String, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..changes import ChangeEntityType, ChangeOperation, ChangeRecorder
 from ..jobs import queue
-from ..models import Job, Reminder, ReminderPolicy, Task
+from ..models import ChangeLog, Job, Reminder, ReminderPolicy, Task, User
 from ..models.reminder import ReminderEntityType, ReminderStatus
 from .constants import REMINDER_DELIVER_TASK
 from .schedule import DELIVERABLE_STATUSES, ReminderRule, is_deliverable, remind_at_for
 
 _TASK = ReminderEntityType.TASK.value
+
+#: Device-visible reminder states (SYNC_PROTOCOL.md 14.2). ``sent`` deliberately does not exist
+#: here: the server's own delivery (``Reminder.status``) says nothing about any device (G4).
+ARMED = "armed"
+CANCELLED = "cancelled"
+
+
+class _Keep:
+    """Sentinel: leave a nullable feed field as it is."""
+
+
+KEEP = _Keep()
+
+
+async def lock_for_update(session: AsyncSession, reminder: Reminder) -> None:
+    """Lock the owner's row, then the reminder's, and reload the reminder under the lock.
+
+    Every writer of a reminder takes the locks in this order (user, then reminder), which is the
+    order the change recorder already imposes, so two writers cannot deadlock; the second one
+    waits, then sees the first one's committed values instead of overwriting them. ``FOR NO KEY
+    UPDATE`` leaves foreign-key checks (a task or delivery insert) unblocked.
+    """
+    await session.execute(
+        select(User.id).where(User.id == reminder.user_id).with_for_update(key_share=True)
+    )
+    await session.refresh(reminder, with_for_update={"key_share": True})
+
+
+async def publish(
+    session: AsyncSession,
+    reminder: Reminder,
+    *,
+    state: str | None = None,
+    remind_at: datetime | None = None,
+    snoozed_until: datetime | _Keep | None = KEEP,
+    acknowledged_at: datetime | _Keep | None = KEEP,
+) -> bool:
+    """Apply feed-visible changes to ``reminder`` and announce them; ``True`` when anything moved.
+
+    The single place where ``state``, ``remind_at``, ``snoozed_until`` and ``acknowledged_at`` are
+    written, so that a change is always accompanied by ``revision + 1`` and a ``change_log`` entry
+    in the same transaction, and an unchanged value records nothing (the cursor does not move; a
+    scan is idempotent, SYNC_PROTOCOL.md 14.2). A new ``remind_at`` clears a snooze that was set for
+    the old schedule unless the caller says otherwise. The caller holds :func:`lock_for_update`.
+    """
+    changed = False
+    if remind_at is not None and reminder.remind_at != remind_at:
+        reminder.remind_at = remind_at
+        changed = True
+        if isinstance(snoozed_until, _Keep):
+            snoozed_until = None
+    if state is not None and reminder.state != state:
+        reminder.state = state
+        changed = True
+    if not isinstance(snoozed_until, _Keep) and reminder.snoozed_until != snoozed_until:
+        reminder.snoozed_until = snoozed_until
+        changed = True
+    if not isinstance(acknowledged_at, _Keep) and reminder.acknowledged_at != acknowledged_at:
+        reminder.acknowledged_at = acknowledged_at
+        changed = True
+    if changed:
+        reminder.revision += 1
+        await session.flush()
+        await _announce(session, reminder)
+    return changed
+
+
+async def _announce(session: AsyncSession, reminder: Reminder) -> None:
+    await ChangeRecorder(session, reminder.user_id).record(
+        ChangeEntityType.REMINDER, str(reminder.id), ChangeOperation.UPSERT
+    )
 
 
 def delivery_job_key(reminder: Reminder) -> str:
@@ -86,11 +159,24 @@ async def resolve_policy(session: AsyncSession, task: Task) -> ReminderPolicy | 
     return default
 
 
-async def _reminder_for(session: AsyncSession, task_id: uuid.UUID) -> Reminder | None:
+async def _reminder_for(
+    session: AsyncSession, task_id: uuid.UUID, *, lock: bool = False
+) -> Reminder | None:
     reminder: Reminder | None = await session.scalar(
         select(Reminder).where(Reminder.entity_type == _TASK, Reminder.entity_id == task_id)
     )
+    if reminder is not None and lock:
+        await lock_for_update(session, reminder)
     return reminder
+
+
+async def effective_zone(session: AsyncSession, task: Task) -> str | None:
+    """The zone a task's reminder is computed in: its own, else the owner's home zone (Q6), else
+    ``None`` (UTC, the behaviour before M8-04a)."""
+    if task.time_zone is not None:
+        return task.time_zone
+    owner = await session.get(User, task.user_id)
+    return owner.home_time_zone if owner is not None else None
 
 
 async def _task_for(session: AsyncSession, reminder: Reminder) -> Task | None:
@@ -107,7 +193,7 @@ async def sync_task(session: AsyncSession, task: Task) -> Reminder | None:
     reminder: any existing scheduled/failed reminder is cancelled. A reminder that has already fired
     (``sent``) is left alone — editing a due date after delivery does not re-notify.
     """
-    reminder = await _reminder_for(session, task.id)
+    reminder = await _reminder_for(session, task.id, lock=True)
     policy = await resolve_policy(session, task)
     deliverable = (
         policy is not None
@@ -115,17 +201,15 @@ async def sync_task(session: AsyncSession, task: Task) -> Reminder | None:
         and is_deliverable(status=task.status, deleted=task.deleted_at is not None)
     )
     if not deliverable:
-        if reminder is not None and reminder.status in (
-            ReminderStatus.SCHEDULED.value,
-            ReminderStatus.FAILED.value,
-        ):
-            reminder.status = ReminderStatus.CANCELLED.value
-            await session.flush()
+        if reminder is not None:
+            if reminder.status in (ReminderStatus.SCHEDULED.value, ReminderStatus.FAILED.value):
+                reminder.status = ReminderStatus.CANCELLED.value
+            await publish(session, reminder, state=CANCELLED)
         return None
 
     assert policy is not None and task.due_at is not None  # narrowed by ``deliverable`` above
     rule = ReminderRule(days_before=policy.days_before, at_time=policy.at_time)
-    remind_at = remind_at_for(task.due_at, rule, tz_name=task.time_zone)
+    remind_at = remind_at_for(task.due_at, rule, tz_name=await effective_zone(session, task))
     if reminder is None:
         reminder = Reminder(
             user_id=task.user_id,
@@ -134,28 +218,32 @@ async def sync_task(session: AsyncSession, task: Task) -> Reminder | None:
             entity_id=task.id,
             remind_at=remind_at,
             status=ReminderStatus.SCHEDULED.value,
+            state=ARMED,
+            revision=1,
         )
         session.add(reminder)
         await session.flush()
+        await _announce(session, reminder)
         return reminder
     if reminder.status == ReminderStatus.SENT.value:
+        # The server already delivered: ``remind_at`` stays frozen (a later due-date edit does not
+        # re-notify), but a task that is open again is armed again for the devices.
+        await publish(session, reminder, state=ARMED)
         return reminder
-    reminder.remind_at = remind_at
     reminder.policy_id = policy.id
     reminder.status = ReminderStatus.SCHEDULED.value
-    await session.flush()
+    await publish(session, reminder, state=ARMED, remind_at=remind_at)
     return reminder
 
 
 async def cancel_for_task(session: AsyncSession, task_id: uuid.UUID) -> None:
-    """Cancel a task's reminder if one is still pending (a no-op otherwise)."""
-    reminder = await _reminder_for(session, task_id)
-    if reminder is not None and reminder.status in (
-        ReminderStatus.SCHEDULED.value,
-        ReminderStatus.FAILED.value,
-    ):
+    """Cancel a task's reminder; devices learn it through the feed (no-op if already cancelled)."""
+    reminder = await _reminder_for(session, task_id, lock=True)
+    if reminder is None:
+        return
+    if reminder.status in (ReminderStatus.SCHEDULED.value, ReminderStatus.FAILED.value):
         reminder.status = ReminderStatus.CANCELLED.value
-        await session.flush()
+    await publish(session, reminder, state=CANCELLED)
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,7 +287,12 @@ async def scan_reminders(session: AsyncSession) -> ReminderScanSummary:
     dispatched = 0
     reminders = list(
         await session.scalars(
-            select(Reminder).where(Reminder.status == ReminderStatus.SCHEDULED.value)
+            select(Reminder).where(
+                or_(
+                    Reminder.status == ReminderStatus.SCHEDULED.value,
+                    Reminder.state == ARMED,
+                )
+            )
         )
     )
     for reminder in reminders:
@@ -207,15 +300,46 @@ async def scan_reminders(session: AsyncSession) -> ReminderScanSummary:
         if entity is None or not is_deliverable(
             status=entity.status, deleted=entity.deleted_at is not None
         ):
-            reminder.status = ReminderStatus.CANCELLED.value
-            cancelled += 1
+            await lock_for_update(session, reminder)
+            if reminder.status in (ReminderStatus.SCHEDULED.value, ReminderStatus.FAILED.value):
+                reminder.status = ReminderStatus.CANCELLED.value
+            if await publish(session, reminder, state=CANCELLED):
+                cancelled += 1
             continue
-        if await ensure_delivery_job(session, reminder):
+        if reminder.status == ReminderStatus.SCHEDULED.value and await ensure_delivery_job(
+            session, reminder
+        ):
             dispatched += 1
+    await emit_missing_changes(session)
     await session.flush()
     return ReminderScanSummary(
         considered=len(tasks), scheduled=scheduled, cancelled=cancelled, dispatched=dispatched
     )
+
+
+async def emit_missing_changes(session: AsyncSession) -> int:
+    """Announce every reminder that has no ``change_log`` entry yet (idempotent; returns how many).
+
+    The migration backfills existing rows once; this is the safety net for a database restored
+    from an older backup or a reminder written by a path that predates the feed. Re-running it
+    finds nothing and does not move any cursor.
+    """
+    missing = list(
+        await session.scalars(
+            select(Reminder)
+            .where(
+                ~exists().where(
+                    ChangeLog.user_id == Reminder.user_id,
+                    ChangeLog.entity_type == ChangeEntityType.REMINDER.value,
+                    ChangeLog.entity_id == Reminder.id.cast(String()),
+                )
+            )
+            .order_by(Reminder.user_id, Reminder.remind_at, Reminder.id)
+        )
+    )
+    for reminder in missing:
+        await _announce(session, reminder)
+    return len(missing)
 
 
 class ReminderService:
@@ -247,11 +371,18 @@ class ReminderService:
 
 
 __all__ = [
+    "ARMED",
+    "CANCELLED",
+    "KEEP",
     "ReminderScanSummary",
     "ReminderService",
     "cancel_for_task",
     "delivery_job_key",
+    "effective_zone",
+    "emit_missing_changes",
     "ensure_delivery_job",
+    "lock_for_update",
+    "publish",
     "resolve_policy",
     "scan_reminders",
     "sync_task",

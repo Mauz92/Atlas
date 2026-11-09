@@ -25,7 +25,7 @@ from datetime import datetime, time
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import Reminder, ReminderPolicy, Task
+from ..models import Reminder, ReminderPolicy, Task, User
 from .service import ensure_delivery_job, resolve_policy, sync_task
 
 #: The largest whole-day lead we accept. A day-granularity policy (ADR-0037) — ``days_before`` +
@@ -178,6 +178,41 @@ class ReminderPreferencesService:
             reminder = await sync_task(self.session, task)
             if reminder is not None:
                 await ensure_delivery_job(self.session, reminder)
+
+    # --- home time zone (ADR-0068 Q6) -------------------------------------
+
+    async def get_home_time_zone(self) -> str | None:
+        zone: str | None = await self.session.scalar(
+            select(User.home_time_zone).where(User.id == self.user_id)
+        )
+        return zone
+
+    async def set_home_time_zone(self, zone: str | None) -> str | None:
+        """Set (or clear) the zone for tasks without their own and recompute exactly those.
+
+        Idempotent: an unchanged zone touches nothing. Tasks that carry a zone are unaffected, and
+        so is a reminder the server already delivered (its instant stays frozen).
+        """
+        current = await self.get_home_time_zone()
+        if current == zone:
+            return zone
+        user = await self.session.get(User, self.user_id)
+        assert user is not None
+        user.home_time_zone = zone
+        await self.session.flush()
+        tasks = await self.session.scalars(
+            select(Task).where(
+                Task.user_id == self.user_id,
+                Task.time_zone.is_(None),
+                Task.due_at.is_not(None),
+                Task.deleted_at.is_(None),
+            )
+        )
+        for task in tasks:
+            reminder = await sync_task(self.session, task)
+            if reminder is not None:
+                await ensure_delivery_job(self.session, reminder)
+        return zone
 
     # --- per-entity override ---------------------------------------------
 

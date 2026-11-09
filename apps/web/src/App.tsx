@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { HomeTimeZoneDefault } from "./components/HomeTimeZoneDefault";
 import { useAuth } from "./auth/AuthProvider";
 import { Layout } from "./components/Layout";
 import { SETTINGS_REDIRECTS } from "./lib/settingsSections";
@@ -38,35 +39,38 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Today />} />
-        <Route path="/inbox" element={<Inbox />} />
-        <Route path="/upcoming" element={<Upcoming />} />
-        {/* Day is no longer a destination (ADR-0051 §2): old links land on Today. */}
-        <Route path="/day" element={<Navigate to="/" replace />} />
-        <Route path="/week" element={<Week />} />
-        {/* The standalone Board is gone (ADR-0064): the board lives in each project. Old links land on Projects. */}
-        <Route path="/board" element={<Navigate to="/projects" replace />} />
-        <Route path="/tasks" element={<Tasks />} />
-        <Route path="/projects" element={<Projects />} />
-        <Route path="/projects/:id" element={<ProjectPage />} />
-        {/* Calendar, Sync and Notifications are Settings sections now (UX-08): old links land there. */}
-        {Object.entries(SETTINGS_REDIRECTS).map(([from, to]) => (
-          <Route key={from} path={from} element={<Navigate to={to} replace />} />
-        ))}
-        <Route path="/search" element={<SearchPage />} />
-        <Route
-          path="/notes"
-          element={
-            <Suspense fallback={<div className="splash">Loading notes…</div>}>
-              <Notes />
-            </Suspense>
-          }
-        />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/settings/:section" element={<Settings />} />
-      </Route>
-    </Routes>
+    <>
+      <HomeTimeZoneDefault />
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Today />} />
+          <Route path="/inbox" element={<Inbox />} />
+          <Route path="/upcoming" element={<Upcoming />} />
+          {/* Day is no longer a destination (ADR-0051 §2): old links land on Today. */}
+          <Route path="/day" element={<Navigate to="/" replace />} />
+          <Route path="/week" element={<Week />} />
+          {/* The standalone Board is gone (ADR-0064): the board lives in each project. Old links land on Projects. */}
+          <Route path="/board" element={<Navigate to="/projects" replace />} />
+          <Route path="/tasks" element={<Tasks />} />
+          <Route path="/projects" element={<Projects />} />
+          <Route path="/projects/:id" element={<ProjectPage />} />
+          {/* Calendar, Sync and Notifications are Settings sections now (UX-08): old links land there. */}
+          {Object.entries(SETTINGS_REDIRECTS).map(([from, to]) => (
+            <Route key={from} path={from} element={<Navigate to={to} replace />} />
+          ))}
+          <Route path="/search" element={<SearchPage />} />
+          <Route
+            path="/notes"
+            element={
+              <Suspense fallback={<div className="splash">Loading notes…</div>}>
+                <Notes />
+              </Suspense>
+            }
+          />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/settings/:section" element={<Settings />} />
+        </Route>
+      </Routes>
+    </>
   );
 }

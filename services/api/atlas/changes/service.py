@@ -86,7 +86,12 @@ class ChangesService:
             # SYNC-05: ``resolution`` entries are announced to sync-mode callers and to callers that
             # ask for them by name; a legacy caller (the web app) never sees an entity type it
             # does not know. The cursor still advances over them like over any filtered row.
-            stmt = stmt.where(ChangeLog.entity_type != ChangeEntityType.RESOLUTION)
+            # The same holds for ``reminder`` entries (M8-04a): a device-facing entity type.
+            stmt = stmt.where(
+                ChangeLog.entity_type.not_in(
+                    (ChangeEntityType.RESOLUTION.value, ChangeEntityType.REMINDER.value)
+                )
+            )
         rows = list(await self.session.scalars(stmt.order_by(ChangeLog.seq.asc()).limit(limit + 1)))
         merged = merge_latest(
             [

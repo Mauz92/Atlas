@@ -1,7 +1,7 @@
 # Atlas — Dependency and Licence Inventory
 
 **Status:** Active (Milestone 9)
-**Last updated:** 2026-10-27
+**Last updated:** 2026-11-09 (httpx runtime; `@atlas/reminder-core` has no dependencies; ntfy 2.37.2 `Apache-2.0 OR GPL-2.0` is an operator-run optional service used only for loopback verification, not a dependency)
 
 Every dependency must permit the intended personal and professional use (REQ-003). Additions are
 reviewed before introduction and recorded here with purpose and licence. Licence identifiers are
@@ -24,6 +24,7 @@ as reported by the package metadata; verify against the upstream project before 
 | python-multipart | Form parsing | Apache-2.0 | |
 | python-dateutil | RFC 5545 RRULE recurrence engine (M3-05) | BSD-3-Clause OR Apache-2.0 | Dual-licensed; imported as `dateutil.rrule.rrulestr` (3.0.0 no longer exports top-level `FREQ`). ADR-0015 |
 | pywebpush | Web Push (VAPID) desktop delivery (M8-02) | MPL-2.0 | Maintained `web-push-libs` project; signs and sends the push request. Bound `>=2.5,<3.0`. Used behind the `Notifier` abstraction; no custom crypto. ADR-0039 |
+| httpx | The sync-hint gateway adapter (M8-04e): one bounded `POST` per hint, redirects off, no body read | BSD-3-Clause | **Moved from dev to runtime on 2026-11-09** (`>=0.27,<1.0`, installed 0.28.1). Already vetted as a dev dependency; maintained (encode/httpx), no known advisory in the `pip-audit` of this inventory. No new package enters the image, only an existing one moves. |
 | cryptography | Authenticated encryption (AES-256-GCM) for OAuth tokens at rest (M5-01) | Apache-2.0 OR BSD-3-Clause | Maintained `pyca` project; used via the high-level `AESGCM`/`HKDF` APIs (no custom crypto). Bound `>=50,<51` — the floor clears the advisories `pip-audit` reports against earlier 4x wheels. ADR-0027 |
 
 ## Runtime — frontend (`apps/web`)
@@ -81,7 +82,7 @@ THIS SOFTWARE.
 | Package | Purpose | Licence |
 |---|---|---|
 | pytest, pytest-asyncio | Test runner | MIT / Apache-2.0 |
-| httpx | Test HTTP client | BSD-3-Clause |
+| httpx | Test HTTP client (also a runtime dependency since M8-04e, see the runtime table) | BSD-3-Clause |
 | ruff | Lint + format | MIT |
 | mypy | Static type checking | MIT |
 | pip-audit | Python advisory scanning (CI) | Apache-2.0 |
