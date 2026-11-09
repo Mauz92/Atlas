@@ -689,7 +689,7 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
 - **Mitigation:** the gate was **not** weakened or suppressed. It now runs as the last step of the `frontend` job so lint, types, tests and build still report. Decision for the owner: (a) accept the dev-only
   advisory for a time-boxed period and change the gate to `--omit=dev` plus a written exception here, or (b) keep the red gate until `eslint`/`typescript-eslint`/`openapi-typescript` release versions that use minimatch 11.
   Re-check weekly (`npm audit`, Dependabot would do it automatically if enabled by the owner).
-- **Owner milestone:** release readiness. **Status:** Open (owner decision needed; the CI `frontend` job is red because of it only).
+- **Owner milestone:** release readiness. **Status:** Accepted with an exception (owner decision 2026-11-09, option (a)): CI fails on production-dependency advisories (`npm audit --omit=dev`, moderate and above) and runs the full audit as a visible, non-blocking report step (`continue-on-error`). Exception expires **2026-12-09**: re-check then, or as soon as `eslint`/`typescript-eslint`/`openapi-typescript` ship versions using a fixed minimatch.
 
 ### R-62 - CI environment differences found by the first GitHub Actions runs (locale, time zone, timing)
 - **Severity/Likelihood:** Medium / High until fixed

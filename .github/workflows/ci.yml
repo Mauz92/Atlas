@@ -154,9 +154,15 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Last on purpose: a new advisory must not hide the lint/type/test/build results. The gate itself is
-      # unchanged (moderate and above, dev dependencies included, no exceptions).
-      - name: Dependency audit
+      # Last on purpose: a new advisory must not hide the lint/type/test/build results.
+      # Production dependencies (what ships): moderate and above fails the build, no exceptions.
+      - name: Dependency audit (production)
+        run: npm audit --omit=dev --audit-level=moderate
+
+      # Development tooling (owner decision 2026-11-09, R-61): still audited and reported on every run, but
+      # not blocking while no fix exists. Review by 2026-12-09 or when minimatch (GHSA-g3hv-75wg-m249) is fixed.
+      - name: Dependency audit (development tooling, report only)
+        continue-on-error: true
         run: npm audit --audit-level=moderate
 
   e2e-real:
