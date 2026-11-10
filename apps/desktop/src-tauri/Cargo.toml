@@ -1,0 +1,35 @@
+[package]
+name = "atlas-desktop"
+version = "0.1.0"
+description = "Atlas desktop client (SYNC-09, ADR-0069): a thin Tauri 2 shell around the Atlas web UI and the framework-neutral desktop core"
+edition = "2021"
+publish = false
+license = "UNLICENSED"
+
+[lib]
+name = "atlas_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-updater = { version = "2", optional = true }
+atlas-desktop-native = { path = "../native" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# `tauri build` enables this; plain `cargo build --release --features custom-protocol` serves the embedded UI.
+custom-protocol = ["tauri/custom-protocol"]
+# Automatic updates (SYNC-09e): OFF by default. A build with this feature needs `tauri.updater.conf.json`
+# (endpoint + public key) merged in; see docs/DEPLOYMENT.md. Never enabled in the default release.
+updater = ["dep:tauri-plugin-updater"]
+# Test hooks for the scripted end-to-end run (reports, an injected driver script, a folder given by environment
+# instead of the native dialog). Never enabled in a build that is given to a person.
+e2e = []

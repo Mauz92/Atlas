@@ -105,8 +105,10 @@ export function createBrowserWebPushClient(): WebPushClient {
   };
 
   return {
+    // the desktop app has its own notifications and no service worker (SYNC-09c)
     isSupported: () =>
       typeof window !== "undefined" &&
+      !window.atlasDesktop &&
       "Notification" in window &&
       "serviceWorker" in navigator &&
       "PushManager" in window,

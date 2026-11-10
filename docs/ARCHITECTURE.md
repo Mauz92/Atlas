@@ -190,6 +190,35 @@ that is accepted and implemented, the paragraph above describes the browser queu
   reminders, quick capture, review of unfinished work. No decorative dashboards.
 - Business logic (recurrence, conflict resolution, authorisation) is server-side only.
 
+## 8a. Desktop client boundary (SYNC-09, ADR-0069; Linux phase 1 implemented, Windows not built)
+
+```
+ apps/web (React, unchanged except a feature-detected bridge)        packages/sync-core      packages/reminder-core
+        |  window.atlasDesktop.fetch(path)                                   \                    /
+        v                                                                      v                  v
+ apps/desktop/src (bootstrap, bridge, sign-in page)  --->  packages/desktop-core  (DesktopRuntime, NotesFolderSync, SqliteLocalStore,
+        |  createTauriPlatform(): one invoke per port method                  LiveConnection, settings)  == the PLATFORM PORT (ports.ts)
+        v                                                                      ^
+ apps/desktop/src-tauri (Tauri 2 commands, tray, window, plugins)   fake adapter for tests (desktop-core/src/testing)
+        |  thin glue only
+        v
+ apps/desktop/native (Rust, no Tauri): store.rs (rusqlite) notes.rs + watch.rs (confined folder) keystore.rs http.rs rules.rs
+```
+
+- **Where each thing lives.** Policy and state machines (sync, merge of files with notes, reminders, session states) are TypeScript in `desktop-core`; the host only moves bytes and
+  owns secrets and files. The port interface is the whole contract: `RowDb`, `HttpPort`, `SessionPort`, `NotesFolderPort`, `NotifierPort`, `TrayPort`, `AutostartPort`,
+  `LifecyclePort`, `TimerPort`, `CryptoPort`. An Electron host would implement the same interfaces (ADR-0069 D1 lists exactly what would be rewritten).
+- **Data ownership on the desktop.** Unchanged from section 5: note text is owned by the engine (revisions) and mirrored to ordinary `.md` files in ONE user-chosen folder
+  (`NotesFolderSync`; the files are not a second authority, a file that differs from what the engine last wrote is an external edit and becomes an engine edit with its base revision);
+  tasks, projects and reminders live in the local SQLite database as engine entities (`entities`, `queue`, `meta`, `drafts`, ...); the device token lives in the OS keystore; per-device
+  settings (reminders, content mode, close-to-tray) live in the `settings` table and are never synced.
+- **What runs where.** The runtime (engine tick 1 s, scheduler tick 30 s, live long-poll, folder scan on start/focus/5 min and on watcher hints) runs inside the webview; closing the window hides
+  it (tray) so it keeps running. The web UI in the same webview still uses its own M7 offline queue (R-54) through the same host `api_request`; two engines talk to the server from one device
+  (the UI's REST writes and the runtime's sync-mode writes), converging through the server's feed.
+- **Trust boundaries.** Webview (our bundled pages, CSP `script-src 'self'`) -> Tauri IPC with an explicit permission per command (`capabilities/main.json`) -> Rust. Rust -> server over HTTPS (loopback http only for tests).
+  Details and threats: `SECURITY.md` section 15.
+- **Not built:** Windows packaging, UI on the local database (SYNC-11/12), Android (SYNC-10).
+
 ## 9. Assumptions and Validations
 
 **Assumptions**

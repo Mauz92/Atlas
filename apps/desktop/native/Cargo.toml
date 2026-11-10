@@ -1,0 +1,31 @@
+[package]
+name = "atlas-desktop-native"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Rust half of the Atlas desktop client (SYNC-09, ADR-0069): SQLite row store, confined notes folder, watcher, keystore, API client. No Tauri here: it is tested on its own."
+license = "UNLICENSED"
+
+[lib]
+name = "atlas_desktop_native"
+
+[[bin]]
+name = "store-crash-writer"
+path = "src/bin/store_crash_writer.rs"
+
+[dependencies]
+rusqlite = { version = "0.41", features = ["bundled"] }
+notify = "8"
+sha2 = "0.10"
+keyring = { version = "3", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json"] }
+tokio = { version = "1", features = ["rt", "macros", "time"] }
+
+# Windows: Credential Manager backend (without a platform feature keyring 3 silently uses a mock store).
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", default-features = false, features = ["windows-native", "crypto-rust"] }
+
+[dev-dependencies]
+tempfile = "3"

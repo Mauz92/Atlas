@@ -390,6 +390,17 @@ Do not promise or document these as working; they are tracked in [`ROADMAP.md`](
 
 ---
 
+## 12a. Desktop app (SYNC-09, Linux phase 1): what the operator needs to know
+
+The Atlas desktop app signs in to YOUR server with a **per-device credential** (`POST /api/devices`, ADR-0065) and then syncs. For the server nothing changes, but:
+
+- **HTTPS.** The app refuses a server address that is not `https://` (plain `http://` only for `localhost`/`127.0.0.1`). Use the same HTTPS front (Caddy, `tailscale serve`, ...) as for the browser. The app trusts the **system** certificate store, so a private CA (for example Caddy's internal CA) works once it is installed in the system store of that computer (Arch: `trust anchor <ca.pem>`; Debian/Ubuntu: `/usr/local/share/ca-certificates/` + `update-ca-certificates`); a self-signed certificate that is not trusted is refused, there is no "ignore the warning".
+- **No CORS setting is needed.** The desktop app's requests are sent by its Rust host, not by the web page, so `CORS_ORIGINS` must stay as it is. (A direct browser-style request from the app's origin `tauri://localhost` would need that origin listed; the app does not make one, and the end-to-end test runs with `CORS_ORIGINS` empty.) Do not add `tauri://localhost` to `CORS_ORIGINS` for this app.
+- **Rate limits.** A device may make 600 requests and 120 writes a minute (SYNC-06). A running desktop app makes about 5 requests a minute when idle (a long poll of up to 25 s, `GET /api/sync/wait`, about 2.4 a minute, plus the engine's own pull every 30 s, about 2 a minute); allow the nginx `proxy_read_timeout` of 60 s or more for `/api/` (the shipped `nginx.conf` uses 75 s).
+- **Managing devices.** Settings > Devices in the BROWSER lists every desktop and phone app with its last seen time; **Sign out** revokes one at once (the app notices on its next request and shows its sign-in page, its token is deleted from the computer's keystore). A password reset (the recovery code or `atlas-admin reset-password`) revokes all devices. A device token cannot change the password, export data, connect calendars or revoke other devices (SECURITY T22), which is why those Settings sections are absent in the desktop app.
+- **Versions.** The app sends `Atlas-Sync: 1`; a server that has moved past it answers `426` and the app stops syncing in an "update required" state (it keeps the token and the local data). Upgrade the app first when you raise the protocol range.
+- **Back-ups and restore with devices attached.** After `atlas-admin record-restore` an attached desktop app finds the new epoch, stops and asks the user to confirm before it re-creates anything (SYNC_PROTOCOL 7.4). The confirmation screen is not in the desktop UI yet (SYNC-11).
+
 ## 13. Related documents
 
 [`README.md`](../README.md) · [`USER_GUIDE.md`](USER_GUIDE.md) · [`DEPLOYMENT.md`](DEPLOYMENT.md) ·

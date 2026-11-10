@@ -1,3 +1,4 @@
+import { desktopApi } from "../lib/desktop";
 import { newIdempotencyKey } from "../lib/offlineQueue";
 import type { components } from "./schema";
 
@@ -124,14 +125,18 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     headers.set("Content-Type", "application/json");
   }
   const method = (init.method ?? "GET").toUpperCase();
-  if (!SAFE_METHODS.has(method)) {
+  const desktop = desktopApi();
+  if (!SAFE_METHODS.has(method) && !desktop) {
     const token = readCsrfCookie();
     if (token) {
       headers.set("X-CSRF-Token", token);
     }
   }
 
-  const response = await fetch(path, { credentials: "include", ...init, headers });
+  // In the desktop app the host sends the request and attaches the device token (no cookie, no CSRF token).
+  const response = desktop
+    ? await desktop.fetch(path, { ...init, headers })
+    : await fetch(path, { credentials: "include", ...init, headers });
   if (!response.ok) {
     let body: unknown;
     try {

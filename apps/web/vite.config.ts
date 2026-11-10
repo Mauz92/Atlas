@@ -55,6 +55,19 @@ export default defineConfig({
         },
       },
       {
+        // The framework-neutral desktop client core (SYNC-09, ADR-0069): plain node over fake platform adapters;
+        // also runs the multi-client simulation with the desktop store (`packages/desktop-core/sim`).
+        extends: true,
+        test: {
+          name: "desktop-core",
+          environment: "node",
+          globals: true,
+          include: ["../../packages/desktop-core/{src,sim}/**/*.test.ts", "../desktop/src/**/*.test.ts"],
+          exclude: [...configDefaults.exclude],
+          testTimeout: 120_000,
+        },
+      },
+      {
         // Opt-in conformance run against the real API (`ATLAS_SYNC_REAL=1`; its tests skip otherwise).
         extends: true,
         test: {

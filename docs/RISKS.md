@@ -678,7 +678,7 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
   The watcher feedback loop (`Access` events), the same-size/same-mtime edit that a size+mtime scan misses, and the dotfile default of the fs scope are design inputs, not defects.
 - **Mitigation:** SYNC-09 builds a per-row `LocalStore` on `rusqlite`; uses the platform trust store (`rustls-tls-native-roots` or `native-tls`) and tests with the owner's real certificate; the watcher
   rules and the hash-based periodic scan in `SYNC_PROTOCOL.md` 13.2 are acceptance criteria of the notes-folder engine.
-- **Owner milestone:** SYNC-09. **Status:** Open (design input recorded).
+- **Owner milestone:** SYNC-09. **Status:** Mitigating (2026-11-10: per-row store and `rustls-tls-native-roots` implemented and tested; the check with the owner's real certificate, `NOT RUN`, remains).
 
 ### R-61 - A moderate advisory in dev tooling makes the `npm audit` gate fail (minimatch, GHSA-g3hv-75wg-m249)
 - **Severity/Likelihood:** Low (dev dependencies only, no untrusted glob input) / Certain (the gate is red)
@@ -745,6 +745,36 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 
 ---
 
+### R-69 - Script running in the desktop webview can use the session (SYNC-09)
+- **Severity/Likelihood:** Medium / Low
+- **Description:** the token cannot be read by the page (no command returns it), but any script that runs in the page (XSS in rendered Markdown, a compromised dependency in the bundle) can call `api_request` and the folder commands inside the granted root, and can read the local database through `db_*`. This equals what the same script could do in the browser app.
+- **Mitigation:** CSP `default-src 'none'; script-src 'self'` with no inline script and no remote origin, DOMPurify on every rendered note, no `fs`/`shell`/`opener` plugins, per-command ACL, a root that only the native dialog can grant, a header/path/method allow-list in `api_request`, narrow device scope on the server (T22), device list and instant revoke. Not done: a per-origin allow-list of API paths inside `api_request` (it would duplicate the server's authorisation).
+- **Owner milestone:** SYNC-09 (accepted for phase 1). **Status:** Accepted.
+
+### R-70 - AppImage supply chain and portability (SYNC-09e)
+- **Severity/Likelihood:** Medium / Medium
+- **Description:** the AppImage bundles WebKitGTK and libraries from the build machine (rolling Arch), so it may need a newer glibc than an older distribution has; the bundler downloads tools from GitHub, one from a moving `continuous` release.
+- **Mitigation:** tools pinned by SHA-256 and verified before every bundle (`packaging/bundler-tools.tsv`, `fetch-bundler-tools.sh`; a mismatch stops the build); the `.deb` uses the distribution's WebKitGTK; the build is documented and keeps the previous AppImage as the rollback. Three builds on one machine gave byte-identical binaries and AppImages (the `.deb` differs by timestamps). Not done: a build on an older distribution (or in a container) to widen compatibility, and reproducibility across machines (system libraries are bundled).
+- **Owner milestone:** SYNC-09e. **Status:** Mitigating.
+
+### R-71 - Hidden webview: timer throttling and a heavier resident process (SYNC-09d)
+- **Severity/Likelihood:** Medium / Medium
+- **Description:** close-to-tray keeps the webview (and therefore the engine and scheduler) alive but hidden; WebKit may throttle timers of a hidden page, and the resident footprint is a WebKitWebProcess plus the app (about 300 MB PSS measured idle). Sleep/resume and clock jumps are handled by the scheduler's jump detection, not measured on a real suspend.
+- **Mitigation:** engine tick 1 s, scheduler tick 30 s, live poll as one in-flight request, wake events on focus, `onClockChange` on a wall/monotonic mismatch; the e2e run shows sync and file writes continuing while the window is hidden. Not done: a 30-minute hidden-window lateness measurement and a real suspend/resume test (M8-04g).
+- **Owner milestone:** M8-04c/g. **Status:** Open.
+
+### R-72 - Notes-folder races and limits of an inotify/hash design (SYNC-09b)
+- **Severity/Likelihood:** Low / Low
+- **Description:** (a) between the final hash check and the rename of a server write there is a window of microseconds in which an editor's save could be overwritten (the overwritten text stays in the server history and the next scan treats the file as an edit based on the newer revision); (b) the cheap periodic scan trusts size+mtime, only the scans on start, focus and every five minutes hash everything, so a same-size same-mtime edit can wait up to five minutes; (c) cloud-synced folders (OneDrive/Dropbox placeholders) and network drives were not tested; (d) a very large folder (tens of thousands of notes) was not measured; (e) the first run in a folder that already holds notes keeps both texts when a name collides with a server note but cannot tell which is newer.
+- **Mitigation:** compare-and-swap writes with the check repeated before the rename; the full hash scan on start/focus/5 minutes; every external edit carries its base so the server merges or keeps a conflict copy; deletes go to `.atlas-trash/`; a missing root is an error, never an empty list; all tested (ACCEPTANCE SYNC-09b). Not done: the cloud-folder and large-folder checks.
+- **Owner milestone:** SYNC-09b/SYNC-12. **Status:** Accepted with the limits listed.
+
+### R-73 - The existing web UI inside the shell meets a narrow device scope (SYNC-09c)
+- **Severity/Likelihood:** Medium / High (expected, handled)
+- **Description:** a device token is refused on account-level endpoints (`403 forbidden_scope`, T22), while parts of the web UI call them (Settings: Account, Notifications/Web Push, Calendar, Devices, Data; maybe others such as note-reminder preferences). Two engines (the UI's M7 queue over REST, and the runtime's sync-core) share one device.
+- **Mitigation:** the shell hides the browser-only Settings sections; the e2e probe loads the main lists through the bridge (`/api/auth/me`, tasks, notes, projects, instance: 200). Not done: a click-through of every page for a stray `403`, and moving the UI onto the local database (SYNC-11/12), which removes the second engine.
+- **Owner milestone:** SYNC-11/12. **Status:** Open.
+
 ## Review log
 
 | Date | Milestone | Change |
@@ -783,3 +813,4 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 | 2026-11-03 | P0-1/P0-2/P0-3 | R-46 added (smoke test of the Compose stack found and fixed six defects; four accepted edges). R-34 verified through the real web container (1.5/5/10 MiB `201`, 12 MiB `413`). First restore drill of a set that contains note history. |
 | 2026-11-04 | P0-4 / SYNC-07 Windows | First GitHub Actions runs: R-61 (npm audit finding in dev tooling, owner decision) and R-62 (CI-only environment differences, fixed) added; R-36 updated with the hosted-Windows-runner results (build, per-user installer, signed update, headless checks, supply chain; admin/UAC/SmartScreen/AV/OneDrive/IME still the owner's). |
 | 2026-11-04 | M8-04 design (ADR-0068 PROPOSED) | R-63 to R-67 added (Android missed reminders, resident desktop app, clock/zone, duplicates/stale across devices, the hint channel); R-59 updated (resident app chosen as mitigation). Design only, nothing built. |
+| 2026-11-10 | SYNC-09 phase 1 (Linux) | R-69 to R-73 added (script in the webview, AppImage supply chain, hidden webview, folder races/limits, device scope vs web UI); R-60 now Mitigating; R-36 unchanged (Windows still not run); R-58 unchanged (DMABUF variable is set automatically on NVIDIA); a new advisory (RUSTSEC-2026-0459, SQLite) was found by `cargo audit` and fixed by moving rusqlite 0.37 to 0.41. |

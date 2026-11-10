@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "The bundled Atlas pages (tauri://localhost): the web UI and the sign-in page. Only the commands the desktop runtime uses. No fs plugin, no shell, no opener, no remote origins, no get-token command (there is none). The `e2e_*` commands are not granted here: only an inline capability in tauri.e2e.conf.json (merged by test builds) grants them.",
+  "windows": ["main"],
+  "permissions": [
+    "allow-app-info",
+    "allow-db-open", "allow-db-get", "allow-db-list", "allow-db-commit",
+    "allow-session-sign-in", "allow-session-info", "allow-session-clear", "allow-session-sign-out", "allow-api-request",
+    "allow-folder-root", "allow-folder-choose", "allow-folder-scan", "allow-folder-read", "allow-folder-write", "allow-folder-rename", "allow-folder-trash",
+    "allow-notify-permission", "allow-notify-request-permission", "allow-notify-show",
+    "allow-tray-set-close-to-tray", "allow-tray-set-status",
+    "allow-autostart-is-enabled", "allow-autostart-set-enabled",
+    "allow-window-show", "allow-app-quit",
+    "allow-update-check",
+    "core:event:allow-listen", "core:event:allow-unlisten"
+  ]
+}

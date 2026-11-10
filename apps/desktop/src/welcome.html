@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Atlas</title>
+    <link rel="stylesheet" href="/welcome.css" />
+    <script src="/atlas-desktop.js"></script>
+    <script src="/welcome.js" defer></script>
+  </head>
+  <body>
+    <main class="card" aria-labelledby="title">
+      <h1 id="title">Atlas</h1>
+      <p id="notice" role="status" hidden></p>
+      <form id="form" autocomplete="off" hidden>
+        <p class="lead">Sign this computer in to your own Atlas server. Your password is sent once to get a device key; the key is kept in your system keystore and the password is never stored.</p>
+        <label>Server address
+          <input id="server" type="url" inputmode="url" placeholder="https://atlas.example.org" required />
+        </label>
+        <label>E-mail
+          <input id="email" type="email" autocomplete="username" required />
+        </label>
+        <label>Password
+          <input id="password" type="password" autocomplete="current-password" required />
+        </label>
+        <label>This device is called
+          <input id="device" type="text" maxlength="60" required />
+        </label>
+        <fieldset>
+          <legend>Notes folder</legend>
+          <p class="hint">Your notes are ordinary Markdown files in this folder; any editor can open them.</p>
+          <div class="row"><code id="folder">not chosen</code><button type="button" id="choose">Choose folder…</button></div>
+        </fieldset>
+        <label class="check"><input id="autostart" type="checkbox" /> Start Atlas when I log in (in the tray, so reminders keep working)</label>
+        <p class="hint">Closing the window keeps Atlas running in the tray. Use the tray icon's Quit to stop it.</p>
+        <p id="error" role="alert" hidden></p>
+        <button type="submit" id="submit">Sign in</button>
+      </form>
+    </main>
+  </body>
+</html>

@@ -258,3 +258,33 @@ Inventory of what the design would introduce. Licences and versions marked **[VE
 | Firebase / FCM | **not adopted** | — | rejected by default, ADR-0068 D8 |
 
 No telemetry, analytics or paid service is introduced. The Android permissions `USE_EXACT_ALARM`, `SCHEDULE_EXACT_ALARM`, `POST_NOTIFICATIONS` and `RECEIVE_BOOT_COMPLETED` are platform declarations, not dependencies; Google Play's exact-alarm policy applies only if the app is ever published there.
+
+## SYNC-09 desktop client (`apps/desktop`, `packages/desktop-core`, 2026-11-10; Linux phase 1)
+
+`packages/desktop-core` has **no dependencies** (it imports the two in-repo cores by relative path). `apps/desktop` is a separate Cargo workspace (`native` + `src-tauri`) and a separate npm package; none of it is in `apps/web`'s lockfile, `verify.sh` or CI. Versions are the locked ones (`apps/desktop/Cargo.lock`, 503 crates for the Linux graph, started from the spike's lock). Licence identifiers from `cargo license` on 2026-11-10.
+
+| Crate / package | Purpose | Licence | Notes |
+|---|---|---|---|
+| `tauri` 2.12.5 (+ `tauri-build`) | The shell (window, IPC with per-command ACL, tray, bundling) | MIT OR Apache-2.0 | features `tray-icon`, `image-png`; same line as the spike (14 days old at the time); 2.x pinned, no alpha |
+| `tauri-plugin-dialog` 2.8.4 | The native folder dialog, called from Rust only (no JS permission) | MIT OR Apache-2.0 | |
+| `tauri-plugin-notification` 2.8.0 | Desktop notifications (`show`, called from Rust) | MIT OR Apache-2.0 | desktop implementation has no scheduling (S5): the app schedules |
+| `tauri-plugin-single-instance` 2.5.5 | A second launch focuses the first | MIT OR Apache-2.0 | |
+| `tauri-plugin-autostart` 2.7.0 (+ `auto-launch` 0.6.0) | Opt-in start at login (`~/.config/autostart/*.desktop`; uses `$APPIMAGE` for an AppImage) | MIT OR Apache-2.0 / MIT | off by default, asked at first run (ADR-0068 Q2) |
+| `tauri-plugin-updater` 2.14.1 | Signed updates | MIT OR Apache-2.0 | **optional Cargo feature `updater`, in no default build** (SYNC-09e); verified in SYNC-07 S6 |
+| `rusqlite` 0.41.1 (bundled `libsqlite3-sys` 0.39.1) | The local database | MIT / SQLite is public domain | **0.37 was replaced**: `cargo audit` (advisory DB of 2026-11-10) reported RUSTSEC-2026-0459 against `libsqlite3-sys` < 0.39 (bundled C SQLite CVE-2026-119375, medium); 0.41 fixes it; adds `sqlite-wasm-rs` to the lock for wasm targets only (not built) |
+| `notify` 8.2.1 | inotify / ReadDirectoryChangesW watcher | CC0-1.0 | `Access` events are dropped (S3) |
+| `sha2` 0.10.9 | SHA-256 of note bytes (the server's `content_hash`) | MIT OR Apache-2.0 | RustCrypto; no custom crypto |
+| `keyring` 3.6.3 | OS keystore (Secret Service; Credential Manager on Windows) | MIT OR Apache-2.0 | `sync-secret-service` + `crypto-rust`; no file fallback; Windows needs `windows-native` (a mock store is used silently otherwise: set explicitly) |
+| `reqwest` 0.12.28 (`rustls-tls-native-roots`, `json`) | The only HTTP client; token attached here | MIT OR Apache-2.0 | trusts the platform certificate store (R-60), not the bundled Mozilla roots; `rustls` 0.23.46, `rustls-native-certs` 0.8.5 (Apache-2.0 OR ISC OR MIT) |
+| `tokio` 1.54.1, `serde` 1.0.229, `serde_json` 1.0.154 | Runtime for the client, (de)serialisation | MIT (OR Apache-2.0) | |
+| `tempfile` 3.27.0 | dev-dependency of the Rust tests | MIT OR Apache-2.0 | |
+| `@tauri-apps/cli` 2.12.4 | `tauri build` (dev tool, not shipped) | MIT OR Apache-2.0 | exact version, `package-lock.json` |
+| `esbuild` 0.25.12 | Bundles the bridge and the sign-in page; bundles `sync-core` for the e2e second client (dev tool, not shipped) | MIT | exact version; its npm post-install is not run (the platform binary comes as an optional dependency) |
+
+**Licence summary of the Linux graph (503 crates):** 333 `Apache-2.0 OR MIT`, 134 `MIT`, 25 `Apache-2.0 OR MIT OR Zlib`, 18 `Unicode-3.0`, 12 `MIT OR Unlicense`, 5 `MPL-2.0` (`cssparser`, `cssparser-macros`, `dtoa-short`, `option-ext`, `selectors`: file-level copyleft, unmodified use, as in the spike), 5 `ISC`, small numbers of BSD/Zlib/CC0 combinations, 2 `UNLICENSED` (our own two crates). **No GPL or AGPL.** `r-efi` lists `LGPL-2.1-or-later` only as one of three alternatives (`Apache-2.0 OR LGPL-2.1-or-later OR MIT`). Distribution: the AppImage bundles WebKitGTK and GTK from the build machine (LGPL-2.1+ system libraries, dynamically linked, unmodified); the `.deb` depends on the distribution's packages instead.
+
+**Advisories (`cargo audit`, 2026-11-10): 0 vulnerabilities, 8 warnings** (unchanged from the spike, all transitive through the GTK/D-Bus stack and not called by Atlas code: `proc-macro-error` 1.0.4 unmaintained, `zbus_names` 3.0.0/4.3.5, `zvariant` 4.2.0/5.15.1, `zvariant_derive` 4.2.0/5.15.1 unmaintained, `glib` 0.18.5 unsound `VariantStrIter`). `npm audit` for `apps/desktop`: see ACCEPTANCE SYNC-09.
+
+**Bundler tools (not packages; pinned by SHA-256 in `apps/desktop/packaging/bundler-tools.tsv`):** `AppRun-x86_64` (tauri-apps/binary-releases `apprun-old`), `linuxdeploy` AppImage (tauri-apps/binary-releases `linuxdeploy-07333c6`, MIT), `linuxdeploy-plugin-appimage` (linuxdeploy project `continuous` release: a moving URL, so only the checksum pins it, MIT). The plugin scripts for GTK and GStreamer are embedded in the pinned `@tauri-apps/cli`. `fetch-bundler-tools.sh` fails if a download does not match.
+
+**Platform costs:** none new. A Windows code-signing certificate and any update hosting remain the owner's optional costs (above); a Linux AppImage/.deb needs no signing.

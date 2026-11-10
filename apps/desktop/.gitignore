@@ -1,0 +1,11 @@
+node_modules/
+target/
+dist/
+out/
+keys/
+*.AppImage
+*.deb
+src-tauri/gen/
+e2e/results/
+target-e2e/
+target-updater/

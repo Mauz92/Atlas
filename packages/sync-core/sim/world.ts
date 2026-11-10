@@ -8,8 +8,8 @@
  */
 
 import { SyncEngine, type EngineObserver, type PlantedBugs } from "../src/engine.ts";
-import type { Clock, Logger, Transport } from "../src/ports.ts";
-import { MemoryStore, InjectedCrash } from "../src/testing/memoryStore.ts";
+import type { Clock, LocalStore, Logger, Transport } from "../src/ports.ts";
+import { MemoryStore, InjectedCrash, type State } from "../src/testing/memoryStore.ts";
 import { sequenceIds } from "../src/testing/fakes.ts";
 import type { QueueOp } from "../src/types.ts";
 import { FLAG, FLAG_VALUES, LABEL, type Req, type Resp, type SimKind } from "./model/common.ts";
@@ -21,7 +21,17 @@ import { HOUR, MIN, REM_MS_PER_VMS, REM_T0, ReminderDevice } from "./reminderDev
 import { checkReminderStep } from "./reminderInvariants.ts";
 import type { PlantedBugs as SchedulerBugs } from "../../reminder-core/src/desired.ts";
 
+/** What the simulation needs from a client's durable store: a `LocalStore` it can inspect and crash. */
+export interface SimStore extends LocalStore {
+  /** The committed state, read-only by convention (invariants). */
+  peek(): State;
+  /** Called once per commit before it applies; return true to lose the transaction (a process death). */
+  crashBeforeCommit: (() => boolean) | null;
+}
+
 export interface SimConfig {
+  /** A host's store under test (SYNC-09: the desktop SQLite store); the default is the in-memory reference store. */
+  storeFactory: (() => SimStore) | null;
   clients: number;
   steps: number;
   actionP: number;
@@ -70,6 +80,7 @@ export interface SimConfig {
 }
 
 export const DEFAULT_CONFIG: SimConfig = {
+  storeFactory: null,
   clients: 3,
   steps: 120,
   actionP: 0.35,
@@ -242,7 +253,7 @@ export const markers = (text: string | null): Set<string> =>
 const NOTE_PATHS = ["a.md", "A.md", "b.md", "dir/a.md", "dir/A.md", "dir/b.md", "c d.md"];
 
 export class SimClient {
-  readonly store = new MemoryStore();
+  readonly store: SimStore;
   engine!: SyncEngine;
   gen = 0;
   active = true;
@@ -271,6 +282,7 @@ export class SimClient {
     private readonly bugs: PlantedBugs,
   ) {
     this.rng = rng(world.seed, `user:${cid}`);
+    this.store = world.cfg.storeFactory ? world.cfg.storeFactory() : new MemoryStore();
     this.remindersOn = !world.cfg.reminderUpgrade;
     this.engine = this.build();
     if (world.cfg.reminders) {

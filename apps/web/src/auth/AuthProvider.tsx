@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 
 import { ApiError, api, type UserPublic } from "../api/client";
+import { desktopApi } from "../lib/desktop";
 
 type AuthState = "loading" | "setup" | "anonymous" | "authenticated";
 
@@ -79,6 +80,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const acknowledgeRecoveryCode = useCallback(() => setPendingRecoveryCode(null), []);
 
   const logout = useCallback(async () => {
+    const desktop = desktopApi();
+    if (desktop) {
+      // the desktop app signs the DEVICE out (revokes its token, forgets it) and shows its sign-in page
+      await desktop.signOut();
+      return;
+    }
     await api.logout();
     setPendingRecoveryCode(null);
     setUser(null);

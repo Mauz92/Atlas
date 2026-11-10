@@ -47,7 +47,21 @@ SYNC-03; **[PLANNED]** specified, owned by a later task; **[UNVERIFIED]** not ch
 | §10.2 versioning: `Atlas-Sync`, epoch learned from `GET /api/instance`, `Atlas-Epoch` header | **[DONE]** | `types_synced` backfill for a new entity type: **[DONE]** M8-04b-ii (below) |
 | §10.2 `types_synced` and the backfill of a new entity type (G7) | **[DONE]** M8-04b-ii | meta `types_synced`; a client with a cursor whose wanted types exceed it walks `since=0&types=<new>&snapshot=true` for the NEW types alone and applies the whole walk together with the new `types_synced` in one transaction; the main cursor is untouched and the main pull resumes with the new type; every main page commit records the types it asked for (a downgrade shrinks the record, so the next upgrade backfills again); a walk that returns fewer rows than the store holds tombstones the rest; opt-in per host (`reminders: true`), default off |
 | §14 `reminder` entity, queued `act` operation, `dirty` tasks, `ReminderSource`/`ActionSink` adapters | **[DONE]** M8-04b-ii | `reminder` is a stored `LocalEntity` (type `reminder`, never created, edited or re-created by a client); `act` is a FIFO queue operation keyed by `action_id`; see 14.9a |
-| §10.1 device token handling, HTTPS-only | token via `Credentials` port; HTTPS-only in `createFetchTransport` | keystore and sign-in screen: SYNC-09 |
+| §10.1 device token handling, HTTPS-only | token via `Credentials` port; HTTPS-only in `createFetchTransport` | keystore and sign-in screen: **[DONE]** SYNC-09c (Linux), see the desktop table below |
+
+
+### Desktop client implementation status (`packages/desktop-core`, `apps/desktop`, SYNC-09 phase 1 = Linux, 2026-11-10; ADR-0069)
+
+| Section | Desktop (Linux) | Notes |
+|---|---|---|
+| §10.1 sign-in, token storage, HTTPS-only | **[DONE]** | `POST /api/devices` from Rust, token only in the OS keystore, attached in Rust; HTTPS except loopback (TS and Rust); 401 -> signed-out state, token deleted; 426 -> update-required state, token kept |
+| §11 notes folder: regular `*.md`, UTF-8, ignore dot paths and temp files, hash comparison, scans, rename = move, portable paths, atomic writes, trash, > 5 MiB listed | **[DONE]** | `NotesFolderSync` + `Folder`/`FolderWatcher`; rename detection by hash (unique candidate); every scan on start, on focus and every 5 minutes hashes every file; the watcher is only a hint; "re-checked by hash before overwrite" is a compare-and-swap write in the host |
+| §6.3 external edit with `base_hash` | **[DONE]** | `SyncEngine.editNote(id, text, base)`; the index remembers the revision and text each file derives from |
+| §7.4 restore confirmation | engine state only | the desktop UI for `confirmRestore()` is not built (SYNC-11) |
+| §14.7 live connection | **[DONE]** | `LiveConnection`: long poll `GET /api/sync/wait?since=<cursor>&timeout=25`, hint only, at most one pull per 5 s from it, sync-core backoff on errors, stops on 401/426; wake/focus and the tray's "Sync now" also pull |
+| §14.4 / 14.9 scheduler on a device | **[DONE]** for the desktop | `DesktopNotificationPort` (`osScheduling: false`), scheduler tick 30 s and after each pull, clock-jump detection, per-device content mode and enable switch (14.6) |
+| §14.6 settings UI | minimal | Settings > Desktop app (shell only); diagnostics list and the Android parts are not built |
+| §13.2 "what SYNC-09 must do differently" | all items implemented except the UX fixes | per-row store; token in keystore/Rust; no generic fs access; watcher drops `Access` + temp names + hash compare + periodic scan; one root, relative paths; platform trust store; `WEBKIT_DISABLE_DMABUF_RENDERER` set automatically on NVIDIA; notification permission handled in Rust; base URL via the host (`api_request` takes a path); no service worker; previous AppImage kept; `synchronous=FULL`; D1/D2 (native `select` and date inputs in WebKitGTK) are **not** fixed (separate UX task) |
 
 ---
 

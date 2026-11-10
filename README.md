@@ -66,10 +66,11 @@ later). Rationale and trade-offs: `docs/DECISIONS.md`.
 
 ```
 apps/web         React/PWA client
-apps/mobile      React Native + Expo client (later milestone)
+apps/mobile      React Native + Expo client (later milestone; superseded by the Tauri plan, ADR-0068 D10)
+apps/desktop     Linux desktop app (Tauri 2 shell, SYNC-09 phase 1; its own Cargo workspace, not in verify.sh): see apps/desktop/README.md
 services/api     FastAPI application
 services/worker  Background sync, retries, reminders
-packages/*       Shared types and generated API client
+packages/*       Shared types and generated API client; sync-core, reminder-core and desktop-core (framework-free TypeScript cores)
 tests/*          unit / integration / e2e
 deploy/          Docker Compose and examples
 docs/            Living project documentation

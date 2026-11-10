@@ -62,18 +62,43 @@ export const SETTINGS_SECTIONS = [
   },
 ] as const;
 
-export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"];
+/**
+ * The extra section of the desktop app (SYNC-09d): per-device reminders, tray, autostart, notes folder.
+ * It exists only inside the shell (`isDesktopShell()`); a browser never lists it or accepts its URL.
+ */
+export const DESKTOP_SECTION = {
+  id: "desktop",
+  label: "Desktop app",
+  palette: "Desktop app",
+  description: "This computer's Atlas app: its notes folder, reminders, tray and start-up behaviour. These settings belong to this device only.",
+} as const;
+
+/**
+ * Sections a device token cannot use (SECURITY.md T22: account, password, calendar connections, device
+ * management and the full export are browser-only). The desktop app hides them instead of showing
+ * `403 forbidden_scope` errors; the browser stays the place for them.
+ */
+const BROWSER_ONLY_SECTIONS: ReadonlySet<string> = new Set(["account", "notifications", "calendar", "devices", "data"]);
+
+export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"] | typeof DESKTOP_SECTION.id;
+
+/** The sections to show: the browser's list, or inside the desktop app the usable ones plus "Desktop app". */
+export function visibleSettingsSections(shell: boolean): readonly { id: SettingsSectionId; label: string; palette: string; description: string }[] {
+  if (!shell) return SETTINGS_SECTIONS;
+  return [DESKTOP_SECTION, ...SETTINGS_SECTIONS.filter((section) => !BROWSER_ONLY_SECTIONS.has(section.id))];
+}
 
 /** The section a plain `/settings` shows on a wide screen. */
 export const DEFAULT_SETTINGS_SECTION: SettingsSectionId = "account";
+export const DEFAULT_DESKTOP_SETTINGS_SECTION: SettingsSectionId = "desktop";
 
 export function settingsPath(id: SettingsSectionId): string {
   return `/settings/${id}`;
 }
 
 /** The section named by a URL segment, or `null` when it is missing or unknown. */
-export function parseSettingsSection(segment: string | undefined): SettingsSectionId | null {
-  return SETTINGS_SECTIONS.find((section) => section.id === segment)?.id ?? null;
+export function parseSettingsSection(segment: string | undefined, shell = false): SettingsSectionId | null {
+  return visibleSettingsSections(shell).find((section) => section.id === segment)?.id ?? null;
 }
 
 /** Pages that moved into Settings (UX-08), mapped to the section that now holds them. */

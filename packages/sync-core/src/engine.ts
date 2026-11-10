@@ -1769,8 +1769,16 @@ export class SyncEngine {
     });
   }
 
-  /** Replace a note's text. Edits while a save is in flight are rebased onto its answer. */
-  async editNote(id: string, text: string): Promise<void> {
+  /**
+   * Replace a note's text. Edits while a save is in flight are rebased onto its answer.
+   *
+   * `base` (SYNC-09b): the revision, hash and text this new text was written against, when the host knows
+   * them and the engine's copy has moved on (a notes-folder file edited while a newer server revision
+   * arrived). The save is then sent with THAT base, so the server three-way merges (or keeps a conflict
+   * copy) instead of treating the file as an edit of the newer revision, which would overwrite it. It is
+   * used only when the note has no working copy yet; otherwise the existing draft's base stands.
+   */
+  async editNote(id: string, text: string, base?: { revision: number; hash: string; text: string }): Promise<void> {
     await this.user(async (tx) => {
       const entity = await this.requireLive(tx, id, "note");
       const ops = (await tx.listQueue()).filter((o) => o.entityId === id);
@@ -1789,6 +1797,12 @@ export class SyncEngine {
         draft.text = text;
         await tx.putDraft(draft);
         return;
+      }
+      if (!draft && base) {
+        draft = {
+          entityId: id, text, baseRevision: base.revision, baseHash: base.hash,
+          baseText: base.text, inFlightOp: null, frozenText: null, rebaseFrom: null,
+        };
       }
       if (!draft) {
         const server = entity.server;

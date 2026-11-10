@@ -9,11 +9,14 @@ import { CalendarSettings } from "../components/CalendarSettings";
 import { Icon } from "../components/Icon";
 import { NotificationSettings } from "../components/NotificationSettings";
 import { SyncSettings } from "../components/SyncSettings";
+import { DesktopSection } from "../components/settings/DesktopSection";
+import { isDesktopShell } from "../lib/desktop";
 import {
+  DEFAULT_DESKTOP_SETTINGS_SECTION,
   DEFAULT_SETTINGS_SECTION,
   parseSettingsSection,
-  SETTINGS_SECTIONS,
   settingsPath,
+  visibleSettingsSections,
   type SettingsSectionId,
 } from "../lib/settingsSections";
 
@@ -35,6 +38,8 @@ function SectionBody({ id }: { id: SettingsSectionId }) {
       return <DataSection />;
     case "about":
       return <AboutSection />;
+    case "desktop":
+      return <DesktopSection />;
   }
 }
 
@@ -47,12 +52,14 @@ function SectionBody({ id }: { id: SettingsSectionId }) {
  */
 export function Settings() {
   const { section } = useParams();
-  const requested = parseSettingsSection(section);
+  const shell = isDesktopShell();
+  const sections = visibleSettingsSections(shell);
+  const requested = parseSettingsSection(section, shell);
   if (section && !requested) {
     return <Navigate to="/settings" replace />;
   }
-  const active = requested ?? DEFAULT_SETTINGS_SECTION;
-  const current = SETTINGS_SECTIONS.find((entry) => entry.id === active)!;
+  const active = requested ?? (shell ? DEFAULT_DESKTOP_SETTINGS_SECTION : DEFAULT_SETTINGS_SECTION);
+  const current = sections.find((entry) => entry.id === active)!;
 
   return (
     <section className="page settings-page" data-view={requested ? "section" : "index"}>
@@ -60,7 +67,7 @@ export function Settings() {
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
           <ul>
-            {SETTINGS_SECTIONS.map((entry) => (
+            {sections.map((entry) => (
               <li key={entry.id}>
                 <Link
                   to={settingsPath(entry.id)}

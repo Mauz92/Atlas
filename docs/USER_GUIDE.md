@@ -461,3 +461,52 @@ audit.
 **Settings -> Notifications -> Home time zone.** Reminder times such as "09:00" are read in the time zone of the task. A task without one used to be read in UTC; it now uses your home time zone. Atlas fills it in from your browser the first time you sign in; change it here if you moved or want another zone. "Not set (UTC)" keeps the old behaviour. Changing it recomputes the reminders of tasks that have no zone of their own; reminders that were already delivered are not repeated.
 
 Known limits of the coming device reminders (ADR-0068): the desktop app must be running (it can stay in the tray); a task created or re-dated while offline gets its reminder only after the next sync; every device you enable rings, and dismissing on one clears the others after their next sync.
+
+
+## Atlas desktop app for Linux (new, SYNC-09 phase 1)
+
+**What it is.** A desktop app that keeps your notes as ordinary Markdown files in a folder on your computer, syncs them (and your tasks and reminders) with your own Atlas server,
+and shows the same Atlas screens you know from the browser. It works as a normal window and also lives in the **tray**. Phase 1 is **Linux only** (tested on Arch/CachyOS with KDE Plasma
+and WebKitGTK 2.54; other distributions and GNOME are untested). There is no Windows or Android version yet.
+
+**Install.** Download or build `Atlas_0.1.0_amd64.AppImage` or `Atlas_0.1.0_amd64.deb` (see `apps/desktop/scripts/build-linux.sh`; nothing is published).
+- AppImage: `chmod +x Atlas_0.1.0_amd64.AppImage && ./Atlas_0.1.0_amd64.AppImage` (about 110 MiB: it carries its own web engine). It needs `libayatana-appindicator` for the tray icon (Arch: `libayatana-appindicator`).
+- `.deb` (Debian/Ubuntu): `sudo apt install ./Atlas_0.1.0_amd64.deb` (about 4 MiB; uses the system's WebKitGTK 4.1, GTK 3 and ayatana appindicator).
+- You also need a **keystore** running: KDE Wallet (via its Secret Service) or GNOME Keyring. Atlas keeps its device key only there; if none is available it tells you and does not sign in. Unlock it if it asks.
+
+**First run.** The sign-in page asks for: your **server address** (must be `https://...`, or `http://localhost:port` for a test server), your **e-mail and password** (sent once to your server to
+create a device key; the password is never stored), a **device name**, your **notes folder** (Choose folder...: pick an empty folder or the folder where you already keep Markdown notes), and
+**whether to start Atlas when you log in** (off unless you tick it). Then **Sign in**. The first sync downloads your notes into the folder and your tasks into the local database.
+
+**The notes folder.** Every note is a `.md` file, in sub-folders like in Atlas. Edit them with any editor: Atlas notices (usually within a second or two; it also re-checks the whole folder
+when Atlas starts, when you click back into its window and every five minutes), sends the change, and writes changes from other devices back into the file **only if you have not changed that file in the
+meantime**. If the same note was changed on two devices, Atlas merges what it can; where it cannot, it keeps **both** versions: the other version appears as a new file named like
+`name (conflict 2026-11-09 234332).md` next to your note. Rename a file or move it to another folder and Atlas treats it as a move; delete a file and the note is deleted on the server (it stays
+recoverable there), and a note deleted elsewhere is moved to `.atlas-trash/` inside your folder, never erased. Files Atlas leaves alone and lists in **Settings > Desktop app**: larger than 5 MiB, not valid UTF-8,
+or with a name that cannot exist on every platform (for example `CON.md`, names ending in a dot). Hidden files and folders (those starting with a dot, like `.git` or `.obsidian`) and non-Markdown files are never touched.
+If the folder disappears (a drive that is not mounted) Atlas does nothing and says so; it never reads that as "everything was deleted".
+
+**Tray and closing the window.** Closing the window **hides it**; Atlas keeps running so reminders and sync continue. Click the tray icon to open it again, or right-click for
+**Open Atlas / Sync now / Quit Atlas**. **Quit really quits, and reminders stop with it.** On GNOME you may need an extension to see the tray icon; without it Atlas runs but you cannot see where.
+You can turn "keep running in the tray" off in **Settings > Desktop app**; then the close button quits.
+
+**Reminders.** A reminder created or changed on any device reaches this one, and Atlas shows a desktop notification at the time (within about a minute) **while Atlas is running** (window open or hidden in the tray). If Atlas was
+not running at that time it shows what it missed (up to a day back) when you start it. In Settings you can switch reminders off for this computer or **hide the task text** in notifications (they then only say a reminder is due).
+Your desktop environment's Do Not Disturb applies.
+
+**Start at login.** Off by default. **Settings > Desktop app > Start Atlas when I log in** creates one start-up entry that opens Atlas hidden in the tray. For an AppImage the entry points at the AppImage's current location:
+if you move the file, switch the option off and on again. Switching it off removes the entry.
+
+**Signed out by the server.** If you remove this device in Settings > Devices in the browser (or its key expires), Atlas shows the sign-in page with a message; nothing on your computer is deleted, and signing in again to
+the same account continues where it stopped (queued edits are kept). Signing in as a different account starts from an empty local database (your notes folder files are not deleted).
+**"Update required"** means your server is newer than this app: install a newer Atlas app; your data is kept.
+
+**What is different from the browser.** Account, password, calendar connections, device list, Web Push and the data export are only in the browser (a device key is deliberately not allowed to do those).
+There is no service worker and no installable-app prompt in the desktop app.
+
+**Uninstall.** Switch "Start Atlas when I log in" off first (or delete `~/.config/autostart/Atlas.desktop`). AppImage: delete the file. `.deb`: `sudo apt remove atlas`. Then, if you want everything gone: delete the data
+folder `~/.local/share/app.atlas.desktop/` (the local database and settings) and remove the stored device key (KDE Wallet / GNOME Keyring entry "atlas-desktop", or just remove the device in Settings > Devices in the browser, which makes the key useless).
+**Your notes folder is never deleted by Atlas or by uninstalling.**
+
+**Known limits (phase 1).** Linux only; reminders fire only while Atlas runs (use the optional autostart); the "restore confirmation" screen after a server restore, and a resolver for conflicting task edits, are not in the desktop UI yet; typing in the editor with a CJK
+input method was not tested; on NVIDIA graphics Atlas turns off a WebKit renderer feature at start-up (`WEBKIT_DISABLE_DMABUF_RENDERER=1`) to avoid a crash; set `ATLAS_KEEP_DMABUF=1` to keep it on.

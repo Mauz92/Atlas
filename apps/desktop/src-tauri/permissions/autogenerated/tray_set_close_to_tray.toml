@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-tray-set-close-to-tray"
+description = "Enables the tray_set_close_to_tray command without any pre-configured scope."
+commands.allow = ["tray_set_close_to_tray"]
+
+[[permission]]
+identifier = "deny-tray-set-close-to-tray"
+description = "Denies the tray_set_close_to_tray command without any pre-configured scope."
+commands.deny = ["tray_set_close_to_tray"]
