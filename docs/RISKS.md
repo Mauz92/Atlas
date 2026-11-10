@@ -17,7 +17,7 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   building the adapter UI**. Provide documented app-registration steps for single-tenant and
   multi-tenant scenarios. Fall back to personal-account-only support if a tenant forbids
   delegated scopes, and document the limitation.
-- **Owner milestone:** M5. **Status:** Open.
+- **Owner milestone:** M5. **Status:** Mitigating (2026-11-10): the app registration steps, the personal-versus-work caveat (no registration in an employer tenant without IT approval) and the "admin consent required" troubleshooting row are written (`CALENDAR_SYNC.md` 12.3, 12.6); the Graph adapter exists and is fixture-tested. **Not closed:** nothing was run against a real tenant (M5-00 live runbook).
 
 ### R-02 — Calendar synchronisation conflicts or duplicates
 - **Severity/Likelihood:** High / Medium
@@ -110,7 +110,7 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 - **Mitigation:** Publish the OAuth app to **Production** (unverified) for personal use; verify
   real refresh-token lifetime with a test account in M5; document the trade-off (unverified
   screen / 100-user cap for sensitive scopes). See ADR-0008.
-- **Owner milestone:** M5. **Status:** Open.
+- **Owner milestone:** M5. **Status:** Mitigating (2026-11-10): the setup guide says to publish to Production and why (12.2), an expired refresh token flags the account "needs re-authorisation" instead of failing silently, and the runbook includes the >7-day check. **Not closed:** the real token lifetime is unverified.
 
 ### R-14 — Time-zone and recurrence correctness
 - **Severity/Likelihood:** Medium / High
@@ -795,6 +795,32 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 - **Mitigation:** the screen says so before the second confirmation; nothing is deleted from the folder; the e2e run checks a local file survives (`apps/desktop/e2e/run.mjs`). Not done: a mode that also moves such files to the trash.
 - **Owner milestone:** SYNC-11/12. **Status:** Accepted.
 
+
+### R-76 - Calendar adapters were verified against fixtures, not the real services
+- **Severity/Likelihood:** High / Medium
+- **Impact:** A documented shape that differs in practice (field names, `410` behaviour, Graph window/delta quirks, consent screens) breaks sync for the owner; passing tests would hide it.
+- **Mitigation:** Fixtures follow the cited reference pages; M5-00/03/04/05/07/11 stay `IN_REVIEW`; REQ-007/008/009 say "implemented, live compatibility UNVERIFIED"; the live runbook and evidence template exist (`CALENDAR_SYNC.md` 12.7). **Status:** Open until the owner records the evidence.
+
+### R-77 - ICS feed URL is a bearer secret and a fetch target
+- **Severity/Likelihood:** High / Low
+- **Impact:** A leaked URL exposes the whole calendar; a hostile URL could probe the operator's network (SSRF).
+- **Mitigation:** Sealed at rest, masked everywhere, never logged; SSRF guard with pinned addresses and re-validated redirects, size/time caps, rate limit; revoke by regenerating the link (documented). **Status:** Mitigated in code and tests; a determined attacker who already controls the owner's session can still add a feed that points at a public host (accepted).
+
+### R-78 - Proton feed delay and the absence of a Proton API
+- **Severity/Likelihood:** Low / High
+- **Impact:** Proton changes appear late or not at all in Atlas; no write-back; a regenerated link disconnects the feed.
+- **Mitigation:** Documented; the last good events stay visible with a clear "link rejected" / "unreachable" error. **Status:** Accepted (outside Atlas's control).
+
+### R-79 - Microsoft delta window and one account per provider
+- **Severity/Likelihood:** Low / Medium
+- **Impact:** Microsoft events older than the window (default 90 days) or beyond +365 days are not shown; a second Google or Microsoft account cannot be connected.
+- **Mitigation:** Documented (`CALENDAR_SYNC.md` 11); window configurable; multi-account is a later change of the credential key. **Status:** Accepted for personal use.
+
+### R-80 - OAuth callback depends on the browser reaching `PUBLIC_BASE_URL`
+- **Severity/Likelihood:** Medium / Medium
+- **Impact:** With the name resolving to the tailnet only, connecting from a device off the tailnet fails at the redirect; a changed port or name gives `redirect_uri_mismatch`.
+- **Mitigation:** The Settings card shows the exact URI; the guide explains the `:9443` form and that the redirect is made by the browser; nothing is exposed publicly to make it work (SEC-01). **Status:** Open (operational).
+
 ## Review log
 
 | Date | Milestone | Change |
@@ -835,3 +861,4 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 | 2026-11-04 | M8-04 design (ADR-0068 PROPOSED) | R-63 to R-67 added (Android missed reminders, resident desktop app, clock/zone, duplicates/stale across devices, the hint channel); R-59 updated (resident app chosen as mitigation). Design only, nothing built. |
 | 2026-11-10 | SYNC-11 | R-74 and R-75 added; R-22, R-48, R-54 and R-73 updated (conflict, notice and restore screens exist; the shell no longer runs two sync engines; the browser stays on its engine, SYNC-11d planned). |
 | 2026-11-10 | SYNC-09 phase 1 (Linux) | R-69 to R-73 added (script in the webview, AppImage supply chain, hidden webview, folder races/limits, device scope vs web UI); R-60 now Mitigating; R-36 unchanged (Windows still not run); R-58 unchanged (DMABUF variable is set automatically on NVIDIA); a new advisory (RUSTSEC-2026-0459, SQLite) was found by `cargo audit` and fixed by moving rusqlite 0.37 to 0.41. |
+| 2026-11-10 | Calendar Stage A | R-76 to R-80 added; R-01 and R-13 moved to Mitigating (guide, adapters, re-authorisation flag), not closed: no live evidence yet. |

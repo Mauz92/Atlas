@@ -38,6 +38,10 @@ EXTERNAL_EVENT_COLUMNS = {
     "source_updated_at",
     "last_synced_at",
     "deleted_at",
+    "location",
+    "description",
+    "web_link",
+    "series_id",
     "created_at",
     "updated_at",
 }

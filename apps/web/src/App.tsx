@@ -7,6 +7,7 @@ import { Layout } from "./components/Layout";
 import { ShellHalt } from "./components/ShellHalt";
 import { useShellSync } from "./hooks/useShellSync";
 import { SETTINGS_REDIRECTS } from "./lib/settingsSections";
+import { CalendarPage } from "./pages/Calendar";
 import { Changes } from "./pages/Changes";
 import { Inbox } from "./pages/Inbox";
 import { Login } from "./pages/Login";
@@ -57,12 +58,13 @@ export default function App() {
           {/* Day is no longer a destination (ADR-0051 §2): old links land on Today. */}
           <Route path="/day" element={<Navigate to="/" replace />} />
           <Route path="/week" element={<Week />} />
+          <Route path="/calendar" element={<CalendarPage />} />
           {/* The standalone Board is gone (ADR-0064): the board lives in each project. Old links land on Projects. */}
           <Route path="/board" element={<Navigate to="/projects" replace />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:id" element={<ProjectPage />} />
-          {/* Calendar, Sync and Notifications are Settings sections now (UX-08): old links land there. */}
+          {/* Sync and Notifications are Settings sections now (UX-08): old links land there. The Calendar *page* is M5-07. */}
           {Object.entries(SETTINGS_REDIRECTS).map(([from, to]) => (
             <Route key={from} path={from} element={<Navigate to={to} replace />} />
           ))}

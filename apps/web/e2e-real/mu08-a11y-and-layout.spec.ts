@@ -15,6 +15,7 @@ const PAGES = [
   "/upcoming",
   "/day",
   "/week",
+  "/calendar",
   "/tasks",
   "/projects",
   "/notes",

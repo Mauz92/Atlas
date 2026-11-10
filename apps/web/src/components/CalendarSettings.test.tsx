@@ -1,91 +1,141 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 import { calendarApi } from "../api/client";
-import { makeProviderSyncStatus } from "../test/calendar";
+import { makeAccount, makeSource } from "../test/calendar";
 import { CalendarSettings } from "./CalendarSettings";
 
-vi.mock("../api/client", () => ({
-  calendarApi: { syncStatus: vi.fn(), syncProvider: vi.fn() },
+vi.mock("../api/client", async (original) => ({
+  ...(await original<typeof import("../api/client")>()),
+  calendarApi: {
+    accounts: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), syncProvider: vi.fn(),
+    updateSource: vi.fn(), previewFeed: vi.fn(), addFeed: vi.fn(), removeFeed: vi.fn(),
+  },
 }));
 
-const statusMock = vi.mocked(calendarApi.syncStatus);
-const syncMock = vi.mocked(calendarApi.syncProvider);
+const api = vi.mocked(calendarApi);
+const ics = (extra = {}) => makeAccount({ provider: "ics", label: "Calendar feed (ICS)", redirect_uri: null, ...extra });
 
-beforeEach(() => {
-  vi.resetAllMocks();
-});
+function show(path = "/settings/calendar") {
+  return render(<MemoryRouter initialEntries={[path]}><CalendarSettings /></MemoryRouter>);
+}
+
+beforeEach(() => vi.resetAllMocks());
 
 describe("CalendarSettings", () => {
-  it("renders the provider sync status and last sync", async () => {
-    statusMock.mockResolvedValue({
-      providers: [makeProviderSyncStatus({ provider: "google", state: "idle" })],
+  it("shows setup help, not a broken button, for a provider the server has not configured", async () => {
+    api.accounts.mockResolvedValue({
+      providers: [makeAccount({ configured: false, setup_problems: ["client_id_missing", "public_base_url_not_https"] }), ics()],
     });
-
-    render(<CalendarSettings />);
-
-    expect(await screen.findByRole("heading", { name: "Google Calendar" })).toBeInTheDocument();
-    expect(screen.getByText(/Last synced/)).toBeInTheDocument();
-    expect(screen.getByText("Up to date")).toBeInTheDocument();
-    expect(statusMock).toHaveBeenCalledTimes(1);
+    show();
+    const card = (await screen.findByRole("heading", { name: "Google Calendar" })).closest("li")!;
+    expect(within(card).getByText("Not configured")).toBeInTheDocument();
+    expect(within(card).getByText(/client ID is not set/)).toBeInTheDocument();
+    expect(within(card).getByText("https://atlas.example.test/api/calendar/google/callback")).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: /Connect/ })).toBeNull();
   });
 
-  it("shows an empty state when no calendar account is connected", async () => {
-    statusMock.mockResolvedValue({ providers: [] });
+  it("starts the OAuth redirect from the Connect button", async () => {
+    api.accounts.mockResolvedValue({ providers: [makeAccount(), ics()] });
+    api.connect.mockResolvedValue({ authorization_url: "https://accounts.example.test/auth?state=x" });
+    const assign = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign });
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Connect Google Calendar" }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("https://accounts.example.test/auth?state=x"));
+    vi.unstubAllGlobals();
+  });
 
-    render(<CalendarSettings />);
+  it("lists calendars with a visibility toggle, a colour and badges, and saves changes", async () => {
+    api.accounts.mockResolvedValue({
+      providers: [
+        makeAccount({
+          connected: true,
+          calendars: [makeSource(), makeSource({ id: "src-2", name: "Holidays", is_primary: false, is_read_only: true, selected: false, color: "3" })],
+        }),
+        ics(),
+      ],
+    });
+    api.updateSource.mockResolvedValue(makeSource());
+    show();
+    const holidays = await screen.findByRole("checkbox", { name: /Holidays/ });
+    expect(holidays).not.toBeChecked();
+    expect(screen.getByText("Read only")).toBeInTheDocument();
+    expect(screen.getByText("Primary")).toBeInTheDocument();
+    fireEvent.click(holidays);
+    await waitFor(() => expect(api.updateSource).toHaveBeenCalledWith("src-2", { selected: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Colour of Holidays: Green" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Purple" }));
+    await waitFor(() => expect(api.updateSource).toHaveBeenCalledWith("src-2", { color: "7" }));
+  });
 
-    expect(
-      await screen.findByText(/No calendar accounts are connected yet/i),
-    ).toBeInTheDocument();
+  it("asks before disconnecting and says what happens to the events", async () => {
+    api.accounts.mockResolvedValue({ providers: [makeAccount({ connected: true, calendars: [makeSource()] }), ics()] });
+    api.disconnect.mockResolvedValue({ revoked_at_provider: true, calendars_removed: 1, events_removed: 12 });
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
+    expect(screen.getByText(/deletes the saved sign-in/)).toBeInTheDocument();
+    expect(api.disconnect).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect and delete stored events" }));
+    await waitFor(() => expect(api.disconnect).toHaveBeenCalledWith("google"));
+    expect(await screen.findByText(/12 stored events were removed/)).toBeInTheDocument();
+  });
+
+  it("asks to reconnect when the provider rejected the saved sign-in", async () => {
+    api.accounts.mockResolvedValue({ providers: [makeAccount({ connected: true, needs_reauth: true, calendars: [makeSource()] }), ics()] });
+    show();
+    expect(await screen.findByText("Needs re-authorisation")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reconnect" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/stopped accepting/);
+  });
+
+  it("shows the last sync error of a calendar", async () => {
+    api.accounts.mockResolvedValue({
+      providers: [makeAccount(), ics({ connected: true, calendars: [makeSource({ provider: "ics", id: "f1", name: "Proton", state: "error", last_error: "feed unreachable: timed out", feed_url_display: "https://calendar.proton.me/••••••••" })] })],
+    });
+    show();
+    expect(await screen.findByText("feed unreachable: timed out")).toBeInTheDocument();
+    expect(screen.getByLabelText("Feed link, masked")).toHaveTextContent("https://calendar.proton.me/");
+  });
+
+  it("tests and adds a feed with a masked link field, then clears it", async () => {
+    api.accounts.mockResolvedValue({ providers: [makeAccount(), ics()] });
+    api.previewFeed.mockResolvedValue({ event_count: 4, name: null, skipped: 0 });
+    api.addFeed.mockResolvedValue(makeSource({ provider: "ics" }));
+    show();
+    const link = await screen.findByLabelText("Feed link (secret)");
+    expect(link).toHaveAttribute("type", "password");
+    fireEvent.change(link, { target: { value: "https://calendar.proton.me/secret.ics" } });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Proton" } });
+    fireEvent.click(screen.getByRole("button", { name: "Test feed" }));
+    expect(await screen.findByText(/with 4 events/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add feed" }));
+    await waitFor(() => expect(api.addFeed).toHaveBeenCalledWith({ url: "https://calendar.proton.me/secret.ics", name: "Proton", color: undefined }));
+    await waitFor(() => expect(screen.getByLabelText("Feed link (secret)")).toHaveValue(""));
+  });
+
+  it("confirms before removing a feed", async () => {
+    api.accounts.mockResolvedValue({ providers: [makeAccount(), ics({ connected: true, calendars: [makeSource({ provider: "ics", id: "f1", name: "Proton" })] })] });
+    api.removeFeed.mockResolvedValue(undefined);
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Remove feed Proton" }));
+    expect(api.removeFeed).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Remove feed" }));
+    await waitFor(() => expect(api.removeFeed).toHaveBeenCalledWith("f1"));
+  });
+
+  it("reports the outcome of the OAuth callback once and removes it from the address", async () => {
+    api.accounts.mockResolvedValue({ providers: [makeAccount({ connected: true, calendars: [makeSource()] }), ics()] });
+    show("/settings/calendar?calendar_provider=google&calendar_result=insufficient_scope");
+    expect(await screen.findByText(/not given permission to read your calendars/)).toBeInTheDocument();
   });
 
   it("shows a clear load error and can retry", async () => {
-    statusMock.mockRejectedValueOnce(new Error("Server unreachable"));
-
-    render(<CalendarSettings />);
-
+    api.accounts.mockRejectedValueOnce(new Error("Server unreachable"));
+    show();
     expect(await screen.findByRole("alert")).toHaveTextContent("Server unreachable");
-
-    statusMock.mockResolvedValueOnce({ providers: [makeProviderSyncStatus()] });
+    api.accounts.mockResolvedValueOnce({ providers: [makeAccount(), ics()] });
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-
     expect(await screen.findByRole("heading", { name: "Google Calendar" })).toBeInTheDocument();
-  });
-
-  it("triggers a manual sync and reloads the status", async () => {
-    statusMock.mockResolvedValue({
-      providers: [
-        makeProviderSyncStatus({
-          provider: "google",
-          state: "error",
-          last_success_at: null,
-          last_error: "simulated provider outage",
-          calendars: [],
-        }),
-      ],
-    });
-    syncMock.mockResolvedValue({ provider: "google", calendars: [] });
-
-    render(<CalendarSettings />);
-    await screen.findByRole("heading", { name: "Google Calendar" });
-
-    fireEvent.click(screen.getByRole("button", { name: "Sync now" }));
-
-    await waitFor(() => expect(syncMock).toHaveBeenCalledWith("google"));
-    await waitFor(() => expect(statusMock).toHaveBeenCalledTimes(2));
-  });
-
-  it("surfaces a manual-sync failure", async () => {
-    statusMock.mockResolvedValue({
-      providers: [makeProviderSyncStatus({ provider: "google" })],
-    });
-    syncMock.mockRejectedValue(new Error("calendar sync is not available for this provider"));
-
-    render(<CalendarSettings />);
-    await screen.findByRole("heading", { name: "Google Calendar" });
-
-    fireEvent.click(screen.getByRole("button", { name: "Sync now" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(/Could not sync Google Calendar/);
   });
 });

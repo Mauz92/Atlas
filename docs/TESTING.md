@@ -325,6 +325,19 @@ For each provider (Google, Microsoft):
 
 Real-account integration tests use **dedicated test accounts** and isolated test data only.
 
+**What exists for Stage A (2026-11-10), all against the local fake provider, never the internet:**
+`tests/fakes/calendar_provider.py` (OAuth + Google/Graph/ICS shapes; `python -m tests.fakes.calendar_provider`);
+unit: `test_calendar_recurrence` (DST, all-day, EXDATE/UNTIL, bounds, property tests over random zones/rules),
+`test_calendar_ics`, `test_calendar_netguard` (SSRF matrix), `test_calendar_feed_fetch`, `test_calendar_http`
+(classification, bounded backoff, origin pinning), `test_calendar_provider_adapters`; integration:
+`test_calendar_oauth_api`, `test_calendar_feeds_events`, `test_calendar_provider_sync` (cursor safety with fault
+injection between apply and cursor save, 410 resync, scan, re-authorisation), `test_calendar_sources_migration`,
+`test_calendar_diagnostics`; frontend: `lib/calendar.test.ts`, `CalendarSettings.test.tsx`, `pages/Calendar.test.tsx`;
+real stack: `e2e-real/cal01-calendar.spec.ts` (fake provider started by `global-setup.ts`; OAuth redirect, feed,
+Today, four views, axe in both themes at 360/390/768/1440, no sideways scroll). **These prove the mapping and the
+safety properties, not provider compatibility (AGENTS.md section 10):** the live runbook is
+`CALENDAR_SYNC.md` 12.7 and its results are `NOT RUN` until the owner records them.
+
 ## 6. End-to-End Scenarios
 
 1. Create a note and retrieve it from another client.

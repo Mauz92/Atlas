@@ -29,6 +29,8 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -76,6 +78,13 @@ class ExternalEvent(Base, TimestampMixin):
     last_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     #: Tombstone: set when the provider no longer returns the event; never a hard delete.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Display-only detail fields (M5-07): bounded text, never authoritative.
+    location: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The provider's own page for the event (Google ``htmlLink`` / Graph ``webLink``), if any.
+    web_link: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: For an exception/override of a recurring series, the master's ``external_event_id``.
+    series_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
@@ -84,7 +93,82 @@ class ExternalEvent(Base, TimestampMixin):
             "external_event_id",
             name="uq_external_events_user_provider_external_event_id",
         ),
+        # The unified view reads one user's events by calendar and time (M5-07).
+        Index("ix_external_events_user_range", "user_id", "start_at", "end_at"),
     )
+
+
+class CalendarSource(Base, TimestampMixin):
+    """One calendar the user can show: a provider calendar or a secret ICS feed (M5-05, M5-11).
+
+    For Google/Microsoft the rows are *discovered* from the connected account
+    (``external_id`` = the provider's calendar id) and keep the user's choices (``selected``,
+    ``color``) across re-discovery. For ``provider = 'ics'`` the row **is** the feed:
+    ``external_id``
+    is the row's own id and the feed URL - a secret - is stored sealed in ``feed_url_ciphertext``
+    (AES-GCM, bound to the user and row), never in clear and never returned by the API.
+    ``calendar_id`` in ``external_events``/``sync_cursors`` equals ``external_id``.
+    """
+
+    __tablename__ = "calendar_sources"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    #: A design-token palette key (``blue``, ``green`` ...), never a raw colour.
+    color: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    time_zone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC")
+    is_read_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    is_primary: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    #: Shown in the unified view *and* synced. Unselected calendars are not fetched.
+    selected: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
+    feed_url_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    feed_url_key_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: ``https://host/...`` with the secret path masked: what the UI may show.
+    feed_url_display: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "provider", "external_id", name="uq_calendar_sources_user_provider_external"
+        ),
+    )
+
+
+class OAuthState(Base, TimestampMixin):
+    """A pending OAuth authorisation: single use, short-lived, bound to the browser session.
+
+    ``state_hash`` is the SHA-256 of the random ``state`` sent to the provider (the raw value is
+    never stored). ``session_hash`` binds it to the session that started the flow, so a callback
+    from another browser/session is refused (login CSRF). ``verifier_ciphertext`` seals the PKCE
+    code verifier. ``used_at`` makes it single use.
+    """
+
+    __tablename__ = "oauth_states"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    state_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    session_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    verifier_ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    key_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (Index("ix_oauth_states_expires_at", "expires_at"),)
 
 
 class SyncCursor(Base, TimestampMixin):

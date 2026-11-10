@@ -63,7 +63,7 @@ describe("Week", () => {
     );
 
     // Exactly one section per day of the week, Monday first, in a stable order.
-    const headings = screen.getAllByRole("heading", { level: 2 });
+    const headings = screen.getAllByRole("heading", { level: 2 }).filter((heading) => heading.id !== "week-events-title");
     expect(headings).toHaveLength(7);
     expect(headings[0]).toHaveTextContent(dayLabelOf(weekStart));
 
@@ -105,10 +105,9 @@ describe("Week", () => {
     });
     render(<Week />);
     expect(await screen.findByText("Today job")).toBeInTheDocument();
-    const headings = screen.getAllByRole("heading", { level: 2 });
+    const headings = screen.getAllByRole("heading", { level: 2 }).filter((heading) => heading.id !== "week-events-title");
     expect(headings).toHaveLength(7);
-    const todayCard = screen
-      .getAllByRole("heading", { level: 2 })
+    const todayCard = headings
       .find((heading) => heading.textContent?.startsWith("Today"))
       ?.closest("section") as HTMLElement;
     expect(todayCard).toHaveClass("is-today");

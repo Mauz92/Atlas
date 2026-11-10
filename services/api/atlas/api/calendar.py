@@ -23,7 +23,7 @@ Security posture (SECURITY.md T2):
 
 from __future__ import annotations
 
-from typing import Annotated, NoReturn
+from typing import Annotated, Literal, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
@@ -43,8 +43,9 @@ from ..calendar import (
     SyncStatusService,
     TokenBundle,
     UnknownProviderError,
-    default_registry,
+    default_registry,  # noqa: F401  (kept importable for tests)
 )
+from ..calendar.registry import production_registry
 from .deps import CurrentUser, DbSession
 from .schemas import (
     CalendarCursorStatusOut,
@@ -195,7 +196,7 @@ def get_adapter_registry() -> AdapterRegistry:
     Overridable via ``app.dependency_overrides`` so a test can inject the M5-02 fake seam; the real
     Google/Microsoft factories register here once M5-03/M5-04 land.
     """
-    return default_registry()
+    return production_registry()
 
 
 AdapterRegistryDep = Annotated[AdapterRegistry, Depends(get_adapter_registry)]
@@ -251,6 +252,7 @@ def provider_status_out(item: ProviderSyncStatus) -> ProviderSyncStatusOut:
         last_error=item.last_error,
         last_error_at=item.last_error_at,
         calendars=[cursor_status_out(calendar) for calendar in item.calendars],
+        needs_reauth=item.needs_reauth,
     )
 
 
@@ -289,7 +291,7 @@ async def sync_status(user: CurrentUser, session: DbSession) -> CalendarSyncStat
 
 @router.post("/providers/{provider}/sync", response_model=ProviderSyncOut)
 async def sync_provider(
-    provider: CredentialProvider,
+    provider: Literal["google", "microsoft", "ics"],
     user: CurrentUser,
     session: DbSession,
     registry: AdapterRegistryDep,

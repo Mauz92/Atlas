@@ -36,6 +36,6 @@ describe("settings sections", () => {
       expect(parseSettingsSection(id)).not.toBeNull();
       expect(settingsPath(parseSettingsSection(id)!)).toBe(target);
     }
-    expect(Object.keys(SETTINGS_REDIRECTS).sort()).toEqual(["/calendar", "/notifications", "/sync"]);
+    expect(Object.keys(SETTINGS_REDIRECTS).sort()).toEqual(["/notifications", "/sync"]);
   });
 });

@@ -29,6 +29,14 @@ export type CalendarSyncStatus = components["schemas"]["CalendarSyncStatusOut"];
 export type ProviderSyncStatus = components["schemas"]["ProviderSyncStatusOut"];
 export type CalendarCursorStatus = components["schemas"]["CalendarCursorStatusOut"];
 export type ProviderSyncResult = components["schemas"]["ProviderSyncOut"];
+export type CalendarAccounts = components["schemas"]["AccountsOut"];
+export type CalendarProviderAccount = components["schemas"]["ProviderAccountOut"];
+export type CalendarSource = components["schemas"]["SourceOut"];
+export type CalendarFeedPreview = components["schemas"]["FeedPreviewOut"];
+export type CalendarDisconnectResult = components["schemas"]["DisconnectOut"];
+export type CalendarEvent = components["schemas"]["EventOut"];
+export type CalendarEventDetail = components["schemas"]["EventDetailOut"];
+export type CalendarEventList = components["schemas"]["EventListOut"];
 export type ChangeFeed = components["schemas"]["ChangesOut"];
 export type ChangeItem = components["schemas"]["ChangeOut"];
 export type SyncDevice = components["schemas"]["DeviceInfo"];
@@ -548,8 +556,44 @@ export const calendarApi = {
    * Trigger one read-only sync for a provider (M5-08). Idempotent — repeating it never duplicates an
    * event. It returns per-calendar counts only, never a cursor value or event content.
    */
-  syncProvider: (provider: CredentialProvider) =>
+  syncProvider: (provider: CredentialProvider | "ics") =>
     apiFetch<ProviderSyncResult>(`/api/calendar/providers/${provider}/sync`, { method: "POST" }),
+  /** The Google, Microsoft and ICS cards: setup state, connection state and calendars (M5-05). */
+  accounts: () => apiFetch<CalendarAccounts>("/api/calendar/accounts"),
+  /** Start OAuth; the caller navigates the browser to `authorization_url`. */
+  connect: (provider: "google" | "microsoft") =>
+    apiFetch<{ authorization_url: string }>(`/api/calendar/accounts/${provider}/connect`, {
+      method: "POST",
+    }),
+  /** Disconnect: revoke where supported, delete the credential, calendars and projected events. */
+  disconnect: (provider: "google" | "microsoft") =>
+    apiFetch<CalendarDisconnectResult>(`/api/calendar/accounts/${provider}`, { method: "DELETE" }),
+  updateSource: (id: string, patch: { selected?: boolean; color?: string; name?: string }) =>
+    apiFetch<CalendarSource>(`/api/calendar/sources/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  previewFeed: (url: string) =>
+    apiFetch<CalendarFeedPreview>("/api/calendar/feeds/preview", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
+  addFeed: (feed: { url: string; name: string; color?: string }) =>
+    apiFetch<CalendarSource>("/api/calendar/feeds", { method: "POST", body: JSON.stringify(feed) }),
+  removeFeed: (id: string) => apiFetch<void>(`/api/calendar/feeds/${id}`, { method: "DELETE" }),
+  /** Occurrences overlapping `[start, end)` (UTC instants, at most 100 days). Read-only. */
+  events: (start: Date, end: Date) => {
+    const params = new URLSearchParams({
+      start: start.toISOString(),
+      end: end.toISOString(),
+      limit: "1000",
+    });
+    return apiFetch<CalendarEventList>(`/api/calendar/events?${params.toString()}`);
+  },
+  eventDetail: (id: string, occurrence: string | null) =>
+    apiFetch<CalendarEventDetail>(
+      `/api/calendar/events/${id}${occurrence ? `?occurrence=${encodeURIComponent(occurrence)}` : ""}`,
+    ),
 };
 
 /** Options for the change-feed pull (M7-01). */

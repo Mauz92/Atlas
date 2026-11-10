@@ -29,6 +29,29 @@ export function makeProviderSyncStatus(
     last_error: null,
     last_error_at: null,
     calendars: [makeCursorStatus()],
+    needs_reauth: false,
+    ...overrides,
+  };
+}
+
+import type { CalendarProviderAccount, CalendarSource } from "../api/client";
+
+/** A complete `CalendarSource` (Settings -> Calendar, event colours), for component tests. */
+export function makeSource(overrides: Partial<CalendarSource> = {}): CalendarSource {
+  return {
+    id: "src-1", provider: "google", name: "Owner", color: "1", time_zone: "Europe/Berlin",
+    is_read_only: false, is_primary: true, selected: true, feed_url_display: null,
+    state: "idle", last_success_at: "2026-11-10T09:00:00Z", last_error: null, last_error_at: null,
+    ...overrides,
+  };
+}
+
+/** A complete provider card from `GET /api/calendar/accounts`. */
+export function makeAccount(overrides: Partial<CalendarProviderAccount> = {}): CalendarProviderAccount {
+  return {
+    provider: "google", label: "Google Calendar", configured: true, setup_problems: [],
+    redirect_uri: "https://atlas.example.test/api/calendar/google/callback",
+    connected: false, needs_reauth: false, scopes: [], calendars: [],
     ...overrides,
   };
 }

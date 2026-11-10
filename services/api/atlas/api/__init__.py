@@ -2,6 +2,7 @@
 
 from .auth import router as auth_router
 from .calendar import router as calendar_router
+from .calendar_accounts import router as calendar_accounts_router
 from .changes import router as changes_router
 from .devices import router as devices_router
 from .export import router as export_router
@@ -19,6 +20,7 @@ from .tasks import router as tasks_router
 
 __all__ = [
     "auth_router",
+    "calendar_accounts_router",
     "calendar_router",
     "changes_router",
     "devices_router",

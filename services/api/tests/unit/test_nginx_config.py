@@ -185,3 +185,22 @@ def test_forwarded_proto_of_an_https_proxy_is_preserved() -> None:
     """P0-2: nginx must not overwrite X-Forwarded-Proto: https from tailscale serve or Caddy."""
     text = NGINX_CONF.read_text(encoding="utf-8")
     assert "X-Forwarded-Proto $atlas_forwarded_proto" in text and "$http_x_forwarded_proto" in text
+
+
+def test_tls_variant_is_generated_from_the_shipped_config_and_keeps_its_limits() -> None:
+    """``nginx.tls.conf`` is derived from ``nginx.conf`` so its limits cannot drift."""
+    web = NGINX_CONF.parent
+    tls = (web / "nginx.tls.conf").read_text()
+    result = subprocess.run(
+        ["python3", str(web / "make-nginx-tls.py"), "--check"], capture_output=True, check=False
+    )
+    assert result.returncode == 0, "run: python3 apps/web/make-nginx-tls.py"
+    assert tls.count("client_max_body_size 11m") == 2  # both servers keep the note limit
+    assert tls.count("proxy_read_timeout 75s") == 2  # and the long-poll hold
+    assert "listen 443 ssl;" in tls and "listen 80;" in tls
+
+
+def test_tls_compose_override_cannot_publish_without_an_explicit_bind_address() -> None:
+    """The TLS port is published only on an address the operator names (never a silent 0.0.0.0)."""
+    override = (NGINX_CONF.parents[2] / "deploy" / "docker-compose.tls.yml").read_text()
+    assert "${ATLAS_TLS_BIND:?" in override

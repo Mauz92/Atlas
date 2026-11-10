@@ -52,7 +52,7 @@ describe("routes", () => {
     ["/tasks", "Tasks", "/tasks"],
     ["/projects", "Projects", "/projects"],
     ["/projects/abc", "Project", "/projects/abc"],
-    ["/calendar", "Settings", "/settings/calendar"],
+    ["/calendar", "Calendar", "/calendar"],
     ["/sync", "Settings", "/settings/sync"],
     ["/settings/data", "Settings", "/settings/data"],
     ["/search", "Search", "/search"],

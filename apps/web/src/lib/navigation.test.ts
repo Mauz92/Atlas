@@ -39,6 +39,7 @@ describe("NAV_SECTIONS", () => {
         "/inbox",
         "/upcoming",
         "/week",
+        "/calendar",
         "/tasks",
         "/projects",
         "/notes",
@@ -57,12 +58,13 @@ describe("NAV_SECTIONS", () => {
 });
 
 describe("palette pages", () => {
-  it("still offers Calendar, Sync and Notifications, now as Settings sections", () => {
+  it("offers the Calendar page, and Calendar accounts, Sync and Notifications as Settings sections", () => {
     const byLabel = Object.fromEntries(PALETTE_PAGES.map((page) => [page.label, page.to]));
     expect(byLabel).toMatchObject({
       Today: "/",
       Settings: "/settings",
-      Calendar: "/settings/calendar",
+      Calendar: "/calendar",
+      "Calendar accounts": "/settings/calendar",
       Sync: "/settings/sync",
       Notifications: "/settings/notifications",
       "Data and backups": "/settings/data",
@@ -77,6 +79,7 @@ describe("active state", () => {
     ["/", "/", "today"],
     ["/day", "/", "today"],
     ["/week/", "/week", "today"],
+    ["/calendar", "/calendar", "today"],
     ["/projects/abc", "project:abc", "projects"],
     ["/projects/zzz", "/projects", "projects"],
     ["/sync", "/settings", "settings"],

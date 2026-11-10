@@ -161,20 +161,24 @@ Set:
 The signing key never leaves the server; a destination the push service reports as gone (`404`/`410`)
 is disabled and never retried.
 
-### 4.5 Calendar providers (not yet user-facing)
+### 4.5 Calendar providers (Stage A, read-only)
 
-`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `MICROSOFT_CLIENT_ID`,
-`MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT`, `MICROSOFT_REDIRECT_URI` are read for the calendar
-integration. **The account-connection UI is not delivered**, so setting these does not yet enable a
-user-visible feature ([§10](#10-what-is-not-delivered-yet)).
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`/`MICROSOFT_TENANT` enable the
+Connect buttons in Settings -> Calendar; leave them empty and the card shows setup help instead. The redirect URIs are
+**not** settings: they are always `{PUBLIC_BASE_URL}/api/calendar/google/callback` and `.../microsoft/callback`
+(owner setup: `https://galaxia-atlas.duckdns.org:9443/...`). `ICS_POLL_SECONDS` (default 900, min 300), `ICS_MAX_BYTES`,
+`ICS_TIMEOUT_SECONDS` tune secret ICS feeds (ProtonMail "Share via link"); `ICS_ALLOW_HTTP` and `ICS_ALLOW_PRIVATE_HOSTS`
+are development-only (the API refuses to start with the latter in production). Step by step, the live-check runbook and
+the troubleshooting table: [`CALENDAR_SYNC.md`](CALENDAR_SYNC.md) section 12. Diagnose with
+`docker compose -f deploy/docker-compose.yml exec api atlas-admin calendar-status` (read-only, prints no secrets).
+Live behaviour with real providers is **unverified** until that runbook is recorded.
 
 ### 4.6 Passing settings into the containers
 
 The shipped `deploy/docker-compose.yml` forwards every setting the API and worker read from one shared
 `x-atlas-env` block (guarded by `tests/unit/test_compose_env.py`). `DATABASE_URL` is built from `POSTGRES_USER`/
-`POSTGRES_PASSWORD`/`POSTGRES_DB`, not read from `.env`. It does
-**not** forward `GOOGLE_*`/`MICROSOFT_*`/`FCM_*`/`EXPO_*`: the application does not read them yet
-(calendar adapters are blocked on M5-00). When you add a new setting, add it to the relevant service's
+`POSTGRES_PASSWORD`/`POSTGRES_DB`, not read from `.env`. It forwards
+`GOOGLE_*`/`MICROSOFT_*`/`ICS_*` too; it does **not** forward `FCM_*`/`EXPO_*` (the application does not read them). When you add a new setting, add it to the relevant service's
 `environment:` block, then `docker compose … up -d` to recreate the containers. Verify what a container actually
 received with `docker compose -f deploy/docker-compose.yml exec api env | sort`.
 
@@ -348,7 +352,7 @@ directly. Remediation guidance and the recovery-scenario table are in [`OPERATIO
 | Migrations fail mid-deploy | A migration aborts the whole transaction, leaving the DB at its prior revision; retake the pre-upgrade backup and follow [`DEPLOYMENT.md`](DEPLOYMENT.md) §7. |
 | A whole feature "does nothing" despite config | The compose stack may not forward that variable — see [§4.6](#46-passing-settings-into-the-containers). |
 | Reminders never arrive as notifications | VAPID is not configured (feature disabled by design) — set the keys ([§4.4](#44-notifications--web-push-vapid-keys)); check the worker log for `web push disabled`. |
-| **Calendar** shows nothing to sync | No account is connected and account-connection is not delivered yet ([§10](#10-what-is-not-delivered-yet)). |
+| **Calendar** shows nothing to sync | Nothing is connected yet, or the provider is "not configured" (client id/secret empty). See [`CALENDAR_SYNC.md`](CALENDAR_SYNC.md) section 12; `atlas-admin calendar-status` tells which. |
 | A backup is untrustworthy | `atlas-backup verify` non-zero; inspect with `atlas-backup list` and use an older set ([`OPERATIONS.md`](OPERATIONS.md) §2.1). |
 | Restore "succeeds" but data is missing | You may have restored only one store — a complete restore needs the **database and the notes** together ([`OPERATIONS.md`](OPERATIONS.md) §1/§2). |
 

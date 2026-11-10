@@ -14,6 +14,10 @@ import { makeTask } from "../test/tasks";
 import { Today } from "./Today";
 
 vi.mock("../api/client", () => ({
+  calendarApi: {
+    accounts: vi.fn(async () => ({ providers: [] })),
+    events: vi.fn(async () => ({ events: [], total: 0, truncated: false })),
+  },
   tasksApi: {
     list: vi.fn(),
     create: vi.fn(),
@@ -137,7 +141,7 @@ describe("Today", () => {
     expect(screen.getByText("No note for today yet.")).toBeInTheDocument();
     const events = screen.getByRole("region", { name: "Events" });
     expect(
-      within(events).getByText(/once a calendar is connected/),
+      await within(events).findByText(/No calendar is connected/),
     ).toBeInTheDocument();
     expect(within(events).queryAllByRole("listitem")).toHaveLength(0);
   });

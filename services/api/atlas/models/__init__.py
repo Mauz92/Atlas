@@ -1,7 +1,7 @@
 """ORM models. Importing this package registers all tables on ``Base.metadata``."""
 
 from .base import TimestampMixin
-from .calendar import ExternalEvent, SyncCursor
+from .calendar import CalendarSource, ExternalEvent, OAuthState, SyncCursor
 from .change import ChangeLog
 from .credential import CredentialProvider, ProviderCredential
 from .device import Device
@@ -27,6 +27,7 @@ from .user import User
 
 __all__ = [
     "AuthSession",
+    "CalendarSource",
     "ChangeLog",
     "CredentialProvider",
     "Device",
@@ -42,6 +43,7 @@ __all__ = [
     "NoteRevision",
     "NoteTag",
     "NotificationDevice",
+    "OAuthState",
     "Project",
     "ProjectStatus",
     "ProviderCredential",

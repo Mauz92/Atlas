@@ -56,6 +56,10 @@ def projected_values(event: Event) -> dict[str, Any]:
         "recurrence_id": event.recurrence_id,
         "recurrence_rule": event.recurrence_rule,
         "source_updated_at": event.updated,
+        "location": event.location,
+        "description": event.description,
+        "web_link": event.web_link,
+        "series_id": event.series_id,
     }
 
 

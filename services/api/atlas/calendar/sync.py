@@ -118,7 +118,7 @@ class CalendarSyncService:
         cursor_before = cursor_row.cursor_value if cursor_row is not None else None
 
         try:
-            events, deletions, next_cursor, pages = await self._fetch(
+            events, deletions, next_cursor, pages, is_snapshot = await self._fetch(
                 adapter, calendar_id, cursor_before, page_size
             )
         except Exception as exc:  # provider failure: nothing was applied, cursor stays put
@@ -127,7 +127,13 @@ class CalendarSyncService:
 
         now = self._now()
         try:
-            applied = await self._apply(provider, events, deletions, now)
+            applied = await self._apply(
+                provider,
+                events,
+                deletions,
+                now,
+                snapshot_calendar=calendar_id if is_snapshot else None,
+            )
             await self._advance_cursor(provider, calendar_id, adapter.cursor_type, next_cursor, now)
             await self.session.commit()
         except Exception as exc:
@@ -159,7 +165,7 @@ class CalendarSyncService:
         calendar_id: str,
         cursor: str | None,
         page_size: int | None,
-    ) -> tuple[list[Event], list[EventDeletion], str | None, int]:
+    ) -> tuple[list[Event], list[EventDeletion], str | None, int, bool]:
         """Drain every page of one pass; return events, tombstones, the final cursor and page count.
 
         The same ``cursor`` is carried across pages (the contract's contract) and the durable
@@ -180,7 +186,7 @@ class CalendarSyncService:
             if page.has_more:
                 page_token = page.next_page_token
                 continue
-            return events, deletions, page.next_cursor, pages
+            return events, deletions, page.next_cursor, pages, page.is_snapshot
 
     # --- writing ----------------------------------------------------------------
 
@@ -190,6 +196,8 @@ class CalendarSyncService:
         events: Sequence[Event],
         deletions: Sequence[EventDeletion],
         now: datetime,
+        *,
+        snapshot_calendar: str | None = None,
     ) -> ApplyResult:
         """Upsert the changed events and tombstone the deletions (no commit here).
 
@@ -230,9 +238,48 @@ class CalendarSyncService:
             )
             tombstoned += int(getattr(result, "rowcount", 0) or 0)
 
+        if snapshot_calendar is not None:
+            tombstoned += await self._tombstone_absent(
+                provider, snapshot_calendar, {event.id for event in events}, now
+            )
+
         return ApplyResult(
             created=created, updated=updated, unchanged=unchanged, tombstoned=tombstoned
         )
+
+    async def _tombstone_absent(
+        self, provider: str, calendar_id: str, seen: set[str], now: datetime
+    ) -> int:
+        """Tombstone live projections of ``calendar_id`` that a *complete* snapshot did not list.
+
+        Only reachable when the adapter flagged the final page ``is_snapshot`` (it read the whole
+        listing without error), so an event missing from it is genuinely gone: this is how a feed
+        without deletion markers (ICS) and a full resync after ``410 Gone`` learn about deletions.
+        A short or failed read never gets here - it raises before the transaction.
+        """
+        live = await self.session.scalars(
+            select(ExternalEvent.external_event_id).where(
+                ExternalEvent.user_id == self.user_id,
+                ExternalEvent.provider == provider,
+                ExternalEvent.calendar_id == calendar_id,
+                ExternalEvent.deleted_at.is_(None),
+            )
+        )
+        absent = [event_id for event_id in live if event_id not in seen]
+        total = 0
+        for start in range(0, len(absent), 500):
+            result = await self.session.execute(
+                update(ExternalEvent)
+                .where(
+                    ExternalEvent.user_id == self.user_id,
+                    ExternalEvent.provider == provider,
+                    ExternalEvent.external_event_id.in_(absent[start : start + 500]),
+                    ExternalEvent.deleted_at.is_(None),
+                )
+                .values(deleted_at=now, last_synced_at=now)
+            )
+            total += int(getattr(result, "rowcount", 0) or 0)
+        return total
 
     @staticmethod
     def _upsert_events_statement() -> Insert:
@@ -253,6 +300,10 @@ class CalendarSyncService:
                 "recurrence_id": base.excluded.recurrence_id,
                 "recurrence_rule": base.excluded.recurrence_rule,
                 "source_updated_at": base.excluded.source_updated_at,
+                "location": base.excluded.location,
+                "description": base.excluded.description,
+                "web_link": base.excluded.web_link,
+                "series_id": base.excluded.series_id,
                 "last_synced_at": base.excluded.last_synced_at,
                 "deleted_at": None,
                 "updated_at": func.now(),

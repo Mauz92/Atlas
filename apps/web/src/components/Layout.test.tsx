@@ -140,7 +140,7 @@ describe("Shell navigation", () => {
     ["/search", "Search", "Settings"],
     ["/settings", "Settings", "Settings"],
     ["/settings/sync", "Settings", "Settings"],
-    ["/calendar", "Settings", "Settings"],
+    ["/calendar", "Calendar", "Today"],
   ])("at %s exactly one sidebar item (%s) and one rail item (%s) are active", async (path, item, dest) => {
     await renderAt(path);
     const current = sidebarNav().querySelectorAll("[aria-current]");

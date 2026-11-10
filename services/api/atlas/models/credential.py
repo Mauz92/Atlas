@@ -80,6 +80,10 @@ class ProviderCredential(Base, TimestampMixin):
     refresh_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    #: Set when the provider rejected the stored sign-in (revoked, expired, ``invalid_grant``): the
+    #: account must be re-authorised. Cleared by a fresh connect. Syncs skip such an account
+    #: (M5-03).
+    needs_reauth_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # One credential per user+provider. The index this creates also serves the user-scoped lookups
     # (``user_id`` is the leading column), so no separate ``user_id`` index is needed.

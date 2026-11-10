@@ -389,3 +389,12 @@ User 1─* NotificationDevice
 - Retention window for change-feed tombstones — **settled in M7-02, changed in SYNC-03e**: a configurable
   window (`change_retention_days`, default 90 days, minimum 30) for tombstones only, with a per-user purge
   floor and a resync signal (ADR-0033 as amended by ADR-0059 D2). Entity tombstones remain in their own tables and are never purged.
+
+
+## 12. Calendar Stage A tables (implemented 2026-11-10, migration `a6c3e9d27b14`, ADR-0071/0072)
+
+- **`calendar_sources`** (owner: PostgreSQL; unique `(user_id, provider, external_id)`): one displayable calendar. `provider` = `google` | `microsoft` | `ics`; `external_id` = the provider's calendar id, or the row id for a feed; `name`, `color` (palette key `1`-`8`), `time_zone`, `is_read_only`, `is_primary`, `selected` (shown **and** synced). Feed rows also hold `feed_url_ciphertext`/`feed_url_key_id` (AES-GCM, AAD = user + row id) and `feed_url_display` (masked). Cascades with the user. Disconnect or feed removal deletes the rows with their projected events and cursors.
+- **`oauth_states`**: `state_hash` (unique SHA-256), `session_hash`, sealed PKCE verifier, `redirect_uri`, `expires_at`, `used_at`; rows older than 24 h are deleted when a flow starts.
+- **`provider_credentials.needs_reauth_at`**: set when the provider rejected the stored sign-in; cleared by a new connect.
+- **`external_events`** gained `location`, `description`, `web_link`, `series_id` (the master's `external_event_id` for an exception/override; `recurrence_id` is the occurrence's original start as `YYYYMMDDTHHMMSSZ`) and the index `ix_external_events_user_range`. `external_event_id` is `sha256(calendar_id)[:12]:provider-id`; `recurrence_rule` holds `RRULE:`/`EXDATE:`/`RDATE:` lines (instants in UTC) for Google/ICS masters; Microsoft occurrences arrive expanded and have none. All-day events store local-midnight instants plus the event's `time_zone`; the API derives the dates.
+- Cursor types: `sync_token` (Google), `delta_link` (Microsoft, `window_end|deltaLink`), `feed_validator` (ICS, JSON of ETag/Last-Modified/body hash).

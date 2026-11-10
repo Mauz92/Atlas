@@ -410,19 +410,32 @@ UI yet.
 
 ## 9. Calendar
 
-The **Settings → Calendar** section is a **status surface only** in this release: per provider it shows whether the
-account is connected, the last successful sync, the derived state and any error, with a manual
-**Sync now**.
+**Read-only.** Atlas shows your events; it never creates, edits or deletes anything at Google, Microsoft or Proton.
+Live behaviour with real accounts has not been verified yet (see `CALENDAR_SYNC.md` section 12.7 for the check the
+owner runs once).
 
-**There is no way to connect a Google or Microsoft account yet, and no day/week/month event view.**
-Those steps (milestone M5/M6) are blocked on real provider accounts (AR-001); until then the page
-reads *"No calendar accounts are connected yet."* Design and semantics for when it lands:
-[`CALENDAR_SYNC.md`](CALENDAR_SYNC.md).
+**Connect.** Settings -> Calendar has three cards. *Google Calendar* and *Microsoft Outlook* show **Connect** once the
+server owner has entered the provider's client id and secret ([setup guide](CALENDAR_SYNC.md), section 12); until
+then the card explains what is missing and shows the exact redirect address to register. You sign in at the provider
+(Atlas never sees your password), allow read access to your calendars, and return to Settings. Then tick the
+calendars to show and pick a colour for each. **Sync now** refreshes; **Disconnect** asks first and deletes Atlas's
+copy of the events (your real calendar is untouched; reconnecting syncs again).
 
-A task's due date never creates a calendar event automatically — task deadlines and external events
-are separate concepts (`CALENDAR_SYNC.md` §7).
+**ProtonMail and other feeds.** In Proton Calendar choose *Share via link*, create a view-only link, copy it, then in
+Atlas use *Add a calendar feed (ICS)*: paste the link, name it, **Test feed** (shows how many events it holds) and
+**Add feed**. The link is a secret: Atlas stores it encrypted and shows only the host afterwards; to revoke it,
+create a new link in Proton and replace the feed. Proton updates its feeds slowly, so changes can take hours to show.
 
----
+**The Calendar page** (sidebar -> Calendar): Day, Week, Month and Agenda; previous / Today / next; times are shown in
+your time zone (the event's own zone is on its detail); all-day and multi-day events sit in their own row;
+overlapping events sit side by side; recurring events are expanded. Click an event for its details and an
+"Open in ..." link. Keyboard: left/right arrows move, `t` is today, `d` `w` `m` `a` switch views. On a phone the
+Agenda is the default. **Today** and **Week** list the day's events in a separate **Events** section; a task's due
+date never becomes a calendar event.
+
+**If something is wrong.** A card saying *Needs re-authorisation* means the provider stopped accepting the saved
+sign-in: press **Reconnect**. A feed saying *link rejected* means the link was revoked: add the new one. See the
+troubleshooting table in [`CALENDAR_SYNC.md`](CALENDAR_SYNC.md) section 12.6.
 
 ## 10. Settings, themes and data portability
 

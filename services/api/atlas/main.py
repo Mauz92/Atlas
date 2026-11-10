@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -16,6 +17,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from . import __version__
 from .api import (
     auth_router,
+    calendar_accounts_router,
     calendar_router,
     changes_router,
     devices_router,
@@ -33,6 +35,7 @@ from .api import (
     tasks_router,
 )
 from .api.sync_gate import sync_error_response, sync_gate
+from .calendar import oauth
 from .config import get_settings
 from .db import dispose_engine
 from .logging import configure_logging
@@ -41,13 +44,20 @@ from .sync.protocol import SyncError
 
 #: Requests under this prefix carry OAuth token material, so their validation errors must not echo
 #: the submitted value (SECURITY.md T2); the auth endpoints carry passwords.
-_CREDENTIAL_PATH_PREFIXES = ("/api/calendar/credentials", "/api/auth/", "/api/devices")
+_CREDENTIAL_PATH_PREFIXES = (
+    "/api/calendar/credentials",
+    "/api/calendar/feeds",
+    "/api/auth/",
+    "/api/devices",
+)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     get_settings().validate_for_runtime()
+    for message in oauth.startup_problems():
+        logging.getLogger("atlas.calendar").warning(message)
     try:
         yield
     finally:
@@ -127,6 +137,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_router)
     app.include_router(search_router)
     app.include_router(calendar_router)
+    app.include_router(calendar_accounts_router)
     app.include_router(changes_router)
     app.include_router(resolutions_router)
     app.include_router(sync_wait_router)

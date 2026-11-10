@@ -31,6 +31,9 @@ RECONCILE_TASK = "notes.reconcile"
 #: The durable periodic calendar reconciliation scan (M5-10). A scan re-syncs each due calendar
 #: from its stored cursor, recovering any change a lost/never-received provider notification missed.
 CALENDAR_RECONCILE_TASK = "calendar.reconcile"
+#: A one-off "sync this user's calendars now" job (after connecting, selecting a calendar or adding
+#: a feed). It is not a chain: it syncs once from the stored cursors and ends.
+CALENDAR_SYNC_USER_TASK = "calendar.sync_user"
 #: The durable periodic change-feed purge (M7-02). It removes ``change_log`` rows older than the
 #: retention window and advances each user's purge floor, bounding the feed's tombstone history
 #: without ever deleting a user's entity rows.
@@ -70,8 +73,9 @@ async def reconcile_calendars(session: AsyncSession, _payload: dict[str, Any]) -
     queue for its backoff helper) does not create an import cycle with this module.
     """
     from ..calendar.reconcile import CalendarReconciliationService
+    from ..calendar.registry import production_registry
 
-    summary = await CalendarReconciliationService(session).scan()
+    summary = await CalendarReconciliationService(session, registry=production_registry()).scan()
     if summary.synced or summary.failed or summary.unavailable:
         logger.info(
             "calendars reconciled",
@@ -85,6 +89,35 @@ async def reconcile_calendars(session: AsyncSession, _payload: dict[str, Any]) -
             },
         )
     await schedule_next_calendar_reconcile(session)
+
+
+@handler(CALENDAR_SYNC_USER_TASK)
+async def sync_user_calendars(session: AsyncSession, payload: dict[str, Any]) -> None:
+    """Sync one user's calendars immediately (not only the ones due), from their stored cursors."""
+    from ..calendar.reconcile import CalendarReconciliationService
+    from ..calendar.registry import production_registry
+
+    raw = payload.get("user_id")
+    if not isinstance(raw, str):
+        return
+    summary = await CalendarReconciliationService(session, registry=production_registry()).scan(
+        only_due=False, user_id=uuid.UUID(raw)
+    )
+    logger.info(
+        "calendars synced on request",
+        extra={"synced": summary.synced, "failed": summary.failed},
+    )
+
+
+async def enqueue_calendar_sync(session: AsyncSession, user_id: uuid.UUID) -> None:
+    """Queue an immediate sync of ``user_id``'s calendars (deduplicated per minute)."""
+    bucket = int(datetime.now(UTC).timestamp() // 60)
+    key = f"{CALENDAR_SYNC_USER_TASK}:{user_id}:{bucket}"
+    if await session.scalar(select(Job.id).where(Job.idempotency_key == key)) is not None:
+        return
+    await queue.enqueue(
+        session, CALENDAR_SYNC_USER_TASK, {"user_id": str(user_id)}, idempotency_key=key
+    )
 
 
 async def schedule_next_reconcile(

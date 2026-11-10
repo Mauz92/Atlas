@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { tasksApi } from "../api/client";
+import { DayEvents } from "../components/calendar/DayEvents";
 import { CaptureFab } from "../components/CaptureSheet";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
@@ -140,6 +141,10 @@ export function Week() {
           )}
         </>
       )}
+      <section className="week-events" aria-labelledby="week-events-title">
+        <h2 id="week-events-title" className="week-events-title">Calendar events</h2>
+        <DayEvents firstDay={dayKeyOf(anchor, timeZone)} count={7} timeZone={timeZone ?? "UTC"} />
+      </section>
       <CaptureFab onCapture={capture} destination="Inbox" />
       {editor.overlays}
     </section>

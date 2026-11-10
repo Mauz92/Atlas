@@ -84,7 +84,6 @@ test("Settings: one section at a time, in the URL, with redirects and palette en
   for (const [from, to, heading] of [
     ["/sync", "/settings/sync", "Sync"],
     ["/notifications", "/settings/notifications", "Notifications and reminders"],
-    ["/calendar", "/settings/calendar", "Calendar"],
     ["/settings/nope", "/settings", "Account"],
   ]) {
     await page.goto(from);
@@ -95,7 +94,7 @@ test("Settings: one section at a time, in the URL, with redirects and palette en
   // The palette still goes to each of them.
   for (const [query, to] of [
     ["Go to Sync", "/settings/sync"],
-    ["Go to Calendar", "/settings/calendar"],
+    ["Go to Calendar accounts", "/settings/calendar"],
     ["Go to Notifications", "/settings/notifications"],
   ]) {
     await page.goto("/");
@@ -110,7 +109,7 @@ test("Settings: one section at a time, in the URL, with redirects and palette en
   await expect(page.locator(".sync-panel")).toBeVisible();
   await expect(page.getByText("All synced")).toBeVisible();
   await page.goto("/settings/calendar");
-  await expect(page.getByText(/No calendar accounts are connected yet|Google Calendar/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Google Calendar" })).toBeVisible();
 
   // Phone: the list first, then one section with a way back.
   await page.setViewportSize({ width: 390, height: 844 });

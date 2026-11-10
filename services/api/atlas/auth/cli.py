@@ -6,6 +6,7 @@
     atlas-admin revoke-device --email EMAIL [--device ID | --all]
     atlas-admin recovery-code --email EMAIL
     atlas-admin record-restore
+    atlas-admin calendar-status [--email EMAIL]
 
 An **operator** tool (like ``atlas-backup``): it runs on the server with access to the database,
 so it is not reachable over the network. The new password is read from a hidden prompt (or from
@@ -111,6 +112,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="issue a new recovery code for an account (replaces the old one; printed once)",
     )
     code.add_argument("--email", required=True, help="the account email")
+    status = commands.add_parser(
+        "calendar-status",
+        help="read-only calendar diagnostics (configuration, connections, sync state; no secrets)",
+    )
+    status.add_argument("--email", help="limit to one account")
     commands.add_parser(
         "record-restore",
         help="run after restoring a backup: tell sync clients the server went back in time",
@@ -203,6 +209,10 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(_revoke_devices(args.email, args.device, args.all))
         if args.command == "recovery-code":
             return asyncio.run(_recovery_code(args.email))
+        if args.command == "calendar-status":
+            from ..calendar.diagnostics import run_calendar_status
+
+            return asyncio.run(run_calendar_status(args.email))
         if args.command == "record-restore":
             return asyncio.run(_record_restore())
         return asyncio.run(_reset(args.email, _read_password()))

@@ -30,9 +30,9 @@ export const SETTINGS_SECTIONS = [
   {
     id: "calendar",
     label: "Calendar",
-    palette: "Calendar",
+    palette: "Calendar accounts",
     description:
-      "Sync status for your connected calendars. Calendar views (day, week and month) are coming in a later milestone.",
+      "Connect Google, Outlook or a calendar feed (for example from ProtonMail), choose which calendars to show and see whether they are syncing. Atlas only reads your calendars.",
   },
   {
     id: "sync",
@@ -105,7 +105,6 @@ export function parseSettingsSection(segment: string | undefined, shell = false)
 export const SETTINGS_REDIRECTS: Record<string, string> = {
   "/sync": settingsPath("sync"),
   "/notifications": settingsPath("notifications"),
-  "/calendar": settingsPath("calendar"),
 };
 
 /** What the command palette offers for Settings: "Go to <label>" for every section. */

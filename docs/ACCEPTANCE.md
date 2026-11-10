@@ -2969,9 +2969,9 @@ Verdicts: **`PASS`** = the requirement is delivered and demonstrably works under
 | REQ-004 Markdown notes | `PASS` | **M2** (gate `PASS`) | Notes are real `.md` files, byte-identical on disk, path-traversal-safe, revision-aware with conflict copies; M9-03 exports the genuine note bytes. Tests: `test_notes_api.py`, `test_note_paths.py` (M2 gate). |
 | REQ-005 Task management | `PARTIAL` | **M3** (gate `PASS`) + M4-02 | All required capabilities delivered and integration-tested over HTTP: Inbox/Today/Upcoming (+ Day/Week planning, Board), due dates & priorities (DST-correct), recurrence (RRULE), subtasks, project assignment. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** the function audit showed the owner cannot edit a task, set a due date or priority, delete, or assign a project in the UI (capture is title-only; Complete is the only row action), so the requirement is not satisfied as a user-facing capability. Returns to `PASS` when MU-01…MU-04 journeys J1/J2 pass in a browser against the real API. **Progress 2026-11-02:** J1 and J2 pass (MU-01: edit, date, priority, tags, delete+undo, Inbox triage); the Tasks page (MU-03) passes; recurrence, subtasks and per-task reminders in the UI (MU-04) pass (`mu04-…spec.ts`). Returns to `PASS` with the next full release re-score. **2026-11-03 (UX-11, ADR-0064):** the standalone Board page is removed by owner decision; Kanban stays delivered inside projects (project Board tab, `ux07`/`ux11`/J3); tasks with no project are on no board. |
 | REQ-006 Project management | `PARTIAL` | **M4** (gate `PASS`) | Projects, task lists, Kanban board, derived progress (documented formula, ADR-0023) and note↔project links are all implemented and tested. **Re-scored `PARTIAL` 2026-11-01 (ADR-0043):** there is no way to create or edit a project in the UI (the Projects page is a placeholder), so the Board is empty for a new user. Returns to `PASS` when MU-02 journey J3 passes. **Progress 2026-11-02:** J3 passes (MU-02: create/edit/archive/restore, project page with progress, list, board and linked notes, assignment from the task detail); the Tasks-page project filter/bulk move (MU-03) also passes (journey `tasks-page.spec.ts`). Returns to `PASS` with the next full release re-score. |
-| REQ-007 Google Calendar | `NOT RUN` | — (**M5-03** `BACKLOG`; **M5-00 `BLOCKED`** — AR-001) | Only the foundations exist: encrypted credential store (M5-01), provider-neutral adapter contract (M5-02), event projection + cursors (M5-06), sync-status (M5-08), reconciliation (M5-10). The Google adapter and account-connection UI are **not built**; no provider is contacted. |
-| REQ-008 Microsoft Outlook | `NOT RUN` | — (**M5-04** `BACKLOG`; **M5-00 `BLOCKED`** — AR-001) | As REQ-007: the foundations exist but the Microsoft Graph adapter and connection UI are **not built**. |
-| REQ-009 Calendar consolidation | `NOT RUN` | — (**M5-05/M5-07** `BACKLOG`) | There is **no unified calendar view** and **no account/calendar selection UI**. The `/calendar` route is a per-provider **sync-status** surface only (M5-08), not a consolidated event view. |
+| REQ-007 Google Calendar | `PARTIAL` (implemented + fixture-tested; **live compatibility UNVERIFIED**) | M5-03/M5-05 `IN_REVIEW`; **M5-00 blocked on live verification** | Read-only Stage A: OAuth (PKCE, session-bound state), adapter, selection UI, unified view. Evidence: "Calendar Stage A" below. Not verified against Google (R-76, R-13): the owner runs `CALENDAR_SYNC.md` 12.7. Writes (Stage B / M6) not built. |
+| REQ-008 Microsoft Outlook | `PARTIAL` (implemented + fixture-tested; **live compatibility UNVERIFIED**) | M5-04/M5-05 `IN_REVIEW`; **M5-00 blocked on live verification** | As REQ-007 with Microsoft Graph delta (rolling window, R-79). Tenant policy (R-01) is untested against a real tenant. |
+| REQ-009 Calendar consolidation | `PARTIAL` (implemented + fixture-tested; **live data UNVERIFIED**) | M5-05/M5-07/M5-11 `IN_REVIEW` | Unified Day/Week/Month/Agenda view over Google, Microsoft and ICS feeds (ProtonMail via "Share via link"), colour per calendar, time-zone-correct, all-day and recurring, read-only. Real Proton feed delay and real provider data unverified. |
 | REQ-010 Cross-device sync | `PARTIAL` | **M7** (gate `PASS`) | Per-user change feed, durable offline queue, reconnect reconciliation and conflict resolution are implemented and verified by integration tests + a Chromium E2E suite. **Gap:** no **literal two-physical-device** convergence run was performed and the E2E's API is mocked (`RELEASE.md` §5.1). |
 | REQ-011 Notifications | `PARTIAL` | **M8-01/02/03/05** (`DONE`) | Durable reminder scheduler (at-most-once, tz-correct), Web Push pipeline + service worker, device registry + invalidation, and reminder preferences are delivered and tested. **Gap:** real (non-mocked) browser push delivery, mobile/native push and the desktop matrix are `NOT RUN` — **M8-04/06/07/08** `BACKLOG` (need real devices/services). |
 | REQ-012 OS agnostic | `PARTIAL` | M1 (web client) | The browser/PWA client is OS-agnostic by construction and is verified on **Linux** (M1/M9 gates, CI, containerised web). **Gap:** the Windows/macOS desktop matrix (**M8-08**) and the **Android/iOS** clients (**M8-06/07**) are `NOT RUN`. |
@@ -2980,8 +2980,9 @@ Verdicts: **`PASS`** = the requirement is delivered and demonstrably works under
 | REQ-015 Data portability | `PASS` | M4-07 + M9-03 | Full, complete export of notes (real `.md`), tasks (incl. unfiled), projects and metadata in open formats, with a versioned manifest, via `GET /api/export` and the `atlas-export` CLI; project export is versioned (ADR-0026/ADR-0042). |
 
 **Roll-up (re-scored 2026-11-01).** 7 requirements `PASS` (REQ-001/002/003/004/013/014/015), 5 `PARTIAL`
-(REQ-005/006/010/011/012), 3 `NOT RUN` (REQ-007/008/009). Because mandatory requirements REQ-007/008/009 are
-`NOT RUN` and REQ-010/011/012 are `PARTIAL`, the release is **explicitly not production-ready** —
+(REQ-005/006/010/011/012), 3 `NOT RUN` (REQ-007/008/009). **Update 2026-11-10:** REQ-007/008/009 are now `PARTIAL`
+(read-only Stage A implemented and fixture-tested; live compatibility UNVERIFIED; see "Calendar Stage A" at the end of this file). Because mandatory requirements REQ-007/008/009 are
+not verified live and REQ-010/011/012 are `PARTIAL`, the release is **explicitly not production-ready** —
 label and rationale in [`RELEASE.md`](RELEASE.md) §1. No requirement is overstated: the blocked
 calendar work (AR-001) and the device-bound notification/mobile work are recorded, not waived.
 
@@ -4098,3 +4099,29 @@ Scope as run: Linux (CachyOS, KDE Plasma Wayland), Chromium via Playwright, real
 **Not verified / `NOT RUN`:** a browser local store (SYNC-11d); offline editing of tasks in the shell UI; the notices and resolvers on a real phone (checked in a browser at 360 and 390 px only); a screen reader (axe only); a real push delivery; Windows; the native half of M8-04f; names of other devices in the shell (R-74); the old CI jobs (`e2e-real` on GitHub Actions) were not run for these specs.
 
 **Screenshots** (scratchpad, phone = 390 px, desktop = 1440 px, light and dark each): `/tmp/claude-1000/-home-kim-Documents-Atlas/31ff7fb3-5923-481a-b611-5657fde6b6ea/scratchpad/shots/` — `sync11-banner-*`, `sync11-changes-*`, `sync11-task-resolver-*`, `sync11-note-resolver-*`, `sync11-instant-*`, `sync11-restore-*`, `sync11-restore-confirm-*`, `sync11-update-required-*`, `sync11-signed-out-*`, `sync11-shell-sync-*`, `sync11-shell-changes-*`, `sync11-shell-instant-*`.
+
+
+---
+
+## Calendar Stage A (read-only linking and viewing) - evidence, 2026-11-10
+
+Not committed, CI not run. Every result below is against **local fixtures and the fake provider only**; AGENTS.md section 10
+says that is not provider-compatibility evidence, so M5-00, M5-03, M5-04, M5-05, M5-07 and M5-11 are **`IN_REVIEW` / blocked on live verification, never `DONE`**.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| OAuth: PKCE, single-use session-bound state, TTL, redirect URI from `PUBLIC_BASE_URL` incl. `:9443`, minimal read-only scopes, scope/refresh-token checks, cancel, replay | `PASS` (fixtures) | `tests/integration/test_calendar_oauth_api.py` (20 tests) |
+| Tokens never logged / never returned; encrypted at rest | `PASS` | log-grep test; ciphertext does not contain tokens; API dumps checked |
+| Refresh server-side, Microsoft rotation persisted, revoked grant -> "needs re-authorisation", scans skip it | `PASS` (fixtures) | same file + `test_calendar_provider_sync.py` |
+| Google adapter: paging, syncToken, 410 resync, deletions, recurring + exceptions + cancelled, all-day, zones, 429/Retry-After, 401 refresh | `PASS` (fixtures built from the cited API pages) | `tests/unit/test_calendar_provider_adapters.py` |
+| Microsoft adapter: calendars, calendarView delta, nextLink/deltaLink, @removed, 410, window renewal, Prefer UTC, origin pinning | `PASS` (fixtures) | same |
+| ICS: SSRF matrix, pinned address, redirects, size cap, conditional GET, parser (TZID/Windows names/floating/all-day/RRULE/EXDATE/overrides/cancelled/malformed), diffing deletions, secret never exposed | `PASS` | `test_calendar_netguard`, `test_calendar_feed_fetch`, `test_calendar_ics`, `test_calendar_feeds_events` |
+| Recurrence/DST/all-day properties | `PASS` | `test_calendar_recurrence` (81 incl. 65 property cases) |
+| Cursor safety: crash between applying and saving the cursor, failing later page, crashing snapshot tombstoning | `PASS` | `test_calendar_provider_sync.py` |
+| Events API: bounded window, pagination, user scope, detail, hidden calendars, tasks never events | `PASS` | `test_calendar_feeds_events.py` |
+| Migration clean, on a representative schema, reversible | `PASS` | `test_calendar_sources_migration.py` + `migrations_match_models` |
+| UI: provider cards in every state, feed form, disconnect confirmation, Calendar page views, detail, Today/Week | `PASS` | vitest (`CalendarSettings.test.tsx`, `Calendar.test.tsx`, `calendar.test.ts`) |
+| Real stack + fake provider: feed, Google and Microsoft OAuth redirect, re-authorisation, Today, four views, disconnect; axe clean in both themes at 360/390/768/1440; no sideways scroll | `PASS` | `e2e-real/cal01-calendar.spec.ts` (3 tests) |
+| **Live Google / Microsoft / Proton behaviour; refresh-token lifetime after > 7 days; real consent screens; real feed delay** | **`NOT RUN` / UNVERIFIED** | runbook and evidence template: `CALENDAR_SYNC.md` 12.7 (the owner fills it in) |
+| Webhook change notifications (M5-09) | `NOT BUILT` | needs a public endpoint; Atlas is private (SEC-01) |
+| Bidirectional sync (M6) | `NOT BUILT` | Stage B |

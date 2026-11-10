@@ -4,7 +4,7 @@
  * `NAV_SECTIONS` is the single source: the sidebar renders it section by section, the icon rail and
  * the mobile bottom nav show the items marked `rail`, and the command palette offers every item as
  * "Go to …". Day is not a destination any more (`/day` redirects to Today, ADR-0051 §2); Search and
- * Settings live in the collapsible "More" section. Calendar, Sync and Notifications are sections of
+ * Settings live in the collapsible "More" section. Sync and Notifications are sections of
  * Settings (UX-08, ADR-0058): their old URLs redirect, and the palette still offers each one
  * (`PALETTE_PAGES`).
  */
@@ -41,6 +41,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { to: "/inbox", label: "Inbox", icon: "inbox", group: "inbox", rail: true },
       { to: "/upcoming", label: "Upcoming", icon: "calendar-days", group: "today" },
       { to: "/week", label: "Week", icon: "calendar-range", group: "today" },
+      { to: "/calendar", label: "Calendar", icon: "calendar", group: "today" },
     ],
   },
   {

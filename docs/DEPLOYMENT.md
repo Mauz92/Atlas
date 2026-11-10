@@ -36,7 +36,8 @@ sufficient.
   placeholders. Real `.env` is git-ignored.
 - Required variables (indicative): `DATABASE_URL`, `SECRET_KEY`, `SESSION_SECRET`,
   `TOKEN_ENCRYPTION_KEY`, `NOTES_ROOT`, `PUBLIC_BASE_URL`, `GOOGLE_CLIENT_ID`,
-  `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT`.
+  `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT` (the calendar
+  redirect URIs derive from `PUBLIC_BASE_URL`; setup guide: [`CALENDAR_SYNC.md`](CALENDAR_SYNC.md) section 12).
 - Optional Compose overrides: `WEB_PORT` (host port for the web UI, default `8080`) and `WEB_BIND` (address it is
   published on, default `127.0.0.1`), `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` (default `atlas`).
 - `deploy/docker-compose.yml` builds the containers' `DATABASE_URL` from `POSTGRES_*`, so set `POSTGRES_PASSWORD`
@@ -381,6 +382,29 @@ ATLAS_DEV_BIND=tailscale ./scripts/dev-stack.sh restart     # binds Vite to `tai
 - Host firewall: allow only the tailnet interface, e.g. `sudo ufw allow in on tailscale0 to any port 5173 proto tcp`
   (ufw is active on the owner's machine; not applied by Atlas). Do not open 8000 or 5432.
 - Revert to localhost-only: `./scripts/dev-stack.sh restart` (no `ATLAS_DEV_BIND`), and remove any ufw rule added.
+
+### 8.3 A private name with its own certificate (DuckDNS, tailnet-only)
+
+Use this when devices cannot use Tailscale's name resolution (for example Android with Private DNS) or when a stable name is needed
+for OAuth redirect URIs (calendar). Atlas stays **private** (ROADMAP SEC-01): the DuckDNS record points at the server's **tailnet
+address** (`tailscale ip -4`), never at the public IP, and the TLS port is published on that address only.
+
+1. **DNS.** On duckdns.org set the name's IP to the server's tailnet address (`100.x.y.z`). Check with `dig +short @1.1.1.1 <name>`.
+2. **Certificate (DNS-01, no inbound access needed).** Install `acme.sh` for the deploy user (no sudo; pin a release and record its
+   checksum; version 3.1.6 tarball sha256 `0d3f9000ac44a6331314742a88c475f79134e24fc991997883652adc59efc486`), put your DuckDNS token in
+   `~/.acme-duckdns.env` (`export DuckDNS_Token='...'`, mode 600, typed by you), then
+   `deploy/tls/issue-duckdns-cert.sh <name>.duckdns.org --staging` (untrusted test certificate), and without `--staging` (with
+   `ACME_FORCE=1` the first time after staging). acme.sh installs a cron job that renews it and restarts the web container.
+3. **Listener.** In `.env` set `ATLAS_TLS_BIND=<tailnet address>` (and optionally `ATLAS_TLS_PORT`, default 9443), then add the
+   override file to every compose command:
+   `docker compose -p atlas --env-file .env -f deploy/docker-compose.yml -f deploy/docker-compose.tls.yml up -d`.
+   Another proxy usually owns 443 on such a host, which is why the port is not 443.
+4. **App settings.** `PUBLIC_BASE_URL=https://<name>.duckdns.org:9443` and add the name to `ALLOWED_HOSTS` (comma-separated; keep the
+   `ts.net` name if `tailscale serve` is still used).
+5. **Check.** `curl -sS https://<name>.duckdns.org:9443/health/ready` from a tailnet device; from a device **off** the tailnet it must
+   time out (nothing listens on the public IP).
+
+`apps/web/nginx.tls.conf` is generated from `nginx.conf` (`python3 apps/web/make-nginx-tls.py`; a unit test fails if they drift).
 
 ## 9. Logging
 

@@ -132,12 +132,14 @@ export default async function globalSetup() {
   let notesDir: string | undefined;
   let api: ChildProcess | undefined;
   let web: ChildProcess | undefined;
+  let fake: ChildProcess | undefined;
   let created = false;
   const logs: string[] = [];
 
   const cleanup = async () => {
     await stop(web);
     await stop(api);
+    await stop(fake);
     if (created) {
       run(python, [path.join(here, "db_admin.py"), "drop", adminUrl, dbName]);
       created = false;
@@ -150,6 +152,18 @@ export default async function globalSetup() {
     created = true;
     notesDir = await mkdtemp(path.join(tmpdir(), "atlas-e2e-notes-"));
 
+    // The fake calendar provider (Google/Microsoft OAuth + API shapes and an ICS host) replaces the
+    // internet for the calendar specs: no real account or provider is ever contacted (AGENTS.md §11).
+    const fakePort = await freePort();
+    fake = start(
+      python,
+      ["-I", "-c", `import sys; sys.path.insert(0, "."); from tests.fakes.calendar_provider import main; sys.argv = ["fake", "--port", "${fakePort}"]; main()`],
+      process.env,
+      apiDir,
+      logs,
+    );
+    await waitFor(`http://127.0.0.1:${fakePort}/`, fake, "fake calendar provider", logs);
+
     const apiPort = await freePort();
     const webPort = await freePort();
     const apiEnv: NodeJS.ProcessEnv = {
@@ -161,6 +175,13 @@ export default async function globalSetup() {
       EXPORT_DIR: path.join(notesDir, "exports"),
       PUBLIC_BASE_URL: `http://127.0.0.1:${webPort}`,
       AUTH_RATE_LIMIT_PER_MINUTE: "1000",
+      CALENDAR_FAKE_PROVIDER_URL: `http://127.0.0.1:${fakePort}`,
+      GOOGLE_CLIENT_ID: "fake-client-id",
+      GOOGLE_CLIENT_SECRET: "fake-client-secret",
+      MICROSOFT_CLIENT_ID: "fake-client-id",
+      MICROSOFT_CLIENT_SECRET: "fake-client-secret",
+      ICS_ALLOW_HTTP: "true",
+      ICS_ALLOW_PRIVATE_HOSTS: "true",
     };
     run(path.join(binDir, "atlas-migrate"), [], apiEnv);
 
@@ -192,6 +213,7 @@ export default async function globalSetup() {
 
     // Workers are spawned after globalSetup and inherit this.
     process.env.ATLAS_E2E_BASE_URL = `http://127.0.0.1:${webPort}`;
+    process.env.ATLAS_E2E_FAKE_PROVIDER_URL = `http://127.0.0.1:${fakePort}`;
     // Specs that check the Markdown files themselves read them from here.
     process.env.ATLAS_E2E_NOTES_DIR = notesDir;
   } catch (err) {

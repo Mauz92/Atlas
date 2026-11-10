@@ -19,8 +19,8 @@ const OLD_URLS: [string, string][] = [
   // The standalone Board is gone (ADR-0064): the old URL lands on Projects.
   ["/board", "Projects"],
   ["/projects", "Projects"],
-  // Calendar, Sync and Notifications are Settings sections since UX-08 (the URL redirects).
-  ["/calendar", "Settings"],
+  // The Calendar page exists since M5-07; Sync and Notifications are Settings sections since UX-08.
+  ["/calendar", "Calendar"],
   ["/sync", "Settings"],
   ["/notifications", "Settings"],
   ["/notes", "Notes"],
@@ -103,7 +103,6 @@ test("UX-02: the shell works by keyboard, keeps old URLs and fits a phone", asyn
   for (const [from, to] of [
     ["/sync", "/settings/sync"],
     ["/notifications", "/settings/notifications"],
-    ["/calendar", "/settings/calendar"],
   ]) {
     await page.goto(from);
     await expect(page).toHaveURL(new RegExp(`${to}$`));

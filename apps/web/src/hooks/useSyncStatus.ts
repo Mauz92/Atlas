@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { calendarApi, type CredentialProvider, type ProviderSyncStatus } from "../api/client";
 import { providerLabel } from "../lib/syncStatus";
+import { CALENDAR_CHANGED_EVENT } from "./useCalendarAccounts";
 import type { LoadState } from "./useTaskView";
 
 export interface SyncStatusResult {
@@ -72,6 +73,9 @@ export function useSyncStatus(): SyncStatusResult {
 
   useEffect(() => {
     void load();
+    const again = () => void load();
+    window.addEventListener(CALENDAR_CHANGED_EVENT, again);
+    return () => window.removeEventListener(CALENDAR_CHANGED_EVENT, again);
   }, [load]);
 
   return { providers, state, error, actionError, busyProvider, reload, syncNow };

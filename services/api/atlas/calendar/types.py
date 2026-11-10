@@ -48,6 +48,9 @@ class CursorType(StrEnum):
     SYNC_TOKEN = "sync_token"
     DELTA_LINK = "delta_link"
     HISTORY_ID = "history_id"
+    #: A feed with no incremental API (ICS): the cursor is the HTTP validator (ETag/Last-Modified)
+    #: of the last snapshot that was applied, used only for a conditional GET.
+    FEED_VALIDATOR = "feed_validator"
 
 
 def _require_text(value: object, field: str) -> str:
@@ -113,6 +116,12 @@ class Event:
     recurrence_id: str | None = None
     recurrence_rule: str | None = None
     ical_uid: str | None = None
+    #: Display-only detail (bounded by the adapter): never used for identity or conflict checks.
+    location: str | None = None
+    description: str | None = None
+    web_link: str | None = None
+    #: For an exception/override of a recurring series: the master event's ``id``.
+    series_id: str | None = None
 
     def __post_init__(self) -> None:
         _require_text(self.id, "id")
@@ -165,6 +174,11 @@ class EventPage:
     deletions: tuple[EventDeletion, ...] = ()
     next_page_token: str | None = None
     next_cursor: str | None = None
+    #: ``True`` on the final page of a listing that enumerated **every** live event of the calendar
+    #: (an initial/full sync, a resync after ``410 Gone``, or a whole ICS feed). The sync layer then
+    #: tombstones projections the listing did not contain. It is set only by an adapter that has
+    #: read the complete listing without error: a failed or partial read never sets it.
+    is_snapshot: bool = False
 
     @property
     def has_more(self) -> bool:

@@ -311,17 +311,37 @@ view; incremental sync; sync status + errors.
 
 | ID | Title | Depends on | Acceptance | Tests | Status |
 |---|---|---|---|---|---|
-| M5-00 | Validate MS tenant + Google publishing mode with real accounts | M1-05 | Refresh tokens persist; scopes granted; limitations noted | Manual + recorded evidence | `BLOCKED` (needs real accounts — AR-001) |
+| M5-00 | Validate MS tenant + Google publishing mode with real accounts | M1-05 | Refresh tokens persist; scopes granted; limitations noted | Manual + recorded evidence | `BLOCKED on live verification` — runbook + evidence template written (`CALENDAR_SYNC.md` §12.7); the owner runs it with their real accounts (2026-11-10 decision: real Google account manually, never in tests) |
 | M5-01 | OAuth credential store (encrypted) | M1-05 | Tokens encrypted at rest; key external | Unit + integration | `DONE` |
 | M5-02 | Provider adapter interface | M5-01 | Common interface; no provider leakage | Unit | `DONE` |
-| M5-03 | Google Calendar adapter (read, syncToken) | M5-02 | Pagination, incremental, deletions handled | Adapter tests | `BACKLOG` |
-| M5-04 | Microsoft Graph adapter (read, delta) | M5-02 | Pagination, delta, deletions handled | Adapter tests | `BACKLOG` |
-| M5-05 | Calendar/account selection UI | M5-03,M5-04 | Select calendars; colour; connect/disconnect | Frontend + E2E | `BACKLOG` |
+| M5-03 | Google Calendar adapter (read, syncToken) | M5-02 | Pagination, incremental, deletions handled | Adapter tests | `IN_REVIEW` (built + fixture-tested 2026-11-10; **live compatibility UNVERIFIED**, not `DONE` until M5-00 evidence) |
+| M5-04 | Microsoft Graph adapter (read, delta) | M5-02 | Pagination, delta, deletions handled | Adapter tests | `IN_REVIEW` (built + fixture-tested; **live compatibility UNVERIFIED**) |
+| M5-05 | Calendar/account selection UI | M5-03,M5-04 | Select calendars; colour; connect/disconnect | Frontend + E2E | `IN_REVIEW` (UI, OAuth flow and E2E against the fake provider pass; real OAuth consent screens UNVERIFIED) |
 | M5-06 | Event projection store + sync cursors | M5-02,M1-08 | Cursor advances only after commit | Integration | `DONE` |
-| M5-07 | Unified calendar view (day/week/month) | M5-05 | Time-zone-correct display; all-day + recurring | Frontend + E2E | `BACKLOG` |
+| M5-07 | Unified calendar view (day/week/month) | M5-05 | Time-zone-correct display; all-day + recurring | Frontend + E2E | `IN_REVIEW` (Day/Week/Month/Agenda, Today and Week integration; real-provider data UNVERIFIED) |
 | M5-08 | Sync status + error surface | M5-06 | Last sync, failures visible in UI | Integration + E2E | `DONE` |
 | M5-09 | Change notifications (hints → reconcile) | M5-03,M5-04 | Notification triggers reconcile; never trusted as full log | Integration | `BACKLOG` |
-| M5-10 | Periodic reconciliation fallback | M5-06 | Missed notifications recovered by scan | Integration | `DONE` |
+| M5-10 | Periodic reconciliation fallback | M5-06 | Missed notifications recovered by scan | Integration | `DONE` (wired to the real adapters and ICS feeds by Stage A, 2026-11-10) |
+| M5-11 | ICS feed adapter (Proton and others) | M5-02,M5-06,M5-10 | Secret feed URL (sealed, masked), SSRF-guarded fetch, conditional GET, RRULE/EXDATE/RECURRENCE-ID, deletions by diffing, malformed feeds never crash | Unit + integration + E2E (fixture host) | `IN_REVIEW` (fixture-tested; a real Proton link UNVERIFIED) |
+
+**Stage A plan and status (2026-11-10, ADR-0071/0072).** Owner decisions: the real Google account is connected
+*manually* (never in automated tests), Microsoft Outlook is supported, the ProtonMail calendar syncs through its
+"Share via link" ICS feed, and the redirect URIs derive from `PUBLIC_BASE_URL` (owner setup:
+`https://galaxia-atlas.duckdns.org:9443`, tailnet-only until SEC-01). Built in verified sub-steps, **all read-only**:
+
+| Step | Content | Acceptance (all `PASS` against fixtures; see `ACCEPTANCE.md` "Calendar Stage A") |
+|---|---|---|
+| A1 | Migration `a6c3e9d27b14` (sources, OAuth state, event detail columns), config, snapshot semantics in the sync core | migration clean + representative + downgrade tests; cursor-safety fault injection |
+| A2 | OAuth (code + PKCE, session-bound single-use state), token refresh/rotation, revoke, disconnect, "not configured" | OAuth API tests incl. replay, other session, expiry, scopes, no-token-in-logs |
+| A3 | Google and Microsoft adapters (M5-03/04) on documented shapes; fake provider server | adapter tests: paging, incremental, 410, deletions, recurrence, all-day, zones, 429/Retry-After, 401 refresh |
+| A4 | ICS adapter (M5-11): SSRF guard, parser, recurrence expansion, feeds API | SSRF matrix, parser fixtures, property tests (DST/all-day), feed API tests |
+| A5 | Events API, reconcile/jobs, status, `atlas-admin calendar-status` | window/pagination/user-scope tests, scan tests |
+| A6 | Frontend (Settings cards, Calendar page, Today/Week) + real-stack E2E with the fake provider | vitest, `e2e-real` incl. axe (both themes, 360/390/768/1440), no sideways scroll |
+| A7 | Docs and the live-check runbook | `CALENDAR_SYNC.md` §11-12 |
+
+**Not `DONE` on purpose:** M5-00/03/04/05/07/11 stay `IN_REVIEW`/blocked on live verification until the owner runs
+`CALENDAR_SYNC.md` §12.7 (AGENTS.md §10: mocks are not provider-compatibility evidence). M5-09 (webhooks) stays
+`BACKLOG`: it needs a public endpoint and Atlas is private (SEC-01). M6 (writes) is untouched.
 
 **Entry note (2026-10-26).** M5-00 requires *real* Google/Microsoft test accounts and cannot be
 run autonomously; it is `BLOCKED` pending the accounts (approval request **AR-001** in
@@ -1435,6 +1455,22 @@ the Python version decision (A-07); iOS is out of scope.
 **Order (owner priority Sync → Auth → Calendar → Core, 2026-11-03):** Phase 1 → AUTH-01 → Phase 2 → Phases 3–4 with
 Calendar interleaved when accounts are available → Phase 0 items P0-4 and P0-1 early because every later step
 depends on CI and the Compose stack being green.
+
+### SEC-01 — Independent security audit before any public exposure (owner decision 2026-11-10)
+- **Decision.** Atlas stays **private** (tailnet-only; no public listener, no port forwarding, no public DNS record pointing at it) until a real
+  security audit has been done and its findings are fixed. The calendar redirect name `galaxia-atlas.duckdns.org` must therefore resolve to the
+  server's tailnet address, never to the public IP, and no reverse-proxy `Host` rule may serve Atlas on a public listener.
+- **Scope (to plan before it starts).** Threat-model refresh against the real implementation (auth, sessions, device tokens, recovery codes,
+  OAuth + token store, ICS fetching/SSRF, sync protocol, notes path handling, desktop shell IPC and updater, Docker/proxy config); an
+  independent review (a person or an external service the owner chooses; an AI-assisted review is input, not a substitute); dependency and
+  container scanning in CI as blocking gates; authenticated and unauthenticated dynamic testing (OWASP ASVS L2 checklist) on a staging copy;
+  rate-limiting and brute-force behaviour behind a proxy (R-46), HSTS and cookie flags; backup/secret handling; incident and key-rotation runbook.
+- **Dependencies.** Calendar Stage A built; SYNC-12 release gate; owner chooses the reviewer and budget.
+- **Acceptance.** Findings recorded with severity; every critical/high fixed and re-tested; the audit report and evidence referenced from
+  `SECURITY.md` and `ACCEPTANCE.md`; only then may the owner decide about public exposure (a separate ADR).
+- **Status: `BACKLOG`** (blocks any public deployment).
+
+---
 
 ## Immediate Next Tasks
 

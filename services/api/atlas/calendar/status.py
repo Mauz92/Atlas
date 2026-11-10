@@ -45,10 +45,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
-from ..models import ProviderCredential, SyncCursor
+from ..models import CalendarSource, ProviderCredential, SyncCursor
 from .adapter import AdapterRegistry, build_adapter, canonical_provider
 from .credentials import ProviderCredentialsService
+from .errors import AuthExpiredError
+from .oauth import mark_needs_reauth, persist_refreshed
 from .reconcile import last_terminal_at, marker_is_active
+from .sources import CalendarSourceService
 from .sync import CalendarSyncService, SyncResult
 
 
@@ -107,6 +110,8 @@ class ProviderSyncStatus:
     last_error: str | None
     last_error_at: datetime | None
     calendars: tuple[CalendarSyncStatus, ...]
+    #: The provider rejected the stored sign-in; the account must be re-authorised (M5-03/04).
+    needs_reauth: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,6 +253,23 @@ class SyncStatusService:
         rows = await self.session.scalars(
             select(ProviderCredential.provider).where(ProviderCredential.user_id == self.user_id)
         )
+        providers = set(rows)
+        has_feed = await self.session.scalar(
+            select(CalendarSource.id)
+            .where(CalendarSource.user_id == self.user_id, CalendarSource.provider == "ics")
+            .limit(1)
+        )
+        if has_feed is not None:
+            providers.add("ics")
+        return providers
+
+    async def _needs_reauth(self) -> set[str]:
+        rows = await self.session.scalars(
+            select(ProviderCredential.provider).where(
+                ProviderCredential.user_id == self.user_id,
+                ProviderCredential.needs_reauth_at.is_not(None),
+            )
+        )
         return set(rows)
 
     async def _cursor_rows(self) -> list[SyncCursor]:
@@ -268,6 +290,7 @@ class SyncStatusService:
         """
         now = self._now()
         connected = await self._connected_providers()
+        reauth = await self._needs_reauth()
         by_provider: dict[str, list[CalendarSyncStatus]] = {}
         for row in await self._cursor_rows():
             by_provider.setdefault(row.provider, []).append(
@@ -288,6 +311,7 @@ class SyncStatusService:
                     last_error=last_error,
                     last_error_at=last_error_at,
                     calendars=calendars,
+                    needs_reauth=provider in reauth,
                 )
             )
         return statuses
@@ -337,21 +361,53 @@ class ProviderSyncService:
         self._credentials = credentials or ProviderCredentialsService(session, user_id)
 
     async def sync_provider(self, provider: str) -> ProviderSyncOutcome:
-        """Sync every calendar the connected ``provider`` exposes, returning the outcomes.
+        """Sync every selected calendar the connected ``provider`` exposes, returning the outcomes.
 
-        Raises :class:`~atlas.calendar.errors.CredentialNotFoundError` when the provider is not
-        connected and :class:`~atlas.calendar.errors.UnknownProviderError` when no adapter is built.
+        For Google/Microsoft the account's calendar list is rediscovered first (new calendars
+        appear, the user's selection and colours are kept). ``ics`` syncs every feed. Raises
+        :class:`~atlas.calendar.errors.CredentialNotFoundError` when the provider is not connected
+        and :class:`~atlas.calendar.errors.UnknownProviderError` when no adapter is built.
         """
         name = canonical_provider(provider)
+        if name == "ics":
+            return await self._sync_feeds()
         credential = await self._credentials.read(name)
         adapter = build_adapter(name, credential, registry=self._registry)
-        calendars = await adapter.list_calendars()
+        sources = CalendarSourceService(self.session, self.user_id)
         outcomes: list[CalendarSyncOutcome] = []
-        for calendar in calendars:
-            service = CalendarSyncService(self.session, self.user_id)
-            result = await service.sync_calendar(adapter, calendar.id)
-            outcomes.append(_calendar_outcome(result))
+        try:
+            await sources.discover(name, adapter)
+            await self.session.commit()
+            for row in await sources.selected(name):
+                result = await CalendarSyncService(self.session, self.user_id).sync_calendar(
+                    adapter, row.external_id
+                )
+                outcomes.append(_calendar_outcome(result))
+        except AuthExpiredError:
+            await mark_needs_reauth(self.session, self.user_id, name)
+            raise
+        finally:
+            await persist_refreshed(
+                self.session, self.user_id, name, getattr(adapter, "tokens", None)
+            )
         return ProviderSyncOutcome(provider=name, calendars=tuple(outcomes))
+
+    async def _sync_feeds(self) -> ProviderSyncOutcome:
+        sources = CalendarSourceService(self.session, self.user_id)
+        outcomes: list[CalendarSyncOutcome] = []
+        errors: list[Exception] = []
+        for row in await sources.selected("ics"):
+            try:
+                result = await CalendarSyncService(self.session, self.user_id).sync_calendar(
+                    sources.ics_adapter(row), row.external_id
+                )
+            except Exception as exc:  # one feed failing must not block the others
+                errors.append(exc)
+                continue
+            outcomes.append(_calendar_outcome(result))
+        if errors and not outcomes:
+            raise errors[0]
+        return ProviderSyncOutcome(provider="ics", calendars=tuple(outcomes))
 
 
 __all__ = [

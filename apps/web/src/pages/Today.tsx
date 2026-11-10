@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { notesApi, tasksApi, type Task } from "../api/client";
+import { DayEvents } from "../components/calendar/DayEvents";
 import { CaptureFab } from "../components/CaptureSheet";
 import { EmptyState } from "../components/EmptyState";
 import { LoadError } from "../components/LoadError";
@@ -13,10 +14,11 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 import { useTaskView } from "../hooks/useTaskView";
 import { dailyPath, excerpt, plainPreview } from "../lib/dailyNote";
+import { dayKeyIn } from "../lib/calendar";
 import { ACTIVE_STATUSES, addDays, dayKeyOf, startOfDay } from "../lib/planning";
 import { PHONE_QUERY } from "../lib/phone";
 import { dueOn, localDate } from "../lib/taskForm";
-import { groupToday } from "../lib/tasks";
+import { groupToday, viewerTimeZone } from "../lib/tasks";
 
 interface DailyPreview {
   id: string;
@@ -203,7 +205,7 @@ export function Today() {
           </button>
         </ViewSection>
         <ViewSection title="Events" label="Events" muted>
-          <p className="muted section-note">Calendar events will appear here once a calendar is connected.</p>
+          <DayEvents firstDay={dayKeyIn(new Date(), viewerTimeZone() ?? "UTC")} count={1} timeZone={viewerTimeZone() ?? "UTC"} showEmptyDays />
         </ViewSection>
       </div>
       <CaptureFab onCapture={capture} placeholder="Add a task for today…" destination="Today" />

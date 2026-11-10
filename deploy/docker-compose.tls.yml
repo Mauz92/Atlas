@@ -1,0 +1,15 @@
+# Optional TLS listener for a private (tailnet-only) install, docs/DEPLOYMENT.md section 8.3.
+#
+#   docker compose -p atlas --env-file .env -f deploy/docker-compose.yml -f deploy/docker-compose.tls.yml up -d
+#
+# The web container then also serves HTTPS on ATLAS_TLS_BIND:ATLAS_TLS_PORT (default 9443) with the
+# certificate and key in ATLAS_TLS_CERT_DIR (fullchain.pem, privkey.pem) written by the host's ACME client.
+# ATLAS_TLS_BIND must be the host's tailnet address (never 0.0.0.0): Atlas stays private until the
+# security audit (ROADMAP SEC-01).
+services:
+  web:
+    volumes:
+      - ../apps/web/nginx.tls.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${ATLAS_TLS_CERT_DIR:?set ATLAS_TLS_CERT_DIR to the directory holding fullchain.pem and privkey.pem}:/etc/nginx/certs:ro
+    ports:
+      - "${ATLAS_TLS_BIND:?set ATLAS_TLS_BIND to the host tailnet address, never 0.0.0.0}:${ATLAS_TLS_PORT:-9443}:443"

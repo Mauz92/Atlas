@@ -45,10 +45,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
-from ..models import ProviderCredential, SyncCursor
+from ..models import CalendarSource, ProviderCredential, SyncCursor
 from .adapter import AdapterRegistry, CalendarAdapter, build_adapter
 from .credentials import ProviderCredentialsService
-from .errors import CredentialError, UnknownProviderError
+from .errors import AuthExpiredError, CredentialError, ProviderError, UnknownProviderError
+from .ics import ICS
+from .oauth import mark_needs_reauth, persist_refreshed
+from .sources import CalendarSourceService, SourceError
 from .sync import MAX_ERROR_LENGTH, CalendarSyncService
 from .types import CursorType
 
@@ -223,6 +226,7 @@ class ReconciledCalendar:
     unchanged: int = 0
     tombstoned: int = 0
     error: str | None = None
+    auth_expired: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,13 +279,16 @@ class CalendarReconciliationService:
         only_due: bool = True,
         interval_seconds: int | None = None,
         stale_seconds: int | None = None,
+        user_id: uuid.UUID | None = None,
     ) -> ReconciliationSummary:
-        """Scan every connected account once and re-sync each due calendar.
+        """Scan every connected account (and ICS feed) once and re-sync each due calendar.
 
-        ``only_due`` is exposed mainly for tests/diagnostics; a scan always uses the stored cursor
-        and is idempotent either way. A provider with no registered adapter (M5-03/M5-04 pending) or
-        an unreadable credential is skipped and counted ``unavailable`` rather than aborting the
-        scan, and a single calendar's failure is recorded and retried next scan.
+        ``only_due`` is exposed mainly for tests/diagnostics and the "sync now" job; a scan always
+        uses the stored cursor and is idempotent either way. ``user_id`` restricts it to one user.
+        A provider with no registered adapter, an unreadable credential or an account that needs
+        re-authorising is skipped and counted ``unavailable`` rather than aborting the scan, and a
+        single calendar's (or account's) failure is recorded and retried next scan. Only the
+        user's **selected** calendars are synced once any source row exists for the provider.
         """
         settings = get_settings()
         interval = (
@@ -291,53 +298,115 @@ class CalendarReconciliationService:
         )
         stale = stale_seconds if stale_seconds is not None else settings.calendar_sync_stale_seconds
 
-        accounts = await self._accounts()
+        accounts = await self._accounts(user_id)
         results: list[ReconciledCalendar] = []
-        considered = synced = failed = skipped = unavailable = 0
+        counts = {"considered": 0, "synced": 0, "failed": 0, "skipped": 0, "unavailable": 0}
 
-        for user_id, provider in accounts:
-            adapter = await self._build_adapter(user_id, provider)
+        def record(outcome: ReconciledCalendar) -> None:
+            results.append(outcome)
+            counts["synced" if outcome.synced else "failed"] += 1
+
+        for account_user, provider in accounts:
+            adapter = await self._build_adapter(account_user, provider)
             if adapter is None:
-                unavailable += 1
+                counts["unavailable"] += 1
                 continue
-            calendars = await adapter.list_calendars()
-            cursor_rows = await self._cursor_rows(user_id, provider)
+            try:
+                calendar_ids = await self._calendar_ids(account_user, provider, adapter)
+            except ProviderError as exc:
+                await self._account_failed(account_user, provider, adapter, exc)
+                counts["failed"] += 1
+                continue
+            cursor_rows = await self._cursor_rows(account_user, provider)
             now = self._now()
-            for calendar in calendars:
-                considered += 1
-                state = _due_state(calendar.id, cursor_rows.get(calendar.id))
+            for calendar_id in calendar_ids:
+                counts["considered"] += 1
+                state = _due_state(calendar_id, cursor_rows.get(calendar_id))
                 if only_due and not is_due(
                     state, now=now, interval_seconds=interval, stale_seconds=stale
                 ):
-                    skipped += 1
+                    counts["skipped"] += 1
                     continue
-                outcome = await self._sync_calendar(user_id, provider, adapter, calendar.id)
-                results.append(outcome)
-                if outcome.synced:
-                    synced += 1
-                else:
-                    failed += 1
+                outcome = await self._sync_calendar(account_user, provider, adapter, calendar_id)
+                record(outcome)
+                if outcome.auth_expired:
+                    break
+            await persist_refreshed(
+                self.session, account_user, provider, getattr(adapter, "tokens", None)
+            )
+
+        # Secret ICS feeds: polled at their own (slower) interval.
+        ics_interval = max(interval, settings.ics_poll_seconds)
+        for feed_user, source_id in await self._feeds(user_id):
+            # Re-read per feed: earlier syncs commit, which expires any ORM object held across them.
+            source = await CalendarSourceService(self.session, feed_user).get(source_id)
+            external_id = source.external_id
+            counts["considered"] += 1
+            cursor_rows = await self._cursor_rows(feed_user, ICS)
+            state = _due_state(external_id, cursor_rows.get(external_id))
+            now = self._now()
+            if only_due and not is_due(
+                state, now=now, interval_seconds=ics_interval, stale_seconds=stale
+            ):
+                counts["skipped"] += 1
+                continue
+            try:
+                feed_adapter: CalendarAdapter = CalendarSourceService(
+                    self.session, feed_user
+                ).ics_adapter(source)
+            except SourceError:
+                counts["unavailable"] += 1
+                continue
+            record(await self._sync_calendar(feed_user, ICS, feed_adapter, external_id))
 
         return ReconciliationSummary(
             accounts=len(accounts),
-            considered=considered,
-            synced=synced,
-            failed=failed,
-            skipped=skipped,
-            unavailable=unavailable,
+            considered=counts["considered"],
+            synced=counts["synced"],
+            failed=counts["failed"],
+            skipped=counts["skipped"],
+            unavailable=counts["unavailable"],
             calendars=tuple(results),
         )
 
     # --- internals ----------------------------------------------------------
 
-    async def _accounts(self) -> list[tuple[uuid.UUID, str]]:
+    async def _accounts(self, user_id: uuid.UUID | None = None) -> list[tuple[uuid.UUID, str]]:
         """Every ``(user_id, provider)`` with a stored credential (the scan's starting set)."""
-        rows = await self.session.execute(
-            select(ProviderCredential.user_id, ProviderCredential.provider).order_by(
-                ProviderCredential.user_id, ProviderCredential.provider
-            )
+        statement = select(ProviderCredential.user_id, ProviderCredential.provider).order_by(
+            ProviderCredential.user_id, ProviderCredential.provider
         )
+        if user_id is not None:
+            statement = statement.where(ProviderCredential.user_id == user_id)
+        rows = await self.session.execute(statement)
         return [(row[0], row[1]) for row in rows.all()]
+
+    async def _feeds(self, user_id: uuid.UUID | None) -> list[tuple[uuid.UUID, uuid.UUID]]:
+        statement = select(CalendarSource.user_id, CalendarSource.id).where(
+            CalendarSource.provider == ICS, CalendarSource.selected.is_(True)
+        )
+        if user_id is not None:
+            statement = statement.where(CalendarSource.user_id == user_id)
+        rows = await self.session.execute(statement.order_by(CalendarSource.created_at))
+        return [(row[0], row[1]) for row in rows.all()]
+
+    async def _calendar_ids(
+        self, user_id: uuid.UUID, provider: str, adapter: CalendarAdapter
+    ) -> list[str]:
+        """The calendars to sync: the user's selected sources; with no source rows at all (an
+        account that predates discovery) every calendar the adapter lists."""
+        service = CalendarSourceService(self.session, user_id)
+        sources = await service.list_sources(provider)
+        if sources:
+            return [row.external_id for row in sources if row.selected]
+        return [calendar.id for calendar in await adapter.list_calendars()]
+
+    async def _account_failed(
+        self, user_id: uuid.UUID, provider: str, adapter: CalendarAdapter, exc: ProviderError
+    ) -> None:
+        if isinstance(exc, AuthExpiredError):
+            await mark_needs_reauth(self.session, user_id, provider)
+        await persist_refreshed(self.session, user_id, provider, getattr(adapter, "tokens", None))
 
     async def _build_adapter(self, user_id: uuid.UUID, provider: str) -> CalendarAdapter | None:
         """Build the account's adapter via the registry seam, or ``None`` when it is unavailable.
@@ -350,6 +419,13 @@ class CalendarReconciliationService:
             credential = await ProviderCredentialsService(self.session, user_id).read(provider)
         except CredentialError:
             return None
+        flagged = await self.session.scalar(
+            select(ProviderCredential.needs_reauth_at).where(
+                ProviderCredential.user_id == user_id, ProviderCredential.provider == provider
+            )
+        )
+        if flagged is not None:
+            return None  # the user must re-authorise first; hammering the provider helps nobody
         try:
             return build_adapter(provider, credential, registry=self._registry)
         except UnknownProviderError:
@@ -383,11 +459,15 @@ class CalendarReconciliationService:
                 adapter, calendar_id
             )
         except Exception as exc:  # a single calendar must not abort the whole scan
+            expired = isinstance(exc, AuthExpiredError)
+            if expired:
+                await mark_needs_reauth(self.session, user_id, provider)
             return ReconciledCalendar(
                 provider=provider,
                 calendar_id=calendar_id,
                 synced=False,
                 error=_error_message(exc),
+                auth_expired=expired,
             )
         finally:
             await end_sync_run(

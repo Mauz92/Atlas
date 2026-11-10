@@ -11,6 +11,7 @@ import type { ProviderSyncStatus } from "../api/client";
 const PROVIDER_LABELS: Record<string, string> = {
   google: "Google Calendar",
   microsoft: "Microsoft Outlook",
+  ics: "Calendar feeds (ICS)",
 };
 
 /** A friendly provider name; falls back to the raw value for an unknown provider. */

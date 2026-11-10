@@ -118,6 +118,9 @@ export function calendarStatusItem(
   if (!providers.some((provider) => provider.connected)) {
     return { icon: "calendar", text: "Calendar not connected", label: "Calendar: not connected", tone: "neutral" };
   }
+  if (providers.some((provider) => provider.needs_reauth)) {
+    return { icon: "triangle-alert", text: "Calendar needs re-authorisation", label: "Calendar: needs re-authorisation", tone: "danger" };
+  }
   if (providers.some((provider) => provider.state === "error")) {
     return { icon: "triangle-alert", text: "Calendar sync failed", label: "Calendar: sync failed", tone: "danger" };
   }

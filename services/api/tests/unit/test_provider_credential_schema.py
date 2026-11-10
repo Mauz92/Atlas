@@ -28,6 +28,7 @@ CREDENTIAL_COLUMNS = {
     "scopes",
     "access_expires_at",
     "refresh_expires_at",
+    "needs_reauth_at",
     "created_at",
     "updated_at",
 }

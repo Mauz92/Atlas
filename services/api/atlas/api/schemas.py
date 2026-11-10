@@ -1121,6 +1121,8 @@ class ProviderSyncStatusOut(BaseModel):
     last_error: str | None
     last_error_at: datetime | None
     calendars: list[CalendarCursorStatusOut]
+    #: The provider rejected the stored sign-in: the account must be re-authorised.
+    needs_reauth: bool = False
 
 
 class CalendarSyncStatusOut(BaseModel):

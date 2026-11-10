@@ -62,8 +62,8 @@ test("J6: Today is home, today's note is created once, notes start from a templa
     section("Scheduled today").getByText("J6 scheduled"),
   ).toBeVisible();
   const events = page.getByRole("region", { name: "Events" });
-  await expect(events).toContainText("once a calendar is connected");
-  await expect(events.getByRole("listitem")).toHaveCount(0);
+  // Calendar events live in their own section (M5-07): either the connect hint or the day's events.
+  await expect(events).toContainText(/Connect one|No calendar is connected|No events|Standup|Conference trip/);
 
   // No note yet; creating it opens a plain Markdown file named for the viewer's day.
   const card = page.getByRole("region", { name: "Daily note" });

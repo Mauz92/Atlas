@@ -25,6 +25,8 @@ as reported by the package metadata; verify against the upstream project before 
 | python-dateutil | RFC 5545 RRULE recurrence engine (M3-05) | BSD-3-Clause OR Apache-2.0 | Dual-licensed; imported as `dateutil.rrule.rrulestr` (3.0.0 no longer exports top-level `FREQ`). ADR-0015 |
 | pywebpush | Web Push (VAPID) desktop delivery (M8-02) | MPL-2.0 | Maintained `web-push-libs` project; signs and sends the push request. Bound `>=2.5,<3.0`. Used behind the `Notifier` abstraction; no custom crypto. ADR-0039 |
 | httpx | The sync-hint gateway adapter (M8-04e): one bounded `POST` per hint, redirects off, no body read | BSD-3-Clause | **Moved from dev to runtime on 2026-11-09** (`>=0.27,<1.0`, installed 0.28.1). Already vetted as a dev dependency; maintained (encode/httpx), no known advisory in the `pip-audit` of this inventory. No new package enters the image, only an existing one moves. |
+| icalendar | RFC 5545 parsing of ICS feeds (M5-11, ADR-0072) | BSD-2-Clause | Checked 2026-11-10: package metadata `BSD-2-Clause`, installed 7.3.0, bound `>=6.1,<8.0`; maintained by the Plone/collective project (releases through 2026); pure Python, no network or native code; requires only `python-dateutil` and `tzdata`. Parsing only: recurrence stays on `python-dateutil` (no `recurring-ical-events`, LGPL-3.0). No paid service. `pip-audit` NOT RUN for this addition in this environment (CI runs it). |
+| tzdata | IANA zone database for `zoneinfo` on slim images (calendar time zones) | Apache-2.0 | Already installed transitively by `icalendar`; declared directly (`>=2024.1`, installed 2026.5) so the container never depends on a system zone database. |
 | cryptography | Authenticated encryption (AES-256-GCM) for OAuth tokens at rest (M5-01) | Apache-2.0 OR BSD-3-Clause | Maintained `pyca` project; used via the high-level `AESGCM`/`HKDF` APIs (no custom crypto). Bound `>=50,<51` — the floor clears the advisories `pip-audit` reports against earlier 4x wheels. ADR-0027 |
 
 ## Runtime — frontend (`apps/web`)
@@ -43,6 +45,8 @@ as reported by the package metadata; verify against the upstream project before 
 
 | Package | Purpose considered | Licence / maintenance (package metadata, checked 2026-11-03) | Decision |
 |---|---|---|---|
+| recurring-ical-events | expanding ICS recurrences | LGPL-3.0 | Rejected: copyleft; `python-dateutil` already does the job (ADR-0072) |
+| Google API client / Microsoft Graph SDK | provider calls | Apache-2.0 / MIT | Rejected: heavy, hide retry and error behaviour; plain `httpx` against documented REST (ADR-0071) |
 | merge3 1.0.0 (Breezy) | three-way text merge for note sync (SYNC-04) | GPL-2.0-or-later; active (release 2026-10-25) | Rejected: copyleft is incompatible with the intended distribution (AGENTS.md 14) |
 | diff-match-patch 20241021 | character-level diff/patch | Apache-2.0; last release 2024-10 | Rejected for merging: its patch application is fuzzy by design; a merge must be exact or refused |
 | three-merge 0.1.1 | merge of two strings against a base | MIT; last release 2020-07 (unmaintained) | Rejected: stale, a wrapper over diff-match-patch |

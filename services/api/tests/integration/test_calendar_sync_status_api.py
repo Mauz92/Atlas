@@ -332,10 +332,12 @@ async def test_manual_sync_without_a_connection_is_a_conflict(client, app: FastA
     assert response.json()["detail"] == "provider is not connected"
 
 
-async def test_manual_sync_without_an_adapter_is_unavailable(client) -> None:
+async def test_manual_sync_without_an_adapter_is_unavailable(app, client) -> None:
     headers = await _auth(client)
     await _connect(client, headers)
-    # No adapter is registered (the real ones are M5-03/M5-04, pending M5-00/AR-001).
-    response = await client.post("/api/calendar/providers/google/sync", headers=headers)
+    # A registry with no adapter for the provider (the real ones are registered by default since
+    # M5-03/M5-04; this keeps the "no adapter" contract tested).
+    with _use_registry(app, AdapterRegistry()):
+        response = await client.post("/api/calendar/providers/google/sync", headers=headers)
     assert response.status_code == 503
     assert response.json()["detail"] == "calendar sync is not available for this provider"

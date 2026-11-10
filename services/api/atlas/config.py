@@ -61,6 +61,38 @@ class Settings(BaseSettings):
     # the next scan re-runs the calendar.
     calendar_sync_stale_seconds: int = 900
 
+    # --- Calendar providers (Stage A, read-only; M5-03/04/05/11, ADR-0071) -----------------------
+    # Google OAuth *web application* client (Cloud Console). Empty = Google is "not configured" and
+    # the UI shows setup help instead of a Connect button. The redirect URI is never configured: it
+    # is always ``{PUBLIC_BASE_URL}/api/calendar/google/callback`` (see ``atlas.calendar.oauth``).
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    # Microsoft Entra app registration (delegated, Calendars.Read + offline_access). ``common``
+    # accepts personal and work accounts, ``consumers`` personal only, or a single tenant id.
+    microsoft_client_id: str = ""
+    microsoft_client_secret: str = ""
+    microsoft_tenant: str = "common"
+    # How often (seconds, at least 300) a secret ICS feed (Proton and others) is polled. Providers
+    # refresh their own feeds slowly (Proton: hours), so polling faster only wastes requests.
+    ics_poll_seconds: int = Field(default=900, ge=300)
+    # Largest ICS body accepted (bytes) and the per-request timeout (seconds).
+    ics_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1024)
+    ics_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
+    # Development only: accept ``http://`` feeds, and feeds on a loopback/private address. Both are
+    # refused by default and the private-host flag is refused outright in production (SECURITY T24).
+    ics_allow_http: bool = False
+    ics_allow_private_hosts: bool = False
+    # How many days either side of today the Microsoft delta window covers (calendarView is a
+    # windowed query); events outside the window are not synced.
+    calendar_window_past_days: int = Field(default=90, ge=7, le=730)
+    calendar_window_future_days: int = Field(default=365, ge=30, le=1095)
+    # How long (seconds) an OAuth ``state`` stays valid. Single use, bound to the browser session.
+    calendar_oauth_state_ttl_seconds: int = Field(default=600, ge=60, le=3600)
+    # Test/dev only: route every provider endpoint (OAuth + API) to a local fake provider server at
+    # this origin, e.g. ``http://127.0.0.1:9911``. Refused in production. Never set on a real
+    # server.
+    calendar_fake_provider_url: str = ""
+
     # How long (days, at least 30) the change feed keeps *deletion tombstones* (M7-02, changed by
     # SYNC-03e / ADR-0059 D2: upsert rows are never purged, so a new device can always bootstrap
     # from cursor 0). A tombstone older than this is purged by a durable job; a client whose cursor
@@ -208,6 +240,13 @@ class Settings(BaseSettings):
         for name in ("secret_key", "session_secret", "token_encryption_key"):
             if getattr(self, name) in placeholders:
                 msg = f"{name} must be set to a real secret in production"
+                raise RuntimeError(msg)
+        for name, reason in (
+            ("calendar_fake_provider_url", "routes calendar OAuth to a fake provider"),
+            ("ics_allow_private_hosts", "lets ICS feeds reach private networks (SSRF)"),
+        ):
+            if getattr(self, name):
+                msg = f"{name.upper()} must not be set in production: it {reason}"
                 raise RuntimeError(msg)
 
 

@@ -36,8 +36,8 @@ if TYPE_CHECKING:
 _TRUNCATE = (
     "TRUNCATE TABLE jobs, sessions, users, change_log, notes, tags, note_links, note_tags, "
     "note_projects, projects, tasks, recurrence_series, task_tags, task_links, idempotency_keys, "
-    "provider_credentials, external_events, sync_cursors, reminder_deliveries, reminders, "
-    "reminder_policies, notification_devices CASCADE"
+    "provider_credentials, external_events, sync_cursors, calendar_sources, oauth_states, "
+    "reminder_deliveries, reminders, reminder_policies, notification_devices CASCADE"
 )
 
 
@@ -120,3 +120,39 @@ async def create_user_via_setup(
         json={"email": email, "password": password, "display_name": "Owner"},
     )
     assert response.status_code == 201, response.text
+
+
+@pytest.fixture
+def fake_provider(monkeypatch: pytest.MonkeyPatch) -> Iterator[object]:
+    """Route every provider call to the in-process fake (no network; AGENTS.md §11).
+
+    Configures the Google/Microsoft client credentials the fake accepts, a public https base URL and
+    the dev-only ICS flags (the fixture feeds live on a loopback address).
+    """
+    import httpx
+
+    from atlas.calendar import http as calendar_http
+    from atlas.config import get_settings
+    from tests.fakes.calendar_provider import (
+        CLIENT_ID,
+        CLIENT_SECRET,
+        PROVIDER,
+        build_app,
+    )
+
+    PROVIDER.reset()
+    settings = get_settings()
+    for name, value in {
+        "calendar_fake_provider_url": "http://fake.test",
+        "google_client_id": CLIENT_ID,
+        "google_client_secret": CLIENT_SECRET,
+        "microsoft_client_id": CLIENT_ID,
+        "microsoft_client_secret": CLIENT_SECRET,
+        "public_base_url": "https://atlas.example.test",
+        "ics_allow_private_hosts": True,
+        "ics_allow_http": True,
+    }.items():
+        monkeypatch.setattr(settings, name, value)
+    calendar_http.set_transport(httpx.ASGITransport(app=build_app()))
+    yield PROVIDER
+    calendar_http.set_transport(None)
