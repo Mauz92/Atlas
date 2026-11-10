@@ -4125,3 +4125,22 @@ says that is not provider-compatibility evidence, so M5-00, M5-03, M5-04, M5-05,
 | **Live Google / Microsoft / Proton behaviour; refresh-token lifetime after > 7 days; real consent screens; real feed delay** | **`NOT RUN` / UNVERIFIED** | runbook and evidence template: `CALENDAR_SYNC.md` 12.7 (the owner fills it in) |
 | Webhook change notifications (M5-09) | `NOT BUILT` | needs a public endpoint; Atlas is private (SEC-01) |
 | Bidirectional sync (M6) | `NOT BUILT` | Stage B |
+
+## UX-12 - Accent colours (2026-11-10, local; CI not run; nothing committed; ADR-0073)
+
+Owner request: "I would just like to have some more accent colors."; addition the same day: colour headings with the accent.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Ten accents (Neutral default + nine), each as five tokens for Light and both dark blocks | `PASS` | `styles.css` data-accent blocks; `styles.test.ts` key-set and System-dark = explicit-Dark checks |
+| Contrast: text 4.5:1, solid accent / ring 3:1, on-accent 4.5:1, heading text 4.5:1, every accent x theme x surface | `PASS` | `styles.test.ts` matrix; no ratio lowered |
+| `accent` preference, default Neutral, invalid value falls back, storage failure, no reload, set before first paint | `PASS` | `lib/accent.test.ts`; `ux12-accent.spec.ts` (script runs before the app module is released; invalid value ignored) |
+| Picker: radio group, named swatches, 44 px, selected not by colour alone, keyboard, default labelled, 360/390/768/1440 | `PASS` (768 only through the sweep widths 390/1440 and the 360 target check; 768 NOT RUN separately) | `AccentPicker.test.tsx`; `ux12` test 1 (arrow keys, focus ring, check mark, 44 px at 360, no overflow) |
+| Every use of the accent follows tokens; no hard-coded hex outside token blocks; semantic colours untouched | `PASS` | CSS audit (selected nav, segmented, presets, notes selection, live links/tags moved to tokens); `styles.test.ts` literal check; `ux12` test 3 (semantic tokens identical across all ten accents) |
+| Coloured headings switch (default on, no-op for Neutral, per device, pre-paint) and what it does and does not colour | `PASS` | `accent.test.ts`, `ux12` test 4 (computed colours in Light and Dark) |
+| axe clean, no horizontal scroll at 390 and 1440, Today/Tasks/Notes/Calendar/Settings, every accent, Light and Dark, headings on and off | `PASS` | `ux12` sweep (380 axe runs) |
+| Desktop shell needs nothing extra | `PASS` by inspection, NOT RUN in the shell | the shell loads this web UI; its welcome page keeps its own colours |
+
+**Verification (2026-11-10).** `./scripts/verify.sh` PASS (pytest 4739 passed / 14 skipped; vitest 1542 passed / 5 skipped; lint incl. CSS scale check, typecheck). `npm run e2e` PASS 12/12. `npm run test:e2e:real` PASS 88/88 (26.5 min; the UX-12 sweep is 13 min of it). No stray `atlas_e2e_*` databases; the `atlas` database and the owner's stack were not touched.
+Screenshots (not committed): `/tmp/claude-1000/-home-kim-Documents-Atlas/31ff7fb3-5923-481a-b611-5657fde6b6ea/scratchpad/report/` (Blue, Pink, Green on Today, Tasks, Notes, Calendar at phone 390 and desktop 1440, Light and Dark; Settings with the picker for Neutral and Violet with headings on and off); all ten accents: `/tmp/claude-1000/-home-kim-Documents-Atlas/31ff7fb3-5923-481a-b611-5657fde6b6ea/scratchpad/shots/`.
+**Not verified:** Safari/Firefox, a real phone, the desktop shell window, the 768 px width of the sweep, a screen reader reading the picker. Known limits: per-device only (not synced); Amber/Orange/Red accents resemble the warning/overdue colours (R-81).

@@ -736,6 +736,7 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
 | UX-09 | Readability tokens and the task row / section structure on Inbox, Today, Upcoming, Tasks lists, project list (phone first; evidence `UX_AUDIT.md` "Readability and mobile audit (2026-11)") | UX-08 | `DONE` (local PASS 2026-11-03; evidence `ACCEPTANCE.md` UX-09; ADR-0062; CI `e2e-real` NOT RUN; not committed) |
 | UX-10 | Week agenda layout and navigation, phone capture (FAB + sheet), phone menu as bottom sheet, 16 px inputs, viewport/safe-area | UX-09 | `DONE` (local, 2026-11-03; ADR-0063) |
 | UX-11 | Remaining phone pages: Tasks select mode and Filters sheet, project Board column tabs, Notes toolbar, Projects cards, palette sheet; standalone Board removed | UX-10 | `DONE` (local, 2026-11-03; ADR-0064; the UX series UX-01…UX-11 is complete) |
+| UX-12 | Selectable accent colours (ten, Neutral default), per-device preference, picker in Settings > Appearance | UX-11 | `DONE` (local, 2026-11-10; ADR-0073; evidence `ACCEPTANCE.md` UX-12) |
 | AUTH-01 | Account recovery in the UI: one-time recovery code at setup / in Settings, "Forgot password?" on the sign-in page, reset without email | UX-02, SYNC-06 (`revoke_all_devices`) | `DONE` (2026-11-04, local, 10 sub-steps 01a-01j all verified; owner approved the design 2026-11-04; not committed; CI not run; evidence `ACCEPTANCE.md` AUTH-01; ADR-0067; risks R-56, R-57; threats `SECURITY.md` T25-T30). `atlas-admin reset-password` stays the fallback when both password and code are lost; new `atlas-admin recovery-code`; new setting `RECOVERY_ENABLED` (default true) |
 
 ### UX-01 plan — Design tokens and base controls
@@ -1058,6 +1059,15 @@ legitimately changes); screenshot set at 1440/1024/390 × light/dark attached to
   phone Tasks page has no `Select <title>` until "Select tasks"; specs ux02, ux03, ux07, ux08, mu08, J1 were updated (`TESTING.md`).
 - **Status: `DONE`** (local, 2026-11-03, not committed, CI `e2e-real` not run; evidence `ACCEPTANCE.md` UX-11, ADR-0064, R-51). Not verified on a
   real phone (keyboard, notch, iOS zoom, TalkBack/VoiceOver). **The UX series (UX-01 ... UX-11) is complete.**
+
+---
+
+### UX-12 plan — Accent colours
+- **Problem.** Owner request (2026-11-10): "I would just like to have some more accent colors." The accent is neutral only (ADR-0051).
+- **Scope.** Nine accents beside Neutral, each as the five accent tokens for Light and both dark blocks; an `atlas-accent` preference (`data-accent`) and an `atlas-accent-headings` switch (`data-accent-text`, coloured headings, owner addition) applied by `theme-init.js` before paint and live by `lib/accent.ts`; a radio-group picker in Settings > Appearance; selected navigation moved to the accent tint; CodeMirror selection, live-preview links and tags on the tokens.
+- **Out of scope.** Syncing the preference across devices (needs a server setting; later option), per-project colours, the desktop shell's own welcome page, any change to semantic colours, backend.
+- **Dependencies.** UX-01 tokens, ADR-0062. **Acceptance and tests.** `ACCEPTANCE.md` UX-12, `TESTING.md` (UX-12 bullet).
+- **Status: `DONE`** (local, 2026-11-10, not committed, CI not run; ADR-0073). Not verified on real Safari/Firefox, a real phone or the desktop shell.
 
 ---
 

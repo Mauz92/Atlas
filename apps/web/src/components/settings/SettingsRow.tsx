@@ -10,6 +10,8 @@ interface SettingsRowProps {
   descriptionId?: string;
   /** The control (input, buttons, radios), drawn on the right. */
   children: ReactNode;
+  /** A wide control (a swatch grid) goes below the text instead of beside it. */
+  stacked?: boolean;
 }
 
 /** "Label and description on the left, control on the right" (UX_AUDIT §4.3). */
@@ -20,9 +22,10 @@ export function SettingsRow({
   description,
   descriptionId,
   children,
+  stacked,
 }: SettingsRowProps) {
   return (
-    <div className="settings-row">
+    <div className={stacked ? "settings-row settings-row-stacked" : "settings-row"}>
       <div className="settings-row-text">
         {htmlFor ? (
           <label htmlFor={htmlFor}>{label}</label>

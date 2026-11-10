@@ -541,7 +541,7 @@ export const liveTheme = EditorView.theme({
   },
   ".cm-live-html": { color: "var(--text-2)" },
   ".cm-live-link, .cm-live-wikilink": {
-    color: "var(--text)",
+    color: "var(--accent-text)",
     textDecoration: "underline",
     textUnderlineOffset: "2px",
   },
@@ -552,6 +552,7 @@ export const liveTheme = EditorView.theme({
   },
   ".cm-live-image": { color: "var(--text-2)", fontFamily: "var(--font-mono)", fontSize: "0.9em" },
   ".cm-live-tag": {
+    color: "var(--accent-text)",
     backgroundColor: "var(--accent-soft)",
     borderRadius: "var(--r-sm)",
     padding: "0 var(--s-1)",

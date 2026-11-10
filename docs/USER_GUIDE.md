@@ -68,6 +68,15 @@ it owns the instance.
 Use the moon/sun button at the bottom of the sidebar, *Toggle theme* in the palette, or **Settings → Appearance**. Your choice is remembered
 in this browser and follows your system preference until you change it.
 
+### Accent colour
+
+**Settings → Appearance → Accent colour** lets you pick the colour used for buttons, links, the selected item in the menus and
+the focus outline: Neutral (the default, black and white), Blue, Indigo, Violet, Pink, Red, Orange, Amber, Green or Teal. The page changes as soon as you pick
+one (a sample heading shows the effect), and it works with Light, Dark and System. With an accent chosen, **Colour headings with the accent** (on by default; it does nothing for Neutral) also colours page titles,
+section headings, the sidebar's group names and the headings in your notes; body text, task titles and labels stay neutral. Colours that carry meaning (overdue, due today, priority, the project dots and
+your calendar colours) never change with the accent. The choice is remembered in this browser only: set it again on each browser or desktop app
+you use (syncing it across devices is a possible later option).
+
 ### Keyboard shortcuts
 
 Press **?** (when you are not typing in a field) or choose **Keyboard shortcuts** in the palette to see
@@ -109,7 +118,7 @@ The window has four parts (UX-02):
 | **Projects** | `/projects` | Your projects (progress, open tasks, target date) and each project's page (Tasks, Board, Notes tabs). |
 | **Notes** | `/notes` | The Markdown notebook (editor, preview, tree, search). |
 | **Search** | `/search` | Search notes, tasks and projects. |
-| **Settings** | `/settings` | A section list and one section at a time, in the address (`/settings/account`, `/appearance`, `/notifications`, `/calendar`, `/sync`, `/data`, `/about`). **Account:** name and password. **Appearance:** theme. **Notifications and reminders:** desktop notifications and default reminder timing. **Calendar:** sync status for connected calendars (no event views yet). **Sync:** offline queue, conflicts and "Sync now". **Data and backups:** export and backup status. **About:** version and instance health. The old `/sync`, `/notifications` and `/calendar` addresses still work and open their section. On a phone the list comes first and each section opens with an **All settings** link back. |
+| **Settings** | `/settings` | A section list and one section at a time, in the address (`/settings/account`, `/appearance`, `/notifications`, `/calendar`, `/sync`, `/data`, `/about`). **Account:** name and password. **Appearance:** theme and accent colour. **Notifications and reminders:** desktop notifications and default reminder timing. **Calendar:** sync status for connected calendars (no event views yet). **Sync:** offline queue, conflicts and "Sync now". **Data and backups:** export and backup status. **About:** version and instance health. The old `/sync`, `/notifications` and `/calendar` addresses still work and open their section. On a phone the list comes first and each section opens with an **All settings** link back. |
 
 **Reading a task row.** Line 1 is the title (tap it, or anywhere in the row, to open the task). Line 2 says when and how important:
 a red **Overdue** chip with a warning icon, a blue **Today** chip with a sun, otherwise the date (or just the time under a day
@@ -452,7 +461,7 @@ Open **Settings** for:
   here. For every device you see its name, platform and when it last connected; **Rename** it, or **Sign out** a lost or
   retired one (it stops syncing at its very next request and asks for your password; what is already on it stays there).
   **Sign out all devices** ends them all. Browsers are not listed: they end when you sign out or change your password.
-- **Appearance.** Light or Dark (remembered in this browser).
+- **Appearance.** Theme (System, Light or Dark) and **Accent colour** (Neutral by default, or one of nine colours); both are remembered in this browser only.
 - **Reminders and notifications.** Notification status for this browser and the default reminder timing (§8).
 - **Export your data.** **Download export** saves a zip with your notes (the real Markdown files), tasks and
   projects in open formats. It is for portability; it is not a backup.

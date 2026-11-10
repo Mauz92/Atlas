@@ -101,7 +101,7 @@ const tokenTheme = EditorView.theme({
   ".cm-line": { padding: "0" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--text)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
-    { backgroundColor: "var(--bg-selected)" },
+    { backgroundColor: "var(--accent-soft)" },
   ".cm-activeLine": { backgroundColor: "transparent" },
   ".cm-gutters": {
     color: "var(--text-3)",

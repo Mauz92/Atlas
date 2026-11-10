@@ -149,6 +149,18 @@ single hue works, and this is Q1 below. Dark mode is defined in CSS by
 `data-theme` from `localStorage` before first paint. Theme options are **System** (default), Light and
 Dark.
 
+### 3.1a Accent colours (UX-12, ADR-0073)
+
+The table above is the **default (Neutral)** accent. The viewer can pick one of nine more in Settings → Appearance (Blue, Indigo, Violet, Pink, Red, Orange, Amber, Green, Teal); the choice is `localStorage["atlas-accent"]` (this device only) and `<html data-accent>`, set before first paint by `public/theme-init.js` and live by `src/lib/accent.ts`. Neutral has no attribute.
+
+- **Tokens.** An accent replaces exactly `--accent`, `--accent-hover`, `--accent-contrast` (text on the solid), `--accent-text` (links, selected labels, focus ring) and `--accent-soft` (tint). There is no sixth token: the focus ring is `--accent-text`. Each accent has three blocks after the dark tokens in `styles.css`: Light `:root[data-accent="x"]`, System dark `:root[data-accent="x"]:not([data-theme="light"])` inside the `prefers-color-scheme` query, and explicit Dark `:root[data-theme="dark"][data-accent="x"]` (identical values; change a dark value in both).
+- **Never accent-coloured:** overdue, due-today (and the Today/week highlights), priority, success, warning, danger, project dots, calendar colours. A test asserts an accent block cannot define them.
+- **Where the accent shows:** primary button, links, focus rings, checked checkbox/radio, progress, tab underline, selected nav item (sidebar, rail, bottom nav), segmented controls and Notes mode buttons, preset pills, settings nav, notes selection, live-preview links and tags. With Neutral these resolve to the same values as before UX-12.
+- **Contrast rules (every accent x Light/Dark, `styles.test.ts`):** `--accent-text` 4.5:1 on all ten surfaces and on `--accent-soft`; `--accent`/`--accent-hover` 3:1 on all ten surfaces; `--accent-contrast` 4.5:1 on `--accent`/`--accent-hover`; `--text` 7:1, `--text-2`/`--text-3` 4.5:1 and the semantic text colours 4.5:1 on `--accent-soft`; the tint stays under 1.4:1 against the page. Pick values that pass, adjust lightness per theme, never lower the bar.
+- **Coloured headings (D9).** Per-device switch "Colour headings with the accent" (default on; stored only when off), `<html data-accent-text="on">` only for a non-neutral accent, set pre-paint. Page titles (h1), Settings/card headings, the calendar period title, sidebar section labels and Markdown headings (preview and live, marks included) use `--accent-text` (4.5:1 on page, card, band, sidebar, raised and editor surfaces; no 3:1 large-text allowance). Body text, row titles, meta, form labels and the semantic headers (Overdue, Due today, day headers) stay neutral/semantic.
+- **Colour literals** appear only in the token blocks (a test fails otherwise); the picker dots use `--swatch-<id>` tokens (3:1 on the card and panel in both themes).
+- **Later option:** syncing the choice across devices (a per-user setting in the feed; needs a server change).
+
 ### 3.2 Type, spacing, shape
 
 - **Fonts:** `--font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;` and

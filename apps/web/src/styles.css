@@ -2,9 +2,10 @@
  * Atlas stylesheet (design tokens and base controls: UX-01, ADR-0051, docs/UX_AUDIT.md §3).
  *
  * Rules for this file:
- *  - Colours only through the tokens below. Neutral surfaces and text carry the UI; the single
- *    accent is neutral (ink in light, near-white in dark) and swappable here. Colour is used only
- *    for meaning: priority, overdue/warning, danger and success.
+ *  - Colours only through the tokens below. Neutral surfaces and text carry the UI; the default
+ *    accent is neutral (ink in light, near-white in dark). The viewer may pick another accent
+ *    (UX-12, ADR-0073: the data-accent blocks after the dark tokens). Colour is otherwise used only
+ *    for meaning: priority, overdue/warning, danger and success, which never follow the accent.
  *  - font-size, gap and padding take scale values only (var(--fs-*), var(--s-*), 0 or inherit).
  *    `npm run lint` enforces this with scripts/check-css-scale.mjs.
  *  - Dark mode: the dark values appear twice, once for System (prefers-color-scheme) and once for
@@ -212,6 +213,282 @@
   --success: #5fd38a;
   --success-soft: #15301e;
   --scrim: rgb(0 0 0 / 0.56);
+}
+
+/* --- Accent colours (UX-12, ADR-0073) ------------------------------------------------------------
+   Neutral is the default and has no data-accent (the tokens above). A chosen accent is set on
+   <html data-accent="..."> (public/theme-init.js before first paint, src/lib/accent.ts afterwards)
+   and replaces only the five accent tokens. Semantic colours (overdue, due-today, priority, success,
+   warning, danger, project and calendar colours) never follow the accent. Each accent has a light
+   block, a System-dark block and an explicit-Dark block (identical values; the dark ones are more
+   specific so they win over the light block). src/styles.test.ts checks every accent x theme x surface.
+   Each value is a hue with a lightness chosen so the ratios hold; adjust the lightness, not the bar. */
+
+/* Blue */
+:root[data-accent="blue"] {
+  --accent: #1868d8;
+  --accent-hover: #155bbc;
+  --accent-contrast: #ffffff;
+  --accent-text: #1354ae;
+  --accent-soft: #e4edfa;
+}
+
+/* Indigo */
+:root[data-accent="indigo"] {
+  --accent: #5952e0;
+  --accent-hover: #4038dc;
+  --accent-contrast: #ffffff;
+  --accent-text: #423adc;
+  --accent-soft: #ebeafb;
+}
+
+/* Violet */
+:root[data-accent="violet"] {
+  --accent: #8b48d8;
+  --accent-hover: #7b2fd3;
+  --accent-contrast: #ffffff;
+  --accent-text: #742ac8;
+  --accent-soft: #f1e9fa;
+}
+
+/* Pink */
+:root[data-accent="pink"] {
+  --accent: #ca2175;
+  --accent-hover: #af1d66;
+  --accent-contrast: #ffffff;
+  --accent-text: #a41b60;
+  --accent-soft: #fbe6f0;
+}
+
+/* Red */
+:root[data-accent="red"] {
+  --accent: #d1261a;
+  --accent-hover: #b62116;
+  --accent-contrast: #ffffff;
+  --accent-text: #aa1f15;
+  --accent-soft: #fbe8e7;
+}
+
+/* Orange */
+:root[data-accent="orange"] {
+  --accent: #b64a0c;
+  --accent-hover: #993e0a;
+  --accent-contrast: #ffffff;
+  --accent-text: #923c09;
+  --accent-soft: #f9e9e0;
+}
+
+/* Amber */
+:root[data-accent="amber"] {
+  --accent: #936304;
+  --accent-hover: #754f03;
+  --accent-contrast: #ffffff;
+  --accent-text: #754f03;
+  --accent-soft: #f7ebd4;
+}
+
+/* Green */
+:root[data-accent="green"] {
+  --accent: #1f7c46;
+  --accent-hover: #196438;
+  --accent-contrast: #ffffff;
+  --accent-text: #186237;
+  --accent-soft: #d3f4e1;
+}
+
+/* Teal */
+:root[data-accent="teal"] {
+  --accent: #11786e;
+  --accent-hover: #0d5e56;
+  --accent-contrast: #ffffff;
+  --accent-text: #0e625a;
+  --accent-soft: #c8f5f1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-accent="blue"]:not([data-theme="light"]) {
+    --accent: #639ff2;
+    --accent-hover: #84b3f5;
+    --accent-contrast: #111114;
+    --accent-text: #99c1fa;
+    --accent-soft: #202f43;
+  }
+  :root[data-accent="indigo"]:not([data-theme="light"]) {
+    --accent: #9894f0;
+    --accent-hover: #b6b3f4;
+    --accent-contrast: #111114;
+    --accent-text: #cac8f9;
+    --accent-soft: #2b2954;
+  }
+  :root[data-accent="violet"]:not([data-theme="light"]) {
+    --accent: #b78aea;
+    --accent-hover: #caa8f0;
+    --accent-contrast: #111114;
+    --accent-text: #d7bcf5;
+    --accent-soft: #39264e;
+  }
+  :root[data-accent="pink"]:not([data-theme="light"]) {
+    --accent: #ed75b1;
+    --accent-hover: #f195c3;
+    --accent-contrast: #111114;
+    --accent-text: #f7a9d0;
+    --accent-soft: #472234;
+  }
+  :root[data-accent="red"]:not([data-theme="light"]) {
+    --accent: #f27971;
+    --accent-hover: #f59891;
+    --accent-contrast: #111114;
+    --accent-text: #f9aca6;
+    --accent-soft: #472422;
+  }
+  :root[data-accent="orange"]:not([data-theme="light"]) {
+    --accent: #f47c36;
+    --accent-hover: #f69258;
+    --accent-contrast: #111114;
+    --accent-text: #fcb992;
+    --accent-soft: #3e2a1e;
+  }
+  :root[data-accent="amber"]:not([data-theme="light"]) {
+    --accent: #da950b;
+    --accent-hover: #f3a916;
+    --accent-contrast: #111114;
+    --accent-text: #fcd992;
+    --accent-soft: #362d1a;
+  }
+  :root[data-accent="green"]:not([data-theme="light"]) {
+    --accent: #28bd66;
+    --accent-hover: #35d477;
+    --accent-contrast: #111114;
+    --accent-text: #a0eec0;
+    --accent-soft: #193424;
+  }
+  :root[data-accent="teal"]:not([data-theme="light"]) {
+    --accent: #17cfbc;
+    --accent-hover: #23e7d3;
+    --accent-contrast: #111114;
+    --accent-text: #97f7ed;
+    --accent-soft: #183330;
+  }
+}
+
+:root[data-theme="dark"][data-accent="blue"] {
+  --accent: #639ff2;
+  --accent-hover: #84b3f5;
+  --accent-contrast: #111114;
+  --accent-text: #99c1fa;
+  --accent-soft: #202f43;
+}
+
+:root[data-theme="dark"][data-accent="indigo"] {
+  --accent: #9894f0;
+  --accent-hover: #b6b3f4;
+  --accent-contrast: #111114;
+  --accent-text: #cac8f9;
+  --accent-soft: #2b2954;
+}
+
+:root[data-theme="dark"][data-accent="violet"] {
+  --accent: #b78aea;
+  --accent-hover: #caa8f0;
+  --accent-contrast: #111114;
+  --accent-text: #d7bcf5;
+  --accent-soft: #39264e;
+}
+
+:root[data-theme="dark"][data-accent="pink"] {
+  --accent: #ed75b1;
+  --accent-hover: #f195c3;
+  --accent-contrast: #111114;
+  --accent-text: #f7a9d0;
+  --accent-soft: #472234;
+}
+
+:root[data-theme="dark"][data-accent="red"] {
+  --accent: #f27971;
+  --accent-hover: #f59891;
+  --accent-contrast: #111114;
+  --accent-text: #f9aca6;
+  --accent-soft: #472422;
+}
+
+:root[data-theme="dark"][data-accent="orange"] {
+  --accent: #f47c36;
+  --accent-hover: #f69258;
+  --accent-contrast: #111114;
+  --accent-text: #fcb992;
+  --accent-soft: #3e2a1e;
+}
+
+:root[data-theme="dark"][data-accent="amber"] {
+  --accent: #da950b;
+  --accent-hover: #f3a916;
+  --accent-contrast: #111114;
+  --accent-text: #fcd992;
+  --accent-soft: #362d1a;
+}
+
+:root[data-theme="dark"][data-accent="green"] {
+  --accent: #28bd66;
+  --accent-hover: #35d477;
+  --accent-contrast: #111114;
+  --accent-text: #a0eec0;
+  --accent-soft: #193424;
+}
+
+:root[data-theme="dark"][data-accent="teal"] {
+  --accent: #17cfbc;
+  --accent-hover: #23e7d3;
+  --accent-contrast: #111114;
+  --accent-text: #97f7ed;
+  --accent-soft: #183330;
+}
+
+/* Accent picker sample colours (UX-12): one mid-tone per accent, the same in both themes, tested for
+   3:1 against the card and panel surfaces in both themes (styles.test.ts). They colour only the dots
+   in Settings -> Appearance; the live tokens are the data-accent blocks above. */
+:root {
+  --swatch-blue: #2c7ae8;
+  --swatch-indigo: #746ee5;
+  --swatch-violet: #9a5fdd;
+  --swatch-pink: #df378b;
+  --swatch-red: #e53d30;
+  --swatch-orange: #d1550d;
+  --swatch-amber: #a97204;
+  --swatch-green: #248f50;
+  --swatch-teal: #148d81;
+  --swatch-neutral: #7a7a82;
+}
+
+/* Accent headings (UX-12, ADR-0073 D9). With a non-neutral accent and "Colour headings with the accent" on,
+   <html data-accent-text="on"> and these headings take --accent-text (4.5:1 on every surface, tested). Body
+   text, row titles, meta text, form labels, links-as-links, code and the semantic section headers (Overdue,
+   Due today, day headers, the grey section bands) are not listed here and stay as they are. */
+:root[data-accent-text="on"] h1,
+:root[data-accent-text="on"] .settings-pane h2,
+:root[data-accent-text="on"] .settings-group h3,
+:root[data-accent-text="on"] .cal-card-head h2,
+:root[data-accent-text="on"] .cal-feed-form h3,
+:root[data-accent-text="on"] .reminder-preferences h2,
+:root[data-accent-text="on"] .sync-provider-head h2,
+:root[data-accent-text="on"] .notification-consent-head h2,
+:root[data-accent-text="on"] .shortcut-help h2,
+:root[data-accent-text="on"] .cal-range,
+:root[data-accent-text="on"] button.sidebar-section-header,
+:root[data-accent-text="on"] button.sidebar-section-header:hover,
+:root[data-accent-text="on"] .markdown-preview h1,
+:root[data-accent-text="on"] .markdown-preview h2,
+:root[data-accent-text="on"] .markdown-preview h3,
+:root[data-accent-text="on"] .markdown-preview h4,
+:root[data-accent-text="on"] .markdown-preview h5,
+:root[data-accent-text="on"] .markdown-preview h6,
+:root[data-accent-text="on"] .cm-live-h,
+:root[data-accent-text="on"] .cm-live-h .cm-live-mark {
+  color: var(--accent-text);
+}
+
+:root[data-accent-text="on"] .markdown-preview :is(h1, h2, h3, h4, h5, h6) code,
+:root[data-accent-text="on"] .cm-live-h .cm-live-code {
+  color: var(--text);
 }
 
 /* --- Base -------------------------------------------------------------- */
@@ -887,8 +1164,8 @@ button.rail-button {
 }
 
 .rail-link.active {
-  color: var(--text);
-  background: var(--bg-selected);
+  color: var(--accent-text);
+  background: var(--accent-soft);
 }
 
 /* Sidebar */
@@ -1026,13 +1303,13 @@ button.sidebar-section-header:hover {
 }
 
 .nav-link.active {
-  color: var(--text);
+  color: var(--accent-text);
   font-weight: 500;
-  background: var(--bg-selected);
+  background: var(--accent-soft);
 }
 
 .nav-link.active .icon {
-  color: var(--text);
+  color: var(--accent-text);
 }
 
 .nav-label {
@@ -1063,7 +1340,7 @@ button.nav-row-toggle {
 }
 
 .nav-link.active .nav-dot {
-  background: var(--text);
+  background: var(--accent-text);
 }
 
 .sidebar-footer {
@@ -1455,7 +1732,7 @@ button.statusbar-item:hover {
   }
 
   .bottom-nav a.active {
-    color: var(--text);
+    color: var(--accent-text);
     font-weight: 600;
   }
 
@@ -1764,7 +2041,8 @@ button.statusbar-item:hover {
 }
 
 .notes-header-actions button[aria-pressed="true"] {
-  background: var(--bg-selected);
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 
 .notes-tree-toggle {
@@ -4786,8 +5064,8 @@ button.chip[aria-expanded="true"] {
 }
 
 .segmented button[aria-pressed="true"] {
-  background: var(--bg-selected);
-  color: var(--text);
+  background: var(--accent-soft);
+  color: var(--accent-text);
   font-weight: 600;
 }
 
@@ -4914,8 +5192,9 @@ button.chip[aria-expanded="true"] {
 }
 
 .popover-presets [aria-pressed="true"] {
-  background: var(--bg-selected);
-  border-color: var(--border-strong);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: var(--accent);
 }
 
 /* Floats above the status bar (and the phone bottom nav) while rows are selected. */
@@ -6624,4 +6903,156 @@ a.button-link:hover {
 .week-events-title {
   margin: 0 0 var(--s-2);
   font-size: var(--fs-base);
+}
+
+/* Accent picker (UX-12, ADR-0073). Native radios, visually hidden but focusable; the label is the 44px
+   target. Selected = check mark + heavier outline + bold name (not colour alone). */
+.settings-row-stacked {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+}
+
+.settings-row-stacked .settings-row-control {
+  justify-content: flex-start;
+}
+
+.accent-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--s-2);
+  width: 100%;
+}
+
+.accent-option {
+  position: relative;
+  display: block;
+  margin: 0;
+}
+
+.accent-option input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.accent-card {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border-control);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.accent-option:hover .accent-card {
+  background: var(--bg-hover);
+}
+
+.accent-option input:checked + .accent-card {
+  border-color: var(--accent-text);
+  box-shadow: inset 0 0 0 1px var(--accent-text);
+  font-weight: 600;
+}
+
+.accent-option input:focus-visible + .accent-card {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.accent-dot {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-full);
+  background: var(--swatch-neutral);
+  box-shadow: 0 0 0 1px var(--bg-raised);
+}
+
+.accent-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.accent-default {
+  color: var(--text-2);
+  font-weight: 400;
+}
+
+.accent-check {
+  display: none;
+  flex: none;
+  color: var(--accent-text);
+}
+
+.accent-option input:checked + .accent-card .accent-check {
+  display: inline-flex;
+}
+
+.accent-dot[data-accent="blue"] {
+  background: var(--swatch-blue);
+}
+
+.accent-dot[data-accent="indigo"] {
+  background: var(--swatch-indigo);
+}
+
+.accent-dot[data-accent="violet"] {
+  background: var(--swatch-violet);
+}
+
+.accent-dot[data-accent="pink"] {
+  background: var(--swatch-pink);
+}
+
+.accent-dot[data-accent="red"] {
+  background: var(--swatch-red);
+}
+
+.accent-dot[data-accent="orange"] {
+  background: var(--swatch-orange);
+}
+
+.accent-dot[data-accent="amber"] {
+  background: var(--swatch-amber);
+}
+
+.accent-dot[data-accent="green"] {
+  background: var(--swatch-green);
+}
+
+.accent-dot[data-accent="teal"] {
+  background: var(--swatch-teal);
+}
+
+.accent-dot[data-accent="neutral"] {
+  background: var(--swatch-neutral);
+}
+
+/* "Colour headings with the accent" switch (UX-12): a checkbox in a 44px label. */
+.settings-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.accent-heading-sample {
+  margin: 0;
+  font-size: var(--fs-lg);
+  line-height: var(--lh-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+:root[data-accent-text="on"] .accent-heading-sample {
+  color: var(--accent-text);
 }

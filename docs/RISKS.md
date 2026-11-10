@@ -821,6 +821,11 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 - **Impact:** With the name resolving to the tailnet only, connecting from a device off the tailnet fails at the redirect; a changed port or name gives `redirect_uri_mismatch`.
 - **Mitigation:** The Settings card shows the exact URI; the guide explains the `:9443` form and that the redirect is made by the browser; nothing is exposed publicly to make it work (SEC-01). **Status:** Open (operational).
 
+### R-81 - Accent colours can resemble semantic colours
+- **Severity/Likelihood:** Low / Medium
+- **Impact:** With a Red, Orange or Amber accent, links and buttons look like overdue/warning colours; the preference is per device, so a new browser looks different until it is set again.
+- **Mitigation:** Semantic colours keep icons and words (chips are never colour alone), are tested separately and never follow the accent; the default is Neutral; the picker says so. Syncing the preference is a later option (ADR-0073 D8). **Status:** Accepted.
+
 ## Review log
 
 | Date | Milestone | Change |
@@ -862,3 +867,4 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 | 2026-11-10 | SYNC-11 | R-74 and R-75 added; R-22, R-48, R-54 and R-73 updated (conflict, notice and restore screens exist; the shell no longer runs two sync engines; the browser stays on its engine, SYNC-11d planned). |
 | 2026-11-10 | SYNC-09 phase 1 (Linux) | R-69 to R-73 added (script in the webview, AppImage supply chain, hidden webview, folder races/limits, device scope vs web UI); R-60 now Mitigating; R-36 unchanged (Windows still not run); R-58 unchanged (DMABUF variable is set automatically on NVIDIA); a new advisory (RUSTSEC-2026-0459, SQLite) was found by `cargo audit` and fixed by moving rusqlite 0.37 to 0.41. |
 | 2026-11-10 | Calendar Stage A | R-76 to R-80 added; R-01 and R-13 moved to Mitigating (guide, adapters, re-authorisation flag), not closed: no live evidence yet. |
+| 2026-11-10 | UX-12 | R-81 added (accent colours vs semantic colours; per-device preference). |

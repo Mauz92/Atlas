@@ -116,6 +116,141 @@ describe.each([
   });
 });
 
+/**
+ * Accent colours (UX-12, ADR-0073). Every accent is checked in Light and Dark against every surface it
+ * can appear on. Neutral is the base tokens (no data-accent). An accent block may define only the five
+ * accent tokens, so overdue, due-today, priority, success, warning, danger, project and calendar colours
+ * cannot follow it.
+ */
+const ACCENT_IDS = ["blue", "indigo", "violet", "pink", "red", "orange", "amber", "green", "teal"];
+const ACCENT_TOKENS = ["--accent", "--accent-hover", "--accent-contrast", "--accent-text", "--accent-soft"];
+const ALL_SURFACES = [...SURFACES, ...LIST_SURFACES];
+const atlasHeadingSurfaces = ["--bg", "--bg-page", "--bg-card", "--bg-section", "--bg-sidebar", "--bg-raised"];
+
+const accentLight = (id: string) => tokens(block(`:root[data-accent="${id}"]`));
+const accentSystemDark = (id: string) => tokens(block(`:root[data-accent="${id}"]:not([data-theme="light"])`));
+const accentExplicitDark = (id: string) => tokens(block(`:root[data-theme="dark"][data-accent="${id}"]`));
+
+const ACCENT_THEMES: [string, string, Tokens][] = [
+  ["neutral", "light", light],
+  ["neutral", "dark", explicitDark],
+  ...ACCENT_IDS.flatMap((id): [string, string, Tokens][] => [
+    [id, "light", { ...light, ...accentLight(id) }],
+    [id, "dark", { ...explicitDark, ...accentExplicitDark(id) }],
+  ]),
+];
+
+describe.each(ACCENT_THEMES)("accent %s, %s theme", (_id, _theme, t) => {
+  const ratio = (fg: string, bg: string) => contrast(t[fg], t[bg]);
+  const atLeast = (fg: string, bgs: string[], minimum: number) => {
+    for (const bg of bgs) {
+      expect(ratio(fg, bg), `${fg} ${t[fg]} on ${bg} ${t[bg]} = ${ratio(fg, bg).toFixed(2)}`).toBeGreaterThanOrEqual(
+        minimum,
+      );
+    }
+  };
+
+  it("text in the accent (links, selected labels, tags) reads on every surface and on the tint (4.5:1)", () => {
+    atLeast("--accent-text", [...ALL_SURFACES, "--accent-soft"], 4.5);
+  });
+
+  it("the solid accent (button, checked box, progress, tab underline, selected outline) is 3:1 on every surface", () => {
+    atLeast("--accent", ALL_SURFACES, 3);
+    atLeast("--accent-hover", ALL_SURFACES, 3);
+  });
+
+  it("text on the solid accent and its hover is 4.5:1", () => {
+    atLeast("--accent-contrast", ["--accent", "--accent-hover"], 4.5);
+  });
+
+  it("heading text (accent-text) is 4.5:1 on every surface a heading sits on: page, card, section band, sidebar, raised panel, editor", () => {
+    // Large-text 3:1 is deliberately not used as the bar. The editor background is --bg.
+    atlasHeadingSurfaces.forEach((surface) => atLeast("--accent-text", [surface], 4.5));
+  });
+
+  it("the focus ring (accent-text) is 3:1 on every surface and the tint", () => {
+    atLeast("--accent-text", [...ALL_SURFACES, "--accent-soft"], 3);
+    // A focused primary button is outlined with the ring against the page, not against itself.
+    expect(ratio("--accent-text", "--bg")).toBeGreaterThanOrEqual(3);
+  });
+
+  it("body and secondary text stay readable on the tint used for selected rows and tabs", () => {
+    atLeast("--text", ["--accent-soft"], 7);
+    atLeast("--text-2", ["--accent-soft"], 4.5);
+    atLeast("--text-3", ["--accent-soft"], 4.5);
+  });
+
+  it("the tint is a calm fill: close to the page, never a second page colour", () => {
+    expect(ratio("--accent-soft", "--bg")).toBeLessThan(1.4);
+  });
+
+  it("keeps the semantic colours readable on the tint (a tag or chip may sit on it)", () => {
+    atLeast("--danger", ["--accent-soft"], 4.5);
+    atLeast("--warning", ["--accent-soft"], 4.5);
+    atLeast("--success", ["--accent-soft"], 4.5);
+  });
+});
+
+describe("accent definitions", () => {
+  it.each(ACCENT_IDS)("%s defines exactly the accent tokens, identically for System dark and Dark", (id) => {
+    expect(Object.keys(accentLight(id)).sort()).toEqual([...ACCENT_TOKENS].sort());
+    expect(Object.keys(accentExplicitDark(id)).sort()).toEqual([...ACCENT_TOKENS].sort());
+    expect(accentSystemDark(id)).toEqual(accentExplicitDark(id));
+  });
+
+  it("the System-dark accent blocks are inside the prefers-color-scheme query and more specific than the light ones", () => {
+    const query = css.indexOf("@media (prefers-color-scheme: dark)", css.indexOf(':root[data-accent="blue"] {'));
+    expect(query).toBeGreaterThan(0);
+    expect(css.indexOf(':root[data-accent="blue"]:not([data-theme="light"]) {')).toBeGreaterThan(query);
+  });
+
+  it("every accent differs from the others and from Neutral in each theme", () => {
+    for (const theme of [accentLight, accentExplicitDark]) {
+      const accents = ACCENT_IDS.map((id) => theme(id)["--accent"]);
+      expect(new Set([...accents, theme === accentLight ? light["--accent"] : explicitDark["--accent"]]).size).toBe(
+        ACCENT_IDS.length + 1,
+      );
+    }
+  });
+
+  it("picker sample colours exist for every accent and are 3:1 on the card and panel in both themes", () => {
+    for (const id of [...ACCENT_IDS, "neutral"]) {
+      const match = css.match(new RegExp(`--swatch-${id}:\\s*(#[0-9a-f]{6});`, "i"));
+      expect(match, `--swatch-${id}`).not.toBeNull();
+      const swatch = match![1].toLowerCase();
+      for (const theme of [light, explicitDark]) {
+        for (const surface of ["--bg-raised", "--bg-card", "--bg"]) {
+          expect(contrast(swatch, theme[surface]), `${id} ${swatch} on ${surface}`).toBeGreaterThanOrEqual(3);
+        }
+      }
+    }
+  });
+
+  it("coloured headings use only --accent-text, only under data-accent-text=on, and never the semantic or body selectors", () => {
+    const start = css.indexOf(':root[data-accent-text="on"] h1,');
+    expect(start).toBeGreaterThan(0);
+    const open = css.indexOf("{", start);
+    const selectors = css.slice(start, open).split(",").map((part) => part.trim());
+    expect(css.slice(open + 1, css.indexOf("}", open)).trim()).toBe("color: var(--accent-text);");
+    for (const selector of selectors) expect(selector.startsWith(':root[data-accent-text="on"] ')).toBe(true);
+    const joined = selectors.join(" ");
+    for (const forbidden of [".section-head", ".task-row", ".task-title", "label", ".muted", ".hint", ".due", "overdue", "priority", ".week-day", ".cal-agenda-day", "body", " p"]) {
+      expect(joined, forbidden).not.toContain(forbidden);
+    }
+    // Neutral never sets the attribute (see accent.test.ts), and its --accent-text equals --text anyway.
+    expect(light["--accent-text"]).toBe(light["--text"]);
+    expect(explicitDark["--accent-text"]).toBe(explicitDark["--text"]);
+  });
+
+  it("styles.css has no colour literal outside the token blocks (colours only through tokens)", () => {
+    const base = css.indexOf("/* --- Base ---");
+    expect(base).toBeGreaterThan(0);
+    const rest = css.slice(base).replace(/\/\*[\s\S]*?\*\//g, "");
+    // The accent picker's dots use var(--swatch-*) only; rgb()/hex/hsl() belong in the token blocks.
+    expect(rest.match(/#[0-9a-fA-F]{3,8}\b|\bhsla?\(/g) ?? []).toEqual([]);
+  });
+});
+
 describe("dark mode definitions", () => {
   it("System dark (prefers-color-scheme) and explicit Dark are identical", () => {
     expect(Object.keys(systemDark).length).toBeGreaterThan(20);
