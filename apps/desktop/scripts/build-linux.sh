@@ -35,8 +35,9 @@ export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" log -1 --format=
 export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$HOME=/home/build --remap-path-prefix=$HERE=/src/atlas-desktop"
 export NO_STRIP=1   # linuxdeploy's bundled `strip` cannot read newer ELF sections (.relr.dyn); the release profile already strips the binary
 echo "== bundles =="
-npx tauri build --bundles appimage deb -- --locked
-VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+# ATLAS_VERSION (the release workflow, REL-01) overrides the version in tauri.conf.json for this build only.
+VERSION="${ATLAS_VERSION:-$(node -p "require('./src-tauri/tauri.conf.json').version")}"
+npx tauri build --bundles appimage deb --config "{\"version\":\"$VERSION\"}" -- --locked
 BUNDLES="$HERE/target/release/bundle"
 mkdir -p out/current out/previous
 for old in out/current/*.AppImage; do [[ -e "$old" ]] && mv -f "$old" out/previous/; done

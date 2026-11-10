@@ -5685,6 +5685,19 @@ button.task-subtask-title.done {
   gap: var(--s-2) var(--s-4);
 }
 
+.update-log,
+.update-notes {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--s-3);
+  font-size: var(--fs-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 16rem;
+  overflow: auto;
+}
+
 .settings-facts {
   display: grid;
   grid-template-columns: max-content 1fr;

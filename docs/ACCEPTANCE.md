@@ -4144,3 +4144,21 @@ Owner request: "I would just like to have some more accent colors."; addition th
 **Verification (2026-11-10).** `./scripts/verify.sh` PASS (pytest 4739 passed / 14 skipped; vitest 1542 passed / 5 skipped; lint incl. CSS scale check, typecheck). `npm run e2e` PASS 12/12. `npm run test:e2e:real` PASS 88/88 (26.5 min; the UX-12 sweep is 13 min of it). No stray `atlas_e2e_*` databases; the `atlas` database and the owner's stack were not touched.
 Screenshots (not committed): `/tmp/claude-1000/-home-kim-Documents-Atlas/31ff7fb3-5923-481a-b611-5657fde6b6ea/scratchpad/report/` (Blue, Pink, Green on Today, Tasks, Notes, Calendar at phone 390 and desktop 1440, Light and Dark; Settings with the picker for Neutral and Violet with headings on and off); all ten accents: `/tmp/claude-1000/-home-kim-Documents-Atlas/31ff7fb3-5923-481a-b611-5657fde6b6ea/scratchpad/shots/`.
 **Not verified:** Safari/Firefox, a real phone, the desktop shell window, the 768 px width of the sweep, a screen reader reading the picker. Known limits: per-device only (not synced); Amber/Orange/Red accents resemble the warning/overdue colours (R-81).
+
+## REL-01 — Releases and in-app server updates (2026-11-10, ADR-0074)
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Updater rules and sequence: no downgrade, low disk, unsafe bundle paths, stop before backup, rollback with/without restore, pull failure changes nothing, request must name the newest version, prune keeps newer images | `PASS` | `tests/unit/test_updater_agent.py` (13 tests, fake Docker) |
+| API contract: not configured, status sanitised, request only for the version the host reported, one at a time, version format, device token refused, signed-in only | `PASS` | `tests/integration/test_system_update.py` (8 tests); `test_devices.py` allow-list unchanged (default deny) |
+| Settings UI: not set up, confirm before update, notes as plain text, rolled-back alert, check again | `PASS` | `UpdateSection.test.tsx` (5 tests) |
+| **Real Docker, isolated project** (not the dev stack): update 0.1.0 -> 0.2.0 with data present | `PASS` | stack stopped, backup verified, compose files switched, 0.2.0 healthy and reporting 0.2.0, user row kept (rehearsal script, 2026-11-10) |
+| **Real Docker**: a 0.3.0 whose migration succeeded but which never reports itself healthy | `PASS` | rolled back automatically: the database was restored from the pre-update backup (the new table gone, revision back at `a6c3e9d27b14`), user kept, 0.2.0 running, `version.env` back at 0.2.0, status `rolled_back` with the reason |
+| `deploy/docker-compose.release.yml` merges with the base file (images, `UPDATE_DIR`, `../update` mount) | `PASS` | `docker compose config` |
+| Release workflow (gate, images, smoke test, Linux clients, draft then publish) | `NOT RUN` | never executed; YAML parses. **Do a dry run (Actions > Release > Run workflow) before the first tag.** |
+| systemd path/timer units, `install.sh`, GHCR pull with the owner's token, GitHub release lookup and asset download | `NOT RUN` | need the real server and token |
+| Windows client | `NOT RUN` | opt-in job, unverified |
+| Update of the live server | `NOT RUN` | after the dry run and `install.sh` |
+
+Notes: the rehearsal first ran under the wrong compose project (a script error: it read its configuration before creating it) and recreated the dev database
+container; the dev data was unchanged (volume reused: 2 users, revision `e5b8f2a4c1d9`) and the container was restored. The script now refuses any project but its own.

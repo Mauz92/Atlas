@@ -489,3 +489,61 @@ shares one bucket for all clients behind the proxy, sessions last 14 days, and n
 The desktop app is built on a developer machine, not by the Compose stack: `apps/desktop/scripts/build-linux.sh` produces `out/current/Atlas_<version>_amd64.AppImage`, the `.deb` and `SHA256SUMS`, and moves the AppImage that was current to `out/previous/` (the rollback: run or reinstall that file). Nothing is signed or published by the script. Requirements and commands: `apps/desktop/README.md`. Servers need no change (`OPERATOR_GUIDE.md` 12a).
 
 **Automatic updates are off.** The default build contains no updater, no endpoint and no public key; "Check for updates" does not appear in Settings > Desktop app. To build an updating variant: generate a signing key pair with `npx tauri signer generate -w <private-key-file>` (keep the private key and its password OUT of the repository and off shared machines), copy `apps/desktop/src-tauri/tauri.updater.conf.json`, replace `__PUBLIC_KEY__` with the public key and `__UPDATE_ENDPOINT__` with an **https** URL of a `latest.json` you host, build with `TAURI_SIGNING_PRIVATE_KEY=... npx tauri build -c <your-config.json> --bundles appimage -- --features updater`, upload the signed AppImage and `latest.json` (format: `e2e/updater-test.mjs` builds one). Clients refuse a bundle that is altered or signed with another key (tested with throwaway keys, `ACCEPTANCE.md` SYNC-09), and updating needs the AppImage to be writable by the user. Updating a `.deb` install is not supported (use the package manager). Windows updates are not built. The test script uses a plain `http://127.0.0.1` endpoint, which only a test configuration may enable (`dangerousInsecureTransportProtocol`); a real endpoint must be https.
+
+## 13. Releases and updating the server from the web app (REL-01, ADR-0074)
+
+A release is a Git tag. The server is then updated by one click in **Settings > About > Server updates** (or by one command), and the
+update loses nothing: a verified backup is taken first and a version that does not start is rolled back automatically.
+
+### 13.1 Cutting a release (owner)
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0        # the tag must be on main
+```
+
+`.github/workflows/release.yml` then: runs the whole CI workflow; builds `atlas-api` and `atlas-web` images, starts them through
+`deploy/docker-compose.release.yml` and pushes them to `ghcr.io/<owner>/` only if that works; builds the Linux desktop clients
+(`Atlas_<version>_amd64.AppImage`, `.deb`); creates a **draft** release with the clients, `atlas-deploy.tar.gz` (the compose files the server
+installs) and `SHA256SUMS`, and publishes it last. **Do a dry run first:** Actions > Release > Run workflow (builds everything, publishes nothing).
+Windows (`.exe`, experimental, unverified) is built only if the repository variable `ATLAS_BUILD_WINDOWS` is `true`. The desktop clients are
+installed by hand from the release page (they do not update themselves); `sha256sum -c SHA256SUMS` checks a download.
+
+### 13.2 One-time setup on the server
+
+1. Create a GitHub personal access token that can read the repository's releases and packages (classic token, scopes `repo` and `read:packages`).
+   It goes only into a file on the server that nobody else can read; do not paste it into chat, `.env` or the repository.
+2. On the server, from the install directory, as the user that runs Docker:
+
+```bash
+sudo -v && deploy/updater/install.sh            # creates update/, ~/.config/atlas-updater/env (mode 600) and the systemd units
+nano ~/.config/atlas-updater/env                 # set ATLAS_UPDATE_TOKEN=...
+python3 deploy/updater/atlas_updater.py check   # prints nothing on success; update/status.json shows the newest release
+python3 deploy/updater/atlas_updater.py apply    # the first update: switches this install from a source build to release images
+```
+
+`apply` on an install that was built from source follows the same safe sequence (backup, switch, health check, rollback). Afterwards
+`scripts/deploy-update.sh` is no longer needed. The systemd path unit `atlas-updater.path` runs the updater when the web app writes a request;
+`atlas-updater-check.timer` checks for a newer release every 12 hours (it only reads; it never applies by itself).
+
+### 13.3 Updating
+
+Settings > About > Server updates shows the running and the newest version. **Check for updates**, then **Update to X.Y.Z** and confirm. Atlas is
+unavailable for a few minutes; the page shows the steps and reconnects by itself. The same from a shell: `python3 deploy/updater/atlas_updater.py apply`.
+
+What happens, in this order (`ADR-0074` D5): the release files are downloaded and the new images are pulled while the old version keeps running;
+the application is stopped; a backup is taken and verified; the compose files are switched; the new version starts and must report itself ready
+**and** be the new version. If any step after the stop fails, the previous files and version are started again, the database is restored from
+the backup only if the new version had migrated it, `atlas-admin record-restore` is run in that case, and Settings shows "rolled back" with the
+reason. Not touched in any case: the `.env` (and its `TOKEN_ENCRYPTION_KEY`), certificates, the database volume (except the restore above) and the notes volume.
+Older images are removed after a successful update except the one that just ran and the one before (the server's disk is small).
+
+### 13.4 When something goes wrong
+
+- Settings says "not set up": the updater is not installed or `UPDATE_DIR` is not reaching the API (`docker compose ... exec api env | grep UPDATE_DIR`).
+- "GitHub refused the update token": the token expired or lost a scope; edit `~/.config/atlas-updater/env`.
+- Status `failed` (the previous version could not be restarted): your data is in the `atlas-backups` volume (`OPERATIONS.md` 2.7 restores it);
+  `update/status.json` has the step log, `journalctl -u atlas-updater` has the updater's output.
+- To go back to an older version deliberately: restore a backup taken by that version (`OPERATIONS.md` 2.7). The updater refuses downgrades because
+  a newer schema may not be readable by older code.
+- Limits: amd64 only; images are unsigned (SEC-01 item); the host updater trusts what the owner's GitHub account published (ADR-0074 D6).
+

@@ -1,0 +1,10 @@
+[Unit]
+Description=Atlas updater: daily check for a newer release
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=12h
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

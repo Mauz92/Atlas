@@ -24,6 +24,9 @@ COPY alembic.ini ./
 COPY alembic ./alembic
 
 RUN pip install --no-cache-dir . && chown -R atlas:atlas /app
+# Set by the release workflow; read by atlas.__version__ and checked by the host updater after an update.
+ARG ATLAS_VERSION=""
+ENV ATLAS_VERSION=${ATLAS_VERSION}
 USER atlas
 
 EXPOSE 8000

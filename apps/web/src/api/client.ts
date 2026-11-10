@@ -53,6 +53,7 @@ export type HomeTimeZone = components["schemas"]["HomeTimeZone"];
 export type SearchResults = components["schemas"]["SearchOut"];
 export type SearchTask = components["schemas"]["SearchTaskOut"];
 export type InstanceInfo = components["schemas"]["InstanceInfo"];
+export type UpdateStatus = components["schemas"]["UpdateStatus"];
 export type RecurrencePreview = components["schemas"]["RecurrencePreviewOut"];
 
 export class ApiError extends Error {
@@ -250,6 +251,17 @@ export const resolutionsApi = {
 
 export const instanceApi = {
   get: () => apiFetch<InstanceInfo>("/api/instance"),
+};
+
+/** Updating the server from Settings (REL-01): the API only passes a request to the host updater. */
+export const systemUpdateApi = {
+  get: () => apiFetch<UpdateStatus>("/api/system/update"),
+  check: () => apiFetch<UpdateStatus>("/api/system/update/check", { method: "POST" }),
+  apply: (version: string) =>
+    apiFetch<UpdateStatus>("/api/system/update/apply", {
+      method: "POST",
+      body: JSON.stringify({ version }),
+    }),
 };
 
 /** The full data export (a zip) fetched with the session cookie, so a failure shows its real message. */

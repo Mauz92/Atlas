@@ -1466,6 +1466,21 @@ the Python version decision (A-07); iOS is out of scope.
 Calendar interleaved when accounts are available → Phase 0 items P0-4 and P0-1 early because every later step
 depends on CI and the Compose stack being green.
 
+### REL-01 — Releases and in-app server updates (owner request 2026-11-10, ADR-0074)
+- **Problem.** The server is updated by running `scripts/deploy-update.sh` from the owner's PC, and the desktop clients are built by hand.
+  The owner wants releases built by CI (including the desktop clients) and a one-click server update from Settings that loses nothing.
+- **Scope.** `.github/workflows/release.yml` (gate, images, Linux desktop, optional Windows, release); `deploy/docker-compose.release.yml`;
+  host updater `deploy/updater/` (check, apply, rollback; systemd units; `install.sh`); API `GET/POST /api/system/update*`; Settings > About >
+  Server updates; documentation (`DEPLOYMENT.md` 13, `OPERATIONS.md`, ADR-0074).
+- **Acceptance.** (1) A tag builds, smoke-tests and publishes images and the Linux clients and creates the release. (2) Settings shows the running and
+  newest version and updates on one confirmed click. (3) The update takes a verified backup before any change and a failed start restores the previous
+  version and, if it was migrated, the database. (4) A request cannot name another version, a downgrade, or come from a device token.
+- **Verification so far.** Updater rules and sequence (fake Docker, `tests/unit/test_updater_agent.py`); API contract (`tests/integration/test_system_update.py`);
+  UI (`UpdateSection.test.tsx`); the updater against real Docker in an isolated project (update, then a failing migrating version rolled back with data
+  intact; see ACCEPTANCE). **Not verified:** the release workflow (it has never run: do a dry run first), the systemd path unit on the real server, GHCR
+  pull with the owner's token, Windows, and an update of the live server.
+- **Status: `IN_REVIEW`** until the dry run and the first real update on the server have passed.
+
 ### SEC-01 — Independent security audit before any public exposure (owner decision 2026-11-10)
 - **Decision.** Atlas stays **private** (tailnet-only; no public listener, no port forwarding, no public DNS record pointing at it) until a real
   security audit has been done and its findings are fixed. The calendar redirect name `galaxia-atlas.duckdns.org` must therefore resolve to the

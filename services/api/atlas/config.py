@@ -118,6 +118,9 @@ class Settings(BaseSettings):
     # durable stores (a PostgreSQL dump + an archive of the notes root) with a checksummed manifest.
     # ``backup_retain`` keeps the newest N published sets; older ones are pruned.
     backup_dir: str = "./data/backups"
+    # Shared directory with the host updater (REL-01, ADR-0074): the API reads status.json and
+    # writes request.json. Empty = updating from the web app is not set up (Settings says so).
+    update_dir: str = ""
     backup_retain: int = 7
     # How often (seconds) the worker produces a backup, and how long a run's durable lock may stay
     # set before it is treated as stale (a worker that crashed mid-backup) so the chain restarts.

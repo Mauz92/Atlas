@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:   # the release workflow runs the whole gate first (REL-01)
 
 permissions:
   contents: read

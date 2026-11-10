@@ -1,0 +1,21 @@
+# Release images instead of a local build (REL-01, ADR-0074, docs/DEPLOYMENT.md section 12).
+#
+#   docker compose -p atlas --env-file .env --env-file update/version.env \
+#     -f deploy/docker-compose.yml -f deploy/docker-compose.release.yml [-f deploy/docker-compose.tls.yml] up -d --no-build
+#
+# `update/version.env` holds ATLAS_VERSION and is written by the host updater (deploy/updater). The images are built
+# and published by .github/workflows/release.yml; nothing is built on the server.
+services:
+  api:
+    image: ${ATLAS_IMAGE_REGISTRY:-ghcr.io/mauz92}/atlas-api:${ATLAS_VERSION:?ATLAS_VERSION comes from update/version.env}
+    pull_policy: never
+    environment:
+      UPDATE_DIR: /data/atlas/update
+    volumes:
+      - ../update:/data/atlas/update
+  worker:
+    image: ${ATLAS_IMAGE_REGISTRY:-ghcr.io/mauz92}/atlas-api:${ATLAS_VERSION:?ATLAS_VERSION comes from update/version.env}
+    pull_policy: never
+  web:
+    image: ${ATLAS_IMAGE_REGISTRY:-ghcr.io/mauz92}/atlas-web:${ATLAS_VERSION:?ATLAS_VERSION comes from update/version.env}
+    pull_policy: never

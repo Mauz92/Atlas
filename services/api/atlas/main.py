@@ -32,6 +32,7 @@ from .api import (
     resolutions_router,
     search_router,
     sync_wait_router,
+    system_update_router,
     tasks_router,
 )
 from .api.sync_gate import sync_error_response, sync_gate
@@ -145,6 +146,7 @@ def create_app() -> FastAPI:
     app.include_router(reminders_router)
     app.include_router(export_router)
     app.include_router(instance_router)
+    app.include_router(system_update_router)
 
     app.add_exception_handler(SyncError, sync_error_response)  # type: ignore[arg-type]
 

@@ -1,0 +1,14 @@
+[Unit]
+Description=Atlas updater: handle a request from the web app
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=@USER@
+Environment=ATLAS_INSTALL_DIR=@INSTALL@
+ExecStart=/usr/bin/python3 @INSTALL@/deploy/updater/atlas_updater.py request
+# One update at a time; a long update (pull, backup, start) is allowed.
+TimeoutStartSec=45min
+NoNewPrivileges=yes
+PrivateTmp=yes

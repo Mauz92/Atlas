@@ -1,0 +1,9 @@
+[Unit]
+Description=Atlas updater: watch for a request from the web app
+
+[Path]
+PathExists=@INSTALL@/update/request.json
+Unit=atlas-updater.service
+
+[Install]
+WantedBy=multi-user.target
