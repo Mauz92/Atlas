@@ -1,8 +1,10 @@
 """Calendar accounts, calendars, ICS feeds and the unified event view (Stage A, read-only).
 
-M5-03/M5-04/M5-05/M5-07/M5-11, ADR-0071. Everything is for the signed-in **browser** session (a
-device token is refused by ``CurrentUser``), strictly user-scoped, and read-only towards providers:
-nothing here writes to Google, Microsoft or a feed.
+M5-03/M5-04/M5-05/M5-07/M5-11, ADR-0071. Connecting, disconnecting and feed management are for the
+signed-in **browser** session (a device token is refused by ``CurrentUser``). The three read-only
+GETs (accounts, events, event detail) also accept a device token (``SyncUser``) so the desktop
+calendar page can display events; they expose no secret (feed URLs are masked). Strictly
+user-scoped, and read-only towards providers: nothing here writes to Google, Microsoft or a feed.
 
 - ``GET  /api/calendar/accounts`` - the three provider cards (configured? connected? calendars).
 - ``POST /api/calendar/accounts/{provider}/connect`` - start OAuth; returns the authorisation URL.
@@ -57,7 +59,7 @@ from ..calendar.status import SyncState
 from ..config import get_settings
 from ..jobs.handlers import enqueue_calendar_sync
 from ..models import CalendarSource, ProviderCredential
-from .deps import CurrentUser, DbSession
+from .deps import CurrentUser, DbSession, SyncUser
 
 logger = logging.getLogger("atlas.calendar")
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
@@ -232,7 +234,7 @@ def _session_token(request: Request) -> str:
 
 
 @router.get("/accounts", response_model=AccountsOut)
-async def list_accounts(user: CurrentUser, session: DbSession) -> AccountsOut:
+async def list_accounts(user: SyncUser, session: DbSession) -> AccountsOut:
     """The Google, Microsoft and ICS cards: setup state, connection state and calendars."""
     settings = get_settings()
     statuses = {item.provider: item for item in await SyncStatusService(session, user.id).status()}
@@ -487,7 +489,7 @@ async def remove_feed(source_id: uuid.UUID, user: CurrentUser, session: DbSessio
 
 @router.get("/events", response_model=EventListOut)
 async def list_events(
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     start: datetime,
     end: datetime,
@@ -512,7 +514,7 @@ async def list_events(
 @router.get("/events/{event_id}", response_model=EventDetailOut)
 async def event_detail(
     event_id: uuid.UUID,
-    user: CurrentUser,
+    user: SyncUser,
     session: DbSession,
     occurrence: Annotated[str | None, Query(pattern=r"^\d{8}T\d{6}Z$")] = None,
 ) -> EventDetailOut:

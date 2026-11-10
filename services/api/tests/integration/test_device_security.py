@@ -99,12 +99,26 @@ async def test_a_thief_with_a_device_token_cannot_lock_the_owner_out_or_reach_th
         ("POST", "/api/devices/revoke-all", None),
         ("GET", "/api/export", None),
         ("GET", "/api/calendar/credentials", None),
+        ("POST", "/api/calendar/accounts/google/connect", None),
+        ("POST", "/api/calendar/feeds/preview", {"url": "https://example.com/a.ics"}),
     ]:
         r = await thief.request(method, path, json=body, headers=bearer(token))
         assert r.status_code == 403, (path, r.text)
     assert (
         await c.post("/api/auth/login", json={"email": EMAIL, "password": PASSWORD})
     ).status_code == 200
+
+
+async def test_a_device_can_read_calendar_events_but_not_manage_connections(
+    app: FastAPI, c
+) -> None:
+    _dev, token, _ = await sign_in(app)
+    client = new_client(app)
+    window = {"start": "2026-11-01T00:00:00Z", "end": "2026-12-01T00:00:00Z"}
+    assert (
+        await client.get("/api/calendar/events", params=window, headers=bearer(token))
+    ).status_code == 200
+    assert (await client.get("/api/calendar/accounts", headers=bearer(token))).status_code == 200
 
 
 async def test_a_rotated_away_token_cannot_be_used_after_the_new_one_is_seen(

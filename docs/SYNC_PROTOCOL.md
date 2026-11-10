@@ -532,7 +532,7 @@ they describe.
   `/api/sync/resolutions` (list, get, undo), `GET /api/instance`, `GET /api/auth/me`, `GET /api/devices`, `GET /api/devices/current`,
   `POST /api/devices/current/rotate`, `DELETE /api/devices/current`. **Closed** (`403 forbidden_scope`, checked after the token is
   validated, so a bad token is still `401`): password change, profile edit, rename or revoke devices, revoke all, export, calendar
-  credentials and sync, the push-notification registry. A new endpoint is closed to devices until it is opened on purpose
+  credentials, connections and sync, the push-notification registry. Open for the desktop calendar page: only the three read-only `GET`s `/api/calendar/accounts`, `/events`, `/events/{id}` (feed URLs masked). A new endpoint is closed to devices until it is opened on purpose
   (`test_the_set_of_endpoints_open_to_devices_is_exactly_this`).
 - **Errors** (`{error, detail}`; `401` carries `WWW-Authenticate: Bearer`): `unauthenticated` (unknown or malformed token, or the
   account is inactive), `token_revoked`, `token_expired` (idle for `CHANGE_RETENTION_DAYS`, default 90), `forbidden_scope`,

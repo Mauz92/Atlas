@@ -248,6 +248,7 @@ async def test_the_set_of_endpoints_open_to_devices_is_exactly_this() -> None:
                 browser_only.add((method, route.path))
     assert {path.split("/")[2] for _m, path in open_to_devices} == {
         "auth",
+        "calendar",
         "changes",
         "devices",
         "folders",
@@ -265,6 +266,12 @@ async def test_the_set_of_endpoints_open_to_devices_is_exactly_this() -> None:
         "/api/reminders",
         "/api/reminders/{reminder_id}/actions",
     }
+    # the desktop calendar page reads events: only the three read-only GETs are open
+    assert {(m, p) for m, p in open_to_devices if p.startswith("/api/calendar")} == {
+        ("GET", "/api/calendar/accounts"),
+        ("GET", "/api/calendar/events"),
+        ("GET", "/api/calendar/events/{event_id}"),
+    }
     # the account-level surface is closed to devices
     for method, path in [
         ("POST", "/api/auth/password"),
@@ -275,10 +282,7 @@ async def test_the_set_of_endpoints_open_to_devices_is_exactly_this() -> None:
         ("GET", "/api/export"),
     ]:
         assert (method, path) in browser_only, (method, path)
-    assert not any(
-        p.startswith(("/api/calendar", "/api/notifications", "/api/export"))
-        for _m, p in open_to_devices
-    )
+    assert not any(p.startswith(("/api/notifications", "/api/export")) for _m, p in open_to_devices)
     assert {
         ("GET", "/api/devices"),
         ("GET", "/api/devices/current"),
