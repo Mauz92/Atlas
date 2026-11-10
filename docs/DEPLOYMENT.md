@@ -57,7 +57,7 @@ the `py-vapid` library that ships with the API's `pywebpush` dependency:
 
 ```bash
 # Run inside the API image/venv, e.g.:
-#   docker compose -f deploy/docker-compose.yml exec api python - <<'PY' … PY
+#   docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec api python - <<'PY' … PY
 python - <<'PY'
 import base64
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
@@ -89,7 +89,7 @@ been verified on a live install (`ROADMAP.md` M8-02), and mobile push is a later
 ## 4. Installation
 
 The verified, copy-pasteable personal install is §11. In outline: install Docker + Compose; copy `.env.example` to
-`.env` and set real secrets; `docker compose -f deploy/docker-compose.yml up -d --build` (the `api` service runs
+`.env` and set real secrets; `docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up -d --build` (the `api` service runs
 `atlas-migrate` on start, so an empty database migrates itself); put HTTPS in front (§8); open the site and create the
 owner account. A clean installation must succeed by following §11 verbatim.
 
@@ -140,8 +140,8 @@ atlas-backup verify "$SET"        # must exit 0 with every part "ok"
 In the Compose stack the equivalent is:
 
 ```bash
-docker compose -f deploy/docker-compose.yml exec worker atlas-backup run
-docker compose -f deploy/docker-compose.yml exec worker atlas-backup verify "$(ls -d /data/atlas/backups/atlas-backup-*/ | tail -1)"
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec worker atlas-backup run
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec worker atlas-backup verify "$(ls -d /data/atlas/backups/atlas-backup-*/ | tail -1)"
 ```
 
 Keep this set until the upgrade is confirmed good; it is the rollback path for an irreversible
@@ -160,7 +160,7 @@ DATABASE_URL=…atlas .venv/bin/atlas-migrate
 
 # (b) inside the stack — the `api` service already runs `atlas-migrate` on start
 #     (its compose command is `atlas-migrate && uvicorn …`), so simply:
-docker compose -f deploy/docker-compose.yml up -d
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up -d
 ```
 
 Expected: `INFO [alembic.runtime.migration] Running upgrade … -> <head>` for each new revision and
@@ -196,8 +196,8 @@ curl -fsS http://localhost:8000/health/ready   # -> {"status":"ready","database"
 ### 6.5 Restart services and finish
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d      # recreates containers on the new image
-docker compose -f deploy/docker-compose.yml ps         # all services Up / healthy
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up -d      # recreates containers on the new image
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml ps         # all services Up / healthy
 ```
 
 Record the new revision and the backup set id (e.g. in the release notes). If anything is wrong,
@@ -222,7 +222,7 @@ DATABASE_URL=…atlas .venv/bin/alembic downgrade -1     # or: -2, or 8f1c2a7d5e
 DATABASE_URL=…atlas .venv/bin/alembic current          # confirm the expected revision
 
 # redeploy the previous image tag, then restart and check health:
-docker compose -f deploy/docker-compose.yml up -d
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up -d
 curl -fsS http://localhost:8000/health/ready
 ```
 
@@ -238,11 +238,11 @@ Follow the restore procedure in `OPERATIONS.md` §2 verbatim — it is the same 
 M9-02. In short:
 
 1. `atlas-backup verify "$SET"` the pre-upgrade set (§6.2) — restore nothing that does not verify.
-2. Stop the writers: `docker compose -f deploy/docker-compose.yml stop api worker`.
+2. Stop the writers: `docker compose -p atlas --env-file .env -f deploy/docker-compose.yml stop api worker`.
 3. Restore **both** stores into fresh targets (`psql … -v ON_ERROR_STOP=1 < database.sql`;
    `tar -xzf notes.tar.gz`).
 4. Point `DATABASE_URL`/`NOTES_ROOT` at the restored stores, redeploy the **previous** image tag,
-   and restart: `docker compose -f deploy/docker-compose.yml up -d`.
+   and restart: `docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up -d`.
 5. Verify (`alembic_version`, known rows, notes `diff -r`, `/health/ready`).
 
 Rolling the database back to a pre-upgrade revision while the application code is newer is **not**
@@ -289,7 +289,7 @@ tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin
 # .env:  ATLAS_ENV=production
 #        PUBLIC_BASE_URL=https://atlas-host.tail1234.ts.net
 #        ALLOWED_HOSTS=atlas-host.tail1234.ts.net
-docker compose -f deploy/docker-compose.yml up -d                    # recreate api/worker with the new env
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up -d                    # recreate api/worker with the new env
 tailscale serve --bg --https=443 http://127.0.0.1:8080               # tailnet HTTPS -> web container
 tailscale serve status                                               # shows https://atlas-host.tail1234.ts.net -> 127.0.0.1:8080
 # open https://atlas-host.tail1234.ts.net from any device on the tailnet
@@ -320,7 +320,7 @@ atlas.example.com {
 
 ```bash
 # .env: ATLAS_ENV=production  PUBLIC_BASE_URL=https://atlas.example.com  ALLOWED_HOSTS=atlas.example.com
-docker compose -f deploy/docker-compose.yml up -d
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up -d
 caddy run --config Caddyfile            # or the caddy:2-alpine image / the distribution package + systemd
 ```
 
@@ -348,7 +348,7 @@ CA instead of ACME because the test name is `localhost`; the ACME path itself is
 Notes may be up to 5 MiB and are sent as JSON, where a newline, tab, quote or backslash costs two bytes, so the largest
 legitimate body is about 10 MiB. The shipped `apps/web/nginx.conf` allows `client_max_body_size 11m;` for `/api/` and
 1 MiB everywhere else (RISKS R-34; checked by `services/api/tests/unit/test_nginx_config.py`). **Rebuild the `web` image
-to pick this up** (`docker compose -f deploy/docker-compose.yml build web`, then `up -d web`). Verified through the
+to pick this up** (`docker compose -p atlas --env-file .env -f deploy/docker-compose.yml build web`, then `up -d web`). Verified through the
 `web` container on 2026-11-03: a 1.5 MiB note and a 5 MiB note: `201`; 5 MiB of newlines (a 10 MiB JSON body): `201`;
 5 MiB + 1 character: `422` with a small body (the offending text is no longer echoed back, a defect found in this
 smoke test); a 12 MiB body: nginx `413` (an HTML page, before the API sees it).
@@ -422,6 +422,11 @@ address** (`tailscale ip -4`), never at the public IP, and the TLS port is publi
 Every command below was run on 2026-11-03 against the current code in isolated Compose projects (evidence:
 `ACCEPTANCE.md` P0-1/P0-2/P0-3), except `tailscale serve`, which was not run (§8.1). Replace the example names.
 
+**Why every command carries `-p atlas --env-file .env`:** Compose reads `.env` from the directory of the first `-f` file
+(`deploy/`), not from the repository root, so without `--env-file .env` it silently starts with the development defaults and
+placeholder secrets (found on the first real install, 2026-11-09). `-p atlas` gives the stack its own project name, because a host
+that already runs another stack from a folder called `deploy` would otherwise share its project, network and orphan warnings.
+
 **1. Install.**
 
 ```bash
@@ -432,8 +437,8 @@ sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$(openssl rand -hex 32)|; s|^SESSION_SECRET=
         s|^TOKEN_ENCRYPTION_KEY=.*|TOKEN_ENCRYPTION_KEY=$(openssl rand -base64 32)|; \
         s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 16)|; s|^ATLAS_ENV=.*|ATLAS_ENV=production|" .env
 # set PUBLIC_BASE_URL=https://<your name> and ALLOWED_HOSTS=<your name> in .env (§8.0)
-docker compose -f deploy/docker-compose.yml up -d --build
-docker compose -f deploy/docker-compose.yml ps                     # all Up; api and db (healthy)
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up -d --build
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml ps                     # all Up; api and db (healthy)
 curl -fsS http://127.0.0.1:8080/health/ready                      # {"status":"ready","database":"ok"}
 ```
 
@@ -450,10 +455,10 @@ newest `BACKUP_RETAIN` (default 7) in the `atlas-backups` volume. That volume is
 copy sets off the machine:
 
 ```bash
-docker compose -f deploy/docker-compose.yml exec worker atlas-backup list                    # sets and their state
-docker compose -f deploy/docker-compose.yml exec worker atlas-backup run                     # one now
-SET=$(docker compose -f deploy/docker-compose.yml exec -T worker sh -c 'ls -d /data/atlas/backups/atlas-backup-*/ | tail -1' | tr -d '\r')
-docker compose -f deploy/docker-compose.yml cp "worker:${SET%/}" ./offsite/                   # then rsync/restic/rclone ./offsite
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec worker atlas-backup list                    # sets and their state
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec worker atlas-backup run                     # one now
+SET=$(docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec -T worker sh -c 'ls -d /data/atlas/backups/atlas-backup-*/ | tail -1' | tr -d '\r')
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml cp "worker:${SET%/}" ./offsite/                   # then rsync/restic/rclone ./offsite
 ```
 
 Restore drill (verified into a second, empty stack): `OPERATIONS.md` §2.7. Do one before you trust the data to it.
@@ -461,19 +466,19 @@ Restore drill (verified into a second, empty stack): `OPERATIONS.md` §2.7. Do o
 **4. Upgrade** (verified from revision `b7d3e1a95c24` with data to head, §6):
 
 ```bash
-docker compose -f deploy/docker-compose.yml exec worker atlas-backup run                     # 1. back up first
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec worker atlas-backup run                     # 1. back up first
 git pull                                                                                      # 2. new code
-docker compose -f deploy/docker-compose.yml up -d --build                                     # 3. rebuild; api migrates on start
-docker compose -f deploy/docker-compose.yml exec api alembic current                          # 4. shows the new head
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up -d --build                                     # 3. rebuild; api migrates on start
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec api alembic current                          # 4. shows the new head
 curl -fsS http://127.0.0.1:8080/health/ready
 ```
 
 **5. Recovery.** Forgotten password (signs the account out everywhere; verified):
-`docker compose -f deploy/docker-compose.yml exec api atlas-admin list-users`, then
-`docker compose -f deploy/docker-compose.yml exec api atlas-admin reset-password --email you@example.com` (hidden
+`docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec api atlas-admin list-users`, then
+`docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec api atlas-admin reset-password --email you@example.com` (hidden
 prompt; add `-T` and pipe the password on stdin for scripts). Lost server: reinstall (step 1 with the saved `.env`), then
 `OPERATIONS.md` §2.7. A copy of your notes as plain files at any time: Settings export, or
-`docker compose -f deploy/docker-compose.yml exec worker atlas-export run --user you@example.com` (sets land in the
+`docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec worker atlas-export run --user you@example.com` (sets land in the
 `atlas-exports` volume; `docker compose cp` them out).
 
 **Limits to accept** (`RELEASE.md` §3): no calendars, online only (no offline editing yet), one user, the rate limiter

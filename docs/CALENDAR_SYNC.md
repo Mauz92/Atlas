@@ -214,7 +214,7 @@ Use your own Google account when connecting by hand. Never use it in automated t
    URIs* add the exact URI from §12.1 (e.g. `https://galaxia-atlas.duckdns.org:9443/api/calendar/google/callback`).
    (No JavaScript origin is needed: the secret stays on the server.)
 7. Copy the client id and secret into the server `.env`: `GOOGLE_CLIENT_ID=...`, `GOOGLE_CLIENT_SECRET=...`
-   (never commit them). Restart: `docker compose -f deploy/docker-compose.yml up -d api worker`.
+   (never commit them). Restart: `docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up -d api worker`.
 8. Atlas -> Settings -> Calendar -> Google Calendar -> **Connect**, sign in, tick the calendar permission (an
    unticked box is refused: "permission missing"), then choose which calendars to show.
 
@@ -276,7 +276,7 @@ Limits and handling:
 `TOKEN_ENCRYPTION_KEY` encrypts the stored tokens and feed URLs: back it up with the database (losing it means
 reconnecting every account and re-adding every feed). Startup logs a warning when only one of a client id/secret pair
 is set or `PUBLIC_BASE_URL` is not https. Check what a container received with
-`docker compose -f deploy/docker-compose.yml exec api env | grep -E 'GOOGLE|MICROSOFT|ICS_|PUBLIC_BASE'` (do not paste the output anywhere: it contains secrets).
+`docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec api env | grep -E 'GOOGLE|MICROSOFT|ICS_|PUBLIC_BASE'` (do not paste the output anywhere: it contains secrets).
 
 ### 12.6 Troubleshooting
 
@@ -301,7 +301,7 @@ Run once after connecting the real accounts; keep it out of the repository if it
 *counts and yes/no*, never titles or addresses). Until this is filled in, these tasks stay `IN_REVIEW` / blocked on
 live verification and REQ-007/008/009 stay "UNVERIFIED".
 
-1. `docker compose -f deploy/docker-compose.yml exec api atlas-admin calendar-status` -> record: configured yes/no,
+1. `docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec api atlas-admin calendar-status` -> record: configured yes/no,
    redirect URI, scopes granted (must be exactly the read-only ones), token expiry.
 2. Connect Google; **Sync now**; record number of calendars/events and that all-day, a timed event in another time
    zone, a recurring series with one moved and one deleted occurrence, and a multi-day event display correctly

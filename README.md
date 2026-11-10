@@ -103,7 +103,7 @@ npm run gen:api        # regenerate API types from the backend OpenAPI schema
 
 ```bash
 cp .env.example .env    # fill in real secrets before production
-docker compose -f deploy/docker-compose.yml up --build
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up --build
 ```
 
 ## Licence and usage

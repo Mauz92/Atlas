@@ -62,8 +62,8 @@ The step-by-step install is [`DEPLOYMENT.md`](DEPLOYMENT.md) §4; in short:
 git clone <your-atlas-checkout>
 cd Atlas
 cp .env.example .env          # then fill in real secrets (see §4)
-docker compose -f deploy/docker-compose.yml up -d --build
-docker compose -f deploy/docker-compose.yml ps          # all services Up / healthy
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up -d --build
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml ps          # all services Up / healthy
 curl -fsS http://localhost:8000/health/ready            # {"status":"ready","database":"ok"}
 ```
 
@@ -170,7 +170,7 @@ Connect buttons in Settings -> Calendar; leave them empty and the card shows set
 `ICS_TIMEOUT_SECONDS` tune secret ICS feeds (ProtonMail "Share via link"); `ICS_ALLOW_HTTP` and `ICS_ALLOW_PRIVATE_HOSTS`
 are development-only (the API refuses to start with the latter in production). Step by step, the live-check runbook and
 the troubleshooting table: [`CALENDAR_SYNC.md`](CALENDAR_SYNC.md) section 12. Diagnose with
-`docker compose -f deploy/docker-compose.yml exec api atlas-admin calendar-status` (read-only, prints no secrets).
+`docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec api atlas-admin calendar-status` (read-only, prints no secrets).
 Live behaviour with real providers is **unverified** until that runbook is recorded.
 
 ### 4.6 Passing settings into the containers
@@ -180,7 +180,7 @@ The shipped `deploy/docker-compose.yml` forwards every setting the API and worke
 `POSTGRES_PASSWORD`/`POSTGRES_DB`, not read from `.env`. It forwards
 `GOOGLE_*`/`MICROSOFT_*`/`ICS_*` too; it does **not** forward `FCM_*`/`EXPO_*` (the application does not read them). When you add a new setting, add it to the relevant service's
 `environment:` block, then `docker compose … up -d` to recreate the containers. Verify what a container actually
-received with `docker compose -f deploy/docker-compose.yml exec api env | sort`.
+received with `docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec api env | sort`.
 
 ---
 
@@ -322,7 +322,7 @@ Available today:
 - **Sync devices** (desktop and phone apps; SYNC-06): each signs in with the account password and holds its own key. The owner
   lists, renames and signs them out in **Settings → Devices**. On the server (the same container and database as
   `atlas-admin reset-password`):
-  `docker compose -f deploy/docker-compose.yml exec api atlas-admin list-devices --email you@example.com` prints id, state, platform,
+  `docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec api atlas-admin list-devices --email you@example.com` prints id, state, platform,
   last seen and name; `... atlas-admin revoke-device --email you@example.com --device <id>` (or `--all`) signs devices out at once.
   `reset-password` also signs out **every** device. No key is ever printed or logged; the database holds only hashes. A device
   unseen for `CHANGE_RETENTION_DAYS` (default 90) must sign in again; devices signed out longer ago than that are deleted by the
@@ -331,7 +331,7 @@ Available today:
 
 - **Account recovery** (AUTH-01, ADR-0067). The owner resets a forgotten password in the browser with the recovery code from first-run
   setup; you do nothing. If the owner has lost the code **and** the password, or `RECOVERY_ENABLED=false`, you fix it on the server:
-  `docker compose -f deploy/docker-compose.yml exec api atlas-admin reset-password --email you@example.com` (hidden prompt; signs out every
+  `docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec api atlas-admin reset-password --email you@example.com` (hidden prompt; signs out every
   browser **and device**), then, if wanted, `... atlas-admin recovery-code --email you@example.com`, which prints a **new recovery code
   once** (the old one stops working) for you to hand to the owner. Accounts created before AUTH-01 have no code until the owner makes one in
   Settings or you run `recovery-code`. The server stores only a salted hash of the code, never the code. Reset attempts are limited (per

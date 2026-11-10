@@ -156,9 +156,9 @@ destination. Set `EXPORT_DIR` (default `./data/exports`) for the CLI's destinati
 - **Getting sets off the machine** (Docker only, no volume path needed):
 
 ```bash
-docker compose -f deploy/docker-compose.yml exec worker atlas-backup list
-SET=$(docker compose -f deploy/docker-compose.yml exec -T worker sh -c 'ls -d /data/atlas/backups/atlas-backup-*/ | tail -1' | tr -d '\r')
-docker compose -f deploy/docker-compose.yml cp "worker:${SET%/}" ./offsite/        # a directory of 3 files
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec worker atlas-backup list
+SET=$(docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec -T worker sh -c 'ls -d /data/atlas/backups/atlas-backup-*/ | tail -1' | tr -d '\r')
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml cp "worker:${SET%/}" ./offsite/        # a directory of 3 files
 ```
 
   Then let your own tool carry `./offsite` elsewhere (rsync, restic, rclone, an external disk). The sets are **not
@@ -212,7 +212,7 @@ psql -U atlas -d postgres -c "CREATE DATABASE atlas_restore OWNER atlas;"
 psql -U atlas -d atlas_restore -v ON_ERROR_STOP=1 < "$SET/database.sql"
 
 #    ... or, as executed in the drill on a host without a local client, run it inside the DB container
-#    (the container name depends on the Compose project; `docker compose -f deploy/docker-compose.yml exec -T db`
+#    (the container name depends on the Compose project; `docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec -T db`
 #    is the name-independent form, see §2.7):
 docker exec -i atlas-db-1 psql -U atlas -d atlas_restore -v ON_ERROR_STOP=1 < "$SET/database.sql"
 ```
@@ -259,13 +259,13 @@ The archive preserves the notes-root layout (`.md` files and their folders) and 
 
 ```bash
 # stop writers first so nothing changes under the restore
-docker compose -f deploy/docker-compose.yml stop api worker
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml stop api worker
 
 # Then map Atlas to the restored stores and start again. For a same-host replacement, move the
 # restored notes into place and set DATABASE_URL to the restored database:
 #   DATABASE_URL -> the restored database
 #   NOTES_ROOT   -> the restored notes directory
-docker compose -f deploy/docker-compose.yml up -d
+docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up -d
 curl -fsS http://localhost:8000/health   # -> ok
 ```
 
@@ -316,7 +316,7 @@ dump then fails with `ON_ERROR_STOP`. Run from the repository root; use a differ
 a running install (also change `WEB_PORT`), or the default name on a fresh machine. `.env` must be the original one.
 
 ```bash
-DC="docker compose -f deploy/docker-compose.yml"
+DC="docker compose -p atlas --env-file .env -f deploy/docker-compose.yml"
 SET="$PWD/offsite/atlas-backup-<timestamp>-<id>"
 $DC build api                                                  # the image carries atlas-backup and tar
 $DC up -d db                                                   # empty database only
