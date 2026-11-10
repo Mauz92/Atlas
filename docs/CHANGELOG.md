@@ -6,6 +6,18 @@ This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- Added (SYNC-11; not committed, CI not run): **screens for what happens when two devices change the same thing.** (1) A banner **"Changed on another device"** and a page
+  **Changes from other devices** (`/changes`, also linked from Settings > Sync): what changed, on which device and when, the replaced value of simple fields (never your text), with **Undo**.
+  Undo only applies if nothing changed the value since; otherwise it says so plainly ("Not undone: ... was changed again since"), and kinds that cannot be undone in one step (a merged note edit,
+  an edit that brought back a deleted item, a renamed note) say why and link to the item. (2) **Two versions of a text:** when a task's title or description changed elsewhere while you edited it, the
+  task panel shows both versions with **Keep mine / Keep theirs / Edit merged**; nothing is saved until you choose. For notes the **Notes** page lists conflict copies ("N notes have two versions")
+  with **Resolve**: a line comparison and Keep mine / Keep theirs / Merge in the editor; the copy goes to the trash only after the note was saved. (3) **Instant updates** status and a local **test notification**
+  in Settings > Notifications, and live-connection / last-hint / push-gateway status in Settings > Desktop app. (4) Desktop app: Settings > Sync and the status bar show the sync engine's own state (the browser's
+  offline queue is no longer started there), kept problems can be resolved or dismissed, and full-screen explanations appear when the server was restored from a backup (**Re-upload my local data** or
+  **Discard local changes and re-download**, never automatic, the second asks twice and never deletes files in your notes folder), when the app must be updated and when the device was signed out.
+  The browser app's behaviour is otherwise unchanged. New in the sync core: `discardLocalAndRedownload()`. No server or API change, no new dependency (eight Lucide icon shapes were added to the vendored set).
+  Not built: offline editing in the desktop app's task screens, an offline mode in the browser (planned, ADR-0070). Guide: `docs/USER_GUIDE.md` section 7.
+
 - Added (SYNC-09 phase 1, Linux only; not committed, CI not run): **an Atlas desktop app for Linux.** It keeps your notes as ordinary Markdown files in a folder you choose, syncs them,
   your tasks and your reminders with your own server, and shows the Atlas screens you know. Sign in once with your server address (`https://`), e-mail and password; the app gets its own
   device key and keeps it only in your system keystore (KDE Wallet / GNOME Keyring), never in a file, and never where the page can read it. Edit the files with any editor: changes are picked up

@@ -132,6 +132,22 @@ async function sessionLogin() {
   return (p, init = {}) => fetch(`${base}${p}`, { ...init, headers: { ...(init.headers ?? {}), cookie: cookies.join("; "), "x-csrf-token": csrf, "content-type": "application/json" } });
 }
 
+
+// drive the page: send a command and wait for the page to report it done (a fresh report, not an old one)
+async function drive(cmd, args = {}, ms = 30000) {
+  const t0 = Date.now();
+  command({ cmd, ...args });
+  const r = await until(`command ${cmd}`, () => { const x = report(`command-${cmd}`); return x && x.at >= t0 ? x : null; }, ms, 200);
+  if (!r.ok) throw new Error(`${cmd}: ${r.error}`);
+}
+async function pageText() {
+  const t0 = Date.now();
+  await drive("page_text");
+  return (await until("page text", () => { const x = report("page-text"); return x && x.t >= t0 ? x : null; }, 10000, 200)).text;
+}
+const restoreServer = () => sh(path.join(venv, "python"), ["-m", "atlas.auth.cli", "record-restore"], { ...process.env, ATLAS_ENV: "test", DATABASE_URL: dbUrl() });
+function dbUrl() { const u = new URL(adminUrl); u.pathname = `/${dbName}`; return u.toString().replace(/^postgresql:/, "postgresql+psycopg:"); }
+
 // ---------------------------------------------------------------------------------------------------------------------
 const statusFile = () => path.join(outDir, "status.json");
 const readJson = (f) => JSON.parse(readFileSync(f, "utf8"));
@@ -285,6 +301,35 @@ async function main() {
     await until("rename + delete seen by the second device", async () => { await other.sync(); return (await noteByPath(other, "plain renamed.md")) && !(await noteByPath(other, "seed/from-server.md")); }, 90000, 1000);
   });
 
+  await step("notices (SYNC-11c): a conflict between two other devices shows as a banner and on the Changes page, and Undo goes through the engine", async () => {
+    const task = (await seeder.engine.views()).find((v) => v.type === "task" && !v.deleted && v.fields.title === "seed task");
+    await seeder.sync(); await other.sync();
+    await seeder.engine.updateEntity("task", task.id, { priority: "high" });
+    await seeder.engine.syncUntilSettled(400);
+    await other.engine.updateEntity("task", task.id, { priority: "urgent" }); // from the old revision: the later write wins and is logged
+    await other.engine.syncUntilSettled(400);
+    await drive("goto", { path: "/" });
+    const banner = await until("banner text", async () => { const t = await pageText(); return /Changed on another device/.test(t) ? t : null; }, 90000, 1500);
+    await drive("goto", { path: "/changes" });
+    const list = await pageText();
+    if (!/Replaced priority/.test(list) || !/High/.test(list)) throw new Error(list.slice(0, 600));
+    await drive("click", { name: "Undo the change to the priority" });
+    const done = await until("undo outcome", async () => { const t = await pageText(); return /Undone: the priority has its earlier value again|Not undone/.test(t) ? t : null; }, 60000, 1000);
+    if (!/Undone: the priority has its earlier value again/.test(done)) throw new Error(done.slice(0, 800));
+    await until("server has the earlier value", async () => { await other.sync(); return (await other.engine.view(task.id))?.fields.priority === "high"; }, 60000, 1000);
+    return { banner: /Changed on another device/.test(banner), priorityAfterUndo: "high" };
+  });
+
+  await step("settings (SYNC-11b/c): Sync shows the engine's state and Desktop app shows the live connection", async () => {
+    await drive("goto", { path: "/settings/sync" });
+    const sync = await pageText();
+    if (!/Waiting to send/.test(sync) || !/Changes from other devices/.test(sync)) throw new Error(sync.slice(0, 500));
+    await drive("goto", { path: "/settings/desktop" });
+    const desk = await pageText();
+    if (!/Instant updates/.test(desk) || !/Live connection/.test(desk) || !/Connected/.test(desk) || !/Server push gateway/.test(desk)) throw new Error(desk.slice(0, 900));
+    return { liveConnected: true };
+  });
+
   await step("reminder: a reminder created on another device fires a desktop notification (D-Bus Notify) once", async () => {
     const api = await sessionLogin();
     const now = new Date();
@@ -347,6 +392,34 @@ async function main() {
     const pids = tree(app.pid);
     const total = pids.reduce((s, p) => s + pss(p), 0);
     return { processes: pids.length, pssMB: Math.round(total / 1024), binaryMB: Math.round(statSync(binary).size / 1048576) };
+  });
+
+  await step("restore (SYNC-11a-4): the operator restores the server; the app stops on the restore screen and Re-upload my local data resumes it", async () => {
+    restoreServer(); // `atlas-admin record-restore`: a new epoch
+    const halted = await until("halt", () => { const s = status(); return s?.snap?.sync?.halt?.kind === "restore_confirmation" ? s : null; }, 90000, 1000);
+    await drive("goto", { path: "/" });
+    const text = await pageText();
+    if (!/The server was restored from a backup/.test(text) || !/Re-upload my local data/.test(text) || !/Discard local changes and re-download/.test(text)) throw new Error(text.slice(0, 600));
+    await sleep(5000); // nothing happens by itself
+    if (status()?.snap?.sync?.halt?.kind !== "restore_confirmation") throw new Error("the halt cleared without a choice");
+    await drive("click", { name: "Re-upload my local data" });
+    await until("resumed", () => { const s = status(); return s && !s.snap.sync.halt && s.snap.sync.state !== "restore_confirmation" ? s : null; }, 90000, 1000);
+    return { reason: halted.snap.sync.halt.reason };
+  });
+
+  await step("restore (SYNC-11a-4): Discard local changes and re-download asks twice, drops the unsent change and keeps the files", async () => {
+    writeFileSync(path.join(notesDir, "after-restore.md"), "written after the first restore\n");
+    restoreServer();
+    await until("halt again", () => status()?.snap?.sync?.halt?.kind === "restore_confirmation" ? true : null, 90000, 1000);
+    await drive("goto", { path: "/" });
+    await drive("click", { name: "Discard local changes and re-download" });
+    const ask = await pageText();
+    if (!/Discard the .*unsent change/.test(ask) || !/never\s+deleted/.test(ask.replace(/\n/g, " "))) throw new Error(ask.slice(0, 700));
+    if (status()?.snap?.sync?.halt?.kind !== "restore_confirmation") throw new Error("the first click already discarded");
+    await drive("click", { name: "Yes, discard and re-download" });
+    const after = await until("resumed after discard", () => { const s = status(); return s && !s.snap.sync.halt ? s : null; }, 90000, 1000);
+    if (!existsSync(path.join(notesDir, "after-restore.md"))) throw new Error("a file in the notes folder was deleted by the discard");
+    return { pendingAfter: after.snap.sync.pending, fileKept: true };
   });
 
   await step("server-side revoke: removing the device on the server signs the app out and forgets the token", async () => {

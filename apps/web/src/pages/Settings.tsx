@@ -8,6 +8,7 @@ import { DevicesSection } from "../components/settings/DevicesSection";
 import { CalendarSettings } from "../components/CalendarSettings";
 import { Icon } from "../components/Icon";
 import { NotificationSettings } from "../components/NotificationSettings";
+import { ShellSyncSettings } from "../components/ShellSyncSettings";
 import { SyncSettings } from "../components/SyncSettings";
 import { DesktopSection } from "../components/settings/DesktopSection";
 import { isDesktopShell } from "../lib/desktop";
@@ -31,7 +32,16 @@ function SectionBody({ id }: { id: SettingsSectionId }) {
     case "calendar":
       return <CalendarSettings />;
     case "sync":
-      return <SyncSettings />;
+      if (isDesktopShell()) return <ShellSyncSettings />; // the engine's state; the browser's offline queue is never started in the shell
+      return (
+        <>
+          <SyncSettings />
+          <p className="settings-sync-link">
+            <Link to="/changes">Changes from other devices</Link>
+            <span className="muted"> - what Atlas decided when two devices changed the same thing, with Undo.</span>
+          </p>
+        </>
+      );
     case "devices":
       return <DevicesSection />;
     case "data":

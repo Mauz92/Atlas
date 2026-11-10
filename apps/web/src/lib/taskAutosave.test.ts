@@ -259,6 +259,28 @@ describe("TaskAutosave", () => {
     expect(auto.getSnapshot().stash).toBeNull();
   });
 
+  it("a text conflict is settled field by field: mine is a normal save against the latest revision, theirs drops mine", async () => {
+    const { auto, fake } = session();
+    fake.changeElsewhere({ title: "Buy oat milk" });
+    auto.edit({ title: "Buy milk today", description: "Two litres" }, "now");
+    await settle();
+    expect(auto.getSnapshot().state).toBe("conflict");
+    auto.loadLatest(fake.current);
+    expect(auto.getSnapshot().stash).toEqual({ title: "Buy milk today", description: "Two litres" });
+
+    auto.resolveStashField("description", null); // keep theirs: the local description is dropped
+    expect(auto.getSnapshot().stash).toEqual({ title: "Buy milk today" });
+    expect(fake.calls).toHaveLength(1); // nothing was sent for it
+
+    auto.resolveStashField("title", "Buy oat milk today"); // an edited merge
+    await auto.flush();
+    expect(fake.current).toMatchObject({ title: "Buy oat milk today" });
+    expect(fake.calls.at(-1)).toMatchObject({ base: fake.current.revision - 1, fields: { title: "Buy oat milk today" } });
+    expect(auto.getSnapshot().stash).toBeNull();
+    auto.resolveStashField("title", "ignored"); // nothing set aside: a no-op
+    expect(fake.calls.at(-1)!.fields).toEqual({ title: "Buy oat milk today" });
+  });
+
   it("a 422 keeps the text, reports the server's words on that field and does not block others", async () => {
     const { auto, fake } = session();
     const message = "title: String should have at least 1 character";

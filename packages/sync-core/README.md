@@ -22,6 +22,7 @@ engine.subscribe((s) => render(s));                           // pending/failed/
 | `merge3.ts`, `portable.ts` | note text rebase (client twin of the server merge), portable-path check |
 | `backoff.ts` | exponential backoff, full jitter, `Retry-After` |
 | `view.ts` | what the user sees: server state with pending operations laid over it |
+| restore choices | `confirmRestore()` re-creates what a restored server lost; `discardLocalAndRedownload()` (SYNC-11) drops unsent operations, drafts and problems and adopts the server (never automatic: the host asks the person) |
 | `reminders.ts` | device reminders (M8-04b-ii, opt-in `reminders: true`): `reminderViews()` (reminders joined with their task, `open`/`dirty` from the local queue), `submitReminderAction()` (queued, idempotent snooze/dismiss with `acted_at`), `SyncReminderSource`/`SyncActionSink` for `@atlas/reminder-core`; `types_synced` backfill is in `engine.ts` |
 | `testing/` | `MemoryStore` (real transactions, injectable crash), `ScriptedTransport`, fakes |
 | `adapters/` | `KeyValueLocalStore` (over the web app's key-value store), `createFetchTransport` (injected `fetch`, HTTPS only), `legacyQueueSnapshot` (M7 status shape) |

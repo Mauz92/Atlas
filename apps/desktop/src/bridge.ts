@@ -1,4 +1,5 @@
-import { DesktopRuntime, type DesktopSettings, type RuntimeSnapshot, type SignInResult } from "../../../packages/desktop-core/src/index.ts";
+import { DesktopRuntime, type DesktopSettings, type RuntimeSnapshot, type SignInResult, type UndoAnswer } from "../../../packages/desktop-core/src/index.ts";
+import type { Problem, ResolutionRecord } from "../../../packages/sync-core/src/index.ts";
 import type { PlatformPort } from "../../../packages/desktop-core/src/index.ts";
 
 /** The `window.atlasDesktop` object (typed in `apps/web/src/lib/desktop.ts`; the sign-in page uses the extras). */
@@ -15,6 +16,17 @@ export interface Bridge {
   setAutostart(enabled: boolean): Promise<void>;
   signOut(): Promise<void>;
   checkForUpdate(install: boolean): Promise<{ available: string | null; installed?: boolean }>;
+  /** The few engine verbs the conflict, notice and restore screens use (SYNC-11c). The page never gets the engine. */
+  sync: {
+    resolutions(): Promise<ResolutionRecord[]>;
+    problems(): Promise<Problem[]>;
+    dismissProblem(id: string): Promise<void>;
+    undo(resolutionId: string): Promise<UndoAnswer>;
+    confirmRestore(): Promise<void>;
+    discardLocal(): Promise<void>;
+    resolveText(problemId: string, field: string, text: string): Promise<void>;
+    resumeAfterUpdate(): Promise<void>;
+  };
   // used by the sign-in page only
   signIn(input: { baseUrl: string; email: string; password: string; deviceName: string }): Promise<SignInResult>;
   start(): Promise<RuntimeSnapshot>;
@@ -66,6 +78,16 @@ export function createBridge(platform: PlatformPort, runtime: DesktopRuntime, ca
     setAutostart: (enabled) => platform.autostart.setEnabled(enabled),
     signOut: () => runtime.signOut().then(() => platform.lifecycle.gotoSignIn(null)),
     checkForUpdate: (install) => call("update_check", { install }),
+    sync: {
+      resolutions: () => runtime.uiResolutions(),
+      problems: () => runtime.uiProblems(),
+      dismissProblem: (id) => runtime.uiDismissProblem(id),
+      undo: (id) => runtime.uiUndo(id),
+      confirmRestore: () => runtime.uiConfirmRestore(),
+      discardLocal: () => runtime.uiDiscardLocal(),
+      resolveText: (problemId, field, text) => runtime.uiResolveText(problemId, field, text),
+      resumeAfterUpdate: () => runtime.uiResumeAfterUpdate(),
+    },
     signIn: (input) => runtime.signIn(input),
     start: () => runtime.start(),
     answerAutostart: (enable) => runtime.answerAutostart(enable),

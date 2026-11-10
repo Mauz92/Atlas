@@ -33,6 +33,9 @@ export type ChangeFeed = components["schemas"]["ChangesOut"];
 export type ChangeItem = components["schemas"]["ChangeOut"];
 export type SyncDevice = components["schemas"]["DeviceInfo"];
 export type Device = components["schemas"]["DeviceOut"];
+export type Resolution = components["schemas"]["ResolutionOut"];
+export type ResolutionPage = components["schemas"]["ResolutionListOut"];
+export type ResolutionUndo = components["schemas"]["ResolutionUndoOut"];
 export type DeviceList = components["schemas"]["DeviceListOut"];
 export type WebPushConfig = components["schemas"]["WebPushConfigOut"];
 export type ReminderTiming = components["schemas"]["ReminderTiming"];
@@ -218,6 +221,23 @@ export const devicesApi = {
     apiFetch<SyncDevice>(`/api/devices/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   revoke: (id: string) => apiFetch<void>(`/api/devices/${id}`, { method: "DELETE" }),
   revokeAll: () => apiFetch<{ revoked: number }>("/api/devices/revoke-all", { method: "POST" }),
+};
+
+/**
+ * The automatic-resolution log (SYNC-05, SYNC_PROTOCOL 9): what the server decided when two devices
+ * changed the same thing. An undo needs an `Idempotency-Key`; the caller keeps one key per tap so a
+ * retry can never undo twice.
+ */
+export const resolutionsApi = {
+  list: (options: { cursor?: string | null; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (options.limit) params.set("limit", String(options.limit));
+    if (options.cursor) params.set("cursor", options.cursor);
+    const query = params.toString();
+    return apiFetch<ResolutionPage>(`/api/sync/resolutions${query ? `?${query}` : ""}`);
+  },
+  undo: (id: string, idempotencyKey: string) =>
+    apiFetch<ResolutionUndo>(`/api/sync/resolutions/${id}/undo`, { method: "POST", idempotencyKey }),
 };
 
 export const instanceApi = {

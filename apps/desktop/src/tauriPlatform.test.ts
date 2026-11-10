@@ -128,4 +128,22 @@ describe("the bridge", () => {
     expect(f.calls.some((c) => c.command === "session_clear")).toBe(true);
     expect(nav).toContain("/welcome.html?reason=signed_out");
   });
+
+  it("exposes the engine verbs of the conflict, notice and restore screens, and refuses them while signed out (SYNC-11c)", async () => {
+    const f = fakeTauri();
+    Object.assign(f.answers, {
+      db_open: { schemaVersion: 1 }, db_get: null, db_list: [], db_commit: null,
+      session_info: { signedIn: false, baseUrl: null, device: null, keystoreError: null },
+      tray_set_close_to_tray: null, notify_permission: "granted",
+    });
+    const platform = createTauriPlatform(env(f.tauri, []));
+    const runtime = new DesktopRuntime(platform, { tickMs: 1_000_000, schedulerTickMs: 1_000_000, fullScanMs: 1_000_000, liveWaitSeconds: 1 });
+    const bridge = createBridge(platform, runtime, (c, a) => f.tauri.core.invoke(c, a));
+    expect(Object.keys(bridge.sync).sort()).toEqual(
+      ["confirmRestore", "discardLocal", "dismissProblem", "problems", "resolutions", "resolveText", "resumeAfterUpdate", "undo"],
+    );
+    await runtime.start();
+    await expect(bridge.sync.resolutions()).rejects.toThrow(/not signed in/);
+    await expect(bridge.sync.discardLocal()).rejects.toThrow(/not signed in/);
+  });
 });

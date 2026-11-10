@@ -7,9 +7,9 @@ It is **not** part of `scripts/verify.sh` or CI; the framework-neutral parts it 
 |---|---|
 | `native/` | Rust, no Tauri: `store.rs` (SQLite), `notes.rs` + `watch.rs` (confined folder, watcher), `keystore.rs`, `http.rs` (token attached here), `rules.rs`. `cargo test -p atlas-desktop-native` |
 | `src-tauri/` | Tauri commands, tray, window, plugins; `capabilities/main.json` is the whole webview permission list; features `updater` and `e2e` (both off by default) |
-| `src/` | `tauriPlatform.ts` (the only file that knows command names), `bridge.ts` (`window.atlasDesktop`), `bootstrap.ts`, the sign-in page |
+| `src/` | `tauriPlatform.ts` (the only file that knows command names), `bridge.ts` (`window.atlasDesktop`, incl. the `sync` verbs of the conflict/notice/restore screens, SYNC-11c), `bootstrap.ts`, the sign-in page |
 | `scripts/` | `build-linux.sh` (AppImage + .deb, pinned bundler tools), `fetch-bundler-tools.sh`, `stage-ui.mjs` |
-| `e2e/` | `run.mjs` (end-to-end run of the real app against a throwaway API), `updater-test.mjs` |
+| `e2e/` | `run.mjs` (end-to-end run of the real app against a throwaway API; SYNC-11 added the notices, Settings and two restore steps), `updater-test.mjs` |
 | `packaging/` | `bundler-tools.tsv` (SHA-256 pins) |
 
 ## Build and run (Arch / CachyOS; no sudo needed if the packages below are installed)

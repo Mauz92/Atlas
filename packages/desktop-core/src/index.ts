@@ -7,7 +7,7 @@ export { SqliteLocalStore } from "./sqliteStore.ts";
 export { NotesFolderSync } from "./notes/sync.ts";
 export type { IndexEntry, NotesEngine, NotesSyncReport, SkippedFile, SkipReason } from "./notes/sync.ts";
 export { DesktopRuntime } from "./runtime.ts";
-export type { RuntimeOptions, RuntimePhase, RuntimeSnapshot } from "./runtime.ts";
+export type { RuntimeOptions, RuntimePhase, RuntimeSnapshot, UndoAnswer } from "./runtime.ts";
 export { LiveConnection } from "./live.ts";
 export { DEFAULT_DESKTOP_SETTINGS, loadSettings, saveSettings } from "./settings.ts";
 export type { DesktopSettings } from "./settings.ts";

@@ -8,6 +8,8 @@
  * token, which the page can never read.
  */
 
+import type { Resolution } from "../api/client";
+
 export interface DesktopSettings {
   remindersEnabled: boolean;
   contentMode: "full" | "generic";
@@ -15,11 +17,57 @@ export interface DesktopSettings {
   autostartAsked: boolean;
 }
 
+/** The engine's halt, as the shell reports it (SYNC_PROTOCOL 7.4, 8.1). */
+export type DesktopHalt =
+  | { kind: "update_required"; min: number | null; max: number | null }
+  | { kind: "signed_out"; code: string }
+  | { kind: "restore_confirmation"; reason: "epoch_mismatch" | "cursor_ahead"; epoch: string | null; head: number | null };
+
+export interface DesktopSyncStatus {
+  state: string;
+  halt?: DesktopHalt | null;
+  pending: number;
+  failed: number;
+  conflicts: number;
+  lastSyncAt: number | null;
+  online: boolean;
+  cursor?: number;
+}
+
+/** A write the server refused or only partly applied, kept by the engine until the person dismisses it. */
+export interface DesktopProblem {
+  id: string;
+  kind: "failed" | "conflict";
+  reason: string;
+  status: number | null;
+  code: string | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+  at: number;
+  detail: string | null;
+  conflicts: { field: string; reason: string; serverRevision: number | null; theirs: unknown; mine: unknown }[];
+  copy: { id: string; path: string } | null;
+}
+
+export type DesktopUndoAnswer = { status: number; body: unknown } | { queued: true };
+
+export interface DesktopSyncApi {
+  resolutions(): Promise<Resolution[]>;
+  problems(): Promise<DesktopProblem[]>;
+  dismissProblem(id: string): Promise<void>;
+  undo(resolutionId: string): Promise<DesktopUndoAnswer>;
+  confirmRestore(): Promise<void>;
+  discardLocal(): Promise<void>;
+  resolveText(problemId: string, field: string, text: string): Promise<void>;
+  resumeAfterUpdate(): Promise<void>;
+}
+
 export interface DesktopSnapshot {
   phase: "starting" | "signed_out" | "running" | "update_required" | "failed";
   reason: string | null;
   session: { signedIn: boolean; baseUrl: string | null; device: { id: string; name: string } | null; keystoreError: string | null } | null;
-  sync: { state: string; pending: number; failed: number; conflicts: number; lastSyncAt: number | null; online: boolean } | null;
+  sync: DesktopSyncStatus | null;
   notes: {
     root: string | null;
     lastScanAt: number | null;
@@ -29,6 +77,7 @@ export interface DesktopSnapshot {
   } | null;
   settings: DesktopSettings;
   live: boolean;
+  lastHintAt?: number | null;
   notificationPermission: string;
 }
 
@@ -52,6 +101,8 @@ export interface AtlasDesktopApi {
   requestNotificationPermission(): Promise<string>;
   setAutostart(enabled: boolean): Promise<void>;
   signOut(): Promise<void>;
+  /** The engine verbs of the conflict, notice and restore screens (SYNC-11c). */
+  sync: DesktopSyncApi;
   /** Updates exist only in a build with the `updater` feature; otherwise this rejects with `not_configured`. */
   checkForUpdate(install: boolean): Promise<{ available: string | null; installed?: boolean }>;
 }

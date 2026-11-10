@@ -376,6 +376,21 @@ export class TaskAutosave {
     else this.emit();
   }
 
+  /**
+   * Settle one set-aside field (SYNC-11a-2): `text` is written as a new edit against the latest
+   * revision (a normal revision-checked save, so a newer change still conflicts instead of being
+   * overwritten); `null` drops the local value and keeps the latest one. The other fields stay set aside.
+   */
+  resolveStashField(field: keyof TaskDraft, text: string | null): void {
+    const stash = this.stash;
+    if (!stash || !(field in stash)) return;
+    const rest = { ...stash };
+    delete rest[field];
+    this.stash = Object.keys(rest).length > 0 ? rest : null;
+    if (text === null) this.emit();
+    else this.edit({ [field]: text } as Partial<TaskDraft>, "now");
+  }
+
   dismissStash(): void {
     this.stash = null;
     this.emit();

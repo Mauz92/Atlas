@@ -353,6 +353,33 @@ discarded) and shown as a conflict. Resolve it per item:
 - **Keep mine** — re-send your edit against the server's current revision.
 - **Take server** — discard your local edit and adopt the server's version.
 
+**Changes from other devices (new, SYNC-11).** When two devices change the same thing at the same time, the server keeps one result and
+records the decision. A banner at the top of the page says **"Changed on another device"** with a **Review** button; the page it opens
+(**Settings → Sync → Changes from other devices**, `/changes`) lists the decisions, newest first, with what changed, on which device (a device
+the browser cannot name reads "another device" in the desktop app), when, and the value that was replaced (only simple fields such as status,
+priority, due date or note location; never your text). **Undo** puts the replaced value back, but only if nothing changed it since. If it did,
+Atlas says **"Not undone: the priority was changed again since"**; that is normal on a busy field, nothing was overwritten, and you can set the
+value yourself. Some decisions cannot be undone in one step (a note edit that was merged, an edit that brought back a deleted item, a note that was
+renamed because its name was taken); the entry says why and links to the item. Entries are kept for 90 days.
+
+**Two versions of a text.** If you edit the **title or description** of a task while another device changed it, the task panel says it
+*changed somewhere else*; **Load latest version** shows the new text and, for each text field you had edited, **both versions side by side** with
+**Keep mine**, **Keep theirs** or **Edit merged** (one box holding both texts). Nothing is saved until you choose; your choice is saved like any other edit,
+so a newer change still asks again instead of being overwritten. For notes, when the server could not merge two edits it saves the other one as a
+**conflict copy** next to the note (`name (conflict ... ).md`); the **Notes** page then shows "N notes have two versions" with **Resolve**: a line-by-line
+comparison, then **Keep mine**, **Keep theirs** or **Merge in the editor**. The conflict copy is moved to the trash only after the note itself was saved.
+
+**After a server restore (desktop app).** If your administrator restored the server from a backup, the desktop app stops syncing and shows
+**"The server was restored from a backup"** with what it knows (how far this computer had seen, how many changes are unsent). It never decides for you:
+**Re-upload my local data** adds back what the server lost (same ids, nothing already there is changed); **Discard local changes and re-download**
+drops the unsent changes on this computer and takes the server's data (it asks a second time; files in your notes folder are never deleted, a file
+the server does not have is added again as a new note). Another full-screen explanation appears when the app is too old for the server (**Atlas needs to be updated**)
+and when the device was signed out (**Sign in again**; nothing on the computer is deleted).
+
+**Instant updates (Settings → Notifications and reminders, and Settings → Desktop app).** Shows whether this browser can show notifications, whether
+they are allowed, a **Show a test notification** button (it only tests this device; it does not send anything through the server), and, in the desktop app,
+whether the live connection is up, when the last "something changed" hint arrived and whether the server has a push gateway configured (used by the Android app only).
+
 Atlas never silently overwrites a newer change. If the server tells the client to resynchronise (for
 example, a device has been offline longer than the retained change history), Atlas does a full resync
 and resumes cleanly. Reasoning: `ROADMAP.md` M7 (ADR-0032…ADR-0036).
@@ -508,5 +535,5 @@ There is no service worker and no installable-app prompt in the desktop app.
 folder `~/.local/share/app.atlas.desktop/` (the local database and settings) and remove the stored device key (KDE Wallet / GNOME Keyring entry "atlas-desktop", or just remove the device in Settings > Devices in the browser, which makes the key useless).
 **Your notes folder is never deleted by Atlas or by uninstalling.**
 
-**Known limits (phase 1).** Linux only; reminders fire only while Atlas runs (use the optional autostart); the "restore confirmation" screen after a server restore, and a resolver for conflicting task edits, are not in the desktop UI yet; typing in the editor with a CJK
+**Known limits (phase 1).** Linux only; reminders fire only while Atlas runs (use the optional autostart); the restore confirmation, the notices and the text resolvers are in the desktop app since SYNC-11, but the desktop app's task and note screens still need a connection to save (no offline editing of tasks in the app); typing in the editor with a CJK
 input method was not tested; on NVIDIA graphics Atlas turns off a WebKit renderer feature at start-up (`WEBKIT_DISABLE_DMABUF_RENDERER=1`) to avoid a crash; set `ATLAS_KEEP_DMABUF=1` to keep it on.

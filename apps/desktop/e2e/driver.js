@@ -88,6 +88,15 @@
         await sleep(1500);
         await report("settings-desktop", { text: (document.getElementById("root")?.innerText || "").slice(0, 4000) });
       },
+      async goto(c) { history.pushState({}, "", c.path); window.dispatchEvent(new PopStateEvent("popstate")); await sleep(1200); },
+      async page_text() { await report("page-text", { t: Date.now(), path: location.pathname, text: (document.getElementById("root")?.innerText || "").slice(0, 8000) }); },
+      async click(c) {
+        const name = (el) => (el.getAttribute("aria-label") || el.textContent || "").trim();
+        const el = [...document.querySelectorAll("button, a")].find((e) => name(e).startsWith(c.name) && !e.disabled);
+        if (!el) throw new Error("no enabled control starting with: " + c.name);
+        el.click();
+        await sleep(300);
+      },
       async set_settings() { await window.atlasDesktop.updateSettings(CFG.pendingSettings || {}); },
       async autostart(c) { await window.atlasDesktop.setAutostart(!!c.enabled); await report("autostart-state", { enabled: (await window.atlasDesktop.info()).autostart }); },
       async sign_out() { await window.atlasDesktop.signOut(); },

@@ -166,6 +166,8 @@ interface Shadow {
   entities: Map<string, { type: EntityType; data: Record<string, Json> | null; revision: number | null }>;
   resolutions: Map<string, ResolutionRecord>;
   restore: boolean;
+  /** The person chose to throw away local changes (SYNC-11): what the server lost is dropped, not re-created. */
+  discard?: boolean;
 }
 
 /** A walk from 0 of entity types this client has not synced yet (G7); the main cursor is untouched. */
@@ -1400,7 +1402,12 @@ export class SyncEngine {
         const behind = held?.data ? Number(held.data["revision"]) < entity.server.revision : true;
         if (!held?.data && !held) {
           lost++;
-          await this.recreateLost(tx, entity, queue);
+          if (shadow.discard) {
+            // chosen: the restored server is the truth; the entity it lost is dropped here too
+            entity.deleted = true;
+            entity.deletedRevision = null;
+            await tx.putEntity(entity);
+          } else await this.recreateLost(tx, entity, queue);
           continue;
         }
         if (held?.data && behind) {
@@ -1480,6 +1487,41 @@ export class SyncEngine {
     await this.store.transaction(async (tx) => tx.removeMeta("halt"));
     // a snapshot walk from 0 is the next pull; the resync_required answer is not needed for it
     this.job = this.newJob(0, { shadow: { entities: new Map(), resolutions: new Map(), restore: true } });
+    this.lastResyncAt = this.clock.monotonic();
+    void this.notify();
+  }
+
+  /**
+   * The person chose to discard what this device holds and download the restored server (SYNC-11a-4,
+   * D12): the epoch is adopted, every unsent operation, note working copy and kept problem is dropped
+   * (an entity that never reached the server is forgotten) and the next pull is a snapshot from 0 in
+   * which the server wins even where its revision is lower. Never automatic; irreversible on this
+   * device, which is why the UI asks twice. Entities the server lost are dropped, not re-created.
+   */
+  async discardLocalAndRedownload(): Promise<void> {
+    await this.init();
+    const halt = this.halt;
+    if (!halt || halt.kind !== "restore_confirmation") throw new SyncUserError("no restore to confirm");
+    if (halt.epoch) {
+      this.epoch = halt.epoch;
+      await this.store.transaction(async (tx) => tx.setMeta("epoch", halt.epoch as string));
+    }
+    await this.store.transaction(async (tx) => {
+      for (const op of await tx.listQueue()) await tx.removeOp(op.id);
+      for (const problem of await tx.listProblems()) await tx.removeProblem(problem.id);
+      for (const entity of await tx.listEntities()) {
+        if (entity.type === "note") await tx.removeDraft(entity.id);
+        if (!entity.server) await tx.removeEntity(entity.id); // a create that never reached the server
+      }
+      await tx.removeMeta("dirty_tasks");
+      await tx.removeMeta("halt");
+    });
+    this.halt = null;
+    this.restoreRequested = true;
+    this.lastResyncAt = null;
+    this.failures = 0;
+    this.retryAt = 0;
+    this.job = this.newJob(0, { shadow: { entities: new Map(), resolutions: new Map(), restore: true, discard: true } });
     this.lastResyncAt = this.clock.monotonic();
     void this.notify();
   }

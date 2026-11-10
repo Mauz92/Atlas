@@ -56,6 +56,24 @@ export function syncStatusItem(input: {
   }
 }
 
+/** The sync item inside the desktop shell: the engine's own state (SYNC-11c). */
+export function shellSyncItem(
+  sync: { state: string; pending: number; failed: number; conflicts: number; online: boolean } | null,
+  phase: string,
+): StatusItem {
+  if (phase === "signed_out") return { icon: "triangle-alert", text: "Signed out", label: "Sync: signed out", tone: "danger" };
+  if (phase === "update_required") return { icon: "triangle-alert", text: "Update required", label: "Sync: update required", tone: "danger" };
+  if (!sync) return { icon: "refresh-cw", text: "Starting", label: "Sync: starting", tone: "neutral" };
+  if (sync.state === "restore_confirmation") {
+    return { icon: "triangle-alert", text: "Server restored: your decision", label: "Sync: stopped, the server was restored; your decision is needed", tone: "danger" };
+  }
+  return syncStatusItem({
+    counts: { total: sync.pending + sync.failed + sync.conflicts, pending: sync.pending, failed: sync.failed, conflicts: sync.conflicts },
+    online: sync.online,
+    loadFailed: false,
+  });
+}
+
 /** The latest successful calendar sync across providers, or `null` when none has run. */
 function latestSync(providers: ProviderSyncStatus[]): string | null {
   let latest: string | null = null;

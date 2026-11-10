@@ -1,7 +1,10 @@
 import { useHomeTimeZone } from "../hooks/useHomeTimeZone";
 import { useReminderPreferences } from "../hooks/useReminderPreferences";
 import { useWebPush } from "../hooks/useWebPush";
+import { canTestNotification, liveRow, notificationRow } from "../lib/syncUi/instantStatus";
+import { showTestNotification } from "../lib/syncUi/testNotification";
 import { HomeTimeZone } from "./HomeTimeZone";
+import { InstantUpdates } from "./InstantUpdates";
 import { NotificationConsent } from "./NotificationConsent";
 import { ReminderPreferences } from "./ReminderPreferences";
 
@@ -14,6 +17,7 @@ export function NotificationSettings() {
   const consent = useWebPush();
   const reminder = useReminderPreferences();
   const homeZone = useHomeTimeZone();
+  const permission = typeof Notification === "undefined" ? "denied" : Notification.permission;
 
   return (
     <>
@@ -24,6 +28,15 @@ export function NotificationSettings() {
         busy={consent.busy}
         onEnable={() => void consent.enable()}
         onDisable={() => void consent.disable()}
+      />
+      <InstantUpdates
+        loading={consent.loading}
+        rows={[
+          notificationRow(consent.state, permission),
+          liveRow("browser", false),
+        ]}
+        testEnabled={canTestNotification(consent.state, permission)}
+        onTest={showTestNotification}
       />
       <ReminderPreferences
         timing={reminder.timing}

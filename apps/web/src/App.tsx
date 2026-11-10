@@ -4,7 +4,10 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { HomeTimeZoneDefault } from "./components/HomeTimeZoneDefault";
 import { useAuth } from "./auth/AuthProvider";
 import { Layout } from "./components/Layout";
+import { ShellHalt } from "./components/ShellHalt";
+import { useShellSync } from "./hooks/useShellSync";
 import { SETTINGS_REDIRECTS } from "./lib/settingsSections";
+import { Changes } from "./pages/Changes";
 import { Inbox } from "./pages/Inbox";
 import { Login } from "./pages/Login";
 import { ProjectPage } from "./pages/ProjectPage";
@@ -23,6 +26,11 @@ const Notes = lazy(() => import("./pages/Notes").then((module) => ({ default: mo
 
 export default function App() {
   const { state, pendingRecoveryCode } = useAuth();
+  // In the desktop shell the engine can stop and wait for a person (restore, update, sign-in): that screen replaces the app.
+  const shell = useShellSync();
+  if (shell?.sync?.halt) {
+    return <ShellHalt snapshot={shell} />;
+  }
 
   if (state === "loading") {
     return <div className="splash">Loading Atlas…</div>;
@@ -58,6 +66,7 @@ export default function App() {
           {Object.entries(SETTINGS_REDIRECTS).map(([from, to]) => (
             <Route key={from} path={from} element={<Navigate to={to} replace />} />
           ))}
+          <Route path="/changes" element={<Changes />} />
           <Route path="/search" element={<SearchPage />} />
           <Route
             path="/notes"

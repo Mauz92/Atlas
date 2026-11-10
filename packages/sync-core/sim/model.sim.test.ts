@@ -126,6 +126,51 @@ describe("restore of the server (D12)", () => {
   });
 });
 
+describe("restore of the server, the person discards local changes (SYNC-11a-4)", () => {
+  it("drops every unsent change, adopts the restored server and sends nothing of the old state", async () => {
+    let stopped = 0;
+    let hadPending = 0;
+    for (const seed of seeds(740, 6)) {
+      const server = new ModelServer();
+      const world = new World(seed, { ...DEFAULT_CONFIG, steps: 90, kinds: ["task", "project", "note"], clients: 3 }, server);
+      let backup: ModelServer | null = null;
+      await world.faultyPhase({
+        onStep: async (step) => {
+          if (step === 30) backup = server.snapshot();
+          if (step === 60 && backup) {
+            server.restoreFrom(backup);
+            world.restored = true;
+            server.rotateEpoch();
+          }
+        },
+      });
+      await world.quiesce();
+      const waiting = world.clients.filter((c) => c.engine.debug().halted?.kind === "restore_confirmation");
+      stopped += waiting.length;
+      for (const client of waiting) {
+        if ((await client.engine.getStatus()).pending > 0) hadPending++;
+        await client.engine.discardLocalAndRedownload();
+        const status = await client.engine.getStatus();
+        expect(status.pending).toBe(0);
+        expect(status.failed + status.conflicts).toBe(0);
+      }
+      await world.quiesce();
+      for (const client of world.clients) expect(client.engine.debug().halted).toBeNull();
+      await checkRestoredConvergence(world);
+      for (const client of waiting) expect((await client.engine.getStatus()).pending).toBe(0);
+    }
+    expect(stopped).toBeGreaterThan(0);
+    expect(hadPending).toBeGreaterThan(0); // the scenario really throws something away
+  });
+
+  it("refuses to run when nothing is waiting for a confirmation", async () => {
+    const server = new ModelServer();
+    const world = new World(1, { ...DEFAULT_CONFIG, steps: 5, kinds: ["task"], clients: 1 }, server);
+    await world.faultyPhase({});
+    await expect(world.clients[0]!.engine.discardLocalAndRedownload()).rejects.toThrow("no restore to confirm");
+  });
+});
+
 async function checkRestoredConvergence(world: World): Promise<void> {
   const { serverTruth } = await import("./invariants.ts");
   const truth = await serverTruth(world);

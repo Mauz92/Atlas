@@ -311,6 +311,7 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   MU-01: task edits from the UI are online-only (idempotency key + `base_revision`, conflict shown); they
   are not yet routed through the offline queue (M7-03), so an edit made while offline fails visibly
   instead of queueing. MU-08 did not change this; address with M8 offline UX.
+- **Progress (SYNC-11, 2026-11-10):** the conflict, notice and restore screens exist (`/changes`, the banner, the text and note resolvers, the halt screens), so a decision the server or the engine made is no longer invisible. Still open: a browser edit made offline fails visibly instead of queueing (the browser has no local store until SYNC-11d), and the shell's UI is online REST (R-73).
 - **Owner milestone:** MU. **Status:** Mitigating.
 
 ### R-28 — Data loss through sync (merge, resolution, delete)
@@ -450,6 +451,9 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
   enqueues into it. Moving it to sync mode changes what a user sees on a conflict, which is the product decision of SYNC-11.
 - **Mitigation:** `packages/sync-core/src/adapters` (`KeyValueLocalStore`, `createFetchTransport`, `legacyQueueSnapshot`) are the
   incremental path; nothing in the web app was changed except test/lint/typecheck wiring. **Status:** Open (SYNC-11 / SYNC-09 consume the core).
+- **SYNC-11 (2026-11-10):** the browser deliberately stays on its engine (ADR-0070 D2): the new screens reach it through REST (`GET /api/sync/resolutions`, `POST .../undo`) and
+  its own `409` flows. The desktop shell no longer starts the browser's queue, cursor or reconciler (R-73). The browser path onto `sync-core` (an IndexedDB `LocalStore`, opt-in "Offline mode (beta)")
+  is planned as SYNC-11d (ADR-0070 D9), not built. **Status:** Open, narrower.
 
 ### R-55 - Properties of `sync-core` the simulation does not prove
 - **Severity/Likelihood:** Medium / Low
@@ -536,7 +540,10 @@ documented proxy chain (SECURITY R-SEC-1). (2) API redirects such as `/api/tasks
   can feel like a broken button.
 - **Mitigation:** the refusal is explicit (`409 conflict`, `changed_since`, the current value in `server_value`), the entry stays
   listed with its overwritten value so the UI can offer "set it back by hand" (an ordinary edit); SYNC-11 must word this.
-  **Status:** Open (UI task).
+  **SYNC-11a (2026-11-10):** worded as a normal outcome ("Not undone: the priority was changed again since. Atlas never overwrites a newer
+  value."), shown in place on the entry with the Undo button still enabled, tested for every refusal (`undoOutcome.test.ts`) and in the real stack
+  (`sync11-conflicts.spec.ts`). Not built: a "set it back by hand" shortcut that pre-fills the field (the overwritten value is shown, the person edits the task).
+  **Status:** Mitigating (wording done; usage will show whether the button still feels broken on busy fields).
 
 ### R-52 - Token rotation does not detect theft of the current token
 - **Severity/Likelihood:** Low / Low
@@ -773,7 +780,20 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 - **Severity/Likelihood:** Medium / High (expected, handled)
 - **Description:** a device token is refused on account-level endpoints (`403 forbidden_scope`, T22), while parts of the web UI call them (Settings: Account, Notifications/Web Push, Calendar, Devices, Data; maybe others such as note-reminder preferences). Two engines (the UI's M7 queue over REST, and the runtime's sync-core) share one device.
 - **Mitigation:** the shell hides the browser-only Settings sections; the e2e probe loads the main lists through the bridge (`/api/auth/me`, tasks, notes, projects, instance: 200). Not done: a click-through of every page for a stray `403`, and moving the UI onto the local database (SYNC-11/12), which removes the second engine.
-- **Owner milestone:** SYNC-11/12. **Status:** Open.
+- **SYNC-11c (2026-11-10):** the second SYNC engine is gone from the shell: the status bar and Settings > Sync read sync-core, and the browser's offline queue, reconciler and cursor are never started there (`Settings.shell.test.tsx` fails if they are). What remains of the original risk: the UI's task, project and note reads and writes are still online REST through the host, so an edit made in the shell UI while offline fails visibly (as in the browser) instead of queueing in the engine.
+- **Owner milestone:** SYNC-11/12. **Status:** Open, narrower (UI data on the local store is SYNC-11d/12).
+
+### R-74 - The shell cannot name the other device in "changed on another device"
+- **Severity/Likelihood:** Low / High (expected, handled)
+- **Description:** a device token may not list devices (SECURITY T22), so the desktop shell knows only its own device name; entries from other devices read "another device" (a browser, which may list devices, shows names).
+- **Mitigation:** generic wording; the device list is one click away in the browser. Not done: adding the device name to the resolution entry on the server (it would change the feed shape and the sync-core record for wording only) or opening `GET /api/devices` read-only to devices.
+- **Owner milestone:** SYNC-11. **Status:** Accepted.
+
+### R-75 - "Discard local changes and re-download" and the notes folder
+- **Severity/Likelihood:** Medium / Low
+- **Description:** the discard choice of the restore screen drops unsent operations and adopts the restored server. In the desktop app the notes folder is files: a file that exists only locally (created or edited after the server's backup) is not deleted by Atlas, so the next scan adds it again as a new note, and a note the server lost is treated as deleted (its file goes to `.atlas-trash/`). The choice is therefore "drop Atlas's queue", not "make the folder match the server".
+- **Mitigation:** the screen says so before the second confirmation; nothing is deleted from the folder; the e2e run checks a local file survives (`apps/desktop/e2e/run.mjs`). Not done: a mode that also moves such files to the trash.
+- **Owner milestone:** SYNC-11/12. **Status:** Accepted.
 
 ## Review log
 
@@ -813,4 +833,5 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 | 2026-11-03 | P0-1/P0-2/P0-3 | R-46 added (smoke test of the Compose stack found and fixed six defects; four accepted edges). R-34 verified through the real web container (1.5/5/10 MiB `201`, 12 MiB `413`). First restore drill of a set that contains note history. |
 | 2026-11-04 | P0-4 / SYNC-07 Windows | First GitHub Actions runs: R-61 (npm audit finding in dev tooling, owner decision) and R-62 (CI-only environment differences, fixed) added; R-36 updated with the hosted-Windows-runner results (build, per-user installer, signed update, headless checks, supply chain; admin/UAC/SmartScreen/AV/OneDrive/IME still the owner's). |
 | 2026-11-04 | M8-04 design (ADR-0068 PROPOSED) | R-63 to R-67 added (Android missed reminders, resident desktop app, clock/zone, duplicates/stale across devices, the hint channel); R-59 updated (resident app chosen as mitigation). Design only, nothing built. |
+| 2026-11-10 | SYNC-11 | R-74 and R-75 added; R-22, R-48, R-54 and R-73 updated (conflict, notice and restore screens exist; the shell no longer runs two sync engines; the browser stays on its engine, SYNC-11d planned). |
 | 2026-11-10 | SYNC-09 phase 1 (Linux) | R-69 to R-73 added (script in the webview, AppImage supply chain, hidden webview, folder races/limits, device scope vs web UI); R-60 now Mitigating; R-36 unchanged (Windows still not run); R-58 unchanged (DMABUF variable is set automatically on NVIDIA); a new advisory (RUSTSEC-2026-0459, SQLite) was found by `cargo audit` and fixed by moving rusqlite 0.37 to 0.41. |

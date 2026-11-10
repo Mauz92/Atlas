@@ -4,7 +4,10 @@ import {
   SyncReminderSource,
   type EngineObserver,
   type Halt,
+  type Json,
   type Logger,
+  type Problem,
+  type ResolutionRecord,
   type SyncStatus,
   type LogFields,
 } from "../../sync-core/src/index.ts";
@@ -29,6 +32,8 @@ export interface RuntimeSnapshot {
   notes: NotesSyncReport | null;
   settings: DesktopSettings;
   live: boolean;
+  /** Wall-clock time of the last hint from the live connection (SYNC-11b); display only. */
+  lastHintAt: number | null;
   notificationPermission: string;
 }
 
@@ -46,6 +51,11 @@ export interface RuntimeOptions {
   liveWaitSeconds?: number;
   debounceMs?: number;
 }
+
+/** What an undo came back with: the server's answer, or `queued` when this device is offline (it is sent later). */
+export type UndoAnswer = { status: number; body: unknown } | { queued: true };
+
+const UNDO_WAIT_MS = 15_000;
 
 const NOOP_LOGGER: Logger = { debug() {}, info() {}, warn() {}, error() {} };
 
@@ -72,6 +82,8 @@ export class DesktopRuntime {
   private lastMono = 0;
   private ticking = false;
   private opened = false;
+  private lastHintAt: number | null = null;
+  private readonly undoWaiters = new Map<string, (answer: UndoAnswer) => void>();
 
   constructor(
     private readonly p: PlatformPort,
@@ -94,6 +106,7 @@ export class DesktopRuntime {
       notes: this.notes ? this.notes.status() : null,
       settings: { ...this.settings },
       live: this.live?.active ?? false,
+      lastHintAt: this.lastHintAt,
       notificationPermission: this.permission,
     };
   }
@@ -196,6 +209,8 @@ export class DesktopRuntime {
         this.emit();
       },
       ack: () => this.emit(),
+      undone: (op, response) => this.settleUndo(op.entityId, response),
+      undoRefused: (op, response) => this.settleUndo(op.entityId, response),
     };
     const engine = new SyncEngine({
       store: new SqliteLocalStore(p.db),
@@ -246,6 +261,8 @@ export class DesktopRuntime {
       random: { next: () => p.crypto.random() },
       cursor: async () => (await engine.getStatus()).cursor,
       onHint: () => {
+        this.lastHintAt = p.timers.wallTime();
+        this.emit();
         engine.requestPull();
         void engine.tick();
       },
@@ -334,6 +351,100 @@ export class DesktopRuntime {
     } catch {
       /* the next tick retries */
     }
+  }
+
+  // --- what the web UI may ask of the engine (SYNC-11c) ---------------------------------------
+  //
+  // The page never gets the engine, the store or a token: these are the few verbs the conflict, notice
+  // and restore screens need, each a thin call over `SyncEngine` (the rules stay in sync-core).
+
+  private requireEngine(): SyncEngine {
+    if (!this.engine) throw new Error("not signed in");
+    return this.engine;
+  }
+
+  /** "Changed on another device" entries held locally, newest first. */
+  async uiResolutions(): Promise<ResolutionRecord[]> {
+    const all = await this.requireEngine().resolutions();
+    return [...all].sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+  }
+
+  async uiProblems(): Promise<Problem[]> {
+    return this.requireEngine().problems();
+  }
+
+  async uiDismissProblem(id: string): Promise<void> {
+    await this.requireEngine().dismissProblem(id);
+    this.emit();
+  }
+
+  /**
+   * Undo an automatic resolution through the engine's durable queue (one Idempotency-Key for the whole
+   * life of the request). Resolves with the server's answer, or `queued` when it did not come within
+   * 15 s (offline): the undo is then still queued and is sent when the connection returns.
+   */
+  async uiUndo(resolutionId: string): Promise<UndoAnswer> {
+    const engine = this.requireEngine();
+    const answer = new Promise<UndoAnswer>((resolve) => this.undoWaiters.set(resolutionId, resolve));
+    await engine.undoResolution(resolutionId);
+    void engine.tick();
+    const timeout = new Promise<UndoAnswer>((resolve) => {
+      this.cancels.push(this.p.timers.setTimeout(() => resolve({ queued: true }), UNDO_WAIT_MS));
+    });
+    const result = await Promise.race([answer, timeout]);
+    this.undoWaiters.delete(resolutionId);
+    this.emit();
+    return result;
+  }
+
+  private settleUndo(resolutionId: string, response: { status: number; body?: unknown }): void {
+    this.undoWaiters.get(resolutionId)?.({ status: response.status, body: response.body ?? null });
+    this.emit();
+  }
+
+  /** The person chose "Re-upload my local data" (D12). */
+  async uiConfirmRestore(): Promise<void> {
+    await this.requireEngine().confirmRestore();
+    this.emit();
+  }
+
+  /** The person chose "Discard local changes and re-download" (asked twice by the screen). */
+  async uiDiscardLocal(): Promise<void> {
+    await this.requireEngine().discardLocalAndRedownload();
+    this.emit();
+  }
+
+  /**
+   * Settle a text conflict of a task or project field with the person's chosen text: a normal queued
+   * edit against the revision this device now holds (so a newer change still conflicts), then the
+   * problem is dismissed. Nothing is dismissed if the edit could not be queued.
+   */
+  async uiResolveText(problemId: string, field: string, text: string): Promise<void> {
+    const engine = this.requireEngine();
+    const problem = (await engine.problems()).find((p) => p.id === problemId);
+    if (!problem || problem.entityType === "resolution" || problem.entityType === "note" || problem.entityType === "reminder") {
+      throw new Error("this problem has no text field to settle");
+    }
+    // The edit is based on the revision this device holds. After a conflict that is usually still the old
+    // one, so read the newer revision first (bounded: if it does not arrive, the edit may conflict once
+    // more, and then both versions are still kept).
+    const wanted = Math.max(0, ...problem.conflicts.map((c) => c.serverRevision ?? 0));
+    engine.requestPull();
+    for (let waited = 0; waited < 10_000 && wanted > 0; waited += 500) {
+      if (((await engine.view(problem.entityId))?.serverRevision ?? 0) >= wanted) break;
+      void engine.tick();
+      await new Promise<void>((resolve) => this.cancels.push(this.p.timers.setTimeout(resolve, 500)));
+    }
+    await engine.updateEntity(problem.entityType, problem.entityId, { [field]: text } as Record<string, Json>);
+    await engine.dismissProblem(problemId);
+    void engine.tick();
+    this.emit();
+  }
+
+  /** The person updated the app (or the server): look again. */
+  async uiResumeAfterUpdate(): Promise<void> {
+    await this.requireEngine().resumeAfterUpdate();
+    this.emit();
   }
 
   // --- halts ----------------------------------------------------------------------------------

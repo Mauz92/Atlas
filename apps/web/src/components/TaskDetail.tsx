@@ -16,6 +16,7 @@ import { STATUS_LABELS, STATUS_ORDER, canMove } from "../lib/taskStatus";
 import { formatDue, sentenceCase, viewerTimeZone } from "../lib/tasks";
 import { Icon } from "./Icon";
 import { Menu, type MenuEntry } from "./Menu";
+import { TextConflictResolver } from "./TextConflictResolver";
 import { TaskNotes } from "./TaskNotes";
 import {
   AutoGrowTextarea,
@@ -459,6 +460,18 @@ export function TaskDetail({
                   .join("; ")}
                 .
               </p>
+              {TEXT_FIELDS.filter(
+                (field) => snapshot.stash![field] !== undefined && snapshot.stash![field] !== snapshot.draft[field],
+              ).map((field) => (
+                <TextConflictResolver
+                  key={field}
+                  label={field}
+                  multiline={field === "description"}
+                  mine={snapshot.stash![field] ?? ""}
+                  theirs={snapshot.draft[field]}
+                  onResolve={(text, choice) => session.resolveStashField(field, choice === "theirs" ? null : text)}
+                />
+              ))}
               <div className="task-notice-actions">
                 <button type="button" onClick={() => session.reapply()}>
                   Reapply my changes
@@ -745,6 +758,8 @@ export function TaskDetail({
     </>
   );
 }
+
+const TEXT_FIELDS = ["title", "description"] as const;
 
 const STASH_LABELS: Partial<Record<keyof TaskDraft, string>> = {
   title: "title",

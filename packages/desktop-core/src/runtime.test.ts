@@ -41,8 +41,8 @@ const signIn = (r: Rig) =>
   r.rt.signIn({ baseUrl: "https://atlas.example.org", email: "me@example.org", password: "pw", deviceName: "Linux desktop" });
 
 /** A second device that creates a task with a due date through the real engine. */
-async function otherDevice(r: Rig): Promise<SyncEngine> {
-  const q = createFakePlatform(99);
+async function otherDevice(r: Rig, seed = 99): Promise<SyncEngine> {
+  const q = createFakePlatform(seed); // another seed: its ids and idempotency keys must differ from every other device's
   q.timers = r.p.timers;
   return new SyncEngine({
     store: new SqliteLocalStore(new FakeRowDb()),
@@ -222,5 +222,169 @@ describe("desktop runtime over fake platform adapters", () => {
     const snap = await r.rt.start();
     expect(snap).toMatchObject({ phase: "signed_out", reason: "keystore_unavailable" });
     expect(await signIn(r)).toMatchObject({ ok: false, failure: "keystore_unavailable" });
+  });
+});
+
+
+describe("what the web UI may ask of the engine (SYNC-11c)", () => {
+  /** Two other devices change one field of one task from the same base: the server keeps the later write and logs it. */
+  async function conflictOnPriority(r: Rig): Promise<string> {
+    const one = await otherDevice(r, 11);
+    const two = await otherDevice(r, 12);
+    const id = await one.createEntity("task", { title: "Shared task", description: null, status: "inbox", priority: "low" });
+    await one.syncUntilSettled();
+    await two.syncUntilSettled(); // both hold revision 1
+    await one.updateEntity("task", id, { priority: "high" });
+    await one.syncUntilSettled();
+    await two.updateEntity("task", id, { priority: "urgent" }); // based on revision 1
+    await two.syncUntilSettled();
+    return id;
+  }
+
+  it("lists the resolutions the engine learned (newest first) and undoes one through the queue", async () => {
+    const r = rig();
+    await r.rt.start();
+    await signIn(r);
+    await conflictOnPriority(r);
+    await r.p.timers.advance(40_000);
+    const list = await r.rt.uiResolutions();
+    const entry = list.find((x) => x.rule === "simple_later_wins");
+    expect(entry, JSON.stringify(list)).toBeDefined();
+    expect(entry!.field).toBe("priority");
+    const pending = r.rt.uiUndo(entry!.id);
+    await r.p.timers.advance(3_000);
+    const answer = await pending;
+    expect(answer).toMatchObject({ status: 200 });
+    const after = await r.rt.uiResolutions();
+    expect(after.find((x) => x.id === entry!.id)?.undone_at).toBeTruthy();
+    await r.rt.stop();
+  });
+
+  it("an undo of a field that changed again is refused by the server and the answer reaches the UI", async () => {
+    const r = rig();
+    await r.rt.start();
+    await signIn(r);
+    const id = await conflictOnPriority(r);
+    const three = await otherDevice(r, 13);
+    await three.syncUntilSettled();
+    await three.updateEntity("task", id, { priority: "none" });
+    await three.syncUntilSettled();
+    await r.p.timers.advance(40_000);
+    const entry = (await r.rt.uiResolutions()).find((x) => x.rule === "simple_later_wins")!;
+    const pending = r.rt.uiUndo(entry.id);
+    await r.p.timers.advance(3_000);
+    const answer = await pending;
+    expect(answer).toMatchObject({ status: 409 });
+    expect((answer as { body: { error: string } }).body.error).toBe("conflict");
+    await r.rt.stop();
+  });
+
+  it("offline, the undo stays queued and the UI is told so instead of waiting for ever", async () => {
+    const r = rig();
+    await r.rt.start();
+    await signIn(r);
+    await conflictOnPriority(r);
+    await r.p.timers.advance(40_000);
+    const entry = (await r.rt.uiResolutions()).find((x) => x.rule === "simple_later_wins")!;
+    r.p.http.handler = async () => {
+      throw new Error("offline");
+    };
+    const pending = r.rt.uiUndo(entry.id);
+    await r.p.timers.advance(20_000);
+    expect(await pending).toEqual({ queued: true });
+    expect((await r.rt.snapshot()).sync?.pending).toBeGreaterThan(0);
+    await r.rt.stop();
+  });
+
+  it("uiResolveText queues an ordinary edit and dismisses the problem; a note problem is refused", async () => {
+    const r = rig();
+    await r.rt.start();
+    await signIn(r);
+    const engine = r.rt.syncEngine!;
+    const id = await engine.createEntity("task", { title: "Mine", description: null, status: "inbox" });
+    await engine.syncUntilSettled();
+    // a text conflict kept as a problem: another device changed the title first
+    const other = await otherDevice(r);
+    await other.syncUntilSettled();
+    await other.updateEntity("task", id, { title: "Theirs" });
+    await other.syncUntilSettled();
+    await engine.updateEntity("task", id, { title: "Mine edited" });
+    await engine.syncUntilSettled();
+    const problem = (await r.rt.uiProblems()).find((p) => p.conflicts.some((c) => c.field === "title"));
+    expect(problem, JSON.stringify(await r.rt.uiProblems())).toBeDefined();
+    const resolving = r.rt.uiResolveText(problem!.id, "title", "Both titles");
+    await r.p.timers.advance(5_000); // the engine reads the other device's newer revision first
+    await resolving;
+    await r.p.timers.advance(5_000);
+    expect((await r.rt.uiProblems()).find((p) => p.id === problem!.id)).toBeUndefined();
+    expect((await engine.view(id))?.fields["title"]).toBe("Both titles");
+    await expect(r.rt.uiResolveText("nope", "title", "x")).rejects.toThrow(/no text field/);
+    await r.rt.stop();
+  });
+
+  /** The server is restored from an older backup while this device holds a newer task and an unsent edit. */
+  async function restoredServer(r: Rig) {
+    await r.rt.start();
+    await signIn(r);
+    const engine = r.rt.syncEngine!;
+    const kept = await engine.createEntity("task", { title: "Kept by the backup", description: null, status: "inbox" });
+    await r.p.timers.advance(5_000);
+    const backup = r.server.snapshot();
+    const lost = await engine.createEntity("task", { title: "Newer than the backup", description: null, status: "inbox" });
+    await r.p.timers.advance(5_000);
+    r.server.restoreFrom(backup);
+    r.server.rotateEpoch();
+    await engine.updateEntity("task", kept, { title: "Edited after the restore" });
+    await r.p.timers.advance(40_000);
+    return { engine, kept, lost };
+  }
+
+  it("a restored server halts the engine, and the snapshot carries what the screen needs", async () => {
+    const r = rig();
+    await restoredServer(r);
+    const snap = await r.rt.snapshot();
+    expect(snap.sync?.halt).toMatchObject({ kind: "restore_confirmation", reason: "epoch_mismatch" });
+    expect(snap.sync?.pending).toBeGreaterThan(0);
+    await r.rt.stop();
+  });
+
+  it("Re-upload my local data: the server gets back what it lost, with the same ids", async () => {
+    const r = rig();
+    const { engine, lost } = await restoredServer(r);
+    await r.rt.uiConfirmRestore();
+    await r.p.timers.advance(40_000);
+    expect((await r.rt.snapshot()).sync?.halt).toBeNull();
+    expect((await engine.view(lost))?.deleted).toBe(false);
+    expect(JSON.stringify(r.server.canonical())).toContain(lost);
+    await r.rt.stop();
+  });
+
+  it("Discard local changes: nothing unsent survives, the restored server wins and nothing is re-created", async () => {
+    const r = rig();
+    const { engine, kept, lost } = await restoredServer(r);
+    await r.rt.uiDiscardLocal();
+    await r.p.timers.advance(40_000);
+    const snap = await r.rt.snapshot();
+    expect(snap.sync?.halt).toBeNull();
+    expect(snap.sync?.pending).toBe(0);
+    expect((await engine.view(kept))?.fields["title"]).toBe("Kept by the backup");
+    expect((await engine.view(lost))?.deleted ?? true).toBe(true);
+    expect(JSON.stringify(r.server.canonical())).not.toContain(lost);
+    await r.rt.stop();
+  });
+
+  it("both restore verbs only act on a waiting halt", async () => {
+    const r = rig();
+    await r.rt.start();
+    await signIn(r);
+    await expect(r.rt.uiConfirmRestore()).rejects.toThrow(/no restore/);
+    await expect(r.rt.uiDiscardLocal()).rejects.toThrow(/no restore/);
+    await r.rt.stop();
+  });
+
+  it("the verbs refuse while signed out", async () => {
+    const r = rig();
+    await r.rt.start();
+    await expect(r.rt.uiResolutions()).rejects.toThrow(/not signed in/);
   });
 });

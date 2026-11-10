@@ -238,6 +238,26 @@ describe("TaskDetail (property panel with autosave)", () => {
     );
   });
 
+  it("a title conflict shows both versions; Keep mine saves it as a normal edit against the latest revision", async () => {
+    const latest = { ...task, title: "Changed elsewhere", revision: 2 };
+    updateMock.mockRejectedValueOnce(new ApiError(409, "conflict", { detail: { current_revision: 2 } }));
+    getMock.mockResolvedValue(latest);
+    setup();
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "My new title" } });
+    fireEvent.blur(screen.getByLabelText("Title"));
+    expect(await screen.findByText(/changed somewhere else/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Load latest version" }));
+    const resolver = await screen.findByRole("group", { name: /Two versions of the title/ });
+    expect(resolver).toHaveTextContent("My new title");
+    expect(resolver).toHaveTextContent("Changed elsewhere");
+    serve(latest);
+    fireEvent.click(screen.getByRole("button", { name: "Keep mine: title" }));
+    await waitFor(() =>
+      expect(updateMock).toHaveBeenLastCalledWith(expect.objectContaining({ revision: 2 }), { title: "My new title" }, expect.anything()),
+    );
+    expect(screen.queryByRole("group", { name: /Two versions of the title/ })).toBeNull();
+  });
+
   it("Esc saves pending text first, then closes", async () => {
     serve();
     const { props } = setup();

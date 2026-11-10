@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { fakeDesktopSync } from "../../test/syncUi";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { apiFetch } from "../../api/client";
@@ -33,6 +34,7 @@ function bridge(overrides: Partial<AtlasDesktopApi> = {}): AtlasDesktopApi {
     setAutostart: vi.fn(async () => undefined),
     signOut: vi.fn(async () => undefined),
     checkForUpdate: vi.fn(async () => ({ available: null })),
+    sync: fakeDesktopSync(),
     ...overrides,
   };
 }

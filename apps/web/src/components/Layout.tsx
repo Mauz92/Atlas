@@ -25,6 +25,7 @@ import {
 } from "../lib/navigation";
 import { focusEdgeRow, inRowOrPopup } from "../lib/listKeys";
 import { isTypingTarget } from "../lib/shortcuts";
+import { ChangedElsewhere } from "./ChangedElsewhere";
 import { CommandPalette } from "./CommandPalette";
 import { Icon } from "./Icon";
 import { ShortcutHelp } from "./ShortcutHelp";
@@ -406,6 +407,7 @@ function Shell() {
           </header>
         ) : null}
         <main id={MAIN_ID} className="content" tabIndex={-1}>
+          <ChangedElsewhere />
           <Outlet key={pageVersion} />
         </main>
         {paletteOpen ? (

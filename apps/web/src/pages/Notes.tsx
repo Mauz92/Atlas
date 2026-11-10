@@ -13,6 +13,7 @@ import { Icon } from "../components/Icon";
 import { LoadError } from "../components/LoadError";
 import { MarkdownPreview } from "../components/MarkdownPreview";
 import { Menu, type MenuEntry } from "../components/Menu";
+import { NoteConflicts } from "../components/NoteConflicts";
 import { NoteEditor, type NoteEditorHandle } from "../components/NoteEditor";
 import { Skeleton } from "../components/Skeleton";
 import {
@@ -712,6 +713,7 @@ export function Notes() {
             {status}
           </p>
         ) : null}
+        <NoteConflicts notes={notes} onChanged={refresh} onOpen={(id) => void openNote(id)} />
       </div>
 
       <div className="notes-stage">

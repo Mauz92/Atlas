@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 import { desktopApi, type DesktopInfo, type DesktopSnapshot } from "../../lib/desktop";
 import { formatTime } from "../../lib/settingsFormat";
+import { gatewayRow, lastHintRow, liveRow, type GatewayFacts } from "../../lib/syncUi/instantStatus";
+import { InstantUpdates } from "../InstantUpdates";
 import { SettingsRow } from "./SettingsRow";
 
 const PERMISSION_TEXT: Record<string, string> = {
@@ -24,9 +26,15 @@ export function DesktopSection() {
   const [info, setInfo] = useState<DesktopInfo | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [gateway, setGateway] = useState<{ facts: GatewayFacts | null; failed: boolean }>({ facts: null, failed: false });
 
   useEffect(() => {
     if (!desktop) return undefined;
+    void desktop
+      .fetch("/api/devices/current/hint")
+      .then(async (r) => (r.ok ? ((await r.json()) as GatewayFacts) : Promise.reject(new Error("hint status"))))
+      .then((facts) => setGateway({ facts, failed: false }))
+      .catch(() => setGateway({ facts: null, failed: true }));
     let active = true;
     void desktop.snapshot().then((s) => active && setSnap(s));
     void desktop.info().then((i) => active && setInfo(i));
@@ -101,6 +109,10 @@ export function DesktopSection() {
           </span>
         </SettingsRow>
       </section>
+
+      <InstantUpdates
+        rows={[liveRow("desktop", snap.live), lastHintRow(snap.lastHintAt ?? null, Date.now()), gatewayRow(gateway.facts, gateway.failed, Date.now())]}
+      />
 
       <section className="settings-group" aria-labelledby="desktop-window">
         <h3 id="desktop-window">Window and start-up</h3>
