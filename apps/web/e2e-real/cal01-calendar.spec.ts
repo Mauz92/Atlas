@@ -131,6 +131,10 @@ test("link a feed, an OAuth Google and Microsoft account, then use the calendar"
   await control({ op: "set", values: { fail_refresh: false } });
   await page.getByRole("button", { name: "Reconnect" }).click();
   await expect(page.getByText(/Microsoft Outlook is connected/)).toBeVisible();
+  // The provider redirect returns through a page load that then cleans the address bar; do not start a page.evaluate
+  // (apiCall) while that navigation is still in flight ("Execution context was destroyed", seen on a CI runner).
+  await expect(page).toHaveURL(/\/settings\/calendar$/);
+  await page.waitForLoadState("networkidle");
 
   // --- Today: the events slot shows today's events, tasks stay separate.
   await apiCall(page, "POST", "/api/tasks", { title: "Deadline task", due_at: `${today.toISOString().slice(0, 10)}T20:00:00`, time_zone: "UTC", status: "next" });
