@@ -39,7 +39,8 @@ export default defineConfig({
           globals: true,
           include: ["../../packages/sync-core/{src,sim}/**/*.test.ts"],
           exclude: [...configDefaults.exclude, "../../packages/sync-core/sim/real/**"],
-          testTimeout: 60_000,
+          // A ceiling, not a target: the planted-defect simulations took 60 s on a loaded CI runner.
+          testTimeout: 180_000,
         },
       },
       {

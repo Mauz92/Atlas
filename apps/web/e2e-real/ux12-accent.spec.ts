@@ -263,10 +263,13 @@ test("every accent passes axe on Today, Tasks, Notes, Calendar and Settings in L
     ["calendar", "/calendar"],
     ["settings", "/settings/appearance"],
   ] as const;
+  // The full matrix took ~29 minutes on a CI runner. CI samples Neutral and three accents (light, dark, mid hue); the contrast of
+  // every accent is checked by styles.test.ts and the full matrix runs locally (unset CI).
+  const matrix = process.env.CI ? ACCENTS.filter((a) => ["neutral", "blue", "amber", "teal"].includes(a)) : ACCENTS;
   const found: string[] = [];
   if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
-  for (const accent of ACCENTS) {
+  for (const accent of matrix) {
     for (const theme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme: theme });
       // "Colour headings with the accent" on (the default) and off; Neutral has nothing to colour.

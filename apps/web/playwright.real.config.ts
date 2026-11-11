@@ -18,7 +18,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
-  retries: 0,
+  // One retry on CI only: a journey that fails twice is a defect, one that passes on the second try is reported as flaky.
+  retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
   use: { trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
