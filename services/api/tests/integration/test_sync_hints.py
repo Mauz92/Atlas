@@ -390,8 +390,12 @@ async def run_jobs() -> int:
 
 
 async def test_a_burst_of_edits_makes_one_job_and_the_payload_is_constant(
-    app: FastAPI, c, gateway
+    app: FastAPI, c, gateway, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The coalescing window is wall-clock aligned: on a slow runner the burst could straddle a
+    # boundary and make two jobs. One huge window makes "one window" deterministic.
+    monkeypatch.setenv("SYNC_HINT_MIN_INTERVAL_SECONDS", "86400000")
+    get_settings.cache_clear()
     dev, _t, _id = await device(app)
     async with nullcontext():
         await register(dev, gateway)

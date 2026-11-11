@@ -209,6 +209,13 @@ jobs:
         working-directory: apps/web
         run: npm ci
 
+      # security.ubuntu.com was unreachable from GitHub runners on 2026-11-11 (three runs in a row); the Azure mirror serves the same
+      # security pocket. Harmless when security.ubuntu.com works.
+      - name: Use the runner's own Ubuntu mirror for security updates
+        run: |
+          sudo sed -i 's#https\?://security.ubuntu.com/ubuntu#http://azure.archive.ubuntu.com/ubuntu#g' /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null || true
+          grep -rh "security" /etc/apt/sources.list.d/ 2>/dev/null | head -3 || true
+
       - name: Install Playwright Chromium
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
