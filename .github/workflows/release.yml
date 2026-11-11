@@ -111,7 +111,7 @@ jobs:
     name: Desktop client, Linux (AppImage, .deb)
     needs: [plan, gate]
     runs-on: ubuntu-22.04   # the oldest supported runner: an AppImage runs on distributions with this glibc or newer
-    timeout-minutes: 60
+    timeout-minutes: 45
     env:
       ATLAS_VERSION: ${{ needs.plan.outputs.version }}
       APPIMAGE_EXTRACT_AND_RUN: "1"
@@ -122,8 +122,10 @@ jobs:
           node-version: "22"
       - name: System libraries
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev build-essential file
+          # Bounded: Ubuntu's package servers were unreachable from GitHub runners on 2026-11-11 and this step hung for an hour.
+          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
+          timeout 600 sudo apt-get $APT update -q
+          timeout 900 sudo apt-get $APT install -y -q libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev build-essential file
       - name: Rust stable
         run: rustup toolchain install stable --profile minimal && rustup default stable
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
