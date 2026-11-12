@@ -31,7 +31,7 @@ concurrency:
 jobs:
   plan:
     name: Version and guard rails
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, atlas]
     outputs:
       version: ${{ steps.v.outputs.version }}
       publish: ${{ steps.v.outputs.publish }}
@@ -65,7 +65,7 @@ jobs:
   images:
     name: Server images (build, smoke test, push)
     needs: [plan, gate]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, atlas]
     permissions:
       contents: read
       packages: write
@@ -88,7 +88,18 @@ jobs:
           set -euo pipefail
           mkdir -p update && echo "ATLAS_VERSION=$VERSION" > update/version.env && touch .env
           export ATLAS_IMAGE_REGISTRY="$REGISTRY"
-          DC="docker compose -p smoke --env-file .env --env-file update/version.env -f deploy/docker-compose.yml -f deploy/docker-compose.release.yml"
+          # The self-hosted runner's PC also runs a dev stack on 5432/8000/8080: publish the smoke stack elsewhere.
+          cat > update/ports.override.yml <<'YML'
+          services:
+            db:
+              ports: !override
+                - "127.0.0.1:15432:5432"
+            api:
+              ports: !override
+                - "127.0.0.1:18000:8000"
+          YML
+          export WEB_PORT=18080
+          DC="docker compose -p smoke --env-file .env --env-file update/version.env -f deploy/docker-compose.yml -f deploy/docker-compose.release.yml -f update/ports.override.yml"
           $DC up -d --no-build
           for i in $(seq 1 60); do
             out="$($DC exec -T api python -c "import json,urllib.request as u; print(json.load(u.urlopen('http://localhost:8000/health'))['version'])" 2>/dev/null || true)"
@@ -106,11 +117,14 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker push "$REGISTRY/atlas-api:$VERSION"
           docker push "$REGISTRY/atlas-web:$VERSION"
+          docker logout ghcr.io   # the runner user's docker config persists between jobs
 
   desktop-linux:
     name: Desktop client, Linux (AppImage, .deb)
     needs: [plan, gate]
-    runs-on: ubuntu-22.04   # the oldest supported runner: an AppImage runs on distributions with this glibc or newer
+    # Built on the owner's rolling Arch host, so this AppImage needs a recent glibc (it is no longer built on the
+    # oldest supported Ubuntu). Fine for the owner's own machines; revisit before shipping it to other distributions.
+    runs-on: [self-hosted, atlas]
     timeout-minutes: 45
     env:
       ATLAS_VERSION: ${{ needs.plan.outputs.version }}
@@ -120,12 +134,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
-      - name: System libraries
-        run: |
-          # Bounded: Ubuntu's package servers were unreachable from GitHub runners on 2026-11-11 and this step hung for an hour.
-          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
-          timeout 600 sudo apt-get $APT update -q
-          timeout 900 sudo apt-get $APT install -y -q libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev build-essential file
+      # System libraries (webkit2gtk-4.1, gtk3, libayatana-appindicator, librsvg, openssl, base-devel) are preinstalled
+      # on the runner host (ci-runners/scripts/bootstrap-host.sh checks them).
       - name: Rust stable
         run: rustup toolchain install stable --profile minimal && rustup default stable
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
@@ -192,7 +202,7 @@ jobs:
     needs: [plan, images, desktop-linux, desktop-windows]
     # The Windows job may be skipped or fail without blocking a release; the others may not.
     if: always() && needs.images.result == 'success' && needs.desktop-linux.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, atlas]
     permissions:
       contents: write
       actions: read

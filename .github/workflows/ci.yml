@@ -13,7 +13,7 @@ permissions:
 jobs:
   hygiene:
     name: Docs and repository hygiene
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, atlas]
     steps:
       - uses: actions/checkout@v4
 
@@ -46,7 +46,7 @@ jobs:
 
   backend:
     name: Backend (lint, types, tests)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, atlas]
     services:
       postgres:
         image: postgres:17-alpine
@@ -55,12 +55,12 @@ jobs:
           POSTGRES_PASSWORD: atlas
           POSTGRES_DB: atlas
         ports:
-          - 5432:5432
+          - 5433:5432   # not 5432: the self-hosted runner's PC also runs a dev database there
         options: >-
           --health-cmd "pg_isready -U atlas"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgresql+psycopg://atlas:atlas@localhost:5432/atlas
+      DATABASE_URL: postgresql+psycopg://atlas:atlas@localhost:5433/atlas
       ATLAS_ENV: test
       SECRET_KEY: ci-secret-key
       SESSION_SECRET: ci-session-secret
@@ -75,14 +75,7 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: PostgreSQL 17 client (backup tests run pg_dump against the postgres service)
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update -q
-          sudo apt-get install -y -q postgresql-client-17
-          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+      # pg_dump 17+ (the backup tests run it against the postgres service) is installed on the runner host.
 
       - name: Install
         run: |
@@ -114,7 +107,7 @@ jobs:
 
   frontend:
     name: Frontend (lint, types, tests, build)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, atlas]
     needs: backend
     defaults:
       run:
@@ -168,8 +161,8 @@ jobs:
 
   e2e-real:
     name: Real-stack journeys (Playwright, real API + PostgreSQL)
-    # Pinned: on the newest ubuntu-latest image `playwright install --with-deps` could not reach its package servers (2026-11-11).
-    runs-on: ubuntu-24.04
+    # Self-hosted (the atlas runner on the owner's PC, ci-runners repo): browser libraries come from the host, not apt.
+    runs-on: [self-hosted, atlas]
     services:
       postgres:
         image: postgres:17-alpine
@@ -178,13 +171,13 @@ jobs:
           POSTGRES_PASSWORD: atlas
           POSTGRES_DB: postgres
         ports:
-          - 5432:5432
+          - 5433:5432   # not 5432: the self-hosted runner's PC also runs a dev database there
         options: >-
           --health-cmd "pg_isready -U atlas"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       # The harness creates and drops its own atlas_e2e_<random> database on this server (MU-00).
-      ATLAS_E2E_ADMIN_DATABASE_URL: postgresql://atlas:atlas@localhost:5432/postgres
+      ATLAS_E2E_ADMIN_DATABASE_URL: postgresql://atlas:atlas@localhost:5433/postgres
       # `pip install` below puts python and atlas-migrate in this venv.
       ATLAS_E2E_API_BIN_DIR: ${{ github.workspace }}/services/api/.venv/bin
     steps:
@@ -221,7 +214,7 @@ jobs:
 
   containers:
     name: Container images build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, atlas]
     steps:
       - uses: actions/checkout@v4
 
