@@ -121,7 +121,8 @@ export function ImportForm({ busy, onPreview, onAdd }: ImportFormProps) {
         <button type="button" disabled={content === null || busy} onClick={() => void check()}>
           Check file
         </button>
-        <button type="submit" className="primary" disabled={!ready || busy}>
+        {/* not "primary": a settings section has at most one primary button (UX rule, ux08), and Add feed above is it */}
+        <button type="submit" disabled={!ready || busy}>
           Import
         </button>
       </div>
