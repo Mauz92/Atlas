@@ -38,6 +38,11 @@ jobs:
           DIR="${RUNNER_TOOL_CACHE:-$HOME}/atlas-android"
           apps/desktop/scripts/setup-android-toolchain.sh "$DIR" | tee /tmp/android-env.txt
           sed 's/^export //' /tmp/android-env.txt | tr ' ' '\n' >> "$GITHUB_ENV"
+      - name: Stage the web UI (the Tauri build embeds apps/desktop/dist)
+        run: |
+          set -euo pipefail
+          (cd apps/web && npm ci && npm run build)
+          (cd apps/desktop && npm ci && node scripts/stage-ui.mjs)
       - name: Rust and TypeScript checks for the shared code
         working-directory: apps/desktop
         run: |
