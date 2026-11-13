@@ -1,0 +1,29 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Exact reminders. USE_EXACT_ALARM is granted at install and cannot be revoked; it is meant for alarm and calendar apps (Atlas is a
+         personal planner with timed reminders). SCHEDULE_EXACT_ALARM is the user-grantable fallback on the same API levels. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Only for the optional "keep Atlas connected" mode (a foreground service with a visible notification). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Optional, off by default: only used when the person moves the notes to the shared "Documents/Atlas Notes" folder so other apps can edit
+         them (ADR-0075 D4). The person grants it in the system's "All files access" screen; without it nothing outside the app is touched. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+    <application>
+        <service android:name="app.atlas.android.KeepConnectedService" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the personal task app's own sync connection alive while it is in the background so that reminders from the owner's server stay current" />
+        </service>
+        <receiver android:name="app.atlas.android.AlarmReceiver" android:exported="false" />
+        <receiver android:name="app.atlas.android.BootReceiver" android:exported="true" android:directBootAware="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

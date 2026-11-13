@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-alarm-schedule"
+description = "Enables the alarm_schedule command without any pre-configured scope."
+commands.allow = ["alarm_schedule"]
+
+[[permission]]
+identifier = "deny-alarm-schedule"
+description = "Denies the alarm_schedule command without any pre-configured scope."
+commands.deny = ["alarm_schedule"]

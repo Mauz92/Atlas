@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-android-take-launch-task"
+description = "Enables the android_take_launch_task command without any pre-configured scope."
+commands.allow = ["android_take_launch_task"]
+
+[[permission]]
+identifier = "deny-android-take-launch-task"
+description = "Denies the android_take_launch_task command without any pre-configured scope."
+commands.deny = ["android_take_launch_task"]

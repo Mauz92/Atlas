@@ -21,7 +21,12 @@ export interface DesktopSettings {
 export type DesktopHalt =
   | { kind: "update_required"; min: number | null; max: number | null }
   | { kind: "signed_out"; code: string }
-  | { kind: "restore_confirmation"; reason: "epoch_mismatch" | "cursor_ahead"; epoch: string | null; head: number | null };
+  | {
+      kind: "restore_confirmation";
+      reason: "epoch_mismatch" | "cursor_ahead";
+      epoch: string | null;
+      head: number | null;
+    };
 
 export interface DesktopSyncStatus {
   state: string;
@@ -46,11 +51,18 @@ export interface DesktopProblem {
   entityId: string;
   at: number;
   detail: string | null;
-  conflicts: { field: string; reason: string; serverRevision: number | null; theirs: unknown; mine: unknown }[];
+  conflicts: {
+    field: string;
+    reason: string;
+    serverRevision: number | null;
+    theirs: unknown;
+    mine: unknown;
+  }[];
   copy: { id: string; path: string } | null;
 }
 
-export type DesktopUndoAnswer = { status: number; body: unknown } | { queued: true };
+export type DesktopUndoAnswer =
+  { status: number; body: unknown } | { queued: true };
 
 export interface DesktopSyncApi {
   resolutions(): Promise<Resolution[]>;
@@ -66,7 +78,12 @@ export interface DesktopSyncApi {
 export interface DesktopSnapshot {
   phase: "starting" | "signed_out" | "running" | "update_required" | "failed";
   reason: string | null;
-  session: { signedIn: boolean; baseUrl: string | null; device: { id: string; name: string } | null; keystoreError: string | null } | null;
+  session: {
+    signedIn: boolean;
+    baseUrl: string | null;
+    device: { id: string; name: string } | null;
+    keystoreError: string | null;
+  } | null;
   sync: DesktopSyncStatus | null;
   notes: {
     root: string | null;
@@ -88,6 +105,16 @@ export interface DesktopInfo {
   updater: "not_configured" | "configured";
 }
 
+/** What Android lets Atlas reminders do (the shell's `android` object; `null` on a computer). */
+export interface AndroidStatus {
+  notifications: "granted" | "denied" | "prompt";
+  exactAlarms: boolean;
+  ignoringBatteryOptimizations: boolean;
+  allFilesAccess?: boolean;
+  manufacturer: string;
+  sdk: number;
+}
+
 export interface AtlasDesktopApi {
   /** `/api/...` request through the host (which attaches the device token). */
   fetch(path: string, init?: RequestInit): Promise<Response>;
@@ -97,14 +124,44 @@ export interface AtlasDesktopApi {
   updateSettings(patch: Partial<DesktopSettings>): Promise<DesktopSettings>;
   chooseNotesFolder(): Promise<string | null>;
   syncNow(): Promise<void>;
-  testNotification(): Promise<{ shownNow: boolean; scheduledAt: number | null }>;
+  testNotification(): Promise<{
+    shownNow: boolean;
+    scheduledAt: number | null;
+  }>;
   requestNotificationPermission(): Promise<string>;
   setAutostart(enabled: boolean): Promise<void>;
   signOut(): Promise<void>;
   /** The engine verbs of the conflict, notice and restore screens (SYNC-11c). */
   sync: DesktopSyncApi;
+  /** Android only: zip the notes and open the share sheet (the phone's notes folder is private to the app). */
+  exportNotes?: (() => Promise<{ files: number; bytes: number }>) | null;
+  /** Android only; `null` on a computer. */
+  /** Android only: where the notes live (`private` inside the app, `shared` in Documents/Atlas Notes) and moving them (copy, then switch). */
+  notesLocation?: {
+    get(): Promise<{
+      kind: "private" | "shared";
+      sharedPath: string | null;
+      allFilesAccess: boolean;
+    }>;
+    set(kind: "private" | "shared"): Promise<{
+      copied: number;
+      identical: number;
+      switched: boolean;
+      archivedAs?: string | null;
+    }>;
+  } | null;
+  android?: {
+    status(): Promise<AndroidStatus>;
+    openSettings(
+      which: "app" | "notifications" | "battery" | "exact_alarms" | "all_files",
+    ): Promise<void>;
+    /** Optional background mode (a foreground service); off by default. */
+    keepConnected: { get(): Promise<boolean>; set(on: boolean): Promise<void> };
+  } | null;
   /** Updates exist only in a build with the `updater` feature; otherwise this rejects with `not_configured`. */
-  checkForUpdate(install: boolean): Promise<{ available: string | null; installed?: boolean }>;
+  checkForUpdate(
+    install: boolean,
+  ): Promise<{ available: string | null; installed?: boolean }>;
 }
 
 declare global {
@@ -115,9 +172,20 @@ declare global {
 
 /** The bridge, or `null` in a browser. */
 export function desktopApi(): AtlasDesktopApi | null {
-  return typeof window !== "undefined" && window.atlasDesktop ? window.atlasDesktop : null;
+  return typeof window !== "undefined" && window.atlasDesktop
+    ? window.atlasDesktop
+    : null;
 }
 
 export function isDesktopShell(): boolean {
   return desktopApi() !== null;
+}
+
+/** The shell on an Android phone (the user agent says so before any command can). */
+export function isAndroidShell(): boolean {
+  return (
+    isDesktopShell() &&
+    typeof navigator !== "undefined" &&
+    /Android/i.test(navigator.userAgent)
+  );
 }

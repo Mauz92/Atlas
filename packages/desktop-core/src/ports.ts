@@ -87,7 +87,14 @@ export interface DeviceRecord {
   [key: string]: unknown;
 }
 
-export type SignInFailure = "invalid_credentials" | "rate_limited" | "unreachable" | "insecure_url" | "update_required" | "keystore_unavailable" | "server_error";
+export type SignInFailure =
+  | "invalid_credentials"
+  | "rate_limited"
+  | "unreachable"
+  | "insecure_url"
+  | "update_required"
+  | "keystore_unavailable"
+  | "server_error";
 
 export type SignInResult =
   | { ok: true; device: DeviceRecord; baseUrl: string }
@@ -103,7 +110,12 @@ export interface SessionInfo {
 
 export interface SessionPort {
   /** `POST /api/devices` with e-mail and password; the host stores the token in the OS keystore. */
-  signIn(input: { baseUrl: string; email: string; password: string; deviceName: string }): Promise<SignInResult>;
+  signIn(input: {
+    baseUrl: string;
+    email: string;
+    password: string;
+    deviceName: string;
+  }): Promise<SignInResult>;
   info(): Promise<SessionInfo>;
   /** Forget the token and the base URL (after a 401 or when the user signs out). Idempotent. */
   clear(): Promise<void>;
@@ -125,7 +137,10 @@ export interface FolderEntry {
   status: FolderEntryStatus;
 }
 
-export type WriteResult = { result: "written"; hash: string } | { result: "changed" } | { result: "exists" };
+export type WriteResult =
+  | { result: "written"; hash: string }
+  | { result: "changed" }
+  | { result: "exists" };
 export type RenameResult = "renamed" | "changed" | "exists" | "missing";
 export type TrashResult = "trashed" | "changed" | "missing";
 
@@ -147,12 +162,40 @@ export interface NotesFolderPort {
    * string = the file must still have that hash, `null` = it must not exist. The check is repeated
    * right before the rename.
    */
-  write(path: string, content: string, expectedHash: string | null): Promise<WriteResult>;
+  write(
+    path: string,
+    content: string,
+    expectedHash: string | null,
+  ): Promise<WriteResult>;
   rename(from: string, to: string, expectedHash: string): Promise<RenameResult>;
   /** Move to `<root>/.atlas-trash/` instead of deleting. */
   trash(path: string, expectedHash: string): Promise<TrashResult>;
+  /**
+   * Android only: zip the notes and offer the file to the system's share sheet (the folder is private to the app there). Resolves with the
+   * counts once the sheet is open.
+   */
+  export?(): Promise<{ files: number; bytes: number }>;
+  /**
+   * Android only: where the notes live. `private` is inside the app; `shared` is `Documents/Atlas Notes`, which other apps can edit and
+   * which needs "All files access". `set` copies (never overwrites, never deletes) and then switches.
+   */
+  place?: {
+    get(): Promise<NotesLocation>;
+    set(kind: "private" | "shared"): Promise<{
+      copied: number;
+      identical: number;
+      switched: boolean;
+      archivedAs?: string | null;
+    }>;
+  };
   /** Hints that something under the root changed (Access events and Atlas temp files already dropped). */
   onChange(listener: () => void): () => void;
+}
+
+export interface NotesLocation {
+  kind: "private" | "shared";
+  sharedPath: string | null;
+  allFilesAccess: boolean;
 }
 
 // --- everything else ----------------------------------------------------------------------------
@@ -162,7 +205,53 @@ export type NotifyPermission = "granted" | "denied" | "default" | "unavailable";
 export interface NotifierPort {
   permission(): Promise<NotifyPermission>;
   requestPermission(): Promise<NotifyPermission>;
-  show(input: { title: string; body: string; tag: string | null }): Promise<void>;
+  show(input: {
+    title: string;
+    body: string;
+    tag: string | null;
+  }): Promise<void>;
+}
+
+/** An alarm the OS fires by itself (Android AlarmManager, ADR-0075). The text is final: generic or full was decided by the core. */
+export interface AlarmSpec {
+  /** Stable positive 31-bit id (derived from the fire key by the scheduler). */
+  id: number;
+  /** epoch ms */
+  at: number;
+  title: string;
+  body: string;
+  taskId: string | null;
+  key: string | null;
+}
+
+export interface AlarmStatus {
+  notifications: "granted" | "denied" | "prompt";
+  /** The OS allows exact alarms for this app. When false reminders may arrive minutes late. */
+  exactAlarms: boolean;
+  /** Exempt from battery optimisation (Doze). */
+  ignoringBatteryOptimizations: boolean;
+  /** "All files access" is granted (needed for the shared notes folder). */
+  allFilesAccess?: boolean;
+  manufacturer: string;
+  sdk: number;
+}
+
+/** OS-scheduled local reminders. Only a host whose OS can fire alarms with the app closed provides it. */
+export interface AlarmPort {
+  schedule(alarm: AlarmSpec): Promise<void>;
+  cancel(id: number): Promise<void>;
+  list(): Promise<Array<{ id: number; at: number }>>;
+  /** Ids delivered since the last call (also while the app was closed) plus those still in the shade. */
+  delivered(): Promise<number[]>;
+  clearShown(ids: number[]): Promise<void>;
+  status(): Promise<AlarmStatus>;
+  openSettings(
+    which: "app" | "notifications" | "battery" | "exact_alarms" | "all_files",
+  ): Promise<void>;
+  /** Optional background mode: a foreground service keeps the app (and its live connection) alive; off by default, persisted by the host. */
+  keepConnected: { get(): Promise<boolean>; set(on: boolean): Promise<void> };
+  /** The task a tapped reminder asked to open (returned once). */
+  takeLaunchTask(): Promise<string | null>;
 }
 
 export interface TrayPort {
@@ -215,6 +304,8 @@ export interface PlatformPort {
   session: SessionPort;
   folder: NotesFolderPort;
   notifier: NotifierPort;
+  /** Present on Android only; the scheduler then arms OS alarms instead of ticking. */
+  alarms?: AlarmPort;
   tray: TrayPort;
   autostart: AutostartPort;
   lifecycle: LifecyclePort;

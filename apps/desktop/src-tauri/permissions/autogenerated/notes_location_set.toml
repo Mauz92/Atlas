@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-notes-location-set"
+description = "Enables the notes_location_set command without any pre-configured scope."
+commands.allow = ["notes_location_set"]
+
+[[permission]]
+identifier = "deny-notes-location-set"
+description = "Denies the notes_location_set command without any pre-configured scope."
+commands.deny = ["notes_location_set"]

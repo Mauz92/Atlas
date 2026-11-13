@@ -31,6 +31,8 @@ function show(el: HTMLElement, text: string | null) {
   el.textContent = text ?? "";
 }
 
+let folderOnPhone = false;
+
 async function main() {
   const desktop = win.atlasDesktop;
   if (!desktop) {
@@ -45,9 +47,19 @@ async function main() {
   }
   if (reason) show($("notice"), MESSAGES[reason] ?? null);
   if (snapshot.phase === "update_required" || reason === "update_required") return; // nothing to sign in to
-  $("form").hidden = false;
-  $<HTMLInputElement>("device").value = `${navigator.platform.includes("Win") ? "Windows" : "Linux"} desktop`;
+  const android = /Android/i.test(navigator.userAgent);
+  if (android) {
+    // a phone: no tray, no start-at-login (reminders are OS alarms), no folder dialog (the notes live in the app; ADR-0075)
+    document.body.classList.add("android");
+    $("lead").textContent = "Sign this phone in to your own Atlas server. Your password is sent once to get a device key; the key is kept in the Android Keystore and the password is never stored.";
+    $("autostart-row").hidden = true;
+    $("tray-hint").hidden = true;
+    $("folder-box").hidden = true;
+    folderOnPhone = true;
+  }
+  $<HTMLInputElement>("device").value = android ? "Android phone" : `${navigator.platform.includes("Win") ? "Windows" : "Linux"} desktop`;
   let folder = (await desktop.snapshot()).notes?.root ?? null;
+  // on a phone the folder is the app's own: granted automatically at sign-in
   const folderLabel = $("folder");
   const refreshFolder = () => (folderLabel.textContent = folder ?? "not chosen (you can choose it later in Settings)");
   refreshFolder();
@@ -72,6 +84,7 @@ async function main() {
         return;
       }
       $<HTMLInputElement>("password").value = "";
+      if (folderOnPhone && !folder) await desktop.chooseNotesFolder();
       await desktop.answerAutostart($<HTMLInputElement>("autostart").checked);
       location.replace("/");
     } catch (error) {
@@ -80,6 +93,8 @@ async function main() {
       submit.disabled = false;
     }
   });
+  // shown only now: a submit before the handler above exists would be the browser's own form submission (a reload with the password in the URL)
+  $("form").hidden = false;
 }
 
 void main();

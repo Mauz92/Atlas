@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-alarm-delivered"
+description = "Enables the alarm_delivered command without any pre-configured scope."
+commands.allow = ["alarm_delivered"]
+
+[[permission]]
+identifier = "deny-alarm-delivered"
+description = "Denies the alarm_delivered command without any pre-configured scope."
+commands.deny = ["alarm_delivered"]

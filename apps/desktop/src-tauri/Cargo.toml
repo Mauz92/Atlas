@@ -14,15 +14,25 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+tauri = { version = "2", features = ["image-png"] }
+atlas-desktop-native = { path = "../native" }
+# Android host services (Keystore token, exact reminder alarms, boot re-arm; ADR-0075). An empty plugin on other targets.
+tauri-plugin-atlas-android = { path = "../plugins/atlas-android" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Desktop only: tray, folder dialog, notifications through the OS notifier, single instance, autostart, updater.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-updater = { version = "2", optional = true }
-atlas-desktop-native = { path = "../native" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+
+# Android only: the notes export (a zip of the app-private notes folder handed to the share sheet, ADR-0075 D4).
+[target.'cfg(target_os = "android")'.dependencies]
+zip = { version = "9.5.1", default-features = false, features = ["deflate"] }
 
 [features]
 # `tauri build` enables this; plain `cargo build --release --features custom-protocol` serves the embedded UI.

@@ -13,6 +13,8 @@
     "allow-autostart-is-enabled", "allow-autostart-set-enabled",
     "allow-window-show", "allow-app-quit",
     "allow-update-check",
+    "allow-alarm-schedule", "allow-alarm-cancel", "allow-alarm-list", "allow-alarm-delivered", "allow-alarm-clear-shown",
+    "allow-android-status", "allow-android-open-settings", "allow-android-take-launch-task", "allow-notes-export", "allow-notes-location-get", "allow-keep-connected-get", "allow-keep-connected-set", "allow-notes-location-set",
     "core:event:allow-listen", "core:event:allow-unlisten"
   ]
 }

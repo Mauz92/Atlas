@@ -12,7 +12,8 @@ export const SETTINGS_SECTIONS = [
     id: "account",
     label: "Account",
     palette: "Account",
-    description: "Who you are signed in as, your display name and your password.",
+    description:
+      "Who you are signed in as, your display name and your password.",
   },
   {
     id: "appearance",
@@ -52,7 +53,8 @@ export const SETTINGS_SECTIONS = [
     id: "data",
     label: "Data and backups",
     palette: "Data and backups",
-    description: "Take your notes, tasks and projects with you, and see whether backups are running.",
+    description:
+      "Take your notes, tasks and projects with you, and see whether backups are running.",
   },
   {
     id: "about",
@@ -70,7 +72,8 @@ export const DESKTOP_SECTION = {
   id: "desktop",
   label: "Desktop app",
   palette: "Desktop app",
-  description: "This computer's Atlas app: its notes folder, reminders, tray and start-up behaviour. These settings belong to this device only.",
+  description:
+    "This computer's Atlas app: its notes folder, reminders, tray and start-up behaviour. These settings belong to this device only.",
 } as const;
 
 /**
@@ -78,14 +81,42 @@ export const DESKTOP_SECTION = {
  * management and the full export are browser-only). The desktop app hides them instead of showing
  * `403 forbidden_scope` errors; the browser stays the place for them.
  */
-const BROWSER_ONLY_SECTIONS: ReadonlySet<string> = new Set(["account", "notifications", "calendar", "devices", "data"]);
+const BROWSER_ONLY_SECTIONS: ReadonlySet<string> = new Set([
+  "account",
+  "notifications",
+  "calendar",
+  "devices",
+  "data",
+]);
 
-export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]["id"] | typeof DESKTOP_SECTION.id;
+export type SettingsSectionId =
+  (typeof SETTINGS_SECTIONS)[number]["id"] | typeof DESKTOP_SECTION.id;
 
 /** The sections to show: the browser's list, or inside the desktop app the usable ones plus "Desktop app". */
-export function visibleSettingsSections(shell: boolean): readonly { id: SettingsSectionId; label: string; palette: string; description: string }[] {
+export const ANDROID_SECTION = {
+  id: "desktop",
+  label: "This app",
+  palette: "This app",
+  description:
+    "This phone's Atlas app: its reminders and how they reach you, notes and sync status. These settings belong to this device only.",
+} as const;
+
+export function visibleSettingsSections(
+  shell: boolean,
+  android = false,
+): readonly {
+  id: SettingsSectionId;
+  label: string;
+  palette: string;
+  description: string;
+}[] {
   if (!shell) return SETTINGS_SECTIONS;
-  return [DESKTOP_SECTION, ...SETTINGS_SECTIONS.filter((section) => !BROWSER_ONLY_SECTIONS.has(section.id))];
+  return [
+    android ? ANDROID_SECTION : DESKTOP_SECTION,
+    ...SETTINGS_SECTIONS.filter(
+      (section) => !BROWSER_ONLY_SECTIONS.has(section.id),
+    ),
+  ];
 }
 
 /** The section a plain `/settings` shows on a wide screen. */
@@ -97,8 +128,14 @@ export function settingsPath(id: SettingsSectionId): string {
 }
 
 /** The section named by a URL segment, or `null` when it is missing or unknown. */
-export function parseSettingsSection(segment: string | undefined, shell = false): SettingsSectionId | null {
-  return visibleSettingsSections(shell).find((section) => section.id === segment)?.id ?? null;
+export function parseSettingsSection(
+  segment: string | undefined,
+  shell = false,
+): SettingsSectionId | null {
+  return (
+    visibleSettingsSections(shell).find((section) => section.id === segment)
+      ?.id ?? null
+  );
 }
 
 /** Pages that moved into Settings (UX-08), mapped to the section that now holds them. */
@@ -108,7 +145,8 @@ export const SETTINGS_REDIRECTS: Record<string, string> = {
 };
 
 /** What the command palette offers for Settings: "Go to <label>" for every section. */
-export const SETTINGS_PALETTE: { to: string; label: string }[] = SETTINGS_SECTIONS.map((section) => ({
-  to: settingsPath(section.id),
-  label: section.palette,
-}));
+export const SETTINGS_PALETTE: { to: string; label: string }[] =
+  SETTINGS_SECTIONS.map((section) => ({
+    to: settingsPath(section.id),
+    label: section.palette,
+  }));

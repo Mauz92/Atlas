@@ -106,7 +106,7 @@ pub async fn sign_in_with(
     store: impl FnOnce(String) -> Result<(), String>,
 ) -> Result<Value, SignInFailure> {
     let base = rules::check_base_url(base).map_err(|d| SignInFailure { failure: "insecure_url", detail: d })?;
-    let platform = if cfg!(windows) { "windows" } else if cfg!(target_os = "macos") { "macos" } else { "linux" };
+    let platform = if cfg!(windows) { "windows" } else if cfg!(target_os = "macos") { "macos" } else if cfg!(target_os = "android") { "android" } else { "linux" };
     let body = json!({"email": email, "password": password, "name": device_name, "platform": platform}).to_string();
     let c = client(Duration::from_secs(30)).map_err(|d| SignInFailure { failure: "unreachable", detail: d })?;
     let resp = c

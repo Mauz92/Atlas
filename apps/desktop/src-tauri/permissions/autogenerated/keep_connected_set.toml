@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-keep-connected-set"
+description = "Enables the keep_connected_set command without any pre-configured scope."
+commands.allow = ["keep_connected_set"]
+
+[[permission]]
+identifier = "deny-keep-connected-set"
+description = "Denies the keep_connected_set command without any pre-configured scope."
+commands.deny = ["keep_connected_set"]

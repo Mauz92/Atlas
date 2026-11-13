@@ -9,3 +9,10 @@ src-tauri/gen/
 e2e/results/
 target-e2e/
 target-updater/
+
+# Android plugin build output and the Tauri-generated API copy
+plugins/*/android/.tauri/
+plugins/*/android/build/
+plugins/*/android/.gradle/
+plugins/*/android/local.properties
+plugins/*/permissions/

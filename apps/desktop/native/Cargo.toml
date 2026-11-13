@@ -17,11 +17,21 @@ path = "src/bin/store_crash_writer.rs"
 rusqlite = { version = "0.41", features = ["bundled"] }
 notify = "8"
 sha2 = "0.10"
-keyring = { version = "3", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
 tokio = { version = "1", features = ["rt", "macros", "time"] }
+
+# Linux and Windows read the system certificate store; Android has no usable one for rustls, so it ships the Mozilla roots (a certificate
+# from a user-installed CA is therefore not trusted there: use a publicly trusted certificate, e.g. the tailnet one; ADR-0075).
+[target.'cfg(not(target_os = "android"))'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "json"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
 
 # Windows: Credential Manager backend (without a platform feature keyring 3 silently uses a mock store).
 [target.'cfg(windows)'.dependencies]

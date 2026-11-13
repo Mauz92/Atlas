@@ -1,0 +1,16 @@
+[package]
+name = "tauri-plugin-atlas-android"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Atlas Android host services (ADR-0075): Keystore-backed device token, exact local reminder alarms with a delivery log, boot re-arm, battery and permission status. Android only; every other target compiles to an empty plugin."
+license = "UNLICENSED"
+links = "tauri-plugin-atlas-android"
+
+[dependencies]
+tauri = { version = "2" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

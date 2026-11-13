@@ -13,4 +13,4 @@ export { DEFAULT_DESKTOP_SETTINGS, loadSettings, saveSettings } from "./settings
 export type { DesktopSettings } from "./settings.ts";
 export { checkBaseUrl } from "./urlRules.ts";
 export { createPortTransport } from "./transport.ts";
-export { DesktopNotificationPort, RowSchedulerStore, schedulerClock } from "./reminderAdapters.ts";
+export { AndroidNotificationPort, DesktopNotificationPort, RowSchedulerStore, schedulerClock } from "./reminderAdapters.ts";

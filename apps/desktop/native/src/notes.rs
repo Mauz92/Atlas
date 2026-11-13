@@ -33,6 +33,62 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// What `copy_notes` did.
+#[derive(Debug, PartialEq, Eq)]
+pub struct CopyReport {
+    pub copied: usize,
+    pub identical: usize,
+    pub bytes: u64,
+}
+
+/// Copy every note of `from` into `to` (moving the notes folder between the app-private and the shared location, ADR-0075 D4).
+/// **Never overwrites and never deletes**: if a different file already stands where a note would go, nothing is copied and the
+/// call fails with `target_differs:<path>`; a file that is already identical is left alone. Files are written to a temp name in
+/// the destination directory, fsynced, renamed, and read back and compared; the source is untouched.
+pub fn copy_notes(from: &Folder, to: &Folder) -> Result<CopyReport, String> {
+    use std::io::Write;
+    let entries = from.scan(true)?;
+    // pass 1: refuse before touching anything
+    let mut todo = Vec::new();
+    let mut identical = 0;
+    for e in &entries {
+        let src = from.resolve(&e.path)?;
+        let dst = to.resolve(&e.path)?;
+        match fs::read(&dst) {
+            Ok(theirs) => {
+                if theirs == fs::read(&src).map_err(|x| x.to_string())? {
+                    identical += 1;
+                } else {
+                    return Err(format!("target_differs:{}", e.path));
+                }
+            }
+            Err(x) if x.kind() == std::io::ErrorKind::NotFound => todo.push((src, dst)),
+            Err(x) => return Err(x.to_string()),
+        }
+    }
+    // pass 2: copy
+    let mut bytes = 0u64;
+    for (src, dst) in &todo {
+        let data = fs::read(src).map_err(|x| x.to_string())?;
+        let dir = dst.parent().ok_or("no parent directory")?;
+        fs::create_dir_all(dir).map_err(|x| x.to_string())?;
+        let tmp = dir.join(format!("{TMP_MARK}{}", COUNTER.fetch_add(1, Ordering::Relaxed)));
+        let mut f = fs::File::create(&tmp).map_err(|x| x.to_string())?;
+        f.write_all(&data).map_err(|x| x.to_string())?;
+        f.sync_all().map_err(|x| x.to_string())?;
+        drop(f);
+        fs::rename(&tmp, dst).map_err(|x| {
+            let _ = fs::remove_file(&tmp);
+            x.to_string()
+        })?;
+        if fs::read(dst).map_err(|x| x.to_string())? != data {
+            return Err(format!("verify_failed:{}", dst.display()));
+        }
+        bytes += data.len() as u64;
+    }
+    Ok(CopyReport { copied: todo.len(), identical, bytes })
+}
+
 /// `*.md` (any case), not hidden, not an Office lock file.
 pub fn is_note_name(name: &str) -> bool {
     !name.starts_with('.') && !name.starts_with('~') && name.len() > 3 && name[name.len() - 3..].eq_ignore_ascii_case(".md")

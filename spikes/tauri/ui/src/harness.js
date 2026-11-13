@@ -6,6 +6,7 @@ const inv = (cmd, args, opts) => window.__TAURI_INTERNALS__.invoke(cmd, args, op
 const log = document.getElementById("log");
 const say = (m) => { log.textContent += "\n" + m; };
 const pct = (xs, p) => { const s = [...xs].sort((a, b) => a - b); return +s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))].toFixed(3); };
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout after " + ms + " ms")), ms))]);
 const attempt = async (fn) => { try { const v = await fn(); return { ok: true, value: v }; } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 200) }; } };
 
 async function ipc(cfg) {
@@ -106,6 +107,21 @@ async function sw() {
   return out;
 }
 
+// S5: schedule a local notification `delay` seconds ahead through the real plugin (AlarmManager on Android).
+async function s5(cfg) {
+  const out = {};
+  out.permission_before = await attempt(() => withTimeout(inv("plugin:notification|is_permission_granted"), 8000));
+  out.request = await attempt(() => withTimeout(inv("plugin:notification|request_permission"), 8000));
+  const delay = Number(cfg.delay || 60), idle = cfg.idle !== "0";
+  const id = Number(cfg.nid || 4242);
+  const at = new Date(Date.now() + delay * 1000);
+  out.scheduled_for = at.toISOString();
+  out.allow_while_idle = idle;
+  out.schedule = await attempt(() => inv("plugin:notification|notify", { options: { id, title: "Atlas S5", body: `scheduled ${delay}s ahead, idle=${idle}`, schedule: { at: { date: at.toISOString(), repeating: false, allowWhileIdle: idle } } } }));
+  out.pending = await attempt(() => inv("plugin:notification|get_pending"));
+  return out;
+}
+
 async function main() {
   const ctx = await inv("ctx");
   const cfg = ctx.cfg;
@@ -122,6 +138,7 @@ async function main() {
       if (s === "sync") out.sync = await runSync(cfg, inv);
       if (s === "https") out.https = await https(cfg);
       if (s === "sw") out.sw = await sw();
+      if (s === "s5") out.s5 = await s5(cfg);
       if (s === "notify") out.notify = await attempt(() => inv("notify_test"));
     } catch (e) { out[s] = { crashed: String(e?.stack ?? e) }; }
   }

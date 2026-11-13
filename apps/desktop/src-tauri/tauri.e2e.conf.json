@@ -1,4 +1,5 @@
 {
+  "identifier": "app.atlas.desktop.e2e",
   "app": {
     "security": {
       "capabilities": [
@@ -6,8 +7,16 @@
         {
           "identifier": "e2e",
           "description": "Test hooks of the scripted end-to-end run, defined INLINE here so that no file under capabilities/ can enable them in a default build. Merged only by build-linux.sh e2e and the updater test.",
-          "windows": ["main"],
-          "permissions": ["allow-e2e-report", "allow-e2e-window-state", "allow-e2e-tray", "allow-e2e-close-window", "allow-e2e-exit"]
+          "windows": [
+            "main"
+          ],
+          "permissions": [
+            "allow-e2e-report",
+            "allow-e2e-window-state",
+            "allow-e2e-tray",
+            "allow-e2e-close-window",
+            "allow-e2e-exit"
+          ]
         }
       ]
     }

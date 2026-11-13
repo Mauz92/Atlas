@@ -11,11 +11,11 @@ import {
   type SyncStatus,
   type LogFields,
 } from "../../sync-core/src/index.ts";
-import { Scheduler, type NotifySettings } from "../../reminder-core/src/index.ts";
+import { Scheduler, type NotificationPort, type NotifySettings } from "../../reminder-core/src/index.ts";
 import { LiveConnection } from "./live.ts";
 import { NotesFolderSync, type NotesSyncReport } from "./notes/sync.ts";
 import type { DbOp, PlatformPort, SessionInfo, SignInResult } from "./ports.ts";
-import { DesktopNotificationPort, RowSchedulerStore, schedulerClock } from "./reminderAdapters.ts";
+import { AndroidNotificationPort, DesktopNotificationPort, RowSchedulerStore, schedulerClock } from "./reminderAdapters.ts";
 import { DEFAULT_DESKTOP_SETTINGS, loadSettings, saveSettings, type DesktopSettings } from "./settings.ts";
 import { SqliteLocalStore } from "./sqliteStore.ts";
 import { checkBaseUrl } from "./urlRules.ts";
@@ -228,9 +228,15 @@ export class DesktopRuntime {
     });
     this.engine = engine;
 
+    // Android: the OS fires the alarms (also with the app closed); every other host: this runtime ticks
+    let port: NotificationPort = new DesktopNotificationPort(p.notifier);
+    if (p.alarms) {
+      const status = await p.alarms.status().catch(() => null);
+      port = new AndroidNotificationPort(p.notifier, p.alarms, status?.exactAlarms ?? false);
+    }
     const scheduler = new Scheduler({
       clock: schedulerClock(p.timers),
-      port: new DesktopNotificationPort(p.notifier),
+      port,
       store: new RowSchedulerStore(p.db),
       source: new SyncReminderSource(engine),
       actions: new SyncActionSink(engine),

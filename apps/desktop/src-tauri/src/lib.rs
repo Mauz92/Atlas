@@ -19,11 +19,16 @@ use std::{
     },
     time::Duration,
 };
+#[cfg(desktop)]
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder, WindowEvent,
+    WindowEvent,
 };
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_atlas_android::{Alarm, AtlasAndroid};
+
+mod android;
 
 type CmdResult<T> = Result<T, String>;
 
@@ -211,18 +216,29 @@ async fn folder_choose(app: AppHandle, state: State<'_, AppState>) -> CmdResult<
         fs::create_dir_all(&root).map_err(|e| e.to_string())?;
         return grant_root(&app, &state, PathBuf::from(root)).map(Some);
     }
-    use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = std::sync::mpsc::channel();
-    app.dialog().file().set_title("Choose your Atlas notes folder").pick_folder(move |p| {
-        let _ = tx.send(p);
-    });
-    let picked = blocking(move || rx.recv().map_err(|e| e.to_string())).await?;
-    match picked {
-        None => Ok(None),
-        Some(p) => {
-            let path = p.into_path().map_err(|e| e.to_string())?;
-            grant_root(&app, &state, path).map(Some)
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_dialog::DialogExt;
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.dialog().file().set_title("Choose your Atlas notes folder").pick_folder(move |p| {
+            let _ = tx.send(p);
+        });
+        let picked = blocking(move || rx.recv().map_err(|e| e.to_string())).await?;
+        match picked {
+            None => Ok(None),
+            Some(p) => {
+                let path = p.into_path().map_err(|e| e.to_string())?;
+                grant_root(&app, &state, path).map(Some)
+            }
         }
+    }
+    // Android has no folder dialog the shell can trust (a shared folder needs the Storage Access Framework, SYNC-07 S3): the notes
+    // folder is `<app data>/notes`, private to the app; notes reach other apps through export (ADR-0075 D4).
+    #[cfg(not(desktop))]
+    {
+        let root = state.data_dir.join("notes");
+        fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+        grant_root(&app, &state, root).map(Some)
     }
 }
 
@@ -287,6 +303,14 @@ async fn folder_trash(state: State<'_, AppState>, path: String, expected_hash: S
 
 #[tauri::command]
 fn notify_permission(app: AppHandle) -> CmdResult<String> {
+    #[cfg(not(desktop))]
+    return android::notification_state(&app);
+    #[cfg(desktop)]
+    desktop_notify_permission(app)
+}
+
+#[cfg(desktop)]
+fn desktop_notify_permission(app: AppHandle) -> CmdResult<String> {
     use tauri_plugin_notification::{NotificationExt, PermissionState};
     Ok(match app.notification().permission_state().map_err(|e| e.to_string())? {
         PermissionState::Granted => "granted",
@@ -297,7 +321,15 @@ fn notify_permission(app: AppHandle) -> CmdResult<String> {
 }
 
 #[tauri::command]
-fn notify_request_permission(app: AppHandle) -> CmdResult<String> {
+async fn notify_request_permission(app: AppHandle) -> CmdResult<String> {
+    #[cfg(not(desktop))]
+    return blocking(move || android::request_notifications(&app)).await;
+    #[cfg(desktop)]
+    desktop_notify_request_permission(app)
+}
+
+#[cfg(desktop)]
+fn desktop_notify_request_permission(app: AppHandle) -> CmdResult<String> {
     use tauri_plugin_notification::{NotificationExt, PermissionState};
     Ok(match app.notification().request_permission().map_err(|e| e.to_string())? {
         PermissionState::Granted => "granted",
@@ -312,9 +344,15 @@ fn clip(s: String, max: usize) -> String {
 }
 
 #[tauri::command]
-fn notify_show(app: AppHandle, title: String, body: String) -> CmdResult<()> {
-    use tauri_plugin_notification::NotificationExt;
-    app.notification().builder().title(clip(title, 200)).body(clip(body, 1000)).show().map_err(|e| e.to_string())
+fn notify_show(app: AppHandle, title: String, body: String, tag: Option<String>) -> CmdResult<()> {
+    #[cfg(not(desktop))]
+    return android::show(&app, clip(title, 200), clip(body, 1000), tag);
+    #[cfg(desktop)]
+    {
+        let _ = tag;
+        use tauri_plugin_notification::NotificationExt;
+        app.notification().builder().title(clip(title, 200)).body(clip(body, 1000)).show().map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
@@ -324,24 +362,44 @@ fn tray_set_close_to_tray(state: State<AppState>, enabled: bool) {
 
 #[tauri::command]
 fn tray_set_status(app: AppHandle, text: String) {
+    #[cfg(desktop)]
     if let Some(tray) = app.tray_by_id("main") {
         let _ = tray.set_tooltip(Some(clip(format!("Atlas: {text}"), 100)));
     }
+    #[cfg(not(desktop))]
+    let _ = (app, text); // a phone has no tray
 }
 
 #[tauri::command]
 fn autostart_is_enabled(app: AppHandle) -> CmdResult<bool> {
-    use tauri_plugin_autostart::ManagerExt;
-    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_autostart::ManagerExt;
+        app.autolaunch().is_enabled().map_err(|e| e.to_string())
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = app; // reminders are OS alarms, re-armed after a reboot by the plugin: nothing to autostart
+        Ok(false)
+    }
 }
 
 #[tauri::command]
 fn autostart_set_enabled(app: AppHandle, enabled: bool) -> CmdResult<()> {
-    use tauri_plugin_autostart::ManagerExt;
-    let m = app.autolaunch();
-    if enabled { m.enable() } else { m.disable() }.map_err(|e| e.to_string())
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_autostart::ManagerExt;
+        let m = app.autolaunch();
+        if enabled { m.enable() } else { m.disable() }.map_err(|e| e.to_string())
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, enabled);
+        Ok(())
+    }
 }
 
+#[cfg(desktop)]
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
@@ -352,7 +410,10 @@ fn show_main(app: &AppHandle) {
 
 #[tauri::command]
 fn window_show(app: AppHandle) {
+    #[cfg(desktop)]
     show_main(&app);
+    #[cfg(not(desktop))]
+    let _ = app; // the single Activity is already in front when the page runs
 }
 
 #[tauri::command]
@@ -430,7 +491,7 @@ fn e2e_window_state(app: AppHandle) -> CmdResult<Value> {
 #[allow(clippy::needless_return)]
 #[tauri::command]
 fn e2e_tray(app: AppHandle, item: String) -> CmdResult<()> {
-    #[cfg(feature = "e2e")]
+    #[cfg(all(feature = "e2e", desktop))]
     {
         handle_tray_item(&app, &item);
         return Ok(());
@@ -473,6 +534,7 @@ fn e2e_exit(app: AppHandle) -> CmdResult<()> {
 
 // ---- tray and application setup -------------------------------------------------------------------------------
 
+#[cfg(desktop)]
 fn handle_tray_item(app: &AppHandle, id: &str) {
     match id {
         "open" => {
@@ -492,6 +554,7 @@ fn handle_tray_item(app: &AppHandle, id: &str) {
     }
 }
 
+#[cfg(desktop)]
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
@@ -530,30 +593,26 @@ fn webkit_environment() {
     }
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "linux")]
     webkit_environment();
     let background = std::env::args().any(|a| a == "--background");
 
     #[allow(unused_mut)]
-    let mut builder = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--background"])));
-    #[cfg(feature = "updater")]
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_atlas_android::init());
+    #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
-    }
-    builder
-        .invoke_handler(tauri::generate_handler![
-            app_info, db_open, db_get, db_list, db_commit, session_sign_in, session_info, session_clear, session_sign_out, api_request,
-            folder_root, folder_choose, folder_scan, folder_read, folder_write, folder_rename, folder_trash,
-            notify_permission, notify_request_permission, notify_show, tray_set_close_to_tray, tray_set_status,
-            autostart_is_enabled, autostart_set_enabled, window_show, app_quit, update_check,
-            e2e_report, e2e_window_state, e2e_tray, e2e_close_window, e2e_exit
-        ])
-        .on_window_event(|window, event| match event {
+        builder = builder
+            .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
+            .plugin(tauri_plugin_dialog::init())
+            .plugin(tauri_plugin_notification::init())
+            .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--background"])));
+        #[cfg(feature = "updater")]
+        {
+            builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+        }
+        builder = builder.on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
                 if let Some(state) = window.app_handle().try_state::<AppState>() {
                     if state.close_to_tray.load(Ordering::SeqCst) && !state.quitting.load(Ordering::SeqCst) {
@@ -566,8 +625,21 @@ pub fn run() {
                 let _ = window.app_handle().emit("atlas-wake", ());
             }
             _ => {}
-        })
+        });
+    }
+    builder
+        .invoke_handler(tauri::generate_handler![
+            app_info, db_open, db_get, db_list, db_commit, session_sign_in, session_info, session_clear, session_sign_out, api_request,
+            folder_root, folder_choose, folder_scan, folder_read, folder_write, folder_rename, folder_trash,
+            notify_permission, notify_request_permission, notify_show, tray_set_close_to_tray, tray_set_status,
+            autostart_is_enabled, autostart_set_enabled, window_show, app_quit, update_check,
+            android::alarm_schedule, android::alarm_cancel, android::alarm_list, android::alarm_delivered, android::alarm_clear_shown,
+            android::android_status, android::android_open_settings, android::android_take_launch_task, android::notes_export, android::notes_location_get, android::keep_connected_get, android::keep_connected_set, android::notes_location_set,
+            e2e_report, e2e_window_state, e2e_tray, e2e_close_window, e2e_exit
+        ])
         .setup(move |app| {
+            #[cfg(target_os = "android")]
+            android::install_keystore(app.handle());
             let data_dir = std::env::var_os("ATLAS_DESKTOP_DATA_DIR").map(PathBuf::from).unwrap_or_else(|| app.path().app_data_dir().expect("app data dir"));
             fs::create_dir_all(&data_dir)?;
             // the database holds the user's tasks and note text: only the user may read the directory (T14)
@@ -595,6 +667,7 @@ pub fn run() {
                     eprintln!("notes folder not reopened: {e}");
                 }
             }
+            #[cfg(desktop)]
             build_tray(app.handle())?;
             let signed_config = config.base_url.is_some();
             #[allow(unused_mut)]
@@ -625,6 +698,15 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running the Atlas desktop app");
+        .build(tauri::generate_context!())
+        .expect("error while building the Atlas app")
+        .run(|app, event| {
+            // a phone has no window focus event the page can see: coming back to the foreground is the wake-up (sync now, re-read alarms)
+            #[cfg(mobile)]
+            if let tauri::RunEvent::Resumed = event {
+                let _ = app.emit("atlas-wake", ());
+            }
+            #[cfg(not(mobile))]
+            let _ = (app, event);
+        });
 }

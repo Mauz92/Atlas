@@ -11,7 +11,7 @@ import { NotificationSettings } from "../components/NotificationSettings";
 import { ShellSyncSettings } from "../components/ShellSyncSettings";
 import { SyncSettings } from "../components/SyncSettings";
 import { DesktopSection } from "../components/settings/DesktopSection";
-import { isDesktopShell } from "../lib/desktop";
+import { isAndroidShell, isDesktopShell } from "../lib/desktop";
 import {
   DEFAULT_DESKTOP_SETTINGS_SECTION,
   DEFAULT_SETTINGS_SECTION,
@@ -38,7 +38,11 @@ function SectionBody({ id }: { id: SettingsSectionId }) {
           <SyncSettings />
           <p className="settings-sync-link">
             <Link to="/changes">Changes from other devices</Link>
-            <span className="muted"> - what Atlas decided when two devices changed the same thing, with Undo.</span>
+            <span className="muted">
+              {" "}
+              - what Atlas decided when two devices changed the same thing, with
+              Undo.
+            </span>
           </p>
         </>
       );
@@ -63,16 +67,21 @@ function SectionBody({ id }: { id: SettingsSectionId }) {
 export function Settings() {
   const { section } = useParams();
   const shell = isDesktopShell();
-  const sections = visibleSettingsSections(shell);
+  const sections = visibleSettingsSections(shell, isAndroidShell());
   const requested = parseSettingsSection(section, shell);
   if (section && !requested) {
     return <Navigate to="/settings" replace />;
   }
-  const active = requested ?? (shell ? DEFAULT_DESKTOP_SETTINGS_SECTION : DEFAULT_SETTINGS_SECTION);
+  const active =
+    requested ??
+    (shell ? DEFAULT_DESKTOP_SETTINGS_SECTION : DEFAULT_SETTINGS_SECTION);
   const current = sections.find((entry) => entry.id === active)!;
 
   return (
-    <section className="page settings-page" data-view={requested ? "section" : "index"}>
+    <section
+      className="page settings-page"
+      data-view={requested ? "section" : "index"}
+    >
       <h1>Settings</h1>
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
@@ -82,10 +91,16 @@ export function Settings() {
                 <Link
                   to={settingsPath(entry.id)}
                   className={`settings-nav-link${entry.id === active ? " active" : ""}`}
-                  aria-current={entry.id === active && requested ? "page" : undefined}
+                  aria-current={
+                    entry.id === active && requested ? "page" : undefined
+                  }
                 >
                   {entry.label}
-                  <Icon name="chevron-right" size={14} className="settings-nav-chevron" />
+                  <Icon
+                    name="chevron-right"
+                    size={14}
+                    className="settings-nav-chevron"
+                  />
                 </Link>
               </li>
             ))}

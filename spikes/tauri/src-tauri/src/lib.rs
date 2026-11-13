@@ -56,7 +56,7 @@ fn ctx(app: tauri::AppHandle) -> Value {
     let webkit = "n/a".to_string();
     json!({"os": std::env::consts::OS, "arch": std::env::consts::ARCH, "webkitgtk": webkit, "tauri": tauri::VERSION,
            "app_version": app.package_info().version.to_string(), "pid": std::process::id(),
-           "cfg": {"suite": std::env::var("SPIKE_SUITE").ok(), "api": std::env::var("SPIKE_API").ok(), "notes": std::env::var("SPIKE_NOTES").ok(),
+           "cfg": {"suite": std::env::var("SPIKE_SUITE").ok(), "delay": std::env::var("SPIKE_DELAY").ok(), "idle": std::env::var("SPIKE_IDLE").ok(), "nid": std::env::var("SPIKE_NID").ok(), "api": std::env::var("SPIKE_API").ok(), "notes": std::env::var("SPIKE_NOTES").ok(),
                    "db": std::env::var("SPIKE_DB").ok(), "https_base": std::env::var("SPIKE_HTTPS_BASE").ok(), "email": std::env::var("SPIKE_EMAIL").ok(), "password": std::env::var("SPIKE_PASSWORD").ok()}})
 }
 
@@ -286,18 +286,71 @@ async fn tokio_sleep(ms: u64) {
     let _ = tauri::async_runtime::spawn_blocking(move || std::thread::sleep(std::time::Duration::from_millis(ms))).await;
 }
 
+
+/// Android: there are no environment variables on a phone. The host pushes `files/spike.json` with
+/// `adb shell run-as app.atlas.spike` and its keys become the SPIKE_* variables the harness already reads.
+/// Reports go to `files/out/` (read back with `run-as ... cat`). Spike/debug builds only.
+#[cfg(target_os = "android")]
+fn android_config(app: &tauri::App) -> Option<String> {
+    let dir = app.path().app_data_dir().ok()?;
+    let _ = fs::create_dir_all(dir.join("out"));
+    std::env::set_var("SPIKE_OUT", dir.join("out"));
+    std::env::set_var("SPIKE_DB", dir.join("ipc.db"));
+    let cfg: Value = serde_json::from_slice(&fs::read(dir.join("spike.json")).ok()?).ok()?;
+    for (k, v) in cfg.as_object()? {
+        if let Some(v) = v.as_str() {
+            std::env::set_var(format!("SPIKE_{}", k.to_uppercase()), v);
+        }
+    }
+    Some(dir.display().to_string())
+}
+
+/// S2 on Android: a worker thread commits pages in a loop. The host force-stops the app at random moments; every start
+/// first verifies the database (integrity + page/row consistency) and appends the verdict to `out/kill.log`.
+#[cfg(target_os = "android")]
+fn killtest(dir: PathBuf) {
+    use std::io::Write;
+    std::thread::spawn(move || {
+        let file = dir.join("kill.db");
+        let log = dir.join("out").join("kill.log");
+        let line = |s: String| {
+            if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&log) {
+                let _ = writeln!(f, "{s}");
+            }
+        };
+        let mut conn = match atlas_spike_core::db::open(&file, atlas_spike_core::db::latest()) {
+            Ok(c) => c,
+            Err(e) => return line(format!("OPEN_FAILED {e}")),
+        };
+        match atlas_spike_core::db::verify(&conn) {
+            Ok(c) => line(format!("OK cursor={c}")),
+            Err(e) => line(format!("INCONSISTENT {e}")),
+        }
+        loop {
+            let next = atlas_spike_core::db::cursor(&conn).unwrap_or(0) + 1;
+            if atlas_spike_core::db::apply_page(&mut conn, next, atlas_spike_core::db::PAGE_ROWS).is_err() {
+                return line("APPLY_FAILED".into());
+            }
+        }
+    });
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    let builder = builder
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             let _ = write_report("single-instance", &json!({"second_instance_args": args, "cwd": cwd, "app_pid": std::process::id()}));
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.set_focus();
             }
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build());
+    builder
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             report, snapshot, exit_app, ctx, db_open, db_ping, db_apply_page, db_cursor, kv_read, kv_write, kv_remove, token_set,
@@ -305,6 +358,12 @@ pub fn run() {
             window_eval_probe
         ])
         .setup(|app| {
+            #[cfg(target_os = "android")]
+            if let Some(d) = android_config(app) {
+                if std::env::var("SPIKE_SUITE").map(|s| s.contains("killtest")).unwrap_or(false) {
+                    killtest(PathBuf::from(d));
+                }
+            }
             let suite = std::env::var("SPIKE_SUITE").unwrap_or_default();
             if std::env::var("SPIKE_ATLAS_URL").is_err() && suite != "updater" {
                 let mut b = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into())).title("Atlas spike harness").inner_size(1100.0, 760.0);
@@ -334,6 +393,7 @@ pub fn run() {
                     .initialization_script(script)
                     .build()?;
             }
+            #[cfg(desktop)]
             if suite == "updater" {
                 let h = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
