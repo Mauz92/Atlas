@@ -834,7 +834,7 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 ### R-83 - No background sync on Android
 - **Severity/Likelihood:** Medium / Certain
 - **Impact:** With Atlas closed, reminders already armed fire, but a reminder created or changed on another device reaches the phone only when Atlas is opened (ADR-0075 D7); a reminder removed elsewhere may still fire once on the phone.
-- **Mitigation:** Settings shows the battery-optimisation state with a shortcut; the live connection and a pull on every return to the front keep it fresh while in use; the opt-in **Keep Atlas connected** foreground service keeps it fresh in the background (tested on the phone and the emulator, including a 45-minute screen-off soak, not for hours or unplugged Doze; cannot restart Atlas after a reboot or after the Activity is destroyed). Planned fix for the rest: the server's UnifiedPush/ntfy hint (ADR-0068 D2). **Status:** Mitigating.
+- **Mitigation:** Settings shows the battery-optimisation state with a shortcut; the live connection and a pull on every return to the front keep it fresh while in use; the opt-in **Keep Atlas connected** foreground service keeps it fresh in the background (tested on the phone and the emulator, including 45- and 180-minute screen-off soaks (on USB power), not unplugged Doze; cannot restart Atlas after a reboot or after the Activity is destroyed). Planned fix for the rest: the server's UnifiedPush/ntfy hint (ADR-0068 D2). **Status:** Mitigating.
 
 ### R-84 - Vendor battery managers and alarm batching
 - **Severity/Likelihood:** Medium / High
