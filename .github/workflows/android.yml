@@ -29,8 +29,9 @@ jobs:
       - name: Rust with the Android targets
         run: |
           set -euo pipefail
-          rustup toolchain install stable --profile minimal --target aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+          rustup toolchain install stable --profile minimal
           rustup default stable
+          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
       - name: Android toolchain (JDK, SDK, NDK; pinned downloads, cached between runs)
         run: |
           set -euo pipefail
