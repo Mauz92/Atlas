@@ -12,6 +12,7 @@ export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$HOME/.cargo/bin:$PATH"
 PROFILE="${1:-debug}"; TARGET="${2:-aarch64}"
 
 (cd ../web && npm ci --silent && npm run build --silent)
+[ -d node_modules/@tauri-apps ] || npm ci --silent
 node scripts/stage-ui.mjs
 
 GEN=src-tauri/gen/android
