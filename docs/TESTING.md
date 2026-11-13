@@ -763,3 +763,20 @@ Windows (everything: R-36), other Linux distributions, GNOME and its tray situat
 ### 14.2 What this does NOT test (`NOT RUN`)
 
 A browser local store (SYNC-11d is only planned); offline editing in the shell's task screens (not built); real push delivery to a browser (needs a push service; the test notification is local); the restore screen on a phone-sized real device (the shell runs on desktops; the screens were checked at 360 and 390 px in a browser); Windows; a screen reader (axe only); the sync-core soaks beyond what 10.0e lists were run once for the changed engine (see `ACCEPTANCE.md` SYNC-11).
+
+## 15. Android client tests (SYNC-10; ADR-0075; the phone run is not in `verify.sh` or CI)
+
+| Layer | Where | Command | In `verify.sh`? |
+|---|---|---|---|
+| The Android notification port and the runtime over a fake OS alarm service (arms an alarm instead of ticking, a reminder delivered while the app was closed is not shown twice, generic mode leaks no text, switching reminders off cancels) | `packages/desktop-core/src/androidReminders.test.ts` (fake `AlarmPort` in `testing/fakePlatform.ts`) | `cd apps/web && npx vitest run --project desktop-core` | **yes** |
+| The Tauri adapter's Android additions (one command per alarm method, no alarm port on a desktop, wake on resume only on Android, the bridge's `android` object) | `apps/desktop/src/tauriPlatform.test.ts` | same | **yes** |
+| Settings on a phone (words, hidden tray and start-up rows, the reliability section and its shortcuts) | `apps/web/src/components/settings/DesktopSection.test.tsx` | `cd apps/web && npx vitest run` | **yes** |
+| The keystore backend hook (installed once, the only store, failures reported not swallowed) | `apps/desktop/native/tests/keystore_backend.rs` | `cd apps/desktop && cargo test -p atlas-desktop-native` | no |
+| **The real app on a real phone** against a throwaway API: fresh install, sign-in typed into the page, Keystore ciphertext only, seeded task and note synced, reminder shown by Android with the process killed and the screen off, the same in forced Doze (`dumpsys deviceidle force-idle`), no duplicate after restart, tap opens the task, Settings reliability section, sign-out, server-side revoke | `apps/desktop/e2e/android.mjs` | `scripts/build-android.sh debug aarch64 && node e2e/android.mjs` (phone connected by USB, debugging on) | no |
+| The shared notes folder's copy rules (never overwrite, never delete, verify, refuse a differing target before copying anything) | `apps/desktop/native/tests/copy_notes.rs` | `cargo test -p atlas-desktop-native` | no |
+| Older spike probes (SQLite kill test, scheduled-notification timing) | `spikes/tauri/scripts/android-*.sh` | see their headers | no |
+
+**Second device:** the same script runs on an Android emulator (`sdkmanager "system-images;android-35;google_apis;x86_64"`, `avdmanager`, then `emulator -avd ... -no-window -gpu swiftshader_indirect`; `ANDROID_SERIAL=emulator-5554`, APK built with `scripts/build-android.sh debug x86_64`); `E2E_REBOOT=1` adds a step that reboots the device (a phone needs the owner to unlock it once). The script falls back to a raw DevTools client when Playwright cannot attach to an older WebView.
+
+**Not covered (`NOT RUN`):** a reboot of the **physical** phone (done on the emulator only), another vendor's battery manager, an app force-stopped from Settings, IME/CJK composition and the soft keyboard over the editor (SYNC-07 S1), a shared notes folder editable in place (not built; export exists), background sync (not built), TalkBack, a real CJK soft keyboard (composition events are tested through DevTools), low-memory process death while the app is in the background, TLS against a real certificate (the run uses loopback http), and the Android CI job (written, never run).
+

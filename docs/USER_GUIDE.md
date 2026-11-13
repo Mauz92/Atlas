@@ -559,3 +559,18 @@ folder `~/.local/share/app.atlas.desktop/` (the local database and settings) and
 
 **Known limits (phase 1).** Linux only; reminders fire only while Atlas runs (use the optional autostart); the restore confirmation, the notices and the text resolvers are in the desktop app since SYNC-11, but the desktop app's task and note screens still need a connection to save (no offline editing of tasks in the app); typing in the editor with a CJK
 input method was not tested; on NVIDIA graphics Atlas turns off a WebKit renderer feature at start-up (`WEBKIT_DISABLE_DMABUF_RENDERER=1`) to avoid a crash; set `ATLAS_KEEP_DMABUF=1` to keep it on.
+
+## Atlas for Android (new, SYNC-10)
+
+**What it is.** The same Atlas screens as the desktop app, on your phone, kept in sync with your own server. Reminders are set with Android's alarm clock, so they appear **on time even when Atlas is closed** and after the phone restarts. It is installed from an APK you build yourself (nothing is in a store).
+
+**Install.** Build with `apps/desktop/scripts/build-android.sh release aarch64` (once: `scripts/android-keystore.sh`, and **back up `apps/desktop/keys/`**; Android only accepts an update signed with the same key). Copy the APK to the phone or `adb install -r` it; allow "install unknown apps" for the app you open it from. Your server must be reachable with **HTTPS and a publicly trusted certificate** (a Tailscale certificate works; a self-signed one does not).
+
+**First run.** Enter the server address, e-mail, password and a device name. Atlas asks to **show notifications** (Android 13+): say yes, and if you use Do Not Disturb, allow Atlas through it in the system settings. Your password is sent once to get a device key; the key is stored encrypted under a key that never leaves the phone's Keystore.
+
+**Notes on the phone.** Your notes are ordinary Markdown files inside Atlas on the phone (other apps cannot open that folder) and are kept in sync with the server, which holds the master copy. To get them out as files, use **Settings > This app > Export notes**: Atlas zips them and opens Android's share sheet (save to Files, send to another app or computer). You can also **Keep notes in a shared folder**: Atlas asks you to allow "All files access", then copies the notes to `Documents/Atlas Notes`, where any editor can open and change them (Atlas picks the changes up when you return to it and every few minutes). Your old folder inside Atlas is renamed, not deleted; "Move notes back inside Atlas" reverses it. If you later take the permission away, Android closes Atlas and the notes folder shows an error until you move the notes back.
+
+**Reminders.** Settings > This app > Reminder reliability tells you whether Android lets Atlas show notifications, whether exact alarms are on, and whether battery saving may stop Atlas (OnePlus, Xiaomi, Oppo, Huawei and Samsung phones often do; set Atlas to **Unrestricted** there). Tapping a reminder opens that task. **Background:** a reminder you create or change on another device reaches the phone while Atlas is running; to keep Atlas running in the background switch on **Keep Atlas connected in the background** (a small permanent notification; it costs some battery; after a restart, open Atlas once). There is no push wake-up yet. An alarm already set always fires. If you force-stop Atlas from the system's app settings, Android cancels its alarms until you open it again. While a reminder is pending, Android shows its "next alarm" icon.
+
+**Signing out.** Settings > This app > Sign out of this device removes the key from the phone. Removing the device in Settings > Devices on another device signs the phone out at its next request.
+

@@ -292,3 +292,20 @@ No telemetry, analytics or paid service is introduced. The Android permissions `
 **Bundler tools (not packages; pinned by SHA-256 in `apps/desktop/packaging/bundler-tools.tsv`):** `AppRun-x86_64` (tauri-apps/binary-releases `apprun-old`), `linuxdeploy` AppImage (tauri-apps/binary-releases `linuxdeploy-07333c6`, MIT), `linuxdeploy-plugin-appimage` (linuxdeploy project `continuous` release: a moving URL, so only the checksum pins it, MIT). The plugin scripts for GTK and GStreamer are embedded in the pinned `@tauri-apps/cli`. `fetch-bundler-tools.sh` fails if a download does not match.
 
 **Platform costs:** none new. A Windows code-signing certificate and any update hosting remain the owner's optional costs (above); a Linux AppImage/.deb needs no signing.
+
+## SYNC-10 Android client (`apps/desktop/plugins/atlas-android`, 2026-11-12)
+
+**Toolchain (installed in user space on the owner's PC, none of it in the repository):** Temurin OpenJDK 17.0.21 (GPLv2 with Classpath Exception; tarball sha256 `8b9b611d...e8711`), Android command-line tools 11076708 (zip sha256 `2d2d5085...e5e258`), Android SDK platform 35, build-tools 35.0.0, platform-tools 37.0.1 (adb), NDK 27.2.12479018 (Apache-2.0 / LLVM exceptions); the Android SDK licence terms were accepted on the owner's instruction (`sdkmanager --licenses`). Gradle comes from the generated project's wrapper (Apache-2.0).
+
+| Dependency | Purpose | Licence | Notes |
+|---|---|---|---|
+| `tauri-plugin-atlas-android` (this repository) | Keystore token, alarms, delivery log, boot re-arm, status | UNLICENSED (project code) | Rust handle + Kotlin; depends only on `tauri` 2, `serde`, `serde_json` and, in Kotlin, AndroidX `core-ktx` 1.9.0 and `appcompat` 1.6.0 (Apache-2.0) |
+| `reqwest` with `rustls-tls-webpki-roots` (Android only) | TLS with the bundled Mozilla roots (`webpki-roots`, CDLA-Permissive-2.0 / MPL data) | MIT OR Apache-2.0 | replaces `rustls-tls-native-roots` on Android; Linux and Windows are unchanged |
+| `keyring` | now Linux-only (`cfg(target_os = "linux")`) besides the Windows entry; Android uses the plugin | MIT OR Apache-2.0 | |
+| `tauri` features `tray-icon`, `tauri-plugin-dialog`, `-notification`, `-single-instance`, `-autostart`, `-updater` | desktop targets only (`cfg(not(any(android, ios)))`) | MIT OR Apache-2.0 | unchanged versions |
+
+| `zip` 9.5.1 (`deflate`, Android only) | The notes export zip | MIT | already in the lock through Tauri; `zopfli` 0.8.4 added by the feature (Apache-2.0) |
+| Jackson `databind`/`core` 2.22.4 (forced) | Tauri's Android runtime parses plugin arguments with it | Apache-2.0 | Tauri pulls 2.15.3 (15 advisories); forced in `patch-android.mjs`; OSV scan of the release classpath 2026-11-12: 2 of 80 artifacts affected before the override, 0 after (re-scan not run on 2.22.4 beyond the version query) |
+
+The generated Android project pulls AndroidX `webkit` 1.14.0, `appcompat` 1.7.1, `activity-ktx` 1.10.1, Material 1.12.0, `lifecycle-process` 2.10.0 (Apache-2.0) and Kotlin; `cargo audit` on `Cargo.lock` (2026-11-13): 0 vulnerabilities, the same 8 warnings as the Linux graph; none of those crates (`zbus`, `zvariant`, `glib`, `proc-macro-error`) is in the Android target's graph (365 crates, checked with `cargo tree --target aarch64-linux-android`). The Gradle graph (80 artifacts) was queried against OSV on 2026-11-12 (only the public Maven coordinates were sent): Jackson only, fixed above. The spike's Android additions (SYNC-07) are not shipped.
+

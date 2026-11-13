@@ -826,6 +826,31 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 - **Impact:** With a Red, Orange or Amber accent, links and buttons look like overdue/warning colours; the preference is per device, so a new browser looks different until it is set again.
 - **Mitigation:** Semantic colours keep icons and words (chips are never colour alone), are tested separately and never follow the accent; the default is Neutral; the picker says so. Syncing the preference is a later option (ADR-0073 D8). **Status:** Accepted.
 
+### R-82 - Android notes are not reachable by other apps
+- **Severity/Likelihood:** Medium / Certain
+- **Impact:** The phone's notes folder is app-private (ADR-0075 D4): no other editor can open the Markdown files there, which is a gap against the "ordinary Markdown files readable by external editors" rule on this one platform.
+- **Mitigation:** The server keeps the master copy; **Export notes** zips the notes and opens the share sheet; the opt-in **shared folder** (`Documents/Atlas Notes`, needs "All files access") lets other apps edit them in place (tested on the phone and the emulator). **Status:** Mitigated by opt-in; the default stays app-private.
+
+### R-83 - No background sync on Android
+- **Severity/Likelihood:** Medium / Certain
+- **Impact:** With Atlas closed, reminders already armed fire, but a reminder created or changed on another device reaches the phone only when Atlas is opened (ADR-0075 D7); a reminder removed elsewhere may still fire once on the phone.
+- **Mitigation:** Settings shows the battery-optimisation state with a shortcut; the live connection and a pull on every return to the front keep it fresh while in use; the opt-in **Keep Atlas connected** foreground service keeps it fresh in the background (tested on the phone and the emulator, including a 45-minute screen-off soak, not for hours or unplugged Doze; cannot restart Atlas after a reboot or after the Activity is destroyed). Planned fix for the rest: the server's UnifiedPush/ntfy hint (ADR-0068 D2). **Status:** Mitigating.
+
+### R-84 - Vendor battery managers and alarm batching
+- **Severity/Likelihood:** Medium / High
+- **Impact:** On a OnePlus 8T (OxygenOS 14) an exact `setExactAndAllowWhileIdle` alarm was still turned into a window (up to 39 s late in Doze); other vendors (Xiaomi, Huawei, Samsung "sleeping apps") may kill the process or drop alarms altogether.
+- **Mitigation:** `setAlarmClock` is used (0.6 s late on the OnePlus, also in forced Doze, process killed); the delivery log lets the runtime reconcile; Settings explains the vendor case. **Not verified:** any other vendor, a reboot, an app force-stopped from Settings (Android cancels all alarms of a force-stopped app by design). **Status:** Mitigating.
+
+### R-85 - Signing key loss or leak
+- **Severity/Likelihood:** Medium / Low
+- **Impact:** The release APK is signed with the owner's key (`apps/desktop/keys/`, gitignored). Losing it means uninstalling (and re-syncing from the server) to install a build signed with a new key; leaking it lets someone else ship an "update" Android accepts.
+- **Mitigation:** the script creates the key with a random password, mode 0600, outside Git; back it up offline. **Status:** Open (owner action: back up the key).
+
+### R-86 - `USE_EXACT_ALARM` and a store listing
+- **Severity/Likelihood:** Low / Low
+- **Impact:** The permission is meant for alarm and calendar apps; a Play Store listing would need that justified and a data-safety form. Atlas is sideloaded, so no policy applies today.
+- **Mitigation:** none needed now; revisit if a store listing is ever wanted (it also raises the account/cost questions of AGENTS.md section 14). **Status:** Accepted.
+
 ## Review log
 
 | Date | Milestone | Change |
@@ -868,3 +893,5 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 | 2026-11-10 | SYNC-09 phase 1 (Linux) | R-69 to R-73 added (script in the webview, AppImage supply chain, hidden webview, folder races/limits, device scope vs web UI); R-60 now Mitigating; R-36 unchanged (Windows still not run); R-58 unchanged (DMABUF variable is set automatically on NVIDIA); a new advisory (RUSTSEC-2026-0459, SQLite) was found by `cargo audit` and fixed by moving rusqlite 0.37 to 0.41. |
 | 2026-11-10 | Calendar Stage A | R-76 to R-80 added; R-01 and R-13 moved to Mitigating (guide, adapters, re-authorisation flag), not closed: no live evidence yet. |
 | 2026-11-10 | UX-12 | R-81 added (accent colours vs semantic colours; per-device preference). |
+| 2026-11-12 | SYNC-10 / M8-04d (Android) | R-82 to R-86 added (app-private notes, no background sync, vendor alarm batching, signing key, `USE_EXACT_ALARM`); R-63 (missed Android reminders) and R-59 (resident client) updated: on Android the OS holds the alarms, evidence in `ACCEPTANCE.md` SYNC-10. |
+| 2026-11-13 | SYNC-10 follow-up | R-82 and R-83 moved to Mitigating (shared notes folder, keep-connected service, export); the permission `MANAGE_EXTERNAL_STORAGE` and a foreground service are new surface (SECURITY.md A9, A10). |
