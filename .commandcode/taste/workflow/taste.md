@@ -16,3 +16,5 @@
 - Prefers autonomous, self-paced orchestration loops for multi-task work: delegate one background subagent per task and keep spawning the next as each finishes, polling progress on a fixed short cadence (e.g. every ~5 minutes) and continuing until every milestone/gate is complete. Confidence: 0.8
 - Expects completed work to be committed to version control rather than left as a large uncommitted working tree; will explicitly ask for a commit once a body of work is done. Confidence: 0.6
 - Prefers the agent to keep progressing on the buildable scope (e.g. via fakes/stubs backed by real tests) rather than halting at a blocker that needs unavailable external resources, recording the blocked items honestly for later. Confidence: 0.6
+- Requires explicit permission before the agent makes any code changes — wants investigation/audits reported first and edits withheld until they approve (e.g. "do not make any changes without my permission"). Confidence: 0.85
+- Prefers changes made on their own dedicated branch rather than directly on the working branch, so an unwanted change can be discarded easily ("in a new branch in case something goes haywire"). Confidence: 0.6
