@@ -446,6 +446,10 @@ date never becomes a calendar event.
 sign-in: press **Reconnect**. A feed saying *link rejected* means the link was revoked: add the new one. See the
 troubleshooting table in [`CALENDAR_SYNC.md`](CALENDAR_SYNC.md) section 12.6.
 
+### Importing a calendar file (.ics)
+
+For a calendar that gives you no link: export it as an **.ics** file (Google Calendar, Outlook, Apple Calendar and Proton can all do this), then in **Settings > Calendar > Import a calendar file** choose the file, give it a name and press **Check file** (it tells you how many events it holds; nothing is saved yet) and then **Import**. The events appear read-only in Today and Calendar, in the colour you chose. An imported file is **not refreshed**: when the calendar changes, export it again and use **Replace file** on that calendar (events that are no longer in the file disappear, changed ones update). **Remove** deletes the calendar and its events from Atlas; your original calendar and file are not touched. Limits: 5 MiB per file, 20 calendars in total (links and files together).
+
 ## 10. Settings, themes and data portability
 
 Open **Settings** for:

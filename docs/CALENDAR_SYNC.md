@@ -1,6 +1,6 @@
 # Atlas — Calendar Synchronisation
 
-**Status:** Stage A (read-only) implemented and fixture-tested; live provider compatibility **UNVERIFIED** (see §12). **2026-11-13 (ADR-0076): Google/Microsoft API sync and all provider writing (M6) are DEFERRED after 0.1.0; the ICS feed path (§ICS) is the supported calendar source, and a manual `.ics` file import (M5-12) is on the roadmap.**
+**Status:** Stage A (read-only) implemented and fixture-tested; live provider compatibility **UNVERIFIED** (see §12). **2026-11-13 (ADR-0076): Google/Microsoft API sync and all provider writing (M6) are DEFERRED after 0.1.0; the ICS feed path (§ICS) is the supported calendar source, and a manual `.ics` file import (M5-12) is built (§12.5).**
 **Last updated:** 2026-11-10
 
 Calendar synchronisation is a distributed-systems problem, not a CRUD feature. This document
@@ -235,6 +235,13 @@ Use your own Google account when connecting by hand. Never use it in automated t
    `MICROSOFT_TENANT=common` (or `consumers`/a tenant id). Restart api and worker.
 7. Settings -> Calendar -> Microsoft Outlook -> **Connect**. To revoke later, remove the app at
    `account.live.com/consent/Manage` (Atlas cannot revoke Microsoft tokens; "Disconnect" deletes them locally).
+
+### 12.5 Manual `.ics` file import (M5-12, ADR-0076 D4)
+
+For a calendar that offers no link (or when you do not want a link to exist): export it as an `.ics` file and import it in **Settings > Calendar > Import a calendar file**.
+The browser reads the file and sends its **text** (at most 5 MiB, UTF-8) to `POST /api/calendar/imports/preview` (counts only, nothing stored) and `POST /api/calendar/imports` (stores it). An imported calendar is a normal ICS source with **no URL**: its bytes are stored on the source row (`calendar_sources.imported_ics`, deferred so lists never load them), it is **never fetched**, it is read-only, and it goes through the same parser, projection and snapshot diff as a feed (`ImportedIcsAdapter`; the cursor is the file's SHA-256, so an unchanged file is a no-op).
+**Replace file** (`PUT /api/calendar/imports/{id}`) swaps the body: events that are no longer in the file are tombstoned by the next sync, changed ones update in place (stable `UID` identity). **Remove** (`DELETE /api/calendar/feeds/{id}`) deletes the source and its events. An import counts toward the 20-feed limit and is refused when it is not an iCalendar (`not_calendar`) or larger than 5 MiB (`too_large`).
+Limits are those of the feed parser (§11): `RANGE=THISANDFUTURE` is a single override, an embedded custom `VTIMEZONE` is not honoured for recurrence, more than 20 000 events is refused. Tested with exports shaped like Google (UTC + `X-WR-*`), Outlook (Windows zone name with its own `VTIMEZONE`) and generic recurring/all-day/cancelled events (`tests/integration/test_calendar_import.py`, `e2e-real/cal01-calendar.spec.ts`); **real exports from Apple, Proton, Google and Outlook have not been tried**.
 
 ### 12.4 ProtonMail calendar (ICS feed)
 

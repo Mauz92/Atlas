@@ -2986,6 +2986,21 @@ not verified live and REQ-010/011/012 are `PARTIAL`, the release is **explicitly
 label and rationale in [`RELEASE.md`](RELEASE.md) §1. No requirement is overstated: the blocked
 calendar work (AR-001) and the device-bound notification/mobile work are recorded, not waived.
 
+**Re-score for the 0.1.0 scope (2026-11-13; proposed by the agent, for the owner's review; no code changed by it).** Evidence since 2026-11-01: the MU journeys J1-J7 pass against the real API and database **in CI** (run 43420687967, job "Real-stack journeys", green, 2026-11-13) and locally; the Linux desktop e2e passed 23/23 and the Android e2e 14/14 on a phone (SYNC-09, SYNC-10); the calendar scope was reduced by ADR-0076 and the client scope by ADR-0077.
+
+| Requirement | Was | Now (0.1.0 scope) | Reason |
+|---|---|---|---|
+| REQ-005 Task management | `PARTIAL` | `PASS` | The condition set on 2026-11-01 (J1/J2 and the Tasks page in a browser against the real API) is met locally and in CI |
+| REQ-006 Project management | `PARTIAL` | `PASS` | J3 and the Tasks-page project filter pass the same way |
+| REQ-007 Google Calendar | `PARTIAL` | `DEFERRED` | ADR-0076 (a Google calendar can be shown read-only through its secret ICS address) |
+| REQ-008 Microsoft Outlook | `PARTIAL` | `DEFERRED` | ADR-0076 (published ICS link) |
+| REQ-009 Calendar consolidation | `PARTIAL` | `PARTIAL` | Several calendars in one view over ICS links and imported files (fixture and e2e tested); **real exports from Google, Outlook, Apple and Proton are untried** |
+| REQ-010 Cross-device sync | `PARTIAL` | `PASS` | M7 plus real clients: Linux desktop and Android each synced against a throwaway server with a second device (SYNC-09/10 e2e), conflicts resolved without loss; the browser still uses its own engine (R-54) |
+| REQ-011 Notifications | `PARTIAL` | `PARTIAL` | Exact local reminders verified on the Linux desktop and on an Android phone (also in Doze); **real Web Push delivery to a browser is unverified** and iOS is out of scope |
+| REQ-012 OS agnostic | `PARTIAL` | `PARTIAL` | Browser (Linux-tested), Linux desktop and Android are verified; **Windows/macOS/iOS are out of 0.1.0 (ADR-0077)** |
+
+Resulting roll-up for 0.1.0: **`PASS`** REQ-001/002/003/004/005/006/010/013/014/015 (10), **`PARTIAL`** REQ-009/011/012 (3, each with the named gap), **`DEFERRED`** REQ-007/008 (2). Until the owner confirms this re-score the table above it stays the record of 2026-11-01.
+
 ### MU-07 — Daily note, templates and Today as home
 
 **Result: `DONE` (local); CI job `e2e-real` `NOT RUN` on GitHub Actions.** Today (`/`) shows overdue, due today,
@@ -4197,3 +4212,31 @@ Scope as run: **one phone**, OnePlus 8T (KB2003), OxygenOS on Android 14 (API 34
 
 **Status: `DONE` with recorded limitations (owner sign-off, 2026-11-13).** The app works end to end on the OnePlus 8T (Android 14) and an Android 15 emulator (phone e2e 14/14 including keep-connected, shared folder, editor, export and a simulated IME composition; 45- and 180-minute background soaks; the signed release APK installed and used), notes can be exported or kept in a shared folder, the shared Linux desktop is unaffected (23/23) and the Android CI workflow is green (run 43419691993). **Accepted limitations, none waived silently:** (1) a **push wake-up** (UnifiedPush/ntfy) is not built: a hint cannot start the sync with Atlas closed because the sync engine runs in the WebView (ADR-0075 D7); the optional keep-connected service covers the running case; (2) the **reboot re-arm** was verified on the emulator only, not on the OnePlus (the owner skipped it; the step can unlock the phone itself if re-run); (3) a **real CJK soft keyboard**, a **second phone vendor**, **unplugged Doze** and **TalkBack** were not tested; (4) background sync does not survive a reboot or the Activity being destroyed (the app must be opened once); (5) the debug-only test rig needs a USB phone. Re-open this task if any of these becomes a requirement.
 
+
+
+## SYNC-12 — Release gate for the 0.1.0 scope (Linux desktop, Android, web; 2026-11-13)
+
+Scope per ADR-0077 (Windows, macOS and iOS are out). Vocabulary: `PASS`, `FAIL`, `BLOCKED`, `NOT RUN`.
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Real-device matrix | `PASS` | **Linux desktop** (CachyOS, KDE Plasma Wayland, WebKitGTK 2.54): `e2e/run.mjs` 23/23. **OnePlus 8T, Android 14 (OxygenOS):** `e2e/android.mjs` 14/14 plus the reminder, soak (45 and 180 min), editor and IME steps. **Android 15 emulator (API 35):** the same script, including a reboot. **Browser (Chromium):** `e2e-real` journeys in CI (run 43420687967). Details and gaps: `ACCEPTANCE.md` SYNC-09, SYNC-10 |
+| Server restore with devices attached (the operator restores a backup, clients must not overwrite it silently) | `PASS` on both native clients | Linux desktop e2e steps "restore (SYNC-11a-4)" (re-upload and discard-and-re-download, the second asks twice and keeps the files); **Android phone, 2026-11-13 15:14 UTC: the same two choices, 14/14** (`E2E` step "restore", `atlas-admin record-restore` against the throwaway server). The server-side drill itself is M9-02 (restored notes byte-identical, rows identical) |
+| Docs: USER_GUIDE and OPERATIONS | `PASS` | USER_GUIDE "The server was restored from a backup" and the Android and desktop sections; OPERATIONS `record-restore` and the restore drill |
+| Not covered | `NOT RUN` | Windows/macOS/iOS (out of scope), a second Android vendor, a real browser push delivery, the in-app updater on the live server (REL-01) |
+
+
+## M5-12 — Manual `.ics` file import (2026-11-13, local; ADR-0076 D4)
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| An uploaded file becomes a read-only calendar, stored with no URL, never fetched | `PASS` | `tests/integration/test_calendar_import.py` (9 tests, real PostgreSQL, no network): creation, sealed-free row (`feed_url_ciphertext` NULL, `imported_at` set), sync, events listed |
+| Recurring, all-day, cancelled and foreign-zone exports read correctly | `PASS` | RRULE expanded (3 occurrences), all-day dates, an Outlook-shaped file with a Windows zone name and its own `VTIMEZONE` lands at the right UTC instant; **real exports from Google, Outlook, Apple and Proton were not tried** |
+| Preview stores nothing; bad and oversized files are refused safely | `PASS` | preview returns counts only; `not_calendar` (400), `too_large` (400 at 5 MiB, 422 above the 6 000 000-character field), no row created |
+| Replace updates in place and removes what vanished; same file again is a no-op | `PASS` | one updated + one tombstoned; second identical replace creates/updates/tombstones nothing (SHA-256 cursor) |
+| User scoping; the body is never returned or loaded by lists | `PASS` | another user gets 404 on replace and sees no events; `/api/calendar/accounts` contains no file text; `imported_ics` is a deferred column |
+| UI: choose, check, import, replace, remove; limits shown | `PASS` | `CalendarSettings.test.tsx` (+3), Playwright `e2e-real/cal01-calendar.spec.ts` (real API + PostgreSQL, Chromium): import, events on Calendar, replace file (event moves), a non-calendar file refused, remove; the axe test over Settings > Calendar (both themes, 360/390/768/1440 px) passes with the new form |
+| Defect found by this work | fixed | `ProviderSyncService._sync_feeds` held ORM rows across commits: after one feed's sync, the next feed's row was stale, so **a failing feed (or any second feed) broke the pass**; now each feed is re-read by id (regression test `test_a_broken_feed_does_not_stop_an_imported_calendar_from_syncing`) |
+| Migration | `PASS` | `b7d4e1a8c5f3` adds two nullable columns; the whole integration suite runs on it; downgrade drops them (documented data loss: stored files) |
+| Not done | | real-world export files from the four vendors; a per-user storage quota |
+| Full backend suite with this change | `PASS` | `pytest` **4770 passed, 14 skipped** (2026-11-13, 8 min on a quiet machine); `ruff`, `ruff format --check`, `mypy` clean; `npm run lint`, `typecheck`, `test` (1567) clean |

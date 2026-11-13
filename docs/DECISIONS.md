@@ -3681,3 +3681,21 @@ limiter store.
 - **D4. Manual import.** The feed adapter fetches a URL. A one-shot **upload of an `.ics` file** through the same parser, for calendars that offer no link, is roadmap task **M5-12** and is **not built yet**.
 - **D5. Why.** Real accounts, OAuth app verification (Google testing-mode token expiry and sensitive-scope verification, Microsoft tenant policies), a public callback endpoint (blocked by SEC-01: Atlas is tailnet-only) and a two-way sync design with conflict handling are weeks of work with external dependencies, for a first release meant for private use. Read-only ICS covers the daily need.
 - **Consequences.** 0.1.0's release label no longer waits on M5/M6; M5's exit criterion becomes "ICS-fed events shown read-only and correctly"; the release table, `RELEASE.md` and the risk register mark the provider items Deferred, not Open. Re-open with a new ADR when there are test accounts and a reason.
+
+## ADR-0077 — Release 0.1.0 ships the web app, the Linux desktop app and the Android app; Windows and macOS desktop are out
+
+**Status:** ACCEPTED (2026-11-13, owner decision: "linux and android only for 0.1.0"). **Related:** ADR-0055, ADR-0069, ADR-0075; R-36.
+
+- **D1.** The 0.1.0 clients are: the web app (any modern browser, PWA), the **Linux desktop app** (AppImage and `.deb`) and the **Android app** (a signed APK the owner builds). No Windows installer, no macOS build, no iOS.
+- **D2.** The Windows path stays in the tree as work already done (the SYNC-07 runner results, the keystore feature for Windows Credential Manager, the NSIS bundle check) but is **not built, tested or supported** in 0.1.0; R-36 (Windows no-admin install) stays open and moves to Later. The Windows release job remains off (`ATLAS_BUILD_WINDOWS` unset).
+- **D3.** The release notes say "Linux and Android" in one line; REQ-012 (OS agnostic) is satisfied for 0.1.0 by the browser client plus these two native clients, and the Windows/macOS gap is recorded rather than hidden.
+- **Consequence.** `RELEASE.md` open item 7 is resolved; the SYNC-09 Windows phase and M8-08's Windows/macOS rows move to the Later list.
+
+## ADR-0078 — Supported Python versions (A-07)
+
+**Status:** ACCEPTED (2026-11-13, recorded by the agent as a low-risk, reversible default under AGENTS.md section 16; the owner can overturn it). **Related:** A-07.
+
+- **D1. Production and CI run Python 3.13** (`python:3.13-slim` in `services/api/Dockerfile`, 3.13 through `uv` on the CI runner). This is the supported runtime of 0.1.0.
+- **D2. The minimum is 3.12** (`requires-python >=3.12`, ruff `py312`, mypy `python_version = 3.12`): the code is type-checked and linted against the oldest supported version so nothing newer than 3.12 syntax or stdlib slips in.
+- **D3. 3.14 is not a supported target yet.** The developer's local virtualenv is 3.14 and the full suite passes there, but CI and the image do not run it; it becomes supported when CI runs it (a matrix entry) and the image moves.
+- **D4. Upgrading** the image to a new Python is a normal dependency change: bump the Dockerfile and the CI `uv` version together, run the full suite, record it here.

@@ -456,6 +456,10 @@ Applies to the Android build of `apps/desktop` and `apps/desktop/plugins/atlas-a
 
 **Permissions requested:** `INTERNET`, `POST_NOTIFICATIONS`, `USE_EXACT_ALARM`, `RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_SPECIAL_USE` (only for the optional background mode), `MANAGE_EXTERNAL_STORAGE` (only for the optional shared folder, granted by the person). No contacts, location, camera, microphone or accounts.
 
+## 16a. Manual `.ics` import (M5-12, ADR-0076; implemented and tested 2026-11-13)
+
+An uploaded calendar file is **untrusted input**. Controls: a hard 5 MiB limit (the JSON field is capped at 6 000 000 characters, the service re-checks the byte size) so a file cannot exhaust memory or the database; the same parser as a feed (`icalendar`, a malformed event is skipped and counted, more than 20 000 events or a non-calendar body is refused with a safe message, never the content); no network access at all (so no SSRF surface); the body is never returned by any endpoint, never logged and not loaded by list queries (deferred column); event text is rendered through the same escaped paths as feed events (description is text, links are validated); the endpoints need a session and CSRF, are rate limited with the feed endpoints and scoped to the user (another user gets 404 on replace). **Not done:** malware scanning of the file (it is parsed, not executed; Atlas does not store attachments), and a per-user storage quota beyond the 20-source limit.
+
 ## 16. Calendar connections and feeds (Stage A, ADR-0071/0072; implemented and fixture-tested 2026-11-10; live provider behaviour unverified)
 
 | # | Threat | Control (verified by) |
