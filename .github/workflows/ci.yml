@@ -71,9 +71,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
+      # actions/setup-python only knows Ubuntu builds and cannot find 3.13 on the self-hosted Arch runner; uv provides the
+      # same 3.13 as the Dockerfile (python:3.13) and a venv with pip, put first on PATH for the following steps.
+      - name: Python 3.13 (uv)
+        run: |
+          uv python install 3.13
+          uv venv --seed --python 3.13 "$RUNNER_TEMP/py313"
+          echo "$RUNNER_TEMP/py313/bin" >> "$GITHUB_PATH"
+          echo "VIRTUAL_ENV=$RUNNER_TEMP/py313" >> "$GITHUB_ENV"
 
       # pg_dump 17+ (the backup tests run it against the postgres service) is installed on the runner host.
 
@@ -183,9 +188,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
+      # actions/setup-python only knows Ubuntu builds and cannot find 3.13 on the self-hosted Arch runner; uv provides the
+      # same 3.13 as the Dockerfile (python:3.13) and a venv with pip, put first on PATH for the following steps.
+      - name: Python 3.13 (uv)
+        run: |
+          uv python install 3.13
+          uv venv --seed --python 3.13 "$RUNNER_TEMP/py313"
+          echo "$RUNNER_TEMP/py313/bin" >> "$GITHUB_PATH"
+          echo "VIRTUAL_ENV=$RUNNER_TEMP/py313" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
