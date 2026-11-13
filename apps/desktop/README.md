@@ -39,7 +39,7 @@ node e2e/updater-test.mjs                                       # throwaway sign
 
 The same shell, built for Android; `plugins/atlas-android` supplies what a phone has and a computer does not.
 
-**Toolchain (user space, no sudo):** JDK 17 (Temurin), Android command-line tools, `platform-tools`, platform 35, build-tools 35.0.0, NDK 27.2.12479018, and the Rust targets `aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`. The defaults the scripts use are `~/.local/android/{jdk17,sdk}` (override with `JAVA_HOME`, `ANDROID_HOME`, `NDK_HOME`); exact versions and checksums are in `docs/SYNC_PROTOCOL.md` 13.4a. Accepting the Android SDK licences is the owner's decision (`sdkmanager --licenses`).
+**Toolchain (user space, no sudo; `scripts/setup-android-toolchain.sh [dir]` installs it with pinned checksums, and the Android CI workflow uses it):** JDK 17 (Temurin), Android command-line tools, `platform-tools`, platform 35, build-tools 35.0.0, NDK 27.2.12479018, and the Rust targets `aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`. The defaults the scripts use are `~/.local/android/{jdk17,sdk}` (override with `JAVA_HOME`, `ANDROID_HOME`, `NDK_HOME`); exact versions and checksums are in `docs/SYNC_PROTOCOL.md` 13.4a. Accepting the Android SDK licences is the owner's decision (`sdkmanager --licenses`).
 
 ```sh
 scripts/android-keystore.sh                 # once: creates keys/atlas-android.jks (your signing key; back it up, never commit it)

@@ -23,19 +23,24 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Toolchain present
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: Rust with the Android targets
         run: |
           set -euo pipefail
-          export ANDROID_HOME="${ANDROID_HOME:-$HOME/.local/android/sdk}"
-          export JAVA_HOME="${JAVA_HOME:-$HOME/.local/android/jdk17}"
-          "$JAVA_HOME/bin/java" -version
-          ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/ndk"
-          "$HOME/.cargo/bin/rustup" target list --installed | grep -c android
+          rustup toolchain install stable --profile minimal --target aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+          rustup default stable
+      - name: Android toolchain (JDK, SDK, NDK; pinned downloads, cached between runs)
+        run: |
+          set -euo pipefail
+          DIR="${RUNNER_TOOL_CACHE:-$HOME}/atlas-android"
+          apps/desktop/scripts/setup-android-toolchain.sh "$DIR" | tee /tmp/android-env.txt
+          sed 's/^export //' /tmp/android-env.txt | tr ' ' '\n' >> "$GITHUB_ENV"
       - name: Rust and TypeScript checks for the shared code
         working-directory: apps/desktop
         run: |
           set -euo pipefail
-          export PATH="$HOME/.cargo/bin:$PATH"
           cargo test --locked -p atlas-desktop-native
           cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Build the debug APK
