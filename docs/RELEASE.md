@@ -27,7 +27,7 @@ What it is **not**: public (Atlas stays on the tailnet until the SEC-01 audit), 
 
 | # | Open item | Where | Needs |
 |---|---|---|---|
-| 1 | ~~MU close-out~~ **Done 2026-11-13:** `e2e-real` green in CI (run 43420687967); the release table re-score is proposed in `ACCEPTANCE.md` and awaits the owner's confirmation | `ROADMAP.md` MU | owner confirms the re-score |
+| 1 | ~~MU close-out~~ **Done 2026-11-13:** `e2e-real` green in CI; the release table re-score was confirmed by the owner (`ACCEPTANCE.md`) | `ROADMAP.md` MU | done |
 | 2 | ~~SYNC-11c/12~~ **Done 2026-11-13** (11d moved to Later): shell on one engine, real-device matrix, restore with devices attached (`ACCEPTANCE.md` SYNC-12) | `ROADMAP.md` SYNC | done |
 | 3 | **Release workflow on the real server:** the in-app updater and the first real update have not run on the live server | `DEPLOYMENT.md` 12, REL-01 | owner's server |
 | 4 | ~~A-07 supported Python version~~ **Decided 2026-11-13 (ADR-0078): 3.13 runtime, 3.12 minimum** (owner can overturn) | `DECISIONS.md` | done |
@@ -94,7 +94,7 @@ The authoritative table is in `ACCEPTANCE.md` "Release Readiness (M9)"; the **pr
 
 ## 6. What remains before tagging 0.1.0
 
-The list in section 1 is authoritative. In short: the owner confirms the release re-score, and the first in-app update runs on the owner's server (dry run first). Everything else is Later.
+The list in section 1 is authoritative. In short: the owner approves tagging `v0.1.0` (it publishes images and a GitHub release), and the first in-app update runs on the owner's server (dry run first). The release re-score was confirmed on 2026-11-13. Everything else is Later.
 
 ## 7. How to verify this snapshot
 

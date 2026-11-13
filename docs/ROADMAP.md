@@ -23,7 +23,7 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M7 | Cross-device sync and offline | `DONE` | Sync recoverable under realistic failure ✔ (verified 2026-10-27) |
 | M8 | Notifications and mobile apps | `IN_PROGRESS` | Platform behaviour tested on real devices |
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
-| **MU** | **Usable core — personal-OS UX** (ADR-0043) | `DONE` (2026-11-13) | Owner journeys J1–J7 pass in a browser against the real API **and in CI** (run 43420687967); every sidebar item is a working screen; the release re-score is recorded in `ACCEPTANCE.md` (proposed, awaiting the owner's confirmation) |
+| **MU** | **Usable core — personal-OS UX** (ADR-0043) | `DONE` (2026-11-13) | Owner journeys J1–J7 pass in a browser against the real API **and in CI** (run 43420687967); every sidebar item is a working screen; the release re-score is recorded in `ACCEPTANCE.md` (confirmed by the owner 2026-11-13) |
 | **UX** | **Design system and app shell** (ADR-0051, `UX_AUDIT.md`) | `DONE` (local PASS; CI `e2e-real` NOT RUN) | UX-01…UX-03 `DONE` 2026-11-02, UX-04…UX-08 `DONE` 2026-11-03; J1–J7 and the axe sweep pass on the finished UI. The separate `AUTH-01` row (account recovery) was `BACKLOG` at this exit and is `DONE` since 2026-11-04 |
 | **SYNC** | **Local-first sync** (ADR-0055, ADR-0059 ACCEPTED, `SYNC_PROTOCOL.md`) | `IN_PROGRESS` (SYNC-01…SYNC-06 `DONE` locally 2026-11-03: server protocol v1 for tasks, projects and notes incl. history/merge, the resolution log with undo and per-device bearer credentials; next SYNC-07 Tauri spike / SYNC-08 `sync-core`) | Worked **first** (owner priority order). Server protocol + deterministic multi-client simulation pass before any native-shell task; Tauri spike verdict before SYNC-09/10 |
 
@@ -707,7 +707,7 @@ the release table is re-scored from user-reachable behaviour.
 | J1–J7 pass **in CI** | **`PASS`** (2026-11-13) | the `e2e-real` job ran on GitHub Actions on the self-hosted runner: CI run 43420687967 green (job "Real-stack journeys (Playwright, real API + PostgreSQL)"); it was `NOT RUN` on 2026-11-02 |
 | Every sidebar item is a working screen, no "Not implemented yet" placeholders | `PASS` (with a caveat) | `Placeholder` removed; all 14 items route to real pages (`App.tsx`). Caveat: **Calendar** shows sync status only, no events (M5 is blocked) and Today's events slot is empty by design |
 | `ACCEPTANCE.md` records the journey evidence | `PASS` | sections MU-00…MU-08 |
-| Release table re-scored from user-reachable behaviour | `PASS` (proposed 2026-11-13) | re-score block in `ACCEPTANCE.md` "Release Readiness": REQ-005/006/010 `PASS`; awaiting the owner's confirmation |
+| Release table re-scored from user-reachable behaviour | `PASS` (2026-11-13) | re-score block in `ACCEPTANCE.md` "Release Readiness": REQ-005/006/010 `PASS`; confirmed by the owner |
 
 **Update 2026-11-13:** CI has run the journeys and the release table has been re-scored (proposed); MU is `DONE`.
 

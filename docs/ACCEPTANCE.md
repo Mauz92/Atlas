@@ -2999,7 +2999,7 @@ calendar work (AR-001) and the device-bound notification/mobile work are recorde
 | REQ-011 Notifications | `PARTIAL` | `PARTIAL` | Exact local reminders verified on the Linux desktop and on an Android phone (also in Doze); **real Web Push delivery to a browser is unverified** and iOS is out of scope |
 | REQ-012 OS agnostic | `PARTIAL` | `PARTIAL` | Browser (Linux-tested), Linux desktop and Android are verified; **Windows/macOS/iOS are out of 0.1.0 (ADR-0077)** |
 
-Resulting roll-up for 0.1.0: **`PASS`** REQ-001/002/003/004/005/006/010/013/014/015 (10), **`PARTIAL`** REQ-009/011/012 (3, each with the named gap), **`DEFERRED`** REQ-007/008 (2). Until the owner confirms this re-score the table above it stays the record of 2026-11-01.
+Resulting roll-up for 0.1.0: **`PASS`** REQ-001/002/003/004/005/006/010/013/014/015 (10), **`PARTIAL`** REQ-009/011/012 (3, each with the named gap), **`DEFERRED`** REQ-007/008 (2). The owner confirmed this re-score on 2026-11-13 ("do whatever you recommend"); it is now the record for 0.1.0. CI for the final commit (all five jobs, including the real-stack journeys) is green. The table above it is kept as the history of 2026-11-01.
 
 ### MU-07 — Daily note, templates and Today as home
 
