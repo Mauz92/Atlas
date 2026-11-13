@@ -587,6 +587,39 @@ async function main() {
     }
   });
 
+  if (!process.env.E2E_SKIP_RESTORE) await step("restore (SYNC-11a-4): the operator restores the server; the phone stops on the restore screen and each choice resumes it without losing the notes", async () => {
+    const restoreServer = () => sh(path.join(venv, "python"), ["-m", "atlas.auth.cli", "record-restore"], { ...process.env, ATLAS_ENV: "test", DATABASE_URL: dbUrl() });
+    const haltKind = () => bridge(() => window.atlasDesktop.snapshot().then((x) => x.sync?.halt?.kind ?? null));
+    const clickButton = (text) => bridge((t) => { const b = [...document.querySelectorAll("button")].find((x) => x.innerText.trim() === t); if (!b) throw new Error("no button " + t); b.click(); return true; }, text);
+    shell(`am start -n ${PKG}/.MainActivity`);
+    await sleep(1500);
+    // 1) re-upload the phone's data
+    restoreServer();
+    await until("the restore halt", async () => (await haltKind()) === "restore_confirmation" || null, 120000, 2000);
+    await bridge(() => { location.assign("/"); });
+    const text = await until("the restore screen", async () => { const t = await pageText(); return /The server was restored from a backup/.test(t) ? t : null; }, 30000, 1000);
+    if (!/Re-upload my local data/.test(text) || !/Discard local changes and re-download/.test(text)) throw new Error(text.slice(0, 500));
+    await sleep(5000); // nothing happens by itself
+    if ((await haltKind()) !== "restore_confirmation") throw new Error("the halt cleared without a choice");
+    await clickButton("Re-upload my local data");
+    await until("resumed after re-upload", async () => (await haltKind()) === null || null, 120000, 2000);
+    // 2) discard local changes and re-download: asks twice, keeps the files
+    const before = runAs("ls notes/seed").trim();
+    restoreServer();
+    await until("the restore halt again", async () => (await haltKind()) === "restore_confirmation" || null, 120000, 2000);
+    await bridge(() => { location.assign("/"); });
+    await until("the restore screen again", async () => /Discard local changes and re-download/.test(await pageText()) || null, 30000, 1000);
+    await clickButton("Discard local changes and re-download");
+    const ask = await pageText();
+    if (!/Discard the .*unsent change/.test(ask) || !/never\s+deleted/.test(ask.replace(/\n/g, " "))) throw new Error(ask.slice(0, 600));
+    if ((await haltKind()) !== "restore_confirmation") throw new Error("the first click already discarded");
+    await clickButton("Yes, discard and re-download");
+    await until("resumed after discard", async () => (await haltKind()) === null || null, 120000, 2000);
+    const after = runAs("ls notes/seed").trim();
+    if (!after.includes("from-server.md")) throw new Error("a note file was deleted by the discard: " + after);
+    return { filesBefore: before, filesAfter: after, resumed: true };
+  });
+
   await step("sign out: the Keystore entry and the key are removed and the page returns to sign-in", async () => {
     await bridge(() => { setTimeout(() => window.atlasDesktop.signOut(), 0); }); // not awaited: the page navigates away while it runs
     await until("sign-in page", () => /welcome/.test(page.url()) || null, 20000);
