@@ -76,9 +76,9 @@ all to avoid a second source of truth (AGENTS.md §2, §15).
 | REQ-004 | Markdown notes | Notes are stored as actual `.md` files. |
 | REQ-005 | Task management | Inbox, due dates, priorities, recurrence, subtasks, project assignment. |
 | REQ-006 | Project management | Projects, task lists, Kanban boards, progress, project notes. |
-| REQ-007 | Google Calendar | OAuth-based integration and automated event synchronisation. |
-| REQ-008 | Microsoft Outlook | Microsoft Graph integration for compatible personal and M365 accounts. |
-| REQ-009 | Calendar consolidation | Multiple calendars viewable in one interface. |
+| REQ-007 | Google Calendar | OAuth-based integration and automated event synchronisation. **Deferred after 0.1.0 (owner decision 2026-11-13, ADR-0076); until then a Google calendar is shown read-only through its secret ICS address.** |
+| REQ-008 | Microsoft Outlook | Microsoft Graph integration for compatible personal and M365 accounts. **Deferred after 0.1.0 (ADR-0076); until then an Outlook calendar is shown read-only through its published ICS link.** |
+| REQ-009 | Calendar consolidation | Multiple calendars viewable in one interface (in 0.1.0: ICS-fed calendars, read-only; ADR-0076). |
 | REQ-010 | Cross-device sync | Changes propagate across authorised clients without manual export/import. |
 | REQ-011 | Notifications | Supported desktop and mobile platforms receive task/event reminders. |
 | REQ-012 | OS agnostic | Linux, Windows, Android and the web (PWA) are product targets. **Amended 2026-11-04 (ADR-0068 Q9, owner):** iOS and macOS are out of scope for the native clients; the PWA works in any modern browser, including on those systems. |

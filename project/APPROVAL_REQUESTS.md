@@ -2,6 +2,8 @@
 
 ## AR-001 — M5-00: calendar provider validation requires real accounts
 
+**WITHDRAWN 2026-11-13 (owner decision, ADR-0076): Google and Microsoft API sync is deferred; no test accounts are needed now.**
+
 - **Requested:** 2026-10-26
 - **Task:** M5-00 — validate Microsoft tenant + Google publishing mode with real accounts
   (docs/ROADMAP.md M5; the M5 entry gate).

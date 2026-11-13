@@ -1,7 +1,7 @@
 # Atlas — Release Checklist, Known Limitations and Release Label
 
 **Status:** Active (Milestone 9, task M9-08)
-**Last updated:** 2026-10-27
+**Last updated:** 2026-11-13 (sections 1-2 only; section 3 onwards still reflect 2026-10-27, see open item 6)
 **Scope:** the pre-release checklist, the consolidated known-limitations list, and the release label
 for the current state of Atlas. Per-requirement readiness (REQ-001…015) lives in
 [`ACCEPTANCE.md`](ACCEPTANCE.md) §"Release Readiness (M9)"; milestone status is authoritative in
@@ -16,48 +16,43 @@ does **not** claim production-readiness and it does **not** present blocked work
 
 ## 1. Release label
 
-> ## **`0.1.0-pre` — development snapshot · NOT production-ready.**
+> ## **`0.1.0` — first release, for private use (own devices, tailnet-only). Plan, 2026-11-13.**
+> The tag is **not cut yet**: see the open list below. Until it is, the label is `0.1.0-pre`.
 
-Atlas at this point is a **development snapshot**, not a production release. Everything below
-"M0–M4 and M7 `DONE`", the buildable M5 backend, and the buildable M8/M9 scope is implemented and
-verified. The product is **not** production-ready because three milestone gates remain open on
-external resources:
+What 0.1.0 is: a self-hosted workspace of Markdown notes, tasks, projects and planning (REQ-004/005/006), cross-device sync and offline (REQ-010), reminders (REQ-011) on the web, the **Linux desktop app** and the **Android app** (a signed APK you build yourself), read-only calendars through **ICS links** (REQ-009), with security, backup/restore, export and in-app server updates (REQ-013/014/015).
 
-| Gate | State | Why it is open |
-|---|---|---|
-| **M5 — unified read-only calendar** | `IN_PROGRESS` (open) | `M5-00` is `BLOCKED` — it needs **real Google/Microsoft accounts** (approval request **AR-001**). `M5-03/04/05/07/09` depend on it and are `BACKLOG`. |
-| **M6 — bidirectional calendar sync** | `BACKLOG` | Depends on the real-provider M5 work; nothing started. |
-| **M8 — notifications and mobile apps** | `IN_PROGRESS` (open) | `M8-04/06/07/08` are `BACKLOG` — they need **real devices** and a **live push service**. |
+What it is **not**: public (Atlas stays on the tailnet until the SEC-01 audit), Windows/macOS/iOS, Google or Microsoft **API** calendar sync and calendar writing (**deferred, ADR-0076**), push wake-up for Android, background sync that survives a reboot.
 
-`M9` (security, recovery, release) is `IN_PROGRESS`: all eight of its tasks, including this one, are
-`DONE`, but the milestone gate ("production-readiness review") is **not closed** — the honest result
-of that review is that Atlas is **not production-ready while M5/M6/M8 are open**.
+**Still open before the tag (nothing else blocks it):**
 
-**Use it for:** a self-hosted notes + tasks + projects + planning + offline-sync workspace
-(REQ-004/005/006/010/015) with security and recovery controls in place (REQ-013/014), **without**
-calendar accounts or mobile apps.
+| # | Open item | Where | Needs |
+|---|---|---|---|
+| 1 | **MU close-out:** real-stack browser E2E (`e2e-real`) green in CI; re-score the release table | `ROADMAP.md` MU, `ACCEPTANCE.md` | CI run |
+| 2 | **SYNC-11c/11d and SYNC-12 release gate:** shell on one engine (partial), real-device matrix, backup/restore with devices attached, USER_GUIDE/OPERATIONS | `ROADMAP.md` SYNC | owner's devices |
+| 3 | **Release workflow on the real server:** the in-app updater and the first real update have not run on the live server | `DEPLOYMENT.md` 12, REL-01 | owner's server |
+| 4 | **A-07:** decide the supported Python version | `DECISIONS.md` | owner decision |
+| 5 | **M5-12 manual `.ics` import** (kept by the owner) | `ROADMAP.md` Later | small build |
+| 6 | **Rewrite the checklist below** from the current evidence (it still reflects 2026-10-27) | this file | docs |
+| 7 | **Windows desktop:** not built or tested (R-36); either build it or state "Linux and Android only" in the notes | `ROADMAP.md` SYNC-09 | decision |
 
-**Do not use it for:** a production deployment that is expected to include Google/Microsoft calendar,
-bidirectional calendar editing, mobile apps or device-verified notifications. Those are not delivered.
+**Not required for 0.1.0 (Later, `ROADMAP.md`):** Google/Microsoft API sync and writing (M5-00/03/04/09, M6), SEC-01 audit (required before any public exposure), UnifiedPush wake-up, iOS.
 
 ---
 
-## 2. What is in / out of this snapshot
+## 2. What is in / out of 0.1.0
 
-| Area | State | Delivering work |
-|---|---|---|
-| Markdown notes (real `.md`, revisions, conflicts, search, tags/wiki links) | **In, verified** | M2 (gate `PASS`) |
-| Tasks (Inbox/Today/Upcoming, Day/Week, recurrence, subtasks, priorities, due dates, project assignment) | **In, verified** (backend + core views) | M3 (gate `PASS`), M4-02 |
-| Projects, Kanban board, derived progress, note↔project links, project export | **In, verified** | M4 (gate `PASS`) |
-| Cross-device sync + offline (change feed, durable offline queue, reconnect reconciliation, conflict resolution) | **In, verified** (mechanism + browser E2E; no literal two-device run) | M7 (gate `PASS`) |
-| Notifications: durable scheduler, Web Push pipeline, device registry, reminder preferences | **In, verified** (pipeline; no real delivery) | M8-01/02/03/05 |
-| Calendar foundation: encrypted credential store, adapter contract, projection + cursors, sync-status surface, reconciliation | **In, verified** (no provider contacted) | M5-01/02/06/08/10 |
-| Security/recovery: auth, encrypted tokens, backups + executed restore, vulnerability scan, security review, upgrade/rollback, user/operator docs | **In, verified** | M1, M5-01, M9-01…07 |
-| **Google Calendar account + event sync** | **Out — blocked** | M5-03 (needs AR-001) |
-| **Microsoft Outlook/Graph account + event sync** | **Out — blocked** | M5-04 (needs AR-001) |
-| **Unified calendar day/week/month view; account-connection UI** | **Out — blocked** | M5-05/M5-07 (need M5-03/04) |
-| **Bidirectional calendar sync** | **Out — not started** | M6 |
-| **Android / iOS apps; native push; desktop matrix** | **Out — needs hardware** | M8-04/06/07/08 |
+| Area | State |
+|---|---|
+| Markdown notes, tasks, projects, planning | **In, verified** (M2-M4) |
+| Cross-device sync + offline, conflict screens, devices list | **In, verified** (M7, SYNC-01…11; browser path on its own engine, R-54) |
+| Reminders: web push, Linux desktop (resident), Android (exact alarms, keep-connected option) | **In, verified on Linux and one Android phone + emulator** |
+| Linux desktop app (AppImage, .deb) | **In** (`ACCEPTANCE.md` SYNC-09; e2e 23/23) |
+| Android app (signed APK, Keystore, export, shared folder) | **In** (`ACCEPTANCE.md` SYNC-10, `DONE` with recorded limitations) |
+| Calendar: ICS links, unified Day/Week/Month/Agenda, read-only | **In, fixture-tested; a real Proton link UNVERIFIED** |
+| Security, backup + restore, upgrade/rollback, export, server updater | **In** (updater not yet run on the live server) |
+| Google/Microsoft calendar API sync, calendar writing | **Out, deferred (ADR-0076)** |
+| Windows/macOS desktop, iOS | **Out** |
+| Public exposure | **Out** until SEC-01 |
 
 ---
 

@@ -1,6 +1,6 @@
 # Atlas — Calendar Synchronisation
 
-**Status:** Stage A (read-only) implemented and fixture-tested; live provider compatibility **UNVERIFIED** (see §12)
+**Status:** Stage A (read-only) implemented and fixture-tested; live provider compatibility **UNVERIFIED** (see §12). **2026-11-13 (ADR-0076): Google/Microsoft API sync and all provider writing (M6) are DEFERRED after 0.1.0; the ICS feed path (§ICS) is the supported calendar source, and a manual `.ics` file import (M5-12) is on the roadmap.**
 **Last updated:** 2026-11-10
 
 Calendar synchronisation is a distributed-systems problem, not a CRUD feature. This document

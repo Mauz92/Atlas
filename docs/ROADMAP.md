@@ -18,8 +18,8 @@ This is the canonical project state. Milestones are worked in dependency order. 
 | M2 | Markdown notes | `DONE` | Markdown portability and integrity verified ✔ |
 | M3 | Core task management | `DONE` | Tasks usable as a standalone daily tool ✔ (verified 2026-10-26) |
 | M4 | Projects and planning | `DONE` | Notes + tasks + projects form one workflow ✔ (verified 2026-10-26) |
-| M5 | Unified read-only calendar | `IN_PROGRESS` | Real calendar data synced safely (no writes) |
-| M6 | Bidirectional calendar sync | `BACKLOG` | External event editing reliable for daily use |
+| M5 | Unified read-only calendar | `IN_PROGRESS` | **Re-scoped (ADR-0076, 2026-11-13): ICS-fed events shown read-only and correctly; Google/Microsoft live sync deferred to Later.** Original gate: real calendar data synced safely (no writes) |
+| M6 | Bidirectional calendar sync | `BACKLOG` | **DEFERRED to Later (ADR-0076).** External event editing reliable for daily use |
 | M7 | Cross-device sync and offline | `DONE` | Sync recoverable under realistic failure ✔ (verified 2026-10-27) |
 | M8 | Notifications and mobile apps | `IN_PROGRESS` | Platform behaviour tested on real devices |
 | M9 | Security, recovery, release | `IN_PROGRESS` | Production-readiness review |
@@ -311,16 +311,16 @@ view; incremental sync; sync status + errors.
 
 | ID | Title | Depends on | Acceptance | Tests | Status |
 |---|---|---|---|---|---|
-| M5-00 | Validate MS tenant + Google publishing mode with real accounts | M1-05 | Refresh tokens persist; scopes granted; limitations noted | Manual + recorded evidence | `BLOCKED on live verification` — runbook + evidence template written (`CALENDAR_SYNC.md` §12.7); the owner runs it with their real accounts (2026-11-10 decision: real Google account manually, never in tests) |
+| M5-00 | Validate MS tenant + Google publishing mode with real accounts | M1-05 | Refresh tokens persist; scopes granted; limitations noted | Manual + recorded evidence | DEFERRED to Later (ADR-0076, owner 2026-11-13): `BLOCKED on live verification` — runbook + evidence template written (`CALENDAR_SYNC.md` §12.7); the owner runs it with their real accounts (2026-11-10 decision: real Google account manually, never in tests) |
 | M5-01 | OAuth credential store (encrypted) | M1-05 | Tokens encrypted at rest; key external | Unit + integration | `DONE` |
 | M5-02 | Provider adapter interface | M5-01 | Common interface; no provider leakage | Unit | `DONE` |
-| M5-03 | Google Calendar adapter (read, syncToken) | M5-02 | Pagination, incremental, deletions handled | Adapter tests | `IN_REVIEW` (built + fixture-tested 2026-11-10; **live compatibility UNVERIFIED**, not `DONE` until M5-00 evidence) |
-| M5-04 | Microsoft Graph adapter (read, delta) | M5-02 | Pagination, delta, deletions handled | Adapter tests | `IN_REVIEW` (built + fixture-tested; **live compatibility UNVERIFIED**) |
-| M5-05 | Calendar/account selection UI | M5-03,M5-04 | Select calendars; colour; connect/disconnect | Frontend + E2E | `IN_REVIEW` (UI, OAuth flow and E2E against the fake provider pass; real OAuth consent screens UNVERIFIED) |
+| M5-03 | Google Calendar adapter (read, syncToken) | M5-02 | Pagination, incremental, deletions handled | Adapter tests | DEFERRED to Later (ADR-0076, owner 2026-11-13): `IN_REVIEW` (built + fixture-tested 2026-11-10; **live compatibility UNVERIFIED**, not `DONE` until M5-00 evidence) |
+| M5-04 | Microsoft Graph adapter (read, delta) | M5-02 | Pagination, delta, deletions handled | Adapter tests | DEFERRED to Later (ADR-0076, owner 2026-11-13): `IN_REVIEW` (built + fixture-tested; **live compatibility UNVERIFIED**) |
+| M5-05 | Calendar/account selection UI | M5-03,M5-04 | Select calendars; colour; connect/disconnect | Frontend + E2E | Provider-account half DEFERRED (ADR-0076); ICS source selection stays: `IN_REVIEW` (UI, OAuth flow and E2E against the fake provider pass; real OAuth consent screens UNVERIFIED) |
 | M5-06 | Event projection store + sync cursors | M5-02,M1-08 | Cursor advances only after commit | Integration | `DONE` |
-| M5-07 | Unified calendar view (day/week/month) | M5-05 | Time-zone-correct display; all-day + recurring | Frontend + E2E | `IN_REVIEW` (Day/Week/Month/Agenda, Today and Week integration; real-provider data UNVERIFIED) |
+| M5-07 | Unified calendar view (day/week/month) | M5-05 | Time-zone-correct display; all-day + recurring | Frontend + E2E | Over ICS-fed events (provider data deferred, ADR-0076): `IN_REVIEW` (Day/Week/Month/Agenda, Today and Week integration; real-provider data UNVERIFIED) |
 | M5-08 | Sync status + error surface | M5-06 | Last sync, failures visible in UI | Integration + E2E | `DONE` |
-| M5-09 | Change notifications (hints → reconcile) | M5-03,M5-04 | Notification triggers reconcile; never trusted as full log | Integration | `BACKLOG` |
+| M5-09 | Change notifications (hints → reconcile) | M5-03,M5-04 | Notification triggers reconcile; never trusted as full log | Integration | DEFERRED to Later (ADR-0076, owner 2026-11-13): `BACKLOG` |
 | M5-10 | Periodic reconciliation fallback | M5-06 | Missed notifications recovered by scan | Integration | `DONE` (wired to the real adapters and ICS feeds by Stage A, 2026-11-10) |
 | M5-11 | ICS feed adapter (Proton and others) | M5-02,M5-06,M5-10 | Secret feed URL (sealed, masked), SSRF-guarded fetch, conditional GET, RRULE/EXDATE/RECURRENCE-ID, deletions by diffing, malformed feeds never crash | Unit + integration + E2E (fixture host) | `IN_REVIEW` (fixture-tested; a real Proton link UNVERIFIED) |
 
@@ -383,14 +383,14 @@ policies; expired-token recovery; reconciliation; integration tests vs real test
 
 | ID | Title | Depends on | Acceptance | Tests | Status |
 |---|---|---|---|---|---|
-| M6-01 | Create events via provider (Atlas-owned) | M5-06 | Created in provider; projection updated with returned id | Integration (real account) | `BACKLOG` |
-| M6-02 | Update events via provider | M6-01 | Update reflected in provider; version stored | Integration | `BACKLOG` |
-| M6-03 | External deletion propagation | M5-06 | Provider deletion removes/marks projection | Integration | `BACKLOG` |
-| M6-04 | Conflict detection + resolution UI | M6-02 | Conflicts preserved and surfaced | Integration + E2E | `BACKLOG` |
-| M6-05 | Retry/backoff + idempotency for writes | M1-08,M6-01 | No duplicate events on retry | Integration | `BACKLOG` |
-| M6-06 | Expired/revoked token recovery | M5-01 | Re-auth flow; no data loss | Integration | `BACKLOG` |
-| M6-07 | Feedback-loop prevention | M6-02 | Local echo does not re-trigger writes | Integration | `BACKLOG` |
-| M6-08 | Bidirectional E2E per provider | M6-01…07 | Both directions, deletions, recurring, conflicts | E2E (real accounts) | `BACKLOG` |
+| M6-01 | Create events via provider (Atlas-owned) | M5-06 | Created in provider; projection updated with returned id | Integration (real account) | DEFERRED to Later (ADR-0076, owner 2026-11-13): `BACKLOG` |
+| M6-02 | Update events via provider | M6-01 | Update reflected in provider; version stored | Integration | DEFERRED to Later (ADR-0076, owner 2026-11-13): `BACKLOG` |
+| M6-03 | External deletion propagation | M5-06 | Provider deletion removes/marks projection | Integration | DEFERRED to Later (ADR-0076, owner 2026-11-13): `BACKLOG` |
+| M6-04 | Conflict detection + resolution UI | M6-02 | Conflicts preserved and surfaced | Integration + E2E | DEFERRED to Later (ADR-0076, owner 2026-11-13): `BACKLOG` |
+| M6-05 | Retry/backoff + idempotency for writes | M1-08,M6-01 | No duplicate events on retry | Integration | DEFERRED to Later (ADR-0076, owner 2026-11-13): `BACKLOG` |
+| M6-06 | Expired/revoked token recovery | M5-01 | Re-auth flow; no data loss | Integration | DEFERRED to Later (ADR-0076, owner 2026-11-13): `BACKLOG` |
+| M6-07 | Feedback-loop prevention | M6-02 | Local echo does not re-trigger writes | Integration | DEFERRED to Later (ADR-0076, owner 2026-11-13): `BACKLOG` |
+| M6-08 | Bidirectional E2E per provider | M6-01…07 | Both directions, deletions, recurring, conflicts | E2E (real accounts) | DEFERRED to Later (ADR-0076, owner 2026-11-13): `BACKLOG` |
 
 **Gate:** external event editing reliable enough for daily use.
 
@@ -1531,7 +1531,7 @@ decisions below are made.
 | A-05 | Fix startup crash on documented `ALLOWED_HOSTS=host` / blank values (list settings now accept comma-separated or JSON) | `DONE` | `tests/unit/test_config.py` (regression, 4 cases) |
 | A-06 | Docs: condense roadmap verification narrative to pointers (evidence lives in `ACCEPTANCE.md`); remove stale `project/BACKLOG.md` | `DONE` | `ROADMAP.md` 105 KB → 44 KB; original text in git history |
 | A-07 | Decide the supported Python version (image/CI use 3.13; local venv 3.14; `mypy` targets 3.12) | `READY` | Needs a decision; see `DECISIONS.md` when taken |
-| A-08 | M5-00 real-account validation (AR-001) | `BLOCKED` | Needs owner to supply throwaway Google/Microsoft test accounts |
+| A-08 | M5-00 real-account validation (AR-001) | `BLOCKED` | DEFERRED to Later (ADR-0076, owner 2026-11-13): Needs owner to supply throwaway Google/Microsoft test accounts |
 | A-10 | Function audit; adopt the personal-OS direction; add milestone MU; re-score REQ-005/006 `PARTIAL` (ADR-0043, R-22) | `DONE` | `PRODUCT_SPEC.md` §1.1, `DECISIONS.md` ADR-0043, this section |
 | A-09 | Decide mobile strategy: PWA-only v1 vs native Android/iOS (M8-06/07) | `BLOCKED` | Direction set in ADR-0055 (Android via Tauri 2, PWA fallback, iOS out of scope); final choice after the spike |
 
@@ -1564,3 +1564,17 @@ was verified before the next (targeted tests, then the whole suite at the end).
 **Not built (decided):** server-side tracking of "the owner saw the code" (R-56), e-mail or push confirmation of a reset (no channel), a
 shared limiter store (R-57), several codes per account.
 
+---
+
+## Later (after 0.1.0; owner decision 2026-11-13, ADR-0076)
+
+Not scheduled. Each needs the resource named; none blocks the first release.
+
+| ID | Title | Needs | Notes |
+|---|---|---|---|
+| M5-12 | Manual `.ics` file import (one-shot upload through the existing ICS parser) | nothing external | **Kept by the owner.** Small: reuse `ics.py`; an upload endpoint, size limit, preview, import as a read-only local calendar source; tests with real-world exports (Proton, Google, Outlook, Apple) |
+| M5-00 | Validate Microsoft tenant and Google publishing mode with real accounts | throwaway Google and Microsoft accounts | AR-001 is withdrawn until then |
+| M5-03/04/05/09 | Live Google and Microsoft read sync, account connection, change notifications | M5-00; a public callback endpoint (SEC-01) | Adapters exist and are fixture-tested |
+| M6-01…08 | Writing events to the providers, conflicts, token recovery, loop prevention, per-provider E2E | M5-00 done | The whole of M6; design rules stay in `CALENDAR_SYNC.md` and AGENTS.md section 10 |
+| SEC-01 | Independent security audit | reviewer and budget | Needed before public exposure, also before a public OAuth callback |
+| M8-04 push | UnifiedPush/ntfy wake-up for Android | a distributor app | ADR-0075 D7 |

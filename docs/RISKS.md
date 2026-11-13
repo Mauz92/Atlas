@@ -11,6 +11,7 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 ## High severity
 
 ### R-01 — Microsoft tenant restrictions block calendar access
+- **Deferred (ADR-0076, 2026-11-13):** the provider integration is not part of 0.1.0; this risk returns when it is scheduled.
 - **Severity/Likelihood:** High / Medium
 - **Impact:** REQ-008 unmet for work accounts; OAuth app registration blocked by tenant policy.
 - **Mitigation:** Validate OAuth + calendar access with a **real test account in M5 before
@@ -105,6 +106,7 @@ Every open risk has an owner-milestone and a mitigation. Risks are reviewed at e
 - **Owner milestone:** M1 (inventory), M9 (audit). **Status:** Open.
 
 ### R-13 — Google OAuth refresh-token expiry (Testing mode)
+- **Deferred (ADR-0076, 2026-11-13):** the provider integration is not part of 0.1.0; this risk returns when it is scheduled.
 - **Severity/Likelihood:** Medium / High
 - **Impact:** Calendar sync stops after ~7 days; user must re-authenticate repeatedly.
 - **Mitigation:** Publish the OAuth app to **Production** (unverified) for personal use; verify
