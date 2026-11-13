@@ -325,6 +325,61 @@ class IcsFeedAdapter:
         )
 
 
+class ImportedIcsAdapter:
+    """:class:`~atlas.calendar.adapter.CalendarAdapter` over an uploaded ``.ics`` file (M5-12).
+
+    No network: the body lives on the source row. The cursor is the body's SHA-256, so an
+    unchanged file is a no-op and a replaced file is a full snapshot (the sync layer tombstones
+    what vanished).
+    """
+
+    provider = ICS
+    cursor_type = CursorType.FEED_VALIDATOR
+
+    def __init__(self, *, feed_id: str, body: bytes, name: str, time_zone: str = "UTC") -> None:
+        self._feed_id = feed_id
+        self._body = body
+        self._name = name
+        self._zone = time_zone
+        self.last_skipped = 0
+
+    async def list_calendars(self) -> Sequence[Calendar]:
+        return [
+            Calendar(
+                id=self._feed_id,
+                provider=ICS,
+                name=self._name,
+                time_zone=self._zone,
+                is_read_only=True,
+            )
+        ]
+
+    async def list_events(
+        self,
+        calendar_id: str,
+        *,
+        cursor: str | None = None,
+        page_token: str | None = None,
+        page_size: int | None = None,
+    ) -> EventPage:
+        digest = hashlib.sha256(self._body).hexdigest()
+        if _decode_cursor(cursor).get("sha") == digest:
+            return EventPage(next_cursor=cursor)
+        parsed = parse_ics(self._body, feed_id=self._feed_id, fallback_zone=self._zone)
+        self.last_skipped = parsed.skipped
+        return EventPage(
+            events=parsed.events,
+            next_cursor=json.dumps({"sha": digest}, separators=(",", ":")),
+            is_snapshot=True,
+        )
+
+
+def preview_import(body: bytes) -> tuple[int, str | None, int]:
+    """``(event count, calendar name, skipped)`` for an uploaded file. Nothing is stored."""
+    parsed = parse_ics(body, feed_id="preview")
+    return len(parsed.events), parsed.name, parsed.skipped
+
+
 async def preview_feed(url: str) -> tuple[int, str | None, int]:
     """``(event count, calendar name, skipped)`` for the add-feed "test" step. Nothing is stored."""
     result = await fetch_feed(url, settings=get_settings())

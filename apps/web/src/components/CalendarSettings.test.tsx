@@ -10,6 +10,7 @@ vi.mock("../api/client", async (original) => ({
   calendarApi: {
     accounts: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), syncProvider: vi.fn(),
     updateSource: vi.fn(), previewFeed: vi.fn(), addFeed: vi.fn(), removeFeed: vi.fn(),
+    previewImport: vi.fn(), addImport: vi.fn(), replaceImport: vi.fn(),
   },
 }));
 
@@ -139,3 +140,47 @@ describe("CalendarSettings", () => {
     expect(await screen.findByRole("heading", { name: "Google Calendar" })).toBeInTheDocument();
   });
 });
+
+describe("importing an .ics file (M5-12)", () => {
+  const file = (text: string, name = "family.ics") => new File([text], name, { type: "text/calendar" });
+  const ICS = "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n";
+
+  it("reads the chosen file, checks it on the server, then imports it with the name from the file", async () => {
+    api.accounts.mockResolvedValue({ providers: [ics()] });
+    api.previewImport.mockResolvedValue({ event_count: 3, name: null, skipped: 1 });
+    api.addImport.mockResolvedValue(makeSource({ provider: "ics", is_import: true, name: "family" }));
+    show();
+    const input = await screen.findByLabelText("Calendar file");
+    fireEvent.change(input, { target: { files: [file(ICS)] } });
+    await waitFor(() => expect(screen.getByLabelText("Calendar name")).toHaveValue("family"));
+    fireEvent.click(screen.getByRole("button", { name: "Check file" }));
+    expect(await screen.findByText(/Readable calendar with 3 events \(1 could not be read\)/)).toBeInTheDocument();
+    expect(api.previewImport).toHaveBeenCalledWith(ICS);
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    await waitFor(() => expect(api.addImport).toHaveBeenCalledWith({ content: ICS, name: "family", color: undefined }));
+  });
+
+  it("refuses a file over 5 MiB before uploading it", async () => {
+    api.accounts.mockResolvedValue({ providers: [ics()] });
+    show();
+    const big = new File(["x"], "huge.ics");
+    Object.defineProperty(big, "size", { value: 6 * 1024 * 1024 });
+    fireEvent.change(await screen.findByLabelText("Calendar file"), { target: { files: [big] } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("larger than 5 MiB");
+    expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+    expect(api.previewImport).not.toHaveBeenCalled();
+  });
+
+  it("offers Replace file only on imported calendars and sends the new text", async () => {
+    api.accounts.mockResolvedValue({
+      providers: [ics({ calendars: [makeSource({ id: "imp", provider: "ics", name: "Family", is_import: true, feed_url_display: "Imported file" }), makeSource({ id: "feed", provider: "ics", name: "Proton", feed_url_display: "https://x/••" })] })],
+    });
+    api.replaceImport.mockResolvedValue(makeSource({ id: "imp", provider: "ics", is_import: true }));
+    show();
+    const replace = await screen.findByLabelText("Replace the file of Family");
+    expect(screen.queryByLabelText("Replace the file of Proton")).toBeNull();
+    fireEvent.change(replace, { target: { files: [file(ICS, "new.ics")] } });
+    await waitFor(() => expect(api.replaceImport).toHaveBeenCalledWith("imp", ICS));
+  });
+});
+

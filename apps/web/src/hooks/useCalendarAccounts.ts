@@ -30,6 +30,9 @@ export interface CalendarAccountsResult {
   previewFeed: (url: string) => Promise<CalendarFeedPreview | null>;
   addFeed: (feed: { url: string; name: string; color?: string }) => Promise<boolean>;
   removeFeed: (id: string) => Promise<void>;
+  previewImport: (content: string) => Promise<CalendarFeedPreview | null>;
+  addImport: (file: { content: string; name: string; color?: string }) => Promise<boolean>;
+  replaceImport: (id: string, content: string) => Promise<void>;
 }
 
 function messageOf(error: unknown, fallback: string): string {
@@ -193,8 +196,43 @@ export function useCalendarAccounts(): CalendarAccountsResult {
     [run, load],
   );
 
+  const previewImport = useCallback(async (content: string) => {
+    setActionError(null);
+    setBusy("feed");
+    try {
+      return await calendarApi.previewImport(content);
+    } catch (err) {
+      setActionError(messageOf(err, "Could not read that file."));
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }, []);
+
+  const addImport = useCallback(
+    async (file: { content: string; name: string; color?: string }) => {
+      let ok = false;
+      await run("feed", async () => {
+        await calendarApi.addImport(file);
+        await load();
+        ok = true;
+      }, "Could not import that file.");
+      return ok;
+    },
+    [run, load],
+  );
+
+  const replaceImport = useCallback(
+    (id: string, content: string) =>
+      run(id, async () => {
+        await calendarApi.replaceImport(id, content);
+        await load();
+      }, "Could not replace the file."),
+    [run, load],
+  );
+
   return {
     providers, state, error, actionError, busy, reload, connect, disconnect, syncNow,
-    setSelected, setColor, previewFeed, addFeed, removeFeed,
+    setSelected, setColor, previewFeed, addFeed, removeFeed, previewImport, addImport, replaceImport,
   };
 }

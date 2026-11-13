@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import type { CalendarProviderAccount, CalendarSource } from "../../api/client";
 import { cardState, colorVar, setupProblemText, type CardState } from "../../lib/calendar";
@@ -6,6 +6,7 @@ import { formatLastSync, stateLabel } from "../../lib/syncStatus";
 import { Icon } from "../Icon";
 import { ColorPicker } from "./ColorPicker";
 import { FeedForm } from "./FeedForm";
+import { ImportForm, readCalendarFile } from "./ImportForm";
 import type { CalendarAccountsResult } from "../../hooks/useCalendarAccounts";
 
 const STATE_PILL: Record<CardState, { text: string; tone: string }> = {
@@ -24,15 +25,19 @@ function lastSync(calendars: CalendarSource[]): string | null {
 }
 
 function CalendarRow({
-  calendar, busy, onSelect, onColor, onRemove,
+  calendar, busy, onSelect, onColor, onRemove, onReplace,
 }: {
   calendar: CalendarSource;
   busy: boolean;
   onSelect: (selected: boolean) => void;
   onColor: (color: string) => void;
   onRemove?: () => void;
+  /** Imported files only: replace the file with a newer export. */
+  onReplace?: (content: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [replaceError, setReplaceError] = useState<string | null>(null);
+  const replaceInput = useRef<HTMLInputElement>(null);
   return (
     <li className="cal-row">
       <label className="cal-show">
@@ -49,15 +54,38 @@ function CalendarRow({
       {calendar.feed_url_display ? <code className="cal-masked" aria-label="Feed link, masked">{calendar.feed_url_display}</code> : null}
       {calendar.state && calendar.state !== "idle" ? <span className="muted cal-state">{stateLabel(calendar.state)}</span> : null}
       {calendar.last_error ? <p className="error cal-error" role="alert">{calendar.last_error}</p> : null}
+      {onReplace && calendar.is_import ? (
+        <span className="cal-replace">
+          <button type="button" disabled={busy} onClick={() => replaceInput.current?.click()}>
+            Replace file…
+          </button>
+          <input
+            ref={replaceInput}
+            type="file"
+            className="sr-only"
+            accept=".ics,.ical,.ifb,text/calendar"
+            disabled={busy}
+            aria-label={`Replace the file of ${calendar.name}`}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (!file) return;
+              setReplaceError(null);
+              void readCalendarFile(file).then((read) => ("error" in read ? setReplaceError(read.error) : onReplace(read.text)));
+            }}
+          />
+          {replaceError ? <span className="error" role="alert">{replaceError}</span> : null}
+        </span>
+      ) : null}
       {onRemove ? (
         confirming ? (
           <span className="cal-confirm" role="group" aria-label={`Remove ${calendar.name}`}>
-            <span>Remove this feed and its stored events from Atlas? Your calendar at the source is not changed.</span>
-            <button type="button" className="danger" disabled={busy} onClick={onRemove}>Remove feed</button>
+            <span>Remove this {calendar.is_import ? "calendar" : "feed"} and its stored events from Atlas? {calendar.is_import ? "The file you imported is not changed." : "Your calendar at the source is not changed."}</span>
+            <button type="button" className="danger" disabled={busy} onClick={onRemove}>{calendar.is_import ? "Remove calendar" : "Remove feed"}</button>
             <button type="button" onClick={() => setConfirming(false)}>Keep</button>
           </span>
         ) : (
-          <button type="button" className="cal-remove" onClick={() => setConfirming(true)} aria-label={`Remove feed ${calendar.name}`}>
+          <button type="button" className="cal-remove" onClick={() => setConfirming(true)} aria-label={`${calendar.is_import ? "Remove calendar" : "Remove feed"} ${calendar.name}`}>
             <Icon name="trash-2" size={16} />
             <span>Remove</span>
           </button>
@@ -142,7 +170,10 @@ export function ProviderCard({ provider, actions, note }: ProviderCardProps) {
       ) : null}
       {isFeed && provider.calendars.length > 0 ? (
         <p className="muted cal-last">
-          {synced ?? "Not synced yet"} · checked about every {Math.round((provider.poll_seconds ?? 900) / 60)} minutes
+          {synced ?? "Not synced yet"}
+          {provider.calendars.some((calendar) => !calendar.is_import)
+            ? ` · links are checked about every ${Math.round((provider.poll_seconds ?? 900) / 60)} minutes`
+            : ""}
         </p>
       ) : null}
 
@@ -156,6 +187,7 @@ export function ProviderCard({ provider, actions, note }: ProviderCardProps) {
               onSelect={(selected) => void actions.setSelected(calendar.id, selected)}
               onColor={(color) => void actions.setColor(calendar.id, color)}
               onRemove={isFeed ? () => void actions.removeFeed(calendar.id) : undefined}
+              onReplace={isFeed && calendar.is_import ? (content) => void actions.replaceImport(calendar.id, content) : undefined}
             />
           ))}
         </ul>
@@ -193,7 +225,10 @@ export function ProviderCard({ provider, actions, note }: ProviderCardProps) {
       {note ? <p className="muted" role="status">{note}</p> : null}
 
       {isFeed ? (
-        <FeedForm busy={actions.busy === "feed"} onPreview={actions.previewFeed} onAdd={actions.addFeed} />
+        <>
+          <FeedForm busy={actions.busy === "feed"} onPreview={actions.previewFeed} onAdd={actions.addFeed} />
+          <ImportForm busy={actions.busy === "feed"} onPreview={actions.previewImport} onAdd={actions.addImport} />
+        </>
       ) : null}
     </li>
   );

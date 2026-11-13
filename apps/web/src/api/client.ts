@@ -593,6 +593,17 @@ export const calendarApi = {
   addFeed: (feed: { url: string; name: string; color?: string }) =>
     apiFetch<CalendarSource>("/api/calendar/feeds", { method: "POST", body: JSON.stringify(feed) }),
   removeFeed: (id: string) => apiFetch<void>(`/api/calendar/feeds/${id}`, { method: "DELETE" }),
+  /** Manual `.ics` import (M5-12): the file's text, parsed on the server; nothing is stored by the preview. */
+  previewImport: (content: string) =>
+    apiFetch<CalendarFeedPreview>("/api/calendar/imports/preview", {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
+  addImport: (file: { content: string; name: string; color?: string }) =>
+    apiFetch<CalendarSource>("/api/calendar/imports", { method: "POST", body: JSON.stringify(file) }),
+  /** Replace the file of an imported calendar; events missing from the new file are removed. */
+  replaceImport: (id: string, content: string) =>
+    apiFetch<CalendarSource>(`/api/calendar/imports/${id}`, { method: "PUT", body: JSON.stringify({ content }) }),
   /** Occurrences overlapping `[start, end)` (UTC instants, at most 100 days). Read-only. */
   events: (start: Date, end: Date) => {
     const params = new URLSearchParams({

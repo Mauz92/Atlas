@@ -396,10 +396,15 @@ class ProviderSyncService:
         sources = CalendarSourceService(self.session, self.user_id)
         outcomes: list[CalendarSyncOutcome] = []
         errors: list[Exception] = []
-        for row in await sources.selected("ics"):
+        # Ids only: every sync commits (or rolls back), which expires any ORM row held across it, so
+        # each feed is re-read just before it is synced (a second feed used to fail on a stale row).
+        source_ids = [row.id for row in await sources.selected("ics")]
+        for source_id in source_ids:
             try:
+                row = await sources.get(source_id)
+                external_id = row.external_id
                 result = await CalendarSyncService(self.session, self.user_id).sync_calendar(
-                    sources.ics_adapter(row), row.external_id
+                    sources.ics_adapter(row), external_id
                 )
             except Exception as exc:  # one feed failing must not block the others
                 errors.append(exc)

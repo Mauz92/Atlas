@@ -1393,6 +1393,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/calendar/imports/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Import File
+         * @description Parse an uploaded ``.ics`` once and report what it holds. Nothing is stored (M5-12).
+         */
+        post: operations["preview_import_file_api_calendar_imports_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calendar/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Ics File
+         * @description Add a calendar from an uploaded ``.ics`` file (M5-12): read-only, never fetched.
+         */
+        post: operations["import_ics_file_api_calendar_imports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calendar/imports/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace Imported File
+         * @description Replace the file of an imported calendar; events missing from the new file are removed.
+         */
+        put: operations["replace_imported_file_api_calendar_imports__source_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/calendar/feeds/{source_id}": {
         parameters: {
             query?: never;
@@ -2454,6 +2514,26 @@ export interface components {
         HomeTimeZone: {
             /** Time Zone */
             time_zone?: string | null;
+        };
+        /**
+         * ImportContent
+         * @description The text of an ``.ics`` file.
+         *
+         *     The browser reads the file and sends its text, so the same JSON, CSRF and size rules apply as
+         *     everywhere else. The service enforces the 5 MiB byte limit.
+         */
+        ImportContent: {
+            /** Content */
+            content: string;
+        };
+        /** ImportCreateRequest */
+        ImportCreateRequest: {
+            /** Content */
+            content: string;
+            /** Name */
+            name: string;
+            /** Color */
+            color?: string | null;
         };
         /** InstanceInfo */
         InstanceInfo: {
@@ -3692,6 +3772,11 @@ export interface components {
             selected: boolean;
             /** Feed Url Display */
             feed_url_display?: string | null;
+            /**
+             * Is Import
+             * @default false
+             */
+            is_import: boolean;
             state?: components["schemas"]["SyncState"] | null;
             /** Last Success At */
             last_success_at?: string | null;
@@ -6641,6 +6726,107 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_import_file_api_calendar_imports_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportContent"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_ics_file_api_calendar_imports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_imported_file_api_calendar_imports__source_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportContent"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

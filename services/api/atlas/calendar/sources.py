@@ -17,19 +17,24 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import undefer
 
 from ..models import CalendarSource, ExternalEvent, ProviderCredential, SyncCursor
 from .adapter import CalendarAdapter
 from .crypto import DecryptionError, TokenCipher, get_token_cipher
-from .ics import ICS, IcsFeedAdapter
+from .feed import FeedError
+from .ics import ICS, IcsFeedAdapter, ImportedIcsAdapter, parse_ics
 from .netguard import UnsafeUrlError, mask_feed_url, parse_feed_url
 from .types import Calendar
 
 PALETTE = tuple(str(n) for n in range(1, 9))
 MAX_FEEDS = 20
+#: The largest ``.ics`` file accepted for a manual import (M5-12); real exports are far smaller.
+MAX_IMPORT_BYTES = 5 * 1024 * 1024
 MAX_NAME_LENGTH = 200
 
 
@@ -71,8 +76,14 @@ class CalendarSourceService:
 
     # --- reading --------------------------------------------------------------
 
-    async def list_sources(self, provider: str | None = None) -> list[CalendarSource]:
+    async def list_sources(
+        self, provider: str | None = None, *, with_files: bool = False
+    ) -> list[CalendarSource]:
+        """The user's sources. An imported file's bytes are deferred (a list never loads megabytes);
+        ``with_files`` loads them for the callers that build an adapter."""
         statement = select(CalendarSource).where(CalendarSource.user_id == self.user_id)
+        if with_files:
+            statement = statement.options(undefer(CalendarSource.imported_ics))
         if provider is not None:
             statement = statement.where(CalendarSource.provider == provider)
         rows = await self.session.scalars(
@@ -86,13 +97,13 @@ class CalendarSourceService:
         return [*rows]
 
     async def selected(self, provider: str) -> list[CalendarSource]:
-        return [row for row in await self.list_sources(provider) if row.selected]
+        return [row for row in await self.list_sources(provider, with_files=True) if row.selected]
 
     async def get(self, source_id: uuid.UUID) -> CalendarSource:
         row = await self.session.scalar(
-            select(CalendarSource).where(
-                CalendarSource.id == source_id, CalendarSource.user_id == self.user_id
-            )
+            select(CalendarSource)
+            .options(undefer(CalendarSource.imported_ics))
+            .where(CalendarSource.id == source_id, CalendarSource.user_id == self.user_id)
         )
         if row is None:
             raise SourceNotFoundError
@@ -209,6 +220,75 @@ class CalendarSourceService:
         await self.session.flush()
         return row
 
+    async def add_import(
+        self, *, content: bytes, name: str, color: str | None = None
+    ) -> CalendarSource:
+        """Store an uploaded ``.ics`` file as a read-only calendar (M5-12).
+
+        The file is validated first (not a calendar -> ``not_calendar``; too large ->
+        ``too_large``); nothing is fetched.
+        """
+        if len(content) > MAX_IMPORT_BYTES:
+            raise SourceError(
+                "too_large", f"the file is larger than {MAX_IMPORT_BYTES // 2**20} MiB"
+            )
+        try:
+            parse_ics(content, feed_id="check")
+        except FeedError as exc:
+            raise SourceError(exc.code, str(exc)) from exc
+        count = await self.session.scalar(
+            select(func.count())
+            .select_from(CalendarSource)
+            .where(CalendarSource.user_id == self.user_id, CalendarSource.provider == ICS)
+        )
+        if (count or 0) >= MAX_FEEDS:
+            raise SourceError("too_many_feeds", f"at most {MAX_FEEDS} feeds can be added")
+        source_id = uuid.uuid4()
+        taken = await self.session.scalar(
+            select(func.count())
+            .select_from(CalendarSource)
+            .where(CalendarSource.user_id == self.user_id)
+        )
+        row = CalendarSource(
+            id=source_id,
+            user_id=self.user_id,
+            provider=ICS,
+            external_id=str(source_id),
+            name=_clean_name(name),
+            color=_clean_color(color) or PALETTE[(taken or 0) % len(PALETTE)],
+            time_zone="UTC",
+            is_read_only=True,
+            is_primary=False,
+            selected=True,
+            feed_url_display="Imported file",
+            imported_ics=content,
+            imported_at=datetime.now(UTC),
+        )
+        self.session.add(row)
+        await self.session.flush()
+        return row
+
+    async def replace_import(self, source_id: uuid.UUID, *, content: bytes) -> CalendarSource:
+        """Replace the file of an imported calendar.
+
+        Events that are no longer in it are removed by the next sync (the snapshot diff of a feed).
+        """
+        row = await self.get(source_id)
+        if row.provider != ICS or row.imported_ics is None:
+            raise SourceError("not_an_import", "this calendar was not imported from a file")
+        if len(content) > MAX_IMPORT_BYTES:
+            raise SourceError(
+                "too_large", f"the file is larger than {MAX_IMPORT_BYTES // 2**20} MiB"
+            )
+        try:
+            parse_ics(content, feed_id="check")
+        except FeedError as exc:
+            raise SourceError(exc.code, str(exc)) from exc
+        row.imported_ics = content
+        row.imported_at = datetime.now(UTC)
+        await self.session.flush()
+        return row
+
     def feed_url(self, row: CalendarSource) -> str:
         """The decrypted feed URL (in-process only; never serialised, never logged)."""
         if row.provider != ICS or row.feed_url_ciphertext is None or row.feed_url_key_id is None:
@@ -220,7 +300,14 @@ class CalendarSourceService:
         except DecryptionError as exc:
             raise SourceError("undecryptable", "the stored feed link could not be read") from exc
 
-    def ics_adapter(self, row: CalendarSource) -> IcsFeedAdapter:
+    def ics_adapter(self, row: CalendarSource) -> IcsFeedAdapter | ImportedIcsAdapter:
+        if row.provider == ICS and row.imported_ics is not None:
+            return ImportedIcsAdapter(
+                feed_id=row.external_id,
+                body=row.imported_ics,
+                name=row.name,
+                time_zone=row.time_zone,
+            )
         return IcsFeedAdapter(
             feed_id=row.external_id, url=self.feed_url(row), name=row.name, time_zone=row.time_zone
         )

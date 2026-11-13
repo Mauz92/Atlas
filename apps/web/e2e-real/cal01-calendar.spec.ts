@@ -75,7 +75,7 @@ test("link a feed, an OAuth Google and Microsoft account, then use the calendar"
   // --- ICS feed: test (count only), add, masked afterwards, sync.
   const url = `${FAKE()}/ics/proton.ics`;
   await page.getByLabel("Feed link (secret)").fill(url);
-  await page.getByRole("textbox", { name: "Name" }).fill("Proton");
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill("Proton");
   await page.getByRole("button", { name: "Test feed" }).click();
   await expect(page.getByText(/Readable calendar with 3 events/)).toBeVisible();
   await page.getByRole("button", { name: "Add feed" }).click();
@@ -203,6 +203,51 @@ test("a broken feed shows a safe error and keeps the last events", async ({ page
   await shot(page, "settings-calendar-feed-error");
   await page.goto("/calendar");
   await expect(page.getByRole("button", { name: /Standup/ }).first()).toBeVisible();
+});
+
+test("import an .ics file, see its events, replace the file and remove it (M5-12)", async ({ page }) => {
+  test.setTimeout(120_000);
+  const today = new Date();
+  await ensureOwner(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const file = (title: string) =>
+    [
+      "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//fixture//EN", "X-WR-CALNAME:Family export",
+      "BEGIN:VEVENT", "UID:import-1", `DTSTAMP:${iso(today, 7)}`, `DTSTART:${iso(today, 11)}`, `DTEND:${iso(today, 12)}`, `SUMMARY:${title}`, "END:VEVENT",
+      "END:VCALENDAR", "",
+    ].join("\r\n");
+  await page.goto("/settings/calendar");
+  await page.getByLabel("Calendar file").setInputFiles({ name: "family.ics", mimeType: "text/calendar", buffer: Buffer.from(file("Imported dentist")) });
+  await expect(page.getByLabel("Calendar name")).toHaveValue("family");
+  await page.getByRole("button", { name: "Check file" }).click();
+  await expect(page.getByText(/Readable calendar with 1 event/)).toBeVisible();
+  await page.getByRole("button", { name: "Import" }).click();
+  const imported = page.locator(".cal-row", { hasText: "family" });
+  await expect(imported.getByLabel("Feed link, masked")).toHaveText("Imported file");
+  await page.locator(".cal-card[data-provider='ics']").getByRole("button", { name: "Sync now" }).click();
+  await page.goto("/calendar");
+  await expect(page.getByRole("button", { name: /Imported dentist/ }).first()).toBeVisible();
+
+  // Replace the file: the same event changes in place.
+  await page.goto("/settings/calendar");
+  await page.getByLabel("Replace the file of family").setInputFiles({ name: "family2.ics", mimeType: "text/calendar", buffer: Buffer.from(file("Imported dentist (moved)")) });
+  await page.locator(".cal-card[data-provider='ics']").getByRole("button", { name: "Sync now" }).click();
+  await page.goto("/calendar");
+  await expect(page.getByRole("button", { name: /Imported dentist \(moved\)/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Imported dentist(?! \()/ })).toHaveCount(0);
+
+  // A file that is not a calendar is refused with a safe message.
+  await page.goto("/settings/calendar");
+  await page.getByLabel("Calendar file").setInputFiles({ name: "notes.ics", mimeType: "text/calendar", buffer: Buffer.from("just some text") });
+  await page.getByLabel("Calendar name").fill("Bad");
+  await page.getByRole("button", { name: "Check file" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: /not a calendar|could not be read/i }).first()).toBeVisible();
+
+  // Remove it: its events go.
+  await imported.getByRole("button", { name: "Remove calendar family" }).click();
+  await imported.getByRole("button", { name: "Remove calendar", exact: true }).click();
+  await page.goto("/calendar");
+  await expect(page.getByRole("button", { name: /Imported dentist/ })).toHaveCount(0);
 });
 
 test("accessibility and layout: axe-clean in both themes, no sideways scroll, at four widths", async ({ page }) => {

@@ -41,7 +41,7 @@ from ..calendar.events import (
     WindowError,
 )
 from ..calendar.feed import FeedError, FeedUnreachableError
-from ..calendar.ics import ICS, preview_feed
+from ..calendar.ics import ICS, preview_feed, preview_import
 from ..calendar.netguard import UnsafeUrlError, validate_target
 from ..calendar.oauth import (
     GOOGLE,
@@ -54,7 +54,7 @@ from ..calendar.oauth import (
     revoke_at_provider,
 )
 from ..calendar.registry import production_registry
-from ..calendar.sources import CalendarSourceService, SourceError
+from ..calendar.sources import MAX_IMPORT_BYTES, CalendarSourceService, SourceError
 from ..calendar.status import SyncState
 from ..config import get_settings
 from ..jobs.handlers import enqueue_calendar_sync
@@ -87,6 +87,8 @@ class SourceOut(BaseModel):
     is_primary: bool
     selected: bool
     feed_url_display: str | None = None
+    #: Imported from an uploaded ``.ics`` file (can be replaced, never fetched).
+    is_import: bool = False
     state: SyncState | None = None
     last_success_at: datetime | None = None
     last_error: str | None = None
@@ -140,6 +142,21 @@ class FeedUrlRequest(BaseModel):
 
 
 class FeedCreateRequest(FeedUrlRequest):
+    name: Annotated[str, Field(min_length=1, max_length=200)]
+    color: Annotated[str, Field(pattern=r"^[1-8]$")] | None = None
+
+
+class ImportContent(BaseModel):
+    """The text of an ``.ics`` file.
+
+    The browser reads the file and sends its text, so the same JSON, CSRF and size rules apply as
+    everywhere else. The service enforces the 5 MiB byte limit.
+    """
+
+    content: Annotated[str, Field(min_length=1, max_length=6_000_000)]
+
+
+class ImportCreateRequest(ImportContent):
     name: Annotated[str, Field(min_length=1, max_length=200)]
     color: Annotated[str, Field(pattern=r"^[1-8]$")] | None = None
 
@@ -200,6 +217,7 @@ def _source_out(row: CalendarSource, sync: dict[str, object] | None = None) -> S
         is_primary=row.is_primary,
         selected=row.selected,
         feed_url_display=row.feed_url_display,
+        is_import=row.imported_at is not None,
         state=sync.get("state"),
         last_success_at=sync.get("last_success_at"),
         last_error=sync.get("last_error"),
@@ -466,6 +484,56 @@ async def add_feed(payload: FeedCreateRequest, user: CurrentUser, session: DbSes
             url=payload.url, name=payload.name, color=payload.color
         )
     except SourceError as exc:
+        _bad(exc.code, str(exc))
+    await enqueue_calendar_sync(session, user.id)
+    await session.commit()
+    return _source_out(row)
+
+
+@router.post("/imports/preview", response_model=FeedPreviewOut)
+async def preview_import_file(payload: ImportContent, user: CurrentUser) -> FeedPreviewOut:
+    """Parse an uploaded ``.ics`` once and report what it holds. Nothing is stored (M5-12)."""
+    _check_feed_rate(user.id)
+    body = payload.content.encode("utf-8")
+    if len(body) > MAX_IMPORT_BYTES:
+        _bad("too_large", f"the file is larger than {MAX_IMPORT_BYTES // 2**20} MiB")
+    try:
+        count, name, skipped = preview_import(body)
+    except FeedError as exc:
+        _bad(exc.code, str(exc))
+    return FeedPreviewOut(event_count=count, name=name, skipped=skipped)
+
+
+@router.post("/imports", response_model=SourceOut, status_code=status.HTTP_201_CREATED)
+async def import_ics_file(
+    payload: ImportCreateRequest, user: CurrentUser, session: DbSession
+) -> SourceOut:
+    """Add a calendar from an uploaded ``.ics`` file (M5-12): read-only, never fetched."""
+    _check_feed_rate(user.id)
+    try:
+        row = await CalendarSourceService(session, user.id).add_import(
+            content=payload.content.encode("utf-8"), name=payload.name, color=payload.color
+        )
+    except SourceError as exc:
+        _bad(exc.code, str(exc))
+    await enqueue_calendar_sync(session, user.id)
+    await session.commit()
+    return _source_out(row)
+
+
+@router.put("/imports/{source_id}", response_model=SourceOut)
+async def replace_imported_file(
+    source_id: uuid.UUID, payload: ImportContent, user: CurrentUser, session: DbSession
+) -> SourceOut:
+    """Replace the file of an imported calendar; events missing from the new file are removed."""
+    _check_feed_rate(user.id)
+    try:
+        row = await CalendarSourceService(session, user.id).replace_import(
+            source_id, content=payload.content.encode("utf-8")
+        )
+    except SourceError as exc:
+        if exc.code == "not_found":
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found") from exc
         _bad(exc.code, str(exc))
     await enqueue_calendar_sync(session, user.id)
     await session.commit()

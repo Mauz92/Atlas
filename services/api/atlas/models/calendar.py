@@ -136,6 +136,10 @@ class CalendarSource(Base, TimestampMixin):
     feed_url_key_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     #: ``https://host/...`` with the secret path masked: what the UI may show.
     feed_url_display: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: A manually imported ``.ics`` file (M5-12, ADR-0076 D4): when set, this source has no feed
+    #: URL and is never fetched; the sync layer reads this body through the ICS parser.
+    imported_ics: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint(

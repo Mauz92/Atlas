@@ -40,7 +40,7 @@ import type { CalendarProviderAccount, CalendarSource } from "../api/client";
 export function makeSource(overrides: Partial<CalendarSource> = {}): CalendarSource {
   return {
     id: "src-1", provider: "google", name: "Owner", color: "1", time_zone: "Europe/Berlin",
-    is_read_only: false, is_primary: true, selected: true, feed_url_display: null,
+    is_read_only: false, is_primary: true, selected: true, feed_url_display: null, is_import: false,
     state: "idle", last_success_at: "2026-11-10T09:00:00Z", last_error: null, last_error_at: null,
     ...overrides,
   };
