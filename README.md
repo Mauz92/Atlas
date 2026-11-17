@@ -11,6 +11,7 @@
   <img alt="status" src="https://img.shields.io/badge/status-0.1.0%20pre--release-orange">
   <img alt="backend" src="https://img.shields.io/badge/API-FastAPI%20%2B%20PostgreSQL-2563eb">
   <img alt="clients" src="https://img.shields.io/badge/clients-web%20%C2%B7%20Linux%20%C2%B7%20Android-2563eb">
+  <img alt="licence" src="https://img.shields.io/badge/licence-MIT-green">
   <img alt="deploy" src="https://img.shields.io/badge/deploy-Docker%20Compose-2563eb">
 </p>
 
@@ -161,6 +162,7 @@ Please report vulnerabilities privately through the repository's **Security** ta
 
 ## Licence
 
-No licence file has been added to this repository yet, so by default all rights are reserved. Dependency licences are
-inventoried in [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md). iOS push delivery would carry a platform cost (Apple
-Developer Program); see [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md) §3.1.
+Atlas is released under the [MIT Licence](LICENSE): you may use, copy, modify and distribute it, including for work, as
+long as the copyright notice is kept. It comes with no warranty. Third-party dependencies keep their own licences,
+inventoried in [`docs/DEPENDENCIES.md`](docs/DEPENDENCIES.md) (none of them is GPL or AGPL). iOS push delivery would carry a
+platform cost (Apple Developer Program); see [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md) §3.1.

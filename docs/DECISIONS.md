@@ -3712,3 +3712,11 @@ limiter store.
 - **D6. Account.** Personal account needs a 14-day closed test with 12 opted-in testers before production; an organisation account does not. Owner chooses.
 - **Alternatives rejected for this proposal:** F-Droid and a GitHub APK remain valid and cheaper (see `PLAY_STORE.md` section 6); a SAF-based shared folder to keep that feature on Play (SYNC-07 S3, unmeasured).
 - **Consequences.** A public, discoverable listing and its support expectations; a yearly target-SDK bump; extra CI/build variant to maintain; no change to server, API or data model.
+
+## ADR-0080 — Atlas is released under the MIT Licence
+
+- **Status.** Accepted (2026-11-17; the owner delegated the choice before the repository was made public).
+- **Context.** The repository is about to become public. Without a licence all rights are reserved and nobody may legally use or contribute to it. AGENTS.md requires the project to stay free to use for personal and professional work, and `docs/DEPENDENCIES.md` shows no GPL or AGPL dependency (psycopg is LGPL-3.0 and pywebpush, DOMPurify and axe-core are MPL-2.0, all used unmodified as libraries).
+- **Decision.** MIT, copyright "2026 Mauz92" (the GitHub account name, so no legal name is published). `LICENSE` at the root; `license` set in `services/api/pyproject.toml`, `apps/web/package.json` and `apps/desktop/src-tauri/Cargo.toml` (was `UNLICENSED`).
+- **Alternatives.** Apache-2.0 (adds a patent grant; longer, no practical difference for a self-hosted personal tool). AGPL-3.0 (would force anyone offering a modified Atlas as a service to publish their changes, at the cost of deterring some users and complicating any app-store distribution; not wanted for 0.1.0).
+- **Consequences.** Anyone may use, modify and redistribute Atlas, including commercially, with attribution. Relicensing later is possible only for code the owner alone has written, so accept outside contributions deliberately.

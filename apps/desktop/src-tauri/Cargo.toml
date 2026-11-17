@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Atlas desktop client (SYNC-09, ADR-0069): a thin Tauri 2 shell around the Atlas web UI and the framework-neutral desktop core"
 edition = "2021"
 publish = false
-license = "UNLICENSED"
+license = "MIT"
 
 [lib]
 name = "atlas_desktop_lib"

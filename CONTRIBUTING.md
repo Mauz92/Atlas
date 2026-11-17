@@ -5,8 +5,8 @@ working rules so any session produces consistent, verifiable increments.
 
 ## Before you start
 
-1. Read [`AGENTS.md`](../AGENTS.md) (operating instructions) and the current milestone in
-   [`docs/ROADMAP.md`](ROADMAP.md).
+1. Read [`AGENTS.md`](AGENTS.md) (operating instructions) and the current milestone in
+   [`docs/ROADMAP.md`](docs/ROADMAP.md).
 2. Read the architecture and the decision records relevant to your task.
 3. Inspect the working tree and current branch.
 4. Pick the **smallest** useful task whose dependencies are satisfied.
@@ -56,3 +56,9 @@ with your change.
 - Use typed interfaces and explicit validation at boundaries.
 - Prefer maintained libraries over custom implementations.
 - Follow existing patterns; avoid unrelated refactoring.
+
+## Licence of contributions
+
+Atlas is MIT-licensed ([`LICENSE`](LICENSE), ADR-0080). By submitting a contribution you agree that it is
+licensed under the same terms. Pull requests from forks do not run CI automatically (the CI runs on the owner's
+own machine); a maintainer will push the branch to this repository to run it.
