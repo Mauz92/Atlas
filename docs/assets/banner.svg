@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" font-family="Inter, 'Segoe UI', system-ui, 'DejaVu Sans', sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b1220"/><stop offset="1" stop-color="#142a63"/></linearGradient>
+    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient>
+    <clipPath id="c"><rect width="1280" height="640"/></clipPath>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <g clip-path="url(#c)" fill="none" stroke="#60a5fa" stroke-opacity="0.16" stroke-width="2"><ellipse cx="1010" cy="360" rx="60" ry="37" transform="rotate(-18 1010 360)"/><ellipse cx="1010" cy="360" rx="118" ry="73" transform="rotate(-18 1010 360)"/><ellipse cx="1010" cy="360" rx="176" ry="109" transform="rotate(-18 1010 360)"/><ellipse cx="1010" cy="360" rx="234" ry="145" transform="rotate(-18 1010 360)"/><ellipse cx="1010" cy="360" rx="292" ry="181" transform="rotate(-18 1010 360)"/><ellipse cx="1010" cy="360" rx="350" ry="217" transform="rotate(-18 1010 360)"/><ellipse cx="1010" cy="360" rx="408" ry="253" transform="rotate(-18 1010 360)"/><ellipse cx="1010" cy="360" rx="466" ry="289" transform="rotate(-18 1010 360)"/><ellipse cx="1010" cy="360" rx="524" ry="325" transform="rotate(-18 1010 360)"/><ellipse cx="1010" cy="360" rx="582" ry="361" transform="rotate(-18 1010 360)"/><ellipse cx="1010" cy="360" rx="640" ry="397" transform="rotate(-18 1010 360)"/><ellipse cx="1010" cy="360" rx="698" ry="433" transform="rotate(-18 1010 360)"/></g>
+  <g transform="translate(160 92) scale(0.42)">
+    <rect width="512" height="512" rx="112" fill="url(#lg)"/>
+    <g fill="none" stroke="#fff" stroke-opacity="0.13" stroke-width="6"><circle cx="256" cy="300" r="190"/><circle cx="256" cy="300" r="140"/><circle cx="256" cy="300" r="90"/></g>
+    <path d="M146 394 L256 170 L366 394" fill="none" stroke="#fff" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M190 316 H322" fill="none" stroke="#fff" stroke-width="40" stroke-linecap="round"/>
+    <circle cx="256" cy="106" r="24" fill="#bfdbfe"/>
+  </g>
+  <text x="406" y="232" font-size="112" font-weight="700" fill="#ffffff" letter-spacing="-2">Atlas</text>
+  <text x="160" y="396" font-size="34" fill="#bfdbfe">Notes, tasks, projects and calendars,</text>
+  <text x="160" y="438" font-size="34" fill="#bfdbfe">on a server you own.</text>
+  <g transform="translate(160 474)"><rect width="116" height="46" rx="23" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.22"/><text x="58.0" y="30" text-anchor="middle" font-size="21" fill="#dbeafe">Notes</text></g><g transform="translate(300 474)"><rect width="116" height="46" rx="23" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.22"/><text x="58.0" y="30" text-anchor="middle" font-size="21" fill="#dbeafe">Tasks</text></g><g transform="translate(440 474)"><rect width="140" height="46" rx="23" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.22"/><text x="70.0" y="30" text-anchor="middle" font-size="21" fill="#dbeafe">Projects</text></g><g transform="translate(600 474)"><rect width="160" height="46" rx="23" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.22"/><text x="80.0" y="30" text-anchor="middle" font-size="21" fill="#dbeafe">Calendars</text></g><g transform="translate(780 474)"><rect width="104" height="46" rx="23" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.22"/><text x="52.0" y="30" text-anchor="middle" font-size="21" fill="#dbeafe">Sync</text></g>
+  <text x="160" y="580" font-size="20" fill="#93c5fd" fill-opacity="0.8">Self-hosted · Markdown-native · Offline-capable · Linux, Android and web</text>
+</svg>

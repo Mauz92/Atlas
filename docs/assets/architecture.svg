@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" width="960" height="420" font-family="Inter, 'Segoe UI', system-ui, 'DejaVu Sans', sans-serif" role="img" aria-label="Atlas architecture: clients talk to nginx and the API; the worker and API share PostgreSQL and the Markdown notes folder">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#64748b"/></marker>
+  </defs>
+  <rect width="960" height="420" rx="16" fill="#f8fafc" stroke="#e2e8f0"/>
+  <style>
+    .box{fill:#ffffff;stroke:#cbd5e1;stroke-width:1.5}
+    .accent{fill:#eff6ff;stroke:#2563eb;stroke-width:1.5}
+    .store{fill:#f0fdf4;stroke:#16a34a;stroke-width:1.5}
+    .ext{fill:#fff7ed;stroke:#ea580c;stroke-width:1.5;stroke-dasharray:6 4}
+    .t{font-size:16px;font-weight:600;fill:#0f172a}
+    .s{font-size:12.5px;fill:#475569}
+    .h{font-size:12px;font-weight:700;fill:#64748b;letter-spacing:1.2px}
+    .l{stroke:#64748b;stroke-width:1.6;fill:none}
+  </style>
+  <text x="40" y="38" class="h">CLIENTS</text>
+  <text x="400" y="38" class="h">YOUR SERVER (DOCKER COMPOSE)</text>
+  <text x="760" y="38" class="h">DATA</text>
+
+  <rect class="box" x="40" y="56" width="250" height="84" rx="12"/><text x="60" y="88" class="t">Web app / PWA</text><text x="60" y="110" class="s">React + TypeScript, offline queue</text>
+  <rect class="box" x="40" y="160" width="250" height="84" rx="12"/><text x="60" y="192" class="t">Linux desktop app</text><text x="60" y="214" class="s">Tauri 2, shared sync engine</text>
+  <rect class="box" x="40" y="264" width="250" height="84" rx="12"/><text x="60" y="296" class="t">Android app</text><text x="60" y="318" class="s">Signed APK, exact-alarm reminders</text>
+
+  <rect class="accent" x="380" y="56" width="250" height="70" rx="12"/><text x="400" y="86" class="t">nginx (web)</text><text x="400" y="108" class="s">static app, TLS, reverse proxy</text>
+  <rect class="accent" x="380" y="160" width="250" height="84" rx="12"/><text x="400" y="190" class="t">API (FastAPI)</text><text x="400" y="212" class="s">auth, notes, tasks, projects, sync,</text><text x="400" y="228" class="s">calendars. All rules live here.</text>
+  <rect class="accent" x="380" y="278" width="250" height="70" rx="12"/><text x="400" y="308" class="t">Worker</text><text x="400" y="330" class="s">jobs, reminders, backups, ICS</text>
+
+  <rect class="store" x="720" y="56" width="200" height="84" rx="12"/><text x="740" y="88" class="t">PostgreSQL</text><text x="740" y="110" class="s">tasks, projects, sync state</text>
+  <rect class="store" x="720" y="160" width="200" height="84" rx="12"/><text x="740" y="192" class="t">Markdown files</text><text x="740" y="214" class="s">notes: plain .md files</text>
+  <rect class="ext" x="720" y="278" width="200" height="70" rx="12"/><text x="740" y="308" class="t">ICS calendar feeds</text><text x="740" y="330" class="s">read-only, SSRF-guarded</text>
+
+  <path class="l" d="M290 98H380" marker-end="url(#a)"/>
+  <path class="l" d="M335 98V306"/><path class="l" d="M290 202H335"/><path class="l" d="M290 306H335"/>
+  <path class="l" d="M505 126V160" marker-end="url(#a)"/>
+  <path class="l" d="M630 176H675V98H720" marker-end="url(#a)"/>
+  <path class="l" d="M630 202H720" marker-end="url(#a)"/>
+  <path class="l" d="M630 313H720" marker-end="url(#a)"/>
+  <text x="380" y="368" class="s" font-style="italic">Worker also reads and writes PostgreSQL and the notes.</text>
+  <text x="40" y="400" class="s">The server is the authority; clients are thin and never decide access or conflicts. Calendar events stay owned by their provider.</text>
+</svg>
