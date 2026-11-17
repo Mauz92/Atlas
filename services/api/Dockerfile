@@ -30,4 +30,6 @@ ENV ATLAS_VERSION=${ATLAS_VERSION}
 USER atlas
 
 EXPOSE 8000
-CMD ["uvicorn", "atlas.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# nginx (the web container) is the only client of this port and overwrites X-Forwarded-For with the address it
+# saw, so trusting it gives the per-client rate limits the real address instead of the proxy's.
+CMD ["uvicorn", "atlas.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

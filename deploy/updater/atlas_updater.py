@@ -23,6 +23,7 @@ from __future__ import annotations
 import fcntl
 import io
 import json
+import hashlib
 import os
 import re
 import shutil
@@ -47,6 +48,7 @@ HEALTH_TIMEOUT_SECONDS = 240
 MIN_FREE_BYTES = 1_500_000_000
 GITHUB_API = "https://api.github.com"
 DEPLOY_ASSET = "atlas-deploy.tar.gz"
+CHECKSUMS_ASSET = "SHA256SUMS"
 # Only these paths are taken from a release's deploy bundle, so a bundle can never write elsewhere.
 DEPLOY_ALLOWED = ("deploy/", "apps/web/nginx.conf", "apps/web/nginx.tls.conf")
 
@@ -350,6 +352,23 @@ def free_bytes(path: Path) -> int:
     return shutil.disk_usage(path).free
 
 
+def verify_checksum(data: bytes, sums: bytes, name: str) -> None:
+    """Refuse ``data`` unless the release's ``SHA256SUMS`` lists ``name`` with the same SHA-256.
+
+    This catches a corrupted or truncated download and an asset swapped without its checksum file.
+    It does not defend against someone who controls the GitHub account (they publish both files).
+    """
+    wanted = ""
+    for line in sums.decode("utf-8", errors="replace").splitlines():
+        digest, _, listed = line.strip().partition("  ")
+        if listed.strip().lstrip("*") == name:
+            wanted = digest.strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", wanted):
+        raise UpdateError(f"The release's {CHECKSUMS_ASSET} does not list {name}; the update was stopped.")
+    if hashlib.sha256(data).hexdigest() != wanted:
+        raise UpdateError(f"{name} does not match its checksum; the update was stopped.")
+
+
 def safe_members(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
     members = []
     for member in archive.getmembers():
@@ -452,6 +471,7 @@ class Updater:
         try:
             self._phase("download", f"Downloading the release files for {target}")
             bundle = self.github.asset(target, DEPLOY_ASSET)
+            verify_checksum(bundle, self.github.asset(target, CHECKSUMS_ASSET), DEPLOY_ASSET)
             staging = Path(tempfile.mkdtemp(prefix="deploy-", dir=self.config.update_dir))
             with tarfile.open(fileobj=io.BytesIO(bundle), mode="r:gz") as archive:
                 archive.extractall(staging, members=safe_members(archive), filter="data")  # noqa: S202

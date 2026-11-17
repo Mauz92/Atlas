@@ -7,6 +7,7 @@ version and (only when the database was migrated) the backup.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import io
 import json
@@ -45,14 +46,22 @@ GOOD = {
 
 
 class FakeGitHub:
-    def __init__(self, latest: str = "0.2.0", files: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, latest: str = "0.2.0", files: dict[str, str] | None = None, sums: bytes | None = None
+    ) -> None:
         self.latest, self.files = latest, GOOD if files is None else files
+        self.sums = sums
 
     def newest(self) -> tuple[str, str]:
         return self.latest, "notes"
 
     def asset(self, version: str, name: str) -> bytes:
-        return bundle(self.files)
+        data = bundle(self.files)
+        if name == "SHA256SUMS":
+            if self.sums is not None:
+                return self.sums
+            return f"{hashlib.sha256(data).hexdigest()}  atlas-deploy.tar.gz\n".encode()
+        return data
 
 
 class FakeDocker:
@@ -205,6 +214,20 @@ def test_a_bundle_cannot_write_outside_the_allowed_paths(config) -> None:
     with pytest.raises(au.UpdateError, match="unsafe"):
         make(config, github=FakeGitHub(files=evil)).apply("0.2.0")
     assert not (config.install_dir.parent / "escape.txt").exists()
+
+
+def test_a_bundle_that_does_not_match_its_checksum_is_refused(config) -> None:
+    sums = f"{'0' * 64}  atlas-deploy.tar.gz\n".encode()
+    docker = FakeDocker(config)
+    with pytest.raises(au.UpdateError, match="checksum"):
+        make(config, docker=docker, github=FakeGitHub(sums=sums)).apply("0.2.0")
+    assert not any(c.startswith("compose stop") for c in docker.calls)
+
+
+def test_a_release_whose_checksums_do_not_list_the_bundle_is_refused(config) -> None:
+    sums = f"{'a' * 64}  something-else.zip\n".encode()
+    with pytest.raises(au.UpdateError, match="does not list"):
+        make(config, github=FakeGitHub(sums=sums)).apply("0.2.0")
 
 
 def test_a_bundle_without_the_release_compose_file_is_refused(config) -> None:
