@@ -10,6 +10,9 @@ export JAVA_HOME="${JAVA_HOME:-$HOME/.local/android/jdk17}"
 export NDK_HOME="${NDK_HOME:-$(ls -d "$ANDROID_HOME"/ndk/27.* | head -1)}"
 export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$HOME/.cargo/bin:$PATH"
 PROFILE="${1:-debug}"; TARGET="${2:-aarch64}"
+# `play` (PLAY-01, docs/PLAY_STORE.md) = a release App Bundle (.aab) without MANAGE_EXTERNAL_STORAGE, for the Play Console. Default target for
+# it is `all` because Play wants every ABI in one bundle; the sideload APK builds above are unchanged.
+if [ "$PROFILE" = play ]; then export ATLAS_PLAY=1; TARGET="${2:-all}"; else export ATLAS_PLAY=0; fi
 
 (cd ../web && npm ci --silent && npm run build --silent)
 [ -d node_modules/@tauri-apps ] || npm ci --silent
@@ -21,6 +24,13 @@ node scripts/patch-android.mjs "$GEN"
 
 ARGS=(--apk)
 [ "$PROFILE" = debug ] && ARGS+=(--debug)
+[ "$PROFILE" = play ] && ARGS=(--aab)
 [ "$TARGET" != all ] && ARGS+=(--target "$TARGET")
+# ATLAS_VERSION (the release workflow, REL-02) overrides the version in tauri.conf.json for this build only, like build-linux.sh.
+[ -n "${ATLAS_VERSION:-}" ] && ARGS+=(--config "{\"version\":\"$ATLAS_VERSION\"}")
 npx tauri android build "${ARGS[@]}"
-find "$GEN/app/build/outputs/apk" -name '*.apk' -newer scripts/patch-android.mjs -print
+if [ "$PROFILE" = play ]; then
+  find "$GEN/app/build/outputs/bundle" -name '*.aab' -newer scripts/patch-android.mjs -print
+else
+  find "$GEN/app/build/outputs/apk" -name '*.apk' -newer scripts/patch-android.mjs -print
+fi

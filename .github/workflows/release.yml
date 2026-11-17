@@ -5,7 +5,8 @@
 #
 # What a release is: the full CI gate passing on the tagged commit; the server images (ghcr.io/<owner>/atlas-api and
 # atlas-web, tagged with the version) smoke-tested through the release compose file before they are pushed; the Linux
-# desktop clients (AppImage, .deb); optionally Windows (repository variable ATLAS_BUILD_WINDOWS=true, billed at a higher
+# desktop clients (AppImage, .deb); the signed Android APK when the repository variable ATLAS_ANDROID_SIGNING_PROPERTIES names the
+# signing file on the runner host (the key is never uploaded to GitHub); optionally Windows (repository variable ATLAS_BUILD_WINDOWS=true, billed at a higher
 # rate on private repositories and NOT verified yet); `atlas-deploy.tar.gz` (the compose files the host updater installs)
 # and SHA256SUMS. The release is created as a draft and published last, so the host updater never sees half a release.
 # Third-party actions are pinned to commit SHAs (docs/DEPENDENCIES.md); everything else uses the docker and gh CLIs.
@@ -154,6 +155,62 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # The signed Android APK (REL-02). The signing key never goes to GitHub: it stays on the runner host, which is the owner's own machine,
+  # and the repository VARIABLE ATLAS_ANDROID_SIGNING_PROPERTIES holds only the PATH of the `android-signing.properties` file there
+  # (the file's `storeFile` points at the keystore). Without the variable the job is skipped and the release has no APK; with it, a
+  # missing file or an unsigned result fails the job and so the release.
+  android:
+    name: Android app (signed APK, arm64)
+    if: vars.ATLAS_ANDROID_SIGNING_PROPERTIES != ''
+    needs: [plan, gate]
+    runs-on: [self-hosted, atlas]
+    timeout-minutes: 60
+    env:
+      ATLAS_VERSION: ${{ needs.plan.outputs.version }}
+      ATLAS_ANDROID_SIGNING_PROPERTIES: ${{ vars.ATLAS_ANDROID_SIGNING_PROPERTIES }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: Signing properties exist on this host
+        run: |
+          set -euo pipefail
+          [ -f "$ATLAS_ANDROID_SIGNING_PROPERTIES" ] || { echo "::error::ATLAS_ANDROID_SIGNING_PROPERTIES points at a file that does not exist on this runner"; exit 1; }
+          ks="$(sed -n 's/^storeFile=//p' "$ATLAS_ANDROID_SIGNING_PROPERTIES")"
+          [ -f "$ks" ] || { echo "::error::the keystore named in the properties file does not exist"; exit 1; }
+      - name: Rust with the Android targets
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+      - name: Android toolchain (JDK, SDK, NDK; pinned downloads, cached between runs)
+        run: |
+          set -euo pipefail
+          DIR="${RUNNER_TOOL_CACHE:-$HOME}/atlas-android"
+          apps/desktop/scripts/setup-android-toolchain.sh "$DIR" | tee /tmp/android-env.txt
+          sed 's/^export //' /tmp/android-env.txt | tr ' ' '\n' >> "$GITHUB_ENV"
+      - name: Build the signed release APK
+        working-directory: apps/desktop
+        run: scripts/build-android.sh release aarch64
+      - name: Verify the signature and collect
+        run: |
+          set -euo pipefail
+          apk="apps/desktop/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk"
+          [ -f "$apk" ] || { echo "::error::no release APK at $apk"; exit 1; }
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
+          "$apksigner" verify --verbose --print-certs "$apk" | tee /tmp/apksigner.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true\|Verified using v3 scheme (APK Signature Scheme v3): true" /tmp/apksigner.txt \
+            || { echo "::error::the APK is not signed"; exit 1; }
+          mkdir -p dist
+          cp "$apk" "dist/Atlas_${ATLAS_VERSION}_android-arm64.apk"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android
+          path: dist/*.apk
+          if-no-files-found: error
+
   # EXPERIMENTAL and off by default: the Windows build of the desktop app has not been verified (SYNC-09 phase 2). It
   # runs only when the repository variable ATLAS_BUILD_WINDOWS is "true", and a failure does not stop a release.
   desktop-windows:
@@ -199,9 +256,10 @@ jobs:
 
   release:
     name: GitHub Release
-    needs: [plan, images, desktop-linux, desktop-windows]
-    # The Windows job may be skipped or fail without blocking a release; the others may not.
-    if: always() && needs.images.result == 'success' && needs.desktop-linux.result == 'success'
+    needs: [plan, images, desktop-linux, android, desktop-windows]
+    # The Windows job may be skipped or fail without blocking a release; the others may not. The Android job is skipped when the
+    # signing variable is not set, but if it runs it must succeed.
+    if: always() && needs.images.result == 'success' && needs.desktop-linux.result == 'success' && (needs.android.result == 'success' || needs.android.result == 'skipped')
     runs-on: [self-hosted, atlas]
     permissions:
       contents: write
@@ -217,6 +275,9 @@ jobs:
           set -euo pipefail
           mkdir -p assets
           gh run download "${{ github.run_id }}" --name desktop-linux --dir assets
+          if [ "${{ needs.android.result }}" = "success" ]; then
+            gh run download "${{ github.run_id }}" --name android --dir assets
+          fi
           if [ "${{ needs.desktop-windows.result }}" = "success" ]; then
             gh run download "${{ github.run_id }}" --name desktop-windows --dir assets
           fi

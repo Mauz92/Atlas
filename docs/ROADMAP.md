@@ -1581,3 +1581,32 @@ Not scheduled. Each needs the resource named; none blocks the first release.
 | M8-04 push | UnifiedPush/ntfy wake-up for Android | a distributor app | ADR-0075 D7 |
 | SYNC-11d | Browser local store (IndexedDB offline mode, ADR-0070 D9) | nothing external | Not needed for 0.1.0; design recorded |
 | SYNC-09 Windows | Windows desktop client (installer, Credential Manager, tray) and M8-08 macOS/Windows verification | a Windows machine | ADR-0077: out of 0.1.0; R-36 |
+
+---
+
+## Google Play (DEFERRED 2026-11-17, ADR-0079; not part of 0.1.0)
+
+Plan, form answers and copy: `PLAY_STORE.md`. Deferred by the owner (no paid distribution); nothing here starts unless ADR-0079 is reopened. PLAY-01 stays in the tree because it is harmless to the sideload build; PLAY-03 (16 KB alignment) is worth doing for the APK anyway.
+
+| ID | Title | Dependencies | Acceptance / required test | Status |
+|---|---|---|---|---|
+| PLAY-01 | `build-android.sh play`: release `.aab`, all ABIs, `MANAGE_EXTERNAL_STORAGE` removed | none | Manifest edit idempotent both ways (**PASS** on a copy of the generated manifest, 2026-11-16); `bash -n` **PASS**; a real `.aab` build is **NOT RUN** | `IN_REVIEW` |
+| PLAY-02 | Hide the shared-folder setting when the permission is not declared | PLAY-01 | Settings test with the permission absent; Export notes still shown | `BACKLOG` |
+| PLAY-03 | 16 KB page-size alignment of the Rust `.so` files (NDK 27 linker flag or NDK 28+) and a check in the build script | PLAY-01 | `llvm-readelf` shows `LOAD` alignment >= 0x4000 on every shipped library; `zipalign -c -P 16` passes | `BACKLOG` |
+| PLAY-04 | Re-check Play target-SDK rule (app targets 37; Play minimum 36 from 2026-08-31) | none | Recorded yearly | `READY` |
+| PLAY-05 | Install the `.aab` on the phone via `bundletool`; run the phone e2e | PLAY-01, PLAY-03 | `apps/desktop/e2e/android.mjs` 14/14 on the bundle install | `BACKLOG` |
+| PLAY-06 | Public demo server for reviewers and testers (separate deployment, fake data, rate limit, nightly reset) | owner approval (ADR-0079 D4), R-87 | A fresh account can sign in from the Android build and sync; reset verified; no link to real data | `BLOCKED` (owner decision) |
+| PLAY-07 | Privacy policy published at a public URL | owner decision D4 | URL reachable without login; matches `PLAY_STORE.md` appendix A | `BLOCKED` (owner decision) |
+| PLAY-08 | Data safety, ads, content-rating and audience forms | PLAY-07 | Owner submits; answers match the app's real network behaviour | `BACKLOG` |
+| PLAY-09 | Permission declarations: exact alarms, foreground service (video if asked) | PLAY-01 | Text from appendix C accepted by the Console | `BACKLOG` |
+| PLAY-10 | Listing assets: title, descriptions, 512x512 icon, 1024x500 feature graphic, screenshots | PLAY-06 | Assets meet Console size rules | `BACKLOG` |
+| PLAY-11 | Console setup, Play App Signing, upload key, internal track, then 14-day closed test with 12+ testers | PLAY-01..10, owner account | Console shows 12+ opted-in testers for 14 continuous days | `BLOCKED` (owner account) |
+| PLAY-12 | Production access, review, staged rollout; record the outcome | PLAY-11 | Live listing, or documented rejection and fix | `BACKLOG` |
+
+### REL-02 — Signed Android APK in the tag-driven release (owner request 2026-11-16: "add it to the github workflow"; no Play Store, cost-free)
+
+- **Scope.** `release.yml` job `android` builds `scripts/build-android.sh release aarch64` with `ATLAS_VERSION`, signs with the key on the runner host (repository variable `ATLAS_ANDROID_SIGNING_PROPERTIES` = path of `android-signing.properties`; nothing secret in GitHub), verifies the signature with `apksigner`, and the release job attaches `Atlas_<version>_android-arm64.apk` (covered by `SHA256SUMS`). `patch-android.mjs` lets the environment override the properties path (also in an already-patched project); `build-android.sh` honours `ATLAS_VERSION`.
+- **Dependencies.** REL-01; the Android toolchain installer already used by `android.yml`.
+- **Acceptance.** (1) A dry run (`Actions > Release > Run workflow`) produces the `android` artifact; (2) `apksigner verify` passes and the certificate matches the sideload key; (3) the APK installs over the current sideloaded app (same key) and the phone e2e passes; (4) a tag release lists the APK and its checksum; (5) with the variable unset the release still publishes without an APK.
+- **Verification so far.** YAML parses (**PASS**), `bash -n` (**PASS**), Gradle patch applied to a copy of the generated project, idempotent, env override present (**PASS**). Dry run, signature, install and phone e2e: **NOT RUN**.
+- **Status.** `IN_REVIEW`. **Owner steps:** set the repository variable (`gh variable set ATLAS_ANDROID_SIGNING_PROPERTIES --body /home/kim/Documents/Atlas/apps/desktop/keys/android-signing.properties`, if the runner is this machine), then run the dry run.
