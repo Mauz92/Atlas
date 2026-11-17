@@ -4,6 +4,9 @@
 !.env.example
 *.pem
 *.key
+*.jks
+*.keystore
+**/keys/
 
 # --- User data (never commit) ---
 /data/
@@ -55,3 +58,6 @@ services/api/openapi.json
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/.playwright/
+
+# --- Local AI tool configuration ---
+.commandcode/

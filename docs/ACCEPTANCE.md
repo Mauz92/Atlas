@@ -379,7 +379,7 @@ cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:
 cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
   .venv/bin/python -m pytest -q
     # 240 passed
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh
+./scripts/verify.sh
     # verification: PASS (exit 0)
 ```
 
@@ -434,7 +434,7 @@ cd services/api && TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:
 cd services/api && .venv/bin/python -c "import json; from atlas.main import app; \
   open('openapi.json','w').write(json.dumps(app.openapi()))"   # then:
 cd apps/web && npm run gen:api     # schema.d.ts regenerated; CI drift simulation → in sync
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh
+./scripts/verify.sh
     # verification: PASS (exit 0)
 ```
 
@@ -489,7 +489,7 @@ cd services/api && .venv/bin/python -c "import json; from atlas.main import app;
 cd apps/web && npm run gen:api     # schema.d.ts regenerated; drift diff → in sync
 cd apps/web && npm run lint && npm run typecheck && npm run test && npm run build
     # clean; vitest 25 passed; build produced dist/
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh
+./scripts/verify.sh
     # verification: PASS (exit 0)
 ```
 
@@ -562,7 +562,7 @@ cd services/api && .venv/bin/python -c "import json; from atlas.main import app;
 cd apps/web && npm run gen:api     # schema.d.ts regenerated; re-running → byte-identical (in sync)
 cd apps/web && npm run lint && npm run typecheck && npm run test
     # clean; vitest 27 passed
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh
+./scripts/verify.sh
     # verification: PASS (exit 0)
 ```
 
@@ -631,7 +631,7 @@ cd services/api && .venv/bin/python -c "import json; from atlas.main import app;
 cd apps/web && npm run gen:api     # schema.d.ts regenerated with the new route/schemas
 cd apps/web && npm run lint && npm run typecheck && npm run test
     # clean; vitest 27 passed
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh
+./scripts/verify.sh
     # verification: PASS (exit 0)
 ```
 
@@ -737,7 +737,7 @@ DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
 .venv/bin/python -c "import json; from atlas.main import app; open('openapi.json','w').write(json.dumps(app.openapi()))"
 cd apps/web && npm run gen:api && npm run typecheck && npm run lint && npm run test   # 27 passed; re-running gen:api is byte-identical
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+./scripts/verify.sh   # verification: PASS
 ```
 
 **Schema dump (atlas_test).**
@@ -801,7 +801,7 @@ SECRET_KEY=… SESSION_SECRET=… TOKEN_ENCRYPTION_KEY=… ATLAS_ENV=test .venv/
 cd apps/web && npm run gen:api              # delta vs. the pre-M4-02 schema: the one new path + operation
 npm run lint && npm run typecheck && npm run test   # 27 passed
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+./scripts/verify.sh   # verification: PASS
 ```
 
 **Note.** No migration was added (none is required). The change feed, views, filters, subtask and
@@ -851,7 +851,7 @@ cd services/api                             # unchanged; run to prove no regress
 TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
   .venv/bin/python -m pytest -q             # 439 passed
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+./scripts/verify.sh   # verification: PASS
 ```
 
 **Files added.** `apps/web/src/lib/taskStatus.ts` (+ `.test.ts`), `apps/web/src/hooks/useBoard.ts`,
@@ -911,7 +911,7 @@ SECRET_KEY=… SESSION_SECRET=… TOKEN_ENCRYPTION_KEY=… ATLAS_ENV=test .venv/
 cd apps/web && npm run gen:api              # delta vs. the pre-M4-04 schema: progress + ProjectProgressOut
 npm run lint && npm run typecheck && npm run test   # 47 passed
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+./scripts/verify.sh   # verification: PASS
 ```
 
 **Files added.** `services/api/atlas/projects/progress.py`,
@@ -982,7 +982,7 @@ ATLAS_ENV=test SECRET_KEY=… SESSION_SECRET=… TOKEN_ENCRYPTION_KEY=… .venv/
 cd apps/web && npm run gen:api              # delta = the 3 new paths/operations + ProjectNotesOut
 npm run lint && npm run typecheck && npm run test   # 47 passed; a second gen:api is byte-identical (md5 unchanged)
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+./scripts/verify.sh   # verification: PASS
 ```
 
 **Schema dump (atlas_test).**
@@ -1064,7 +1064,7 @@ npm run typecheck                           # clean (tsc --noEmit)
 npm run test                                # 77 passed (17 files)
 npm run build                               # clean (tsc --noEmit && vite build)
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+./scripts/verify.sh   # verification: PASS
 ```
 
 **Files added.** `apps/web/src/lib/planning.ts`, `apps/web/src/lib/planning.test.ts`,
@@ -1146,7 +1146,7 @@ ATLAS_ENV=test SECRET_KEY=… SESSION_SECRET=… TOKEN_ENCRYPTION_KEY=… .venv/
 cd apps/web && npm run gen:api              # delta = the 2 new paths + ProjectExportOut/ProjectExportTaskOut/ProjectsExportOut
 npm run lint && npm run typecheck && npm run test && npm run build   # 77 passed; build clean
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS
+./scripts/verify.sh   # verification: PASS
 ```
 
 **Files added.** `services/api/atlas/projects/export.py`,
@@ -1258,7 +1258,7 @@ ATLAS_ENV=test SECRET_KEY=… SESSION_SECRET=… TOKEN_ENCRYPTION_KEY=… .venv/
   "import json; from atlas.main import app; open('openapi.json','w').write(json.dumps(app.openapi()))"
 cd apps/web && npm run gen:api              # delta = the 3 new paths + ProviderCredential* schemas
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 570; frontend 77)
+./scripts/verify.sh   # verification: PASS (backend 570; frontend 77)
 ```
 
 **Files added.** `services/api/atlas/calendar/{__init__,crypto,tokens,errors,credentials}.py`,
@@ -1317,7 +1317,7 @@ cd services/api
 TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
   .venv/bin/python -m pytest -q             # 608 passed
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 608; frontend 77)
+./scripts/verify.sh   # verification: PASS (backend 608; frontend 77)
 ```
 
 **Files added.** `services/api/atlas/calendar/{types,adapter,fake}.py`,
@@ -1369,7 +1369,7 @@ TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
 DATABASE_URL=…atlas_test .venv/bin/python -c "…downgrade('base'); upgrade('head'); downgrade('-1'); upgrade('head')…"
 #   base: None → head: 9d2f4b6a1c37 → -1: c7d18e93a4f2 → head: 9d2f4b6a1c37
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 642; frontend 77)
+./scripts/verify.sh   # verification: PASS (backend 642; frontend 77)
 ```
 
 **Files added.** `services/api/atlas/models/calendar.py`, `services/api/atlas/calendar/projection.py`,
@@ -1427,10 +1427,10 @@ TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
 .venv/bin/python -c "import json; from atlas.main import app; open('openapi.json','w').write(json.dumps(app.openapi()))"
 cd ../apps/web && npm run gen:api            # schema.d.ts regenerated (idempotent)
 
-cd /home/kim/Documents/Atlas/apps/web
+cd apps/web
 npm run lint && npm run typecheck && npm run test && npm run build   # 101 vitest passed; build clean
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 662; frontend 101)
+./scripts/verify.sh   # verification: PASS (backend 662; frontend 101)
 ```
 
 **Files added.** `services/api/atlas/calendar/status.py`,
@@ -1492,7 +1492,7 @@ TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest -q                  
 # contract: regenerate OpenAPI + TS types; gen:api re-run is byte-identical (in sync)
 cd apps/web && npm run gen:api
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 695; frontend 101)
+./scripts/verify.sh   # verification: PASS (backend 695; frontend 101)
 ```
 
 **Files added.** `services/api/atlas/calendar/reconcile.py`,
@@ -1544,7 +1544,7 @@ TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest \
 # contract: regenerate OpenAPI + TS types; gen:api re-run is byte-identical (in sync)
 cd apps/web && npm run gen:api
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 750; frontend 101)
+./scripts/verify.sh   # verification: PASS (backend 750; frontend 101)
 ```
 
 **Files added.** `atlas/changes/{__init__,feed,record,service}.py`, `atlas/models/change.py`,
@@ -1603,7 +1603,7 @@ DATABASE_URL=…/atlas_test .venv/bin/alembic upgrade head    # d4e8b2c6f913 -> 
 # contract: regenerate OpenAPI + TS types
 cd apps/web && npm run gen:api
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 766; frontend 101)
+./scripts/verify.sh   # verification: PASS (backend 766; frontend 101)
 ```
 
 **Files added.** `atlas/changes/{retention,purge}.py`,
@@ -1660,7 +1660,7 @@ cd services/api
 TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
   .venv/bin/python -m pytest -q                                              # 766 passed
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 766; frontend 155)
+./scripts/verify.sh   # verification: PASS (backend 766; frontend 155)
 ```
 
 **Files added.** `apps/web/src/lib/{queueStorage,offlineQueue,syncEngine,queueStatus}.ts`,
@@ -1723,7 +1723,7 @@ cd services/api
 TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
   .venv/bin/python -m pytest -q                                              # 766 passed
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 766; frontend 183)
+./scripts/verify.sh   # verification: PASS (backend 766; frontend 183)
 ```
 
 **Files added.** `apps/web/src/lib/localCache.ts`, `apps/web/src/lib/reconciliation.ts`,
@@ -1787,7 +1787,7 @@ cd services/api
 TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
   .venv/bin/python -m pytest -q                                              # 766 passed
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 766; frontend 216)
+./scripts/verify.sh   # verification: PASS (backend 766; frontend 216)
 ```
 
 **Files added.** `apps/web/src/lib/conflictResolution.ts`,
@@ -1847,7 +1847,7 @@ cd services/api
 TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
   .venv/bin/python -m pytest -q             # 766 passed
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 766; frontend 216)
+./scripts/verify.sh   # verification: PASS (backend 766; frontend 216)
 ```
 
 **Files added.** `apps/web/playwright.config.ts`, `apps/web/e2e/sync-failure-modes.spec.ts`,
@@ -1956,7 +1956,7 @@ DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test .venv/bi
 DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test .venv/bin/alembic upgrade head
     # → reminder_deliveries, reminder_policies, reminders present
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 809; frontend 216)
+./scripts/verify.sh   # verification: PASS (backend 809; frontend 216)
 ```
 
 **New tests.** `services/api/tests/unit/test_reminder_schedule.py` (15),
@@ -1999,7 +1999,7 @@ TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
 TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest \
   tests/integration/test_notification_registry.py -q                         # 19 passed (incl. migration round-trip)
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 856; frontend 216)
+./scripts/verify.sh   # verification: PASS (backend 856; frontend 216)
 ```
 
 **Files added.** `atlas/models/notification.py`, `atlas/notifications/{registry,service}.py`,
@@ -2047,7 +2047,7 @@ cd apps/web && npm run e2e
     # 7 passed (Chromium): 4 M7 failure modes + 3 M8-02 push consent
     #   (granted → registered; denied → blocked; server without VAPID → unavailable)
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 875; frontend 244)
+./scripts/verify.sh   # verification: PASS (backend 875; frontend 244)
 ```
 
 **Files added.** `services/api/atlas/notifications/vapid.py`, `services/api/atlas/reminders/push.py`,
@@ -2096,7 +2096,7 @@ TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest \
   tests/integration/test_reminder_preferences.py -q                          # passed
 
 cd apps/web && npm run lint && npm run typecheck && npm run test && npm run build   # clean; 268 vitest
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # verification: PASS (backend 914; frontend 268)
+./scripts/verify.sh   # verification: PASS (backend 914; frontend 268)
 ```
 
 **Files added.** `services/api/alembic/versions/f1b2c3d4e5a6_reminder_default_policy.py`,
@@ -2142,7 +2142,7 @@ TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
 TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest \
   tests/integration/test_backups.py tests/unit/test_backups.py -q            # 22 passed
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # backend 936; frontend 268; verification: PASS
+./scripts/verify.sh   # backend 936; frontend 268; verification: PASS
 ```
 
 **Operator CLI (manual, `atlas_test` + a temp notes dir — never the application DB):**
@@ -2265,7 +2265,7 @@ cd services/api
 .venv/bin/python -m pytest tests/unit -q                                     # 561 passed
 TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
   .venv/bin/python -m pytest -q                                              # 936 passed
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh                          # verification: PASS
+./scripts/verify.sh                          # verification: PASS
 ```
 
 **Files changed.** `docs/OPERATIONS.md` (§2 restore runbook, replacing the placeholder), `docs/ROADMAP.md`
@@ -2323,7 +2323,7 @@ TEST_DATABASE_URL=postgresql+psycopg://atlas:atlas@127.0.0.1:5432/atlas_test \
 TEST_DATABASE_URL=…/atlas_test .venv/bin/python -m pytest \
   tests/integration/test_export.py tests/unit/test_export_document.py -q   # 32 passed
 
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh   # backend 968; frontend 268; verification: PASS
+./scripts/verify.sh   # backend 968; frontend 268; verification: PASS
 ```
 
 **Operator CLI (manual, `atlas_test` + a temp notes root — never the application DB):**
@@ -2651,7 +2651,7 @@ cd services/api
 .venv/bin/mypy                               -> Success: no issues found in 107 source files
 .venv/bin/python -m pytest tests/unit -q     -> 582 passed
 TEST_DATABASE_URL=…atlas_test .venv/bin/python -m pytest -q -> 969 passed
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh -> verification: PASS   (frontend 268 passed)
+./scripts/verify.sh -> verification: PASS   (frontend 268 passed)
 ```
 
 **Files changed.** `docs/DEPLOYMENT.md` (§6 upgrade + §7 rollback runbook, replacing the outline),
@@ -2751,7 +2751,7 @@ matrix unverified for REQ-012). Every verdict and its justification is in the ta
 **Commands run (2026-10-27).**
 
 ```
-cd /home/kim/Documents/Atlas && ./scripts/verify.sh
+./scripts/verify.sh
   # backend ruff/format/mypy clean; pytest -> 969 passed; frontend lint/typecheck/vitest -> 268 passed
   # verification: PASS
 ```
