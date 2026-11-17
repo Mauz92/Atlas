@@ -846,7 +846,7 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 ### R-85 - Signing key loss or leak
 - **Severity/Likelihood:** Medium / Low
 - **Impact:** The release APK is signed with the owner's key (`apps/desktop/keys/`, gitignored). Losing it means uninstalling (and re-syncing from the server) to install a build signed with a new key; leaking it lets someone else ship an "update" Android accepts.
-- **Mitigation:** the script creates the key with a random password, mode 0600, outside Git; back it up offline. **Status:** Open (owner action: back up the key). **Update 2026-11-16 (REL-02):** the release workflow signs on the runner host using the key file there; the key is not in GitHub, but any workflow that runs on that self-hosted runner can read it, so keep the runner for this repository only and do not run untrusted pull-request code on it.
+- **Mitigation:** the script creates the key with a random password, mode 0600, outside Git; back it up offline. **Status:** Open (owner action: back up the key). **Update 2026-11-17 (REL-02):** the CI runner (`gh-runner`) cannot read the key and is deliberately not given it; the APK is signed locally by `release-android.sh`.
 
 ### R-86 - `USE_EXACT_ALARM` and a store listing
 - **Severity/Likelihood:** Low / Low

@@ -1,7 +1,7 @@
 # Android client build (SYNC-10, ADR-0075). Manual: Actions > Android > Run workflow.
 #
-# Builds the debug and the UNSIGNED release APK of apps/desktop for arm64 and uploads them as an artifact. It does not sign (the signed APK is
-# built by the release workflow, REL-02, from the key on the runner host) and it does not run the phone test (`apps/desktop/e2e/android.mjs` needs a USB phone). It runs on the self-hosted runner,
+# Builds the debug and the UNSIGNED release APK of apps/desktop for arm64 and uploads them as an artifact. It does not sign (the owner's key
+# is never in CI) and it does not run the phone test (`apps/desktop/e2e/android.mjs` needs a USB phone). It runs on the self-hosted runner,
 # which must have the toolchain described in apps/desktop/README.md (JDK 17, Android SDK 35 + NDK 27 under ~/.local/android or ANDROID_HOME /
 # JAVA_HOME / NDK_HOME set, the four Rust android targets). STATUS: run 43419691993 (2026-11-13) all green; it installs its own toolchain (apps/desktop/scripts/setup-android-toolchain.sh).
 name: Android
