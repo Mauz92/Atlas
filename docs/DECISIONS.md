@@ -3699,3 +3699,16 @@ limiter store.
 - **D2. The minimum is 3.12** (`requires-python >=3.12`, ruff `py312`, mypy `python_version = 3.12`): the code is type-checked and linted against the oldest supported version so nothing newer than 3.12 syntax or stdlib slips in.
 - **D3. 3.14 is not a supported target yet.** The developer's local virtualenv is 3.14 and the full suite passes there, but CI and the image do not run it; it becomes supported when CI runs it (a matrix entry) and the image moves.
 - **D4. Upgrading** the image to a new Python is a normal dependency change: bump the Dockerfile and the CI `uv` version together, run the full suite, record it here.
+
+## ADR-0079 — Publish the Android app on Google Play (PLAY-01 to PLAY-12)
+
+**Status:** DEFERRED (2026-11-17, owner decision: no paid distribution, "stick to GitHub"; first proposed 2026-11-16 after the owner question "what is needed to publish the android app on play store?"). ADR-0075 D8 stands, now with the signed APK attached to the GitHub Release (REL-02). Reopen with a new ADR if the owner wants Play (the account fee, a public demo server and a 14-day closed test are the costs). **Related:** ADR-0068 D8, ADR-0075, ADR-0077; `PLAY_STORE.md` (steps, form answers, copy); R-85, R-86, R-87, R-88; SEC-01.
+
+- **D1. Scope.** A Play listing of the same Android app, built as an App Bundle. 0.1.0 is not delayed by it: it is a post-0.1.0 track unless the owner says otherwise.
+- **D2. A Play build variant, not a fork.** `scripts/build-android.sh play` builds a release `.aab` with `ATLAS_PLAY=1`, which removes `MANAGE_EXTERNAL_STORAGE` from the merged manifest (Play does not allow it for a notes app). The sideload APK keeps the shared notes folder. The Play build hides that setting (PLAY-02); Export notes stays.
+- **D3. Signing.** Play App Signing with a new, separate upload key. The existing sideload key is kept for sideloaded APKs. Consequence: a Play install and a sideloaded APK have different signatures and cannot update each other.
+- **D4. Reviewer access needs a public demo server.** Play reviewers must sign in. The demo is a separate, throwaway Atlas deployment with fake data, a public HTTPS certificate, rate limiting and a nightly reset, never the owner's real server. It is the first public exposure of Atlas and so needs the owner's explicit approval (AGENTS.md 18; R-87).
+- **D5. Exact alarms.** Declare `USE_EXACT_ALARM` with a written justification. If Play rejects it, the fallback is `SCHEDULE_EXACT_ALARM` (user-granted, revocable), which weakens the reminder guarantee (R-84); decide then, not now.
+- **D6. Account.** Personal account needs a 14-day closed test with 12 opted-in testers before production; an organisation account does not. Owner chooses.
+- **Alternatives rejected for this proposal:** F-Droid and a GitHub APK remain valid and cheaper (see `PLAY_STORE.md` section 6); a SAF-based shared folder to keep that feature on Play (SYNC-07 S3, unmeasured).
+- **Consequences.** A public, discoverable listing and its support expectations; a yearly target-SDK bump; extra CI/build variant to maintain; no change to server, API or data model.

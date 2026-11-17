@@ -846,12 +846,22 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 ### R-85 - Signing key loss or leak
 - **Severity/Likelihood:** Medium / Low
 - **Impact:** The release APK is signed with the owner's key (`apps/desktop/keys/`, gitignored). Losing it means uninstalling (and re-syncing from the server) to install a build signed with a new key; leaking it lets someone else ship an "update" Android accepts.
-- **Mitigation:** the script creates the key with a random password, mode 0600, outside Git; back it up offline. **Status:** Open (owner action: back up the key).
+- **Mitigation:** the script creates the key with a random password, mode 0600, outside Git; back it up offline. **Status:** Open (owner action: back up the key). **Update 2026-11-17 (REL-02):** the CI runner (`gh-runner`) cannot read the key and is deliberately not given it; the APK is signed locally by `release-android.sh`.
 
 ### R-86 - `USE_EXACT_ALARM` and a store listing
 - **Severity/Likelihood:** Low / Low
 - **Impact:** The permission is meant for alarm and calendar apps; a Play Store listing would need that justified and a data-safety form. Atlas is sideloaded, so no policy applies today.
-- **Mitigation:** none needed now; revisit if a store listing is ever wanted (it also raises the account/cost questions of AGENTS.md section 14). **Status:** Accepted.
+- **Mitigation:** none needed now; revisit if a store listing is ever wanted (it also raises the account/cost questions of AGENTS.md section 14). **Status:** Accepted. **Update 2026-11-16:** a Play listing is now proposed (ADR-0079, `PLAY_STORE.md` section 3): justification text drafted, fallback `SCHEDULE_EXACT_ALARM` weakens reminders (R-84); rejection is possible and unverified. Play is deferred (ADR-0079, 2026-11-17), so this stays Accepted.
+
+### R-87 - Reviewer demo server is the first public exposure of Atlas
+- **Severity/Likelihood:** Medium / Medium (only if ADR-0079 is accepted)
+- **Impact:** Play reviewers and closed testers must sign in, so a public Atlas instance has to exist. It contradicts "tailnet only until the SEC-01 audit"; a flaw in Atlas becomes remotely reachable, and a demo that shares anything with the real server would expose real data.
+- **Mitigation (designed, not built):** a separate deployment on separate hardware or a separate host, fake data only, no calendar provider config, no secrets shared with the real install, rate limits, nightly reset, destroyed after the test period if the owner prefers. Needs explicit owner approval (AGENTS.md 18). **Status:** Deferred (ADR-0079; applies only if Play is reopened).
+
+### R-88 - Native libraries not 16 KB page-size aligned
+- **Severity/Likelihood:** Medium / High (on NDK 27 defaults)
+- **Impact:** Google Play requires native code in apps targeting Android 15+ to support 16 KB page sizes; an `.aab` with 4 KB-aligned Rust libraries can be rejected, and the app would not run on 16 KB devices.
+- **Mitigation:** link with `-Wl,-z,max-page-size=16384` or move to NDK 28+; verify with `llvm-readelf` and `zipalign -c -P 16` (PLAY-03). Not yet checked on the current build. **Status:** Deferred (ADR-0079; applies only if Play is reopened).
 
 ## Review log
 
@@ -897,3 +907,4 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 | 2026-11-10 | UX-12 | R-81 added (accent colours vs semantic colours; per-device preference). |
 | 2026-11-12 | SYNC-10 / M8-04d (Android) | R-82 to R-86 added (app-private notes, no background sync, vendor alarm batching, signing key, `USE_EXACT_ALARM`); R-63 (missed Android reminders) and R-59 (resident client) updated: on Android the OS holds the alarms, evidence in `ACCEPTANCE.md` SYNC-10. |
 | 2026-11-13 | SYNC-10 follow-up | R-82 and R-83 moved to Mitigating (shared notes folder, keep-connected service, export); the permission `MANAGE_EXTERNAL_STORAGE` and a foreground service are new surface (SECURITY.md A9, A10). |
+| 2026-11-16 | Google Play proposal (ADR-0079) | R-87 (public demo server) and R-88 (16 KB page alignment) added; R-86 updated. Nothing built beyond the PLAY-01 build variant. |

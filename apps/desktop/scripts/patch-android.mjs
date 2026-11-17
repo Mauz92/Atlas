@@ -16,6 +16,17 @@ if (!manifest.includes("allowBackup")) {
 if (!manifest.includes("windowSoftInputMode")) {
   manifest = manifest.replace('android:launchMode="singleTask"', 'android:launchMode="singleTask"\n            android:windowSoftInputMode="adjustResize"');
 }
+// The Google Play variant (ATLAS_PLAY=1, PLAY-01, docs/PLAY_STORE.md): Play does not allow MANAGE_EXTERNAL_STORAGE for an app like Atlas, so
+// the merged manifest drops the plugin's declaration. Idempotent in both directions: a normal build removes the marker line again.
+const PLAY_LINE = '    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:node="remove" /> <!-- atlas-play -->\n';
+manifest = manifest.replace(PLAY_LINE, "");
+if (process.env.ATLAS_PLAY === "1") {
+  if (!manifest.includes('xmlns:tools=')) {
+    manifest = manifest.replace("<manifest ", '<manifest xmlns:tools="http://schemas.android.com/tools" ');
+  }
+  manifest = manifest.replace(/(<uses-permission android:name="android.permission.INTERNET" \/>\n)/, `$1${PLAY_LINE}`);
+  if (!manifest.includes("atlas-play")) throw new Error("could not add the Play manifest line");
+}
 writeFileSync(manifestPath, manifest);
 
 const xmlDir = path.join(gen, "app/src/main/res/xml");
@@ -35,7 +46,7 @@ if (!gradle.includes("atlasRelease")) {
   gradle = gradle.replace(
     "    buildTypes {",
     `    val signingProps = Properties().apply {
-        val f = file("${props}")
+        val f = file(System.getenv("ATLAS_ANDROID_SIGNING_PROPERTIES") ?: "${props}")
         if (f.exists()) f.inputStream().use { load(it) }
     }
     signingConfigs {
@@ -51,6 +62,10 @@ if (!gradle.includes("atlasRelease")) {
     buildTypes {`,
   );
   gradle = gradle.replace('getByName("release") {', 'getByName("release") {\n            if (signingProps.isNotEmpty()) signingConfig = signingConfigs.getByName("atlasRelease")');
+} else if (!gradle.includes("ATLAS_ANDROID_SIGNING_PROPERTIES")) {
+  // A project patched before the release workflow existed has the properties path baked in; let the environment override it
+  // (REL-02: the release job points it at a file on the runner host, outside the checkout).
+  gradle = gradle.replace(/file\("([^"]*android-signing\.properties)"\)/, 'file(System.getenv("ATLAS_ANDROID_SIGNING_PROPERTIES") ?: "$1")');
 }
 // Tauri's Android runtime pulls Jackson 2.15.3, which has published advisories (GHSA-72hv-8253-57qq and 14 more, found by an OSV scan of the release
 // classpath on 2026-11-12); 2.22.4 has none. Forced for the whole app (the host parses the page's alarm arguments with it).
