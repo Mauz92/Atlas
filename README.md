@@ -19,6 +19,21 @@
 > (for example a tailnet). It has had careful review but **no independent security audit**, so do not expose it to
 > the open internet without reading [`docs/SECURITY.md`](docs/SECURITY.md) and [`docs/RELEASE.md`](docs/RELEASE.md).
 
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/today.png" alt="Today view with tasks due today"><br><sub><b>Today</b>: what is due, scheduled and overdue.</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/board.png" alt="Kanban board for a project"><br><sub><b>Projects</b>: a board with progress derived from the tasks.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshots/notes.png" alt="Markdown note in the live editor"><br><sub><b>Notes</b>: plain Markdown with a live preview.</sub></td>
+    <td><img src="docs/assets/screenshots/today-dark.png" alt="Today view in dark mode"><br><sub><b>Dark mode</b>, following your system.</sub></td>
+  </tr>
+</table>
+
+<sub>Screenshots use made-up demo data.</sub>
+
 ## What you get
 
 <table>
