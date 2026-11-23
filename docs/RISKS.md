@@ -863,6 +863,26 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 - **Impact:** Google Play requires native code in apps targeting Android 15+ to support 16 KB page sizes; an `.aab` with 4 KB-aligned Rust libraries can be rejected, and the app would not run on 16 KB devices.
 - **Mitigation:** link with `-Wl,-z,max-page-size=16384` or move to NDK 28+; verify with `llvm-readelf` and `zipalign -c -P 16` (PLAY-03). Not yet checked on the current build. **Status:** Deferred (ADR-0079; applies only if Play is reopened).
 
+### R-89 - The SRD monster catalogue is a third-party service with no published hosting terms
+- **Severity/Likelihood:** Low / Low
+- **Impact:** TTRPG-04 imports creatures on demand from `dnd5eapi.co`. Its repository (MIT, code) and docs publish no terms of use, rate limit or caching rule (README read 2026-11-23; the FAQ pages returned 404). The service can change, disappear or throttle.
+- **Mitigation:** the **content licence is verified**: the stored notice is Wizards' own statement word for word from SRD_CC_v5.1.pdf (CC-BY-4.0), pinned by a unit test. Nothing is bundled; imports are idempotent snapshots, so an outage only blocks *new* imports; requests are minimal and cached (6 h index); the origin is configurable (`TTRPG_SRD_BASE_URL`, so an operator can point at their own instance of the open-source `5e-bits/5e-srd-api`) and the feature can be switched off (`TTRPG_SRD_ENABLED=false`). **Status:** Accepted (no terms exist to breach; revisit if the provider publishes any). The newer SRD 5.2.1 (2024 rules, different notice, different monsters) is out of scope for v1.
+
+### R-90 - A fight has no push channel between devices
+- **Severity/Likelihood:** Low / Low
+- **Impact:** two tabs or devices on one fight learn of each other's changes by looking, not by push.
+- **Mitigation (closed to a few seconds):** an idle, visible fight screen looks again every 5 s and on becoming visible, never while its own change is in flight, and stops when the fight ends; every change is still revision-checked and carries a mutation key, so a stale screen is refused, never merged. Verified in a real browser with two tabs. **Status:** Mitigated (not instantaneous; no server push by design).
+
+### R-91 - The desktop and Android apps and the TTRPG module
+- **Severity/Likelihood:** Low / Low
+- **Impact:** the apps use device credentials; the module is online-only (no offline queue for fights).
+- **Mitigation (closed, ADR-0084):** the module's routes and `GET /api/features` are open to device credentials as a deliberate entry in the reviewed `test_devices` contract; changing a feature switch stays browser-only, so a module is turned on in the browser and then shows in the apps. Device writes use the same ownership checks, per-device rate limits and revision checks. **Not verified:** the module in the native shells on a real device (no desktop or phone session was run for it); it uses the same web screens the shells already host. **Status:** Mitigating.
+
+### R-92 - Combat history growth
+- **Severity/Likelihood:** Low / Low
+- **Impact:** every confirmed action is a row.
+- **Mitigation (closed):** the heavy part, the stored before/after used by undo, is dropped when a fight ends (nothing in an ended fight can be undone), leaving only the readable summary, kind and number per action; live and paused fights keep it. Rows are small and cascade with the campaign. **Status:** Closed for storage; the export of a finished fight carries summaries, not before/after.
+
 ## Review log
 
 | Date | Milestone | Change |
@@ -908,3 +928,5 @@ R-65/R-66 (clock, duplicates and stale notifications): server half mitigated and
 | 2026-11-12 | SYNC-10 / M8-04d (Android) | R-82 to R-86 added (app-private notes, no background sync, vendor alarm batching, signing key, `USE_EXACT_ALARM`); R-63 (missed Android reminders) and R-59 (resident client) updated: on Android the OS holds the alarms, evidence in `ACCEPTANCE.md` SYNC-10. |
 | 2026-11-13 | SYNC-10 follow-up | R-82 and R-83 moved to Mitigating (shared notes folder, keep-connected service, export); the permission `MANAGE_EXTERNAL_STORAGE` and a foreground service are new surface (SECURITY.md A9, A10). |
 | 2026-11-16 | Google Play proposal (ADR-0079) | R-87 (public demo server) and R-88 (16 KB page alignment) added; R-86 updated. Nothing built beyond the PLAY-01 build variant. |
+| 2026-11-23 | TTRPG-01..07 | R-89 to R-92 added (SRD provider terms, no live sync between devices, shells do not show the module, history growth). R-03 (Markdown data loss) and R-08 (restore) relevant: campaign notes are ordinary notes and the structured state is in every backup and restored in the drill. |
+| 2026-11-23 | TTRPG follow-up | R-89 re-assessed (notice verified against SRD_CC_v5.1.pdf; provider publishes no terms: accepted), R-90 mitigated by polling, R-91 mitigated by opening the routes to devices (ADR-0084 revised), R-92 closed by compacting finished fights. |

@@ -398,3 +398,23 @@ User 1─* NotificationDevice
 - **`provider_credentials.needs_reauth_at`**: set when the provider rejected the stored sign-in; cleared by a new connect.
 - **`external_events`** gained `location`, `description`, `web_link`, `series_id` (the master's `external_event_id` for an exception/override; `recurrence_id` is the occurrence's original start as `YYYYMMDDTHHMMSSZ`) and the index `ix_external_events_user_range`. `external_event_id` is `sha256(calendar_id)[:12]:provider-id`; `recurrence_rule` holds `RRULE:`/`EXDATE:`/`RDATE:` lines (instants in UTC) for Google/ICS masters; Microsoft occurrences arrive expanded and have none. All-day events store local-midnight instants plus the event's `time_zone`; the API derives the dates.
 - Cursor types: `sync_token` (Google), `delta_link` (Microsoft, `window_end|deltaLink`), `feed_validator` (ICS, JSON of ETag/Last-Modified/body hash).
+
+
+## TTRPG module (optional; TTRPG-01/02, `TTRPG_MODULE_PLAN.md`)
+
+| Table | Ownership and lifecycle |
+|---|---|
+| `user_features` | `(user_id, feature, enabled)`; missing row = off; disabling keeps all feature data (ADR-0081) |
+| `ttrpg_campaigns` | PostgreSQL-authoritative: title, rules preset (`dnd5e-2014`), optional book title, unique note `folder` per owner, `home_note_id` (FK `notes`, `SET NULL`), `archived_at`, `revision` |
+| `ttrpg_sessions` | campaign, owner, `note_id` (FK `notes`, `SET NULL`), title, `sequence` (unique per campaign), optional date, status `planned/active/done` (at most one active per campaign, enforced in the service), `revision` |
+
+Prose stays in Markdown notes referenced by note id; the written handoff is the "Next session" section of a session note (read, never copied into the database).
+
+| `ttrpg_party_members` | Reusable character card per campaign: role (`pc`/`companion`), name, level, AC, max HP, speed, initiative modifier, passive Perception, attacks, abilities and resource definitions (JSONB), `archived_at` (retired members are never deleted), `revision` |
+| `ttrpg_party_state` | One row per member, the **single** copy of play state combat will use: current and temporary HP, conditions (2014 preset names), exhaustion, death-save marks, `resources_used`, `revision` (checked on every write) |
+| `ttrpg_creatures` | Owner-level creature cards: manual, SRD imports (read-only snapshot with `source_edition`, `external_id`, attribution, `imported_at`; unique per owner) and variants (`derived_from_id`); archived, never deleted so encounters and runs that snapshotted them still resolve |
+| `ttrpg_encounters` | Prepared encounter: title, book reference, setup reminder, optional session and location note (FK `SET NULL`), selected party member ids, `archived_at`, `revision` (every slot edit bumps it) |
+| `ttrpg_encounter_slots` | One independent combatant slot: side, optional source card (`SET NULL`), name/AC/HP/initiative modifier **copied** from the card, `overrides` (fields set by hand), `snapshot` of the card (traits, actions, provenance, attribution). Only an explicit refresh re-reads the card |
+| `ttrpg_combat_runs` | One fight: status (`setup/active/paused/ended`), round, active combatant, encounter snapshot (book reference, reminder), outcome and end reason, `revision`, `action_seq`. At most one unfinished run per campaign (partial unique index) |
+| `ttrpg_combatants` | Run-local roster slot with a stable id: NPCs own HP, temp HP and conditions; **party slots own none** and read/write `ttrpg_party_state`. Initiative, `order_index`, defeated/removed flags, condition expiry reminders (`{condition: round}`), copied card snapshot |
+| `ttrpg_combat_actions` | The history (the before/after payload is cleared when the run ends): numbered per run, `mutation_key` (unique per run), request hash, summary, reversible flag and the exact `before`/`after` of the run, combatant and party-state fields changed; `undone_by_seq` |

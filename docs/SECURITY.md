@@ -475,3 +475,12 @@ An uploaded calendar file is **untrusted input**. Controls: a hard 5 MiB limit (
 | T24c | Abuse of test/add feed as a scanner | per-user rate limit (12/min); errors are coarse codes, never the target's response |
 
 Residual risks: Atlas is private until SEC-01; the fixture evidence does not prove provider behaviour (R-76); a compromised owner session can add a feed pointing at any public host (accepted); Microsoft tokens cannot be revoked by Atlas.
+
+
+## TTRPG module: SRD catalogue (TTRPG-04)
+
+- **Threat.** A hostile or compromised catalogue (or a network attacker on its path) tries to inject markup, exhaust memory/time, redirect Atlas to another host, or learn about the owner's campaigns.
+- **Mitigation.** Fixed request shapes to one configured origin, validated index segment, bounded connect/read timeouts, 256 KiB/2 MiB response caps, redirects never followed, payload validated field by field (any deviation imports nothing), control characters stripped, text lengths and counts bounded and rendered as React text (never HTML), no request carries user content (search runs locally on the cached index), errors are content-free (no URL or body), the whole feature can be switched off by the operator.
+- **Verification.** `tests/unit/test_srd_adapter.py` (27) and `tests/integration/test_ttrpg_creatures.py` (19) with a fake transport; no CI test reaches the real service.
+
+**Device access to the module (ADR-0084).** The TTRPG routes and `GET /api/features` accept device credentials; they are user content behind the same server-side guard (404 while the module is off), per-user scoping and per-device rate limits as notes and tasks. Switching a module on or off stays a browser-session, CSRF-protected action, so a stolen device token cannot enable a module. Verified by `test_devices` (the reviewed list of device-open routes) and `test_features.py`.

@@ -74,6 +74,7 @@
 | Android app (signed APK you install yourself) | Available |
 | ICS calendar links and import, unified calendar views | Available (read-only); a real Proton link is still unverified |
 | Backups, restore, export, upgrade and rollback | Available (the in-app updater has not yet run on a live server) |
+| TTRPG module (optional, off by default): campaigns, party, encounters, combat tracker for D&D 5e (2014) | Available in the browser and, once enabled there, the desktop and Android apps (not exercised on a real device); CI not yet run. Creature text from the SRD 5.1 is licensed CC-BY-4.0 ([notice](docs/USER_GUIDE.md)) |
 | Google / Microsoft calendar sync, calendar editing | Not available (deferred) |
 | Windows, macOS, iOS | Not available |
 

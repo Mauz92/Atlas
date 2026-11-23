@@ -780,3 +780,14 @@ A browser local store (SYNC-11d is only planned); offline editing in the shell's
 
 **Not covered (`NOT RUN`):** a reboot of the **physical** phone (done on the emulator only), another vendor's battery manager, an app force-stopped from Settings, IME/CJK composition and the soft keyboard over the editor (SYNC-07 S1), a shared notes folder editable in place (not built; export exists), background sync (not built), TalkBack, a real CJK soft keyboard (composition events are tested through DevTools), low-memory process death while the app is in the background, TLS against a real certificate (the run uses loopback http), and the Android CI job only builds (it does not run the phone test; run 43419691993 was green).
 
+## 13. TTRPG module tests (TTRPG-01..07)
+
+| Layer | Where | What it proves |
+|---|---|---|
+| Pure rules | `tests/unit/test_ttrpg_rules.py` (13), `test_ttrpg_combat.py` (10) | damage/healing/temp HP arithmetic, rests, turn order, round wrap, ties, removal of the active seat, nobody eligible |
+| Catalogue adapter | `tests/unit/test_srd_adapter.py` (27) with `tests/fakes/srd_provider.py` | only the two documented request shapes, no redirects, size/time bounds, 16 malformed payloads, text sanitising; **no CI test reaches the real service** |
+| API + PostgreSQL | `tests/integration/test_features*.py`, `test_ttrpg_campaigns.py`, `_party.py`, `_creatures.py`, `_encounters.py`, `_runs.py`, `_export_restore.py`, `_migration.py` | ownership (every route 404 for another account and while off), idempotent creates, revision conflicts, concurrent writers, retry-safe scaffolding, undo and its conflicts, atomicity of run + party + history, export content, a real `pg_dump` restored into a scratch database with a paused fight |
+| Browser unit | `apps/web/src/components/ttrpg/*.test.tsx`, `lib/features.test.tsx` | forms keep one id across a failed retry, conflicts reload instead of retrying, mutation key reuse, notes/combat switch keeps the same editor |
+| Real stack | `apps/web/e2e-real/ttrpg07-game-night.spec.ts` (10) | the game-night journey in Chromium against the real API and a throwaway PostgreSQL with the catalogue blocked; axe (WCAG 2 A/AA + best practice) on every TTRPG page; no sideways scroll at 360, 390, 768 and 1440 px; a second tab follows a change by itself; a deleted session note is repaired by linking another note |
+
+Run the journey alone: `cd apps/web && npx playwright test -c playwright.real.config.ts e2e-real/ttrpg07-game-night.spec.ts`. The harness points `TTRPG_SRD_BASE_URL` at a closed local port. **Not covered (needs a real device):** screen readers, the phone's on-screen keyboard, real taps.
