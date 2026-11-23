@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { ApiError, ttrpgApi, type TtrpgCampaignDetail } from "../../api/client";
@@ -21,6 +21,8 @@ vi.mock("../../api/client", async () => {
       relink: vi.fn(),
       party: vi.fn().mockResolvedValue({ items: [], conditions: [] }),
       runs: vi.fn().mockResolvedValue({ items: [] }),
+      campaignNotes: vi.fn().mockResolvedValue({ items: [] }),
+      createCampaignNote: vi.fn(),
       encounters: vi.fn().mockResolvedValue({ items: [] }),
       createEncounter: vi.fn(),
     },
@@ -68,6 +70,7 @@ beforeEach(() => {
   api.party.mockResolvedValue({ items: [], conditions: [] });
   api.encounters.mockResolvedValue({ items: [] });
   api.runs.mockResolvedValue({ items: [] });
+  api.campaignNotes.mockResolvedValue({ items: [] });
 });
 
 describe("CampaignList", () => {
@@ -170,6 +173,38 @@ describe("CampaignPage", () => {
       fireEvent.click(screen.getByRole("button", { name: "Link this note" }));
     });
     expect(api.relink).toHaveBeenCalledWith("c1", "home", "n9");
+  });
+
+  it("collects the campaign's notes by kind and adds an NPC note", async () => {
+    const note = (id: string, kind: "home" | "session" | "npc" | "location" | "other", title: string, label: string | null = null) => ({
+      id, kind, title, label, path: `TTRPG/Lost Mine/${title}.md`,
+    });
+    api.campaign.mockResolvedValue(detail());
+    api.campaignNotes
+      .mockResolvedValueOnce({
+        items: [
+          note("h", "home", "Lost Mine"),
+          note("s1", "session", "Session 01", "1. Session 01"),
+          note("n1", "npc", "Sildar Hallwinter"),
+          note("l1", "location", "Cragmaw Hideout"),
+          note("o1", "other", "Loot list"),
+        ],
+      })
+      .mockResolvedValue({ items: [] });
+    api.createCampaignNote.mockResolvedValue(note("n2", "npc", "Klarg"));
+    page();
+    const group = async (name: string) => within(await screen.findByRole("group", { name }));
+    expect((await group("Campaign home")).getByRole("link", { name: "Lost Mine" })).toHaveAttribute("href", "/notes?open=h");
+    expect((await group("Sessions")).getByRole("link", { name: "1. Session 01" })).toBeInTheDocument();
+    expect((await group("NPCs")).getByRole("link", { name: "Sildar Hallwinter" })).toBeInTheDocument();
+    expect((await group("Locations")).getByRole("link", { name: "Cragmaw Hideout" })).toBeInTheDocument();
+    expect((await group("Other notes")).getByRole("link", { name: "Loot list" })).toBeInTheDocument();
+    const form = (await screen.findByRole("button", { name: "Add note" })).closest("form")!;
+    fireEvent.change(within(form).getByLabelText("Title"), { target: { value: "Klarg" } });
+    await act(async () => {
+      fireEvent.click(within(form).getByRole("button", { name: "Add note" }));
+    });
+    expect(api.createCampaignNote).toHaveBeenCalledWith("c1", { kind: "npc", title: "Klarg" });
   });
 
   it("creates sessions with a fresh id, changes status, and reloads after a conflict", async () => {

@@ -303,6 +303,37 @@ test("a deleted session note can be repaired by linking another note", async ({ 
   await axe(page, "campaign page after repair");
 });
 
+test("a campaign's notes are collected under TTRPG while staying beside the other notes", async ({ page }) => {
+  await ensureOwner(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const nav = page.getByRole("navigation", { name: "Main navigation" });
+  // the campaign is listed inside the TTRPG category, and its page highlights it
+  await page.goto("/ttrpg");
+  const entry = nav.getByRole("link", { name: CAMPAIGN });
+  await expect(entry).toBeVisible();
+  await entry.click();
+  await expect(page.getByRole("heading", { name: CAMPAIGN })).toBeVisible();
+  await expect(entry).toHaveAttribute("aria-current", "page");
+
+  const notes = page.locator("section", { has: page.getByRole("heading", { name: "Notes", exact: true }) }).first();
+  await expect(notes.getByRole("group", { name: "Sessions" })).toBeVisible();
+  await notes.getByLabel("New note").selectOption("npc");
+  await notes.getByLabel("Title").fill("Sildar Hallwinter");
+  await notes.getByRole("button", { name: "Add note" }).click();
+  await expect(notes.getByRole("group", { name: "NPCs" }).getByRole("link", { name: "Sildar Hallwinter" })).toBeVisible();
+  await notes.getByLabel("New note").selectOption("location");
+  await notes.getByLabel("Title").fill("Cragmaw Hideout");
+  await notes.getByRole("button", { name: "Add note" }).click();
+  await expect(notes.getByRole("group", { name: "Locations" }).getByRole("link", { name: "Cragmaw Hideout" })).toBeVisible();
+  await axe(page, "campaign notes");
+
+  // the same notes are ordinary notes in the notes list, next to everything else
+  const all = await apiCall<{ notes: { path: string }[] }>(page, "GET", "/api/notes");
+  expect(all.notes.map((n) => n.path)).toContain("TTRPG/Lost Mine of Phandelver/NPCs/Sildar Hallwinter.md");
+  await notes.getByRole("link", { name: "Sildar Hallwinter" }).click();
+  await expect(page).toHaveURL(/\/notes\?open=/);
+});
+
 test("the rules reference works on its own page and from a condition in a fight", async ({ page }) => {
   await ensureOwner(page);
   await page.setViewportSize({ width: 1440, height: 900 });

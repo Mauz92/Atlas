@@ -1979,6 +1979,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ttrpg/campaigns/{campaign_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Campaign Notes
+         * @description Every note of the campaign in one place: home, sessions, NPCs, locations, the rest.
+         *
+         *     They remain ordinary notes in the notes tree; this is the campaign's own view of them.
+         */
+        get: operations["campaign_notes_api_ttrpg_campaigns__campaign_id__notes_get"];
+        put?: never;
+        /**
+         * Create Campaign Note
+         * @description A new NPC, location or plain note inside the campaign's folder (never overwrites a file).
+         */
+        post: operations["create_campaign_note_api_ttrpg_campaigns__campaign_id__notes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ttrpg/sessions/{session_id}": {
         parameters: {
             query?: never;
@@ -2800,6 +2826,40 @@ export interface components {
         CampaignListOut: {
             /** Items */
             items: components["schemas"]["CampaignOut"][];
+        };
+        /** CampaignNoteCreate */
+        CampaignNoteCreate: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "npc" | "location" | "note";
+            /** Title */
+            title: string;
+        };
+        /** CampaignNoteOut */
+        CampaignNoteOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Path */
+            path: string;
+            /** Title */
+            title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "home" | "session" | "npc" | "location" | "other";
+            /** Label */
+            label: string | null;
+        };
+        /** CampaignNotesOut */
+        CampaignNotesOut: {
+            /** Items */
+            items: components["schemas"]["CampaignNoteOut"][];
         };
         /** CampaignOut */
         CampaignOut: {
@@ -9614,6 +9674,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CampaignDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    campaign_notes_api_ttrpg_campaigns__campaign_id__notes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CampaignNotesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_campaign_note_api_ttrpg_campaigns__campaign_id__notes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CampaignNoteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CampaignNoteOut"];
                 };
             };
             /** @description Validation Error */

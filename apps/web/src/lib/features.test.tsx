@@ -86,3 +86,14 @@ describe("optional features (TTRPG-01)", () => {
     expect(toggle).toBeChecked();
   });
 });
+
+describe("campaigns in the TTRPG category", () => {
+  it("lists each campaign under it and highlights the one being read", () => {
+    const sections = navSectionsFor({ ttrpg: true }, [{ id: "3f2c3f2c-3f2c-3f2c-3f2c-3f2c3f2c3f2c", title: "Lost Mine" }]);
+    const ttrpg = sections.find((section) => section.id === "ttrpg")!;
+    expect(ttrpg.items.map((item) => item.label)).toEqual(["Campaigns", "Creatures", "Rules", "Lost Mine"]);
+    expect(ttrpg.items[3]).toMatchObject({ to: "/ttrpg/3f2c3f2c-3f2c-3f2c-3f2c-3f2c3f2c3f2c" });
+    expect(ttrpg.items[3].icon).toBeUndefined();
+    expect(navSectionsFor({ ttrpg: false }, [{ id: "x", title: "y" }])).toBe(NAV_SECTIONS);
+  });
+});

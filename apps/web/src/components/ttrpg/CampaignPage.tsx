@@ -11,6 +11,7 @@ import {
 import { LoadError } from "../LoadError";
 import { Skeleton } from "../Skeleton";
 import { NoteLinkView } from "./NoteLinkView";
+import { CampaignNotes } from "./CampaignNotes";
 import { EncountersPanel } from "./EncountersPanel";
 import { PartyPanel } from "./PartyPanel";
 
@@ -219,6 +220,7 @@ export function CampaignPage() {
           )}
         </aside>
       )}
+      <CampaignNotes campaignId={campaign.id} archived={campaign.archived} refreshKey={campaign} />
       <PartyPanel campaignId={campaign.id} archived={campaign.archived} />
       <EncountersPanel campaign={campaign} />
     </section>

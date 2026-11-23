@@ -7,6 +7,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { noteSessions } from "../hooks/useNoteAutosave";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { ProjectsProvider, activeProjects, useProjects } from "../hooks/useProjects";
+import { useCampaignsForNav } from "../hooks/useCampaignsForNav";
 import { useFeatures } from "../lib/features";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 import {
@@ -74,6 +75,7 @@ function Shell() {
   const { projects } = useProjects();
   const listed = activeProjects(projects);
   const { pathname } = useLocation();
+  const campaigns = useCampaignsForNav(features.ttrpg, pathname);
   const wide = useMediaQuery(pathname.startsWith("/notes") ? NOTES_WIDE : WIDE, true);
   const narrow = useMediaQuery(NARROW, false);
 
@@ -99,6 +101,7 @@ function Shell() {
   const currentKey = activeNavKey(
     pathname,
     listed.map((project) => project.id),
+    campaigns.map((campaign) => campaign.id),
   );
   const currentRail = activeRail(pathname);
 
@@ -351,7 +354,7 @@ function Shell() {
           <kbd aria-hidden="true">Ctrl K</kbd>
         </button>
         <nav className="sidebar-nav" aria-label="Main navigation">
-          {navSectionsFor(features).map((section) => (
+          {navSectionsFor(features, campaigns).map((section) => (
             <SidebarSection
               key={section.id}
               section={section}
@@ -437,7 +440,7 @@ function Shell() {
                     className={currentRail === item.group ? "active" : undefined}
                     aria-current={railCurrent(item, pathname, currentRail)}
                   >
-                    <Icon name={item.icon} size={20} />
+                    {item.icon && <Icon name={item.icon} size={20} />}
                     <span>{item.label}</span>
                   </Link>
                 </li>
@@ -467,7 +470,7 @@ function RailLink({ item, pathname, current }: { item: NavItem; pathname: string
       title={item.label}
       aria-current={railCurrent(item, pathname, current)}
     >
-      <Icon name={item.icon} size={20} />
+      {item.icon && <Icon name={item.icon} size={20} />}
     </Link>
   );
 }
