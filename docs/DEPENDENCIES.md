@@ -322,3 +322,10 @@ The generated Android project pulls AndroidX `webkit` 1.14.0, `appcompat` 1.7.1,
 | Content | Where | Licence | Notes |
 |---|---|---|---|
 | Rules text from the System Reference Document 5.1 (conditions, turn order, actions, attacks, cover, movement, damage and healing, resting) | `apps/web/src/lib/srdRules.ts` | CC-BY-4.0 (Wizards of the Coast LLC) | Word for word from `SRD_CC_v5.1.pdf`; Wizards' attribution statement is shown wherever it is shown (`SRD_ATTRIBUTION`, pinned by a test). Wizards asks for no other attribution regarding them. Static data: no network use, no package dependency. The 2024 SRD 5.2.1 is a different document with a different notice and is not used. |
+
+## Bundled fonts (TTRPG-09)
+
+| Package | Use | Licence | Notes |
+|---|---|---|---|
+| `@fontsource/cinzel` 5.3.0 (weights 500, 700, latin) | headings and numbers in the TTRPG area | SIL Open Font License 1.1 | Self-hosted woff2 files, loaded only on TTRPG pages; no request to any font service. |
+| `@fontsource/alegreya-sans` (weights 400, 500, 700, latin) | body text in the TTRPG area | SIL Open Font License 1.1 | As above. |
