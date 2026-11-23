@@ -1,15 +1,27 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { ApiError, ttrpgApi, type TtrpgCampaignDetail } from "../../api/client";
 import { CampaignList } from "./CampaignList";
 import { CampaignPage } from "./CampaignPage";
 
+vi.mock("../NoteEditor", () => ({
+  NoteEditor: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <textarea aria-label="Note text" value={value} onChange={(e) => onChange(e.target.value)} />
+  ),
+}));
+vi.mock("../../hooks/useNoteAutosave", () => ({
+  useNoteAutosave: () => ({ session: { change: vi.fn() }, snapshot: null }),
+}));
+
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
   return {
     ...actual,
-    notesApi: { list: vi.fn().mockResolvedValue({ notes: [{ id: "n9", path: "Mine/Replacement.md" }], folders: [] }) },
+    notesApi: {
+      list: vi.fn().mockResolvedValue({ notes: [{ id: "n9", path: "Mine/Replacement.md" }], folders: [] }),
+      get: vi.fn().mockResolvedValue({ id: "h", title: "Lost Mine", content: "# Lost Mine\n", revision: 1 }),
+    },
     ttrpgApi: {
       campaigns: vi.fn(),
       createCampaign: vi.fn(),
@@ -21,6 +33,8 @@ vi.mock("../../api/client", async () => {
       relink: vi.fn(),
       party: vi.fn().mockResolvedValue({ items: [], conditions: [] }),
       runs: vi.fn().mockResolvedValue({ items: [] }),
+      campaignNotes: vi.fn().mockResolvedValue({ items: [] }),
+      createCampaignNote: vi.fn(),
       encounters: vi.fn().mockResolvedValue({ items: [] }),
       createEncounter: vi.fn(),
     },
@@ -68,6 +82,7 @@ beforeEach(() => {
   api.party.mockResolvedValue({ items: [], conditions: [] });
   api.encounters.mockResolvedValue({ items: [] });
   api.runs.mockResolvedValue({ items: [] });
+  api.campaignNotes.mockResolvedValue({ items: [] });
 });
 
 describe("CampaignList", () => {
@@ -170,6 +185,44 @@ describe("CampaignPage", () => {
       fireEvent.click(screen.getByRole("button", { name: "Link this note" }));
     });
     expect(api.relink).toHaveBeenCalledWith("c1", "home", "n9");
+  });
+
+  it("collects the campaign's notes by kind and adds an NPC note", async () => {
+    const note = (id: string, kind: "home" | "session" | "npc" | "location" | "other", title: string, label: string | null = null) => ({
+      id, kind, title, label, path: `TTRPG/Lost Mine/${title}.md`,
+    });
+    api.campaign.mockResolvedValue(detail());
+    api.campaignNotes
+      .mockResolvedValueOnce({
+        items: [
+          note("h", "home", "Lost Mine"),
+          note("s1", "session", "Session 01", "1. Session 01"),
+          note("n1", "npc", "Sildar Hallwinter"),
+          note("l1", "location", "Cragmaw Hideout"),
+          note("o1", "other", "Loot list"),
+        ],
+      })
+      .mockResolvedValue({ items: [] });
+    api.createCampaignNote.mockResolvedValue(note("n2", "npc", "Klarg"));
+    page();
+    fireEvent.click(await screen.findByRole("tab", { name: "Notes" }));
+    const group = async (name: string) => within(await screen.findByRole("group", { name }));
+    const pick = async (name: string, button: string) =>
+      (await group(name)).getByRole("button", { name: button });
+    expect(await pick("Campaign home", "Lost Mine")).toHaveAttribute("aria-current", "true"); // opened by default
+    expect(await pick("Sessions", "1. Session 01")).toBeInTheDocument();
+    expect(await pick("NPCs", "Sildar Hallwinter")).toBeInTheDocument();
+    expect(await pick("Locations", "Cragmaw Hideout")).toBeInTheDocument();
+    expect(await pick("Other notes", "Loot list")).toBeInTheDocument();
+    // the note opens in an editor inside the campaign, with a link to the full Notes page
+    expect(await screen.findByLabelText("Note text")).toHaveValue("# Lost Mine\n");
+    expect(screen.getByRole("link", { name: "Open in Notes" })).toHaveAttribute("href", "/notes?open=h");
+    const form = (await screen.findByRole("button", { name: "Add note" })).closest("form")!;
+    fireEvent.change(within(form).getByLabelText("Title"), { target: { value: "Klarg" } });
+    await act(async () => {
+      fireEvent.click(within(form).getByRole("button", { name: "Add note" }));
+    });
+    expect(api.createCampaignNote).toHaveBeenCalledWith("c1", { kind: "npc", title: "Klarg" });
   });
 
   it("creates sessions with a fresh id, changes status, and reloads after a conflict", async () => {

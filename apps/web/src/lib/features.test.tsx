@@ -27,8 +27,15 @@ describe("optional features (TTRPG-01)", () => {
   it("is off by default in the navigation", () => {
     expect(navSectionsFor({ ttrpg: false })).toBe(NAV_SECTIONS);
     const on = navSectionsFor({ ttrpg: true });
+    // TTRPG is a category of its own, right after Workspace, with Campaigns, Creatures and Rules
+    expect(on.map((section) => section.id)).toEqual(["planning", "workspace", "ttrpg", "more"]);
+    expect(on.find((section) => section.id === "ttrpg")).toMatchObject({ label: "TTRPG" });
+    expect(on.find((section) => section.id === "ttrpg")!.items.map((item) => item.label)).toEqual(["Campaigns", "Creatures", "Rules"]);
+    expect(on.find((section) => section.id === "workspace")!.items.map((item) => item.to)).not.toContain("/ttrpg");
     expect(on.flatMap((section) => section.items).map((item) => item.to)).toContain("/ttrpg");
+    expect(on.flatMap((section) => section.items).map((item) => item.to)).toContain("/ttrpg/rules");
     expect(NAV_SECTIONS.flatMap((section) => section.items).map((item) => item.to)).not.toContain("/ttrpg");
+    expect(NAV_SECTIONS.flatMap((section) => section.items).map((item) => item.to)).not.toContain("/ttrpg/rules");
   });
 
   it("the route shows only how to enable it while the module is off", async () => {
@@ -77,5 +84,16 @@ describe("optional features (TTRPG-01)", () => {
     });
     expect(await screen.findByRole("alert")).toHaveTextContent(/nope/);
     expect(toggle).toBeChecked();
+  });
+});
+
+describe("campaigns in the TTRPG category", () => {
+  it("lists each campaign under it and highlights the one being read", () => {
+    const sections = navSectionsFor({ ttrpg: true }, [{ id: "3f2c3f2c-3f2c-3f2c-3f2c-3f2c3f2c3f2c", title: "Lost Mine" }]);
+    const ttrpg = sections.find((section) => section.id === "ttrpg")!;
+    expect(ttrpg.items.map((item) => item.label)).toEqual(["Campaigns", "Creatures", "Rules", "Lost Mine"]);
+    expect(ttrpg.items[3]).toMatchObject({ to: "/ttrpg/3f2c3f2c-3f2c-3f2c-3f2c-3f2c3f2c3f2c" });
+    expect(ttrpg.items[3].icon).toBeUndefined();
+    expect(navSectionsFor({ ttrpg: false }, [{ id: "x", title: "y" }])).toBe(NAV_SECTIONS);
   });
 });

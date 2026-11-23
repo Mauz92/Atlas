@@ -113,6 +113,10 @@ ActionKind = Literal[
     "heal",
     "temp_hp",
     "set_hp",
+    "set_temp_hp",
+    "set_active",
+    "set_round",
+    "set_initiative",
     "add_condition",
     "remove_condition",
     "death_save",
@@ -136,6 +140,8 @@ class ActionRequest(BaseModel):
     combatant_id: uuid.UUID | None = None
     amount: int | None = Field(default=None, ge=0, le=9999)
     hp: int | None = Field(default=None, ge=0, le=9999)
+    initiative: int | None = Field(default=None, ge=-100, le=100)
+    round_number: int | None = Field(default=None, ge=1, le=999)
     condition: str | None = Field(default=None, max_length=32)
     expires_round: int | None = Field(default=None, ge=1, le=999)
     death_save: Literal["success", "failure", "reset"] | None = None
@@ -965,10 +971,13 @@ async def _hp_change(
             new_hp = amount
         tracker.combatant(row, "hp", new_hp)
         tracker.combatant(row, "temp_hp", new_temp)
-        if new_hp == 0 and not row.defeated:
-            tracker.combatant(row, "defeated", True)
-        elif new_hp > 0 and old_hp == 0 and row.defeated:
-            tracker.combatant(row, "defeated", False)
+        # damage and healing keep their helper (0 HP marks an enemy defeated); typing an exact HP
+        # value (set_hp) is a manual correction and never changes the defeated flag
+        if kind != "set_hp":
+            if new_hp == 0 and not row.defeated:
+                tracker.combatant(row, "defeated", True)
+            elif new_hp > 0 and old_hp == 0 and row.defeated:
+                tracker.combatant(row, "defeated", False)
     verb = {"damage": "took", "heal": "healed", "temp_hp": "gained temporary", "set_hp": "set to"}[
         kind
     ]
@@ -1286,11 +1295,86 @@ async def _end(
     )
 
 
+async def _set_temp_hp(
+    svc: RunService,
+    run: TtrpgCombatRun,
+    rows: Rows,
+    request: ActionRequest,
+    tracker: Tracker,
+) -> Outcome:
+    """Set temporary hit points to exactly the number typed (no stacking rule, no absorption)."""
+    row = _row(rows, request)
+    amount = _amount(request)
+    if row.kind == "party":
+        _member, state = await svc.party_state(row, request, tracker)
+        old = state.temp_hp
+        if old == amount:
+            raise RunValidationError("nothing to change")
+        tracker.party(state, "temp_hp", amount)
+    else:
+        old = row.temp_hp or 0
+        if old == amount:
+            raise RunValidationError("nothing to change")
+        tracker.combatant(row, "temp_hp", amount)
+    return Outcome(f"{row.name}'s temporary HP set to {amount} (was {old})", row.id)
+
+
+async def _set_active(
+    svc: RunService,
+    run: TtrpgCombatRun,
+    rows: Rows,
+    request: ActionRequest,
+    tracker: Tracker,
+) -> Outcome:
+    """Hand the turn to a combatant by hand (the round does not change)."""
+    row = _row(rows, request)
+    if run.active_combatant_id == row.id:
+        raise RunValidationError(f"it is already {row.name}'s turn")
+    tracker.run(run, "active_combatant_id", row.id)
+    return Outcome(f"{row.name} is acting", row.id)
+
+
+async def _set_round(
+    svc: RunService,
+    run: TtrpgCombatRun,
+    rows: Rows,
+    request: ActionRequest,
+    tracker: Tracker,
+) -> Outcome:
+    if request.round_number is None:
+        raise RunValidationError("round_number is required")
+    if request.round_number == run.round:
+        raise RunValidationError("nothing to change")
+    tracker.run(run, "round", request.round_number)
+    return Outcome(f"Round set to {request.round_number}", None)
+
+
+async def _set_initiative(
+    svc: RunService,
+    run: TtrpgCombatRun,
+    rows: Rows,
+    request: ActionRequest,
+    tracker: Tracker,
+) -> Outcome:
+    """Change a combatant's initiative total (the turn order only changes if the DM reorders)."""
+    row = _row(rows, request)
+    if request.initiative is None:
+        raise RunValidationError("initiative is required")
+    if row.initiative == request.initiative:
+        raise RunValidationError("nothing to change")
+    tracker.combatant(row, "initiative", request.initiative)
+    return Outcome(f"{row.name}'s initiative is {request.initiative}", row.id)
+
+
 _HANDLERS = {
     "damage": _hp_change,
     "heal": _hp_change,
     "temp_hp": _hp_change,
     "set_hp": _hp_change,
+    "set_temp_hp": _set_temp_hp,
+    "set_active": _set_active,
+    "set_round": _set_round,
+    "set_initiative": _set_initiative,
     "add_condition": _add_condition,
     "remove_condition": _remove_condition,
     "death_save": _death_save,

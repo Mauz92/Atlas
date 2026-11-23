@@ -29,10 +29,19 @@ from ..notes import (
     NoteNotFoundError,
     NotesService,
     NotesStorage,
+    NoteSummary,
     UnsafePathError,
     normalize_rel_path,
 )
-from .templates import HANDOFF_HEADING, extract_section, home_note, session_note
+from .templates import (
+    HANDOFF_HEADING,
+    extract_section,
+    home_note,
+    location_note,
+    npc_note,
+    plain_note,
+    session_note,
+)
 
 MAX_TITLE = 200
 DEFAULT_ROOT = "TTRPG"
@@ -89,6 +98,21 @@ class SessionView:
     session: TtrpgSession
     note: NoteLinkState
     previous: PreviousHandoff | None = None
+
+
+NoteKind = Literal["home", "session", "npc", "location", "other"]
+NPC_DIR = "NPCs"
+LOCATION_DIR = "Locations"
+
+
+@dataclass(frozen=True)
+class CampaignNote:
+    id: uuid.UUID
+    path: str
+    title: str
+    kind: NoteKind
+    #: for a session note, its number and title ("1. Session 01"); otherwise ``None``
+    label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -306,6 +330,95 @@ class CampaignService:
             else:
                 result[note_id] = NoteLinkState(note.id, note.path, note.title, False)
         return result
+
+    # --- the campaign's notes, collected -------------------------------------
+
+    async def campaign_notes(self, campaign_id: uuid.UUID) -> list[CampaignNote]:
+        """Every note that belongs to the campaign, grouped for display.
+
+        The notes stay ordinary notes in the notes tree, next to all the others. A note belongs here
+        when it is linked as the home or a session note (wherever it now lives) or when its file is
+        inside the campaign folder. Order: home, sessions by number, NPCs, locations, the rest.
+        """
+        campaign = await self.get_campaign(campaign_id)
+        found = {n.id: n for n in await self.notes.list_notes(campaign.folder)}
+        sessions = list(
+            await self.session.scalars(
+                select(TtrpgSession)
+                .where(
+                    TtrpgSession.campaign_id == campaign.id, TtrpgSession.user_id == self.user_id
+                )
+                .order_by(TtrpgSession.sequence)
+            )
+        )
+        linked = {campaign.home_note_id} | {item.note_id for item in sessions}
+        extra = [i for i in linked if i is not None and i not in found]
+        for note_id in extra:
+            try:
+                live = await self.notes.get(note_id)
+            except NoteNotFoundError:
+                continue
+            found[live.id] = await self._summary_of(live)
+
+        out: list[CampaignNote] = []
+        used: set[uuid.UUID] = set()
+        if campaign.home_note_id in found:
+            note = found[campaign.home_note_id]
+            out.append(CampaignNote(note.id, note.path, note.title, "home"))
+            used.add(note.id)
+        for item in sessions:
+            if item.note_id in found:
+                note = found[item.note_id]
+                out.append(
+                    CampaignNote(
+                        note.id, note.path, note.title, "session", f"{item.sequence}. {item.title}"
+                    )
+                )
+                used.add(note.id)
+        rest = [n for n in found.values() if n.id not in used]
+        for kind, folder in (("npc", NPC_DIR), ("location", LOCATION_DIR)):
+            prefix = f"{campaign.folder}/{folder}/"
+            for note in sorted(
+                (n for n in rest if n.path.startswith(prefix)), key=lambda n: n.title.casefold()
+            ):
+                out.append(CampaignNote(note.id, note.path, note.title, kind))  # type: ignore[arg-type]
+                used.add(note.id)
+        for note in sorted((n for n in rest if n.id not in used), key=lambda n: n.path.casefold()):
+            out.append(CampaignNote(note.id, note.path, note.title, "other"))
+        return out
+
+    async def _summary_of(self, note: NoteIndex) -> NoteSummary:
+        return NoteSummary(
+            id=note.id,
+            path=note.path,
+            title=note.title,
+            revision=note.revision,
+            content_hash=note.content_hash,
+            size_bytes=note.size_bytes,
+        )
+
+    async def create_campaign_note(
+        self, campaign_id: uuid.UUID, *, kind: Literal["npc", "location", "note"], title: str
+    ) -> CampaignNote:
+        """A new note inside the campaign folder (NPCs/, Locations/ or the folder itself)."""
+        campaign = await self.get_campaign(campaign_id)
+        if campaign.archived_at is not None:
+            raise CampaignValidationError("an archived campaign cannot get new notes")
+        name = _clean_title(title)
+        folder, make = {
+            "npc": (f"{campaign.folder}/{NPC_DIR}", npc_note),
+            "location": (f"{campaign.folder}/{LOCATION_DIR}", location_note),
+            "note": (campaign.folder, plain_note),
+        }[kind]
+        path = await self._unused_path(f"{folder}/{safe_name(name, 'Untitled')}")
+        content = make(name)
+        created = await self.notes.create(path, content)
+        return CampaignNote(
+            created.id,
+            created.path,
+            created.title,
+            "npc" if kind == "npc" else "location" if kind == "location" else "other",
+        )
 
     # --- sessions --------------------------------------------------------
 

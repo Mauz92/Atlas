@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, ttrpgApi, type PartyCard, type PartyMember } from "../../api/client";
+import { HpBar } from "./HpBar";
 import { LoadError } from "../LoadError";
 import { MemberForm } from "./MemberForm";
 import { RestDialog } from "./RestDialog";
@@ -66,9 +67,9 @@ export function PartyPanel({ campaignId, archived }: { campaignId: string; archi
   if (!members) return <p className="muted">Loading party…</p>;
 
   return (
-    <section aria-labelledby="ttrpg-party-title" className="ttrpg-party">
+    <section aria-labelledby="ttrpg-party-title" className="tt-card">
       <h2 id="ttrpg-party-title">Party</h2>
-      <div className="ttrpg-actions">
+      <div className="tt-actions">
         <button type="button" disabled={busy || archived} onClick={() => setAdding(true)}>
           Add member
         </button>
@@ -105,7 +106,7 @@ export function PartyPanel({ campaignId, archived }: { campaignId: string; archi
       {members.length === 0 && !adding && (
         <p className="muted">No party members yet. Add the player characters and any companion.</p>
       )}
-      <ul className="ttrpg-party-list">
+      <ul className="tt-party">
         {members.map((member) =>
           editing === member.id ? (
             <li key={member.id}>
@@ -160,50 +161,97 @@ function MemberCard({
   onEdit: () => void;
   act: (work: () => Promise<unknown>, failure: string) => Promise<boolean>;
 }) {
-  const [amount, setAmount] = useState("");
   const state = member.state;
-  const value = Number(amount);
-  const valid = amount !== "" && Number.isInteger(value) && value >= 0;
   const down = state.current_hp === 0;
 
-  const adjust = (kind: "damage" | "heal" | "temp_hp") =>
-    void act(() => ttrpgApi.adjustHp(member, kind, value), "Could not change hit points").then(
-      (ok) => ok && setAmount(""),
-    );
+  // played by hand: type or nudge the number; nothing is worked out for you
+  const setHp = (value: number) => {
+    const next = Math.max(0, Math.min(member.max_hp, value));
+    if (next !== state.current_hp) void act(() => ttrpgApi.updateState(member, { current_hp: next }), "Could not change hit points");
+  };
+  const setTemp = (raw: string) => {
+    const value = Number(raw);
+    if (raw.trim() === "" || !Number.isInteger(value) || value < 0 || value === state.temp_hp) return;
+    void act(() => ttrpgApi.updateState(member, { temp_hp: value }), "Could not change temporary hit points");
+  };
+  const onEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") e.currentTarget.blur();
+  };
 
   return (
-    <li className={`ttrpg-member${member.archived ? " retired" : ""}`}>
+    <li className={`tt-member${member.role === "companion" ? " companion" : ""}${member.archived ? " retired" : ""}`}>
       <h3>
         {member.name}
         <span className="muted">
-          {" "}
-          · {member.role === "pc" ? "PC" : "companion"}
+          {member.role === "pc" ? "PC" : "companion"}
           {member.level ? ` · level ${member.level}` : ""}
           {member.archived ? " · retired" : ""}
         </span>
       </h3>
-      <p>
-        AC {member.ac} · HP <strong>{state.current_hp}</strong>/{member.max_hp}
-        {state.temp_hp > 0 && ` (+${state.temp_hp} temp)`}
-        {member.speed != null && ` · speed ${member.speed}`} · initiative {member.initiative_mod >= 0 ? "+" : ""}
-        {member.initiative_mod}
-        {member.passive_perception != null && ` · passive Perception ${member.passive_perception}`}
+      <p className="tt-stats">
+        <span>
+          AC <b>{member.ac}</b>
+        </span>
+        {member.speed != null && (
+          <span>
+            Speed <b>{member.speed}</b>
+          </span>
+        )}
+        <span>
+          Initiative{" "}
+          <b>
+            {member.initiative_mod >= 0 ? "+" : ""}
+            {member.initiative_mod}
+          </b>
+        </span>
+        {member.passive_perception != null && (
+          <span>
+            Passive Perception <b>{member.passive_perception}</b>
+          </span>
+        )}
       </p>
+      <HpBar name={member.name} hp={state.current_hp} max={member.max_hp} temp={state.temp_hp} />
       {!member.archived && (
-        <div className="ttrpg-row">
+        <div className="tt-controls">
+          <span className="tt-hp-ctl" role="group" aria-label={`Hit points of ${member.name}`}>
+            <button type="button" className="dn" disabled={busy} aria-label={`Minus 5 HP for ${member.name}`} onClick={() => setHp(state.current_hp - 5)}>
+              -5
+            </button>
+            <button type="button" className="dn" disabled={busy} aria-label={`Minus 1 HP for ${member.name}`} onClick={() => setHp(state.current_hp - 1)}>
+              -1
+            </button>
+            <input
+              key={`hp-${state.current_hp}-${state.revision}`}
+              type="number"
+              min={0}
+              max={member.max_hp}
+              aria-label={`Current HP of ${member.name}`}
+              defaultValue={state.current_hp}
+              disabled={busy}
+              onBlur={(e) => e.target.value.trim() !== "" && setHp(Number(e.target.value))}
+              onKeyDown={onEnter}
+            />
+            <span className="of">/ {member.max_hp}</span>
+            <button type="button" className="up" disabled={busy} aria-label={`Plus 1 HP for ${member.name}`} onClick={() => setHp(state.current_hp + 1)}>
+              +1
+            </button>
+            <button type="button" className="up" disabled={busy} aria-label={`Plus 5 HP for ${member.name}`} onClick={() => setHp(state.current_hp + 5)}>
+              +5
+            </button>
+          </span>
           <label>
-            <span className="sr-only">Amount for {member.name}</span>
-            <input type="number" min={0} placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            Temp
+            <input
+              key={`temp-${state.temp_hp}-${state.revision}`}
+              type="number"
+              min={0}
+              aria-label={`Temporary HP of ${member.name}`}
+              defaultValue={state.temp_hp}
+              disabled={busy}
+              onBlur={(e) => setTemp(e.target.value)}
+              onKeyDown={onEnter}
+            />
           </label>
-          <button type="button" disabled={busy || !valid} onClick={() => adjust("damage")}>
-            Damage
-          </button>
-          <button type="button" disabled={busy || !valid} onClick={() => adjust("heal")}>
-            Heal
-          </button>
-          <button type="button" className="ghost" disabled={busy || !valid} onClick={() => adjust("temp_hp")}>
-            Temp HP
-          </button>
         </div>
       )}
       {!member.archived && (
@@ -312,7 +360,7 @@ function MemberCard({
           })}
         </ul>
       )}
-      <div className="ttrpg-actions">
+      <div className="tt-actions">
         <button type="button" className="ghost" disabled={busy} onClick={onEdit}>
           Edit card
         </button>

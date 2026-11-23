@@ -959,3 +959,70 @@ async def test_ending_a_fight_drops_the_undo_payload_but_keeps_the_readable_hist
     # the party keeps the state the fight left it in
     state = (await table.c.get(f"/api/ttrpg/party/{table.brenna['id']}")).json()["state"]
     assert state["current_hp"] == 19
+
+
+async def test_manual_play_actions_set_exact_values_and_never_decide_for_the_dm(
+    table: Table,
+) -> None:
+    run = await table.started()
+    names = by_name(run)
+    g2, brenna = names["Goblin 2"]["id"], names["Brenna"]["id"]
+
+    # typing an exact HP value is a correction: 0 HP does not mark anyone defeated or skip them
+    run = await table.act(run, "set_hp", combatant_id=g2, hp=0)
+    assert (by_name(run)["Goblin 2"]["hp"], by_name(run)["Goblin 2"]["defeated"]) == (0, False)
+    visited = []
+    for _ in range(5):
+        run = await table.act(run, "next_turn")
+        visited.append(next(c["name"] for c in run["combatants"] if c["active"]))
+    assert "Goblin 2" in visited  # still takes its turn until the DM takes it out
+    run = await table.act(run, "set_hp", combatant_id=g2, hp=3)
+    assert by_name(run)["Goblin 2"]["defeated"] is False
+    # damage and healing keep their helper (the API is shared with other clients)
+    run = await table.act(run, "damage", combatant_id=g2, amount=3)
+    assert by_name(run)["Goblin 2"]["defeated"] is True
+
+    # temporary HP: exactly the number typed (replaced, not stacked), for an NPC and a party member
+    run = await table.act(run, "set_temp_hp", combatant_id=g2, amount=5)
+    run = await table.act(run, "set_temp_hp", combatant_id=g2, amount=2)
+    assert by_name(run)["Goblin 2"]["temp_hp"] == 2
+    run = await table.act(run, "set_temp_hp", combatant_id=brenna, amount=7)
+    state = (await table.c.get(f"/api/ttrpg/party/{table.brenna['id']}")).json()["state"]
+    assert state["temp_hp"] == 7 and by_name(run)["Brenna"]["temp_hp"] == 7
+    same = await table.raw(run, "set_temp_hp", combatant_id=g2, amount=2)
+    assert same.status_code == 400
+    run = (await table.undo(run)).json()["run"]
+    assert by_name(run)["Brenna"]["temp_hp"] == 0
+
+    # whose turn it is, by hand; the round does not change
+    sildar = names["Sildar"]["id"]
+    before = run["round"]
+    run = await table.act(run, "set_active", combatant_id=sildar)
+    assert run["active_combatant_id"] == sildar and run["round"] == before
+    assert (await table.raw(run, "set_active", combatant_id=sildar)).status_code == 400
+    run = (await table.undo(run)).json()["run"]
+    assert run["active_combatant_id"] != sildar
+
+    # the round counter and initiative totals, by hand
+    run = await table.act(run, "set_round", round_number=4)
+    assert run["round"] == 4
+    assert (await table.raw(run, "set_round", round_number=4)).status_code == 400
+    assert (await table.raw(run, "set_round", round_number=0)).status_code == 422
+    run = (await table.undo(run)).json()["run"]
+    assert run["round"] == before
+    run = await table.act(run, "set_initiative", combatant_id=g2, initiative=-3)
+    assert by_name(run)["Goblin 2"]["initiative"] == -3
+    assert order(run) == order(await table.get(run))  # the order itself did not move
+    assert (
+        await table.raw(run, "set_initiative", combatant_id=g2, initiative=101)
+    ).status_code == 422
+    run = (await table.undo(run)).json()["run"]
+    assert by_name(run)["Goblin 2"]["initiative"] == 10
+    for kind, extra in (
+        ("set_active", {}),
+        ("set_temp_hp", {"combatant_id": g2}),
+        ("set_initiative", {"combatant_id": g2}),
+    ):
+        assert (
+            await table.raw(run, kind, **extra)
+        ).status_code == 400  # a required value is missing

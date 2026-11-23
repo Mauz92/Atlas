@@ -81,6 +81,7 @@ export type RunActionBody = Omit<
   components["schemas"]["RunActionRequest"],
   "mutation_key" | "base_revision"
 >;
+export type CampaignNote = components["schemas"]["CampaignNoteOut"];
 export type RecurrencePreview = components["schemas"]["RecurrencePreviewOut"];
 
 export class ApiError extends Error {
@@ -471,6 +472,13 @@ export const ttrpgApi = {
     apiFetch<Creature>("/api/ttrpg/srd/import", {
       method: "POST",
       body: JSON.stringify({ index }),
+    }),
+  campaignNotes: (campaignId: string) =>
+    apiFetch<{ items: CampaignNote[] }>(`/api/ttrpg/campaigns/${campaignId}/notes`),
+  createCampaignNote: (campaignId: string, body: { kind: "npc" | "location" | "note"; title: string }) =>
+    apiFetch<CampaignNote>(`/api/ttrpg/campaigns/${campaignId}/notes`, {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
   party: (campaignId: string, includeArchived = false) =>
     apiFetch<PartyList>(

@@ -152,35 +152,37 @@ describe("RunPage", () => {
     api.runAction.mockResolvedValue({ run: run({ revision: 6 }), action: null, replayed: false });
     page();
     await screen.findByRole("heading", { name: "Goblin ambush" });
-    fireEvent.change(screen.getByLabelText("Amount for Brenna"), { target: { value: "8" } });
+    const hp = screen.getByLabelText("Current HP of Brenna");
+    fireEvent.change(hp, { target: { value: "11" } });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Damage Brenna" }));
+      fireEvent.blur(hp);
     });
     expect(api.runAction).toHaveBeenCalledTimes(1);
     const [sentRun, body, key] = api.runAction.mock.calls[0];
     expect(sentRun).toMatchObject({ id: "r1", revision: 5 });
+    // the number typed is the number set: nothing is worked out for the DM
     expect(body).toEqual({
-      kind: "damage",
+      kind: "set_hp",
       combatant_id: "b1",
-      amount: 8,
+      hp: 11,
       party_revisions: { pm1: 3 },
     });
     expect(key).toEqual(expect.any(String));
-    await waitFor(() => expect(screen.getByLabelText("Amount for Brenna")).toHaveValue(null));
   });
 
-  it("keeps the failed change and the typed amount, and retries with the same key", async () => {
+  it("keeps the failed change and the typed number, and retries with the same key", async () => {
     api.runAction.mockRejectedValueOnce(new Error("network down"));
     api.runAction.mockResolvedValueOnce({ run: run({ revision: 6 }), action: null, replayed: true });
     page();
     await screen.findByRole("heading", { name: "Goblin ambush" });
-    fireEvent.change(screen.getByLabelText("Amount for Goblin 1"), { target: { value: "3" } });
+    const hp = screen.getByLabelText("Current HP of Goblin 1");
+    fireEvent.change(hp, { target: { value: "3" } });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Damage Goblin 1" }));
+      fireEvent.blur(hp);
     });
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/network down/);
-    expect(screen.getByLabelText("Amount for Goblin 1")).toHaveValue(3); // not lost
+    expect(screen.getByLabelText("Current HP of Goblin 1")).toHaveValue(3); // what was typed is not lost
     await act(async () => {
       fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
     });
@@ -228,7 +230,8 @@ describe("RunPage", () => {
     });
     expect(await screen.findByText(/Paused\. Round 1/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next turn" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Damage Goblin 1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Minus 1 HP for Goblin 1" })).toBeDisabled();
+    expect(screen.getByLabelText("Current HP of Goblin 1")).toBeDisabled();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Resume" }));
     });
@@ -245,6 +248,54 @@ describe("RunPage", () => {
     });
     expect(api.runAction.mock.calls[0][1]).toEqual({ kind: "end", outcome: "Won." });
     expect(await screen.findByText("Ended: Won.")).toBeInTheDocument();
+  });
+
+  it("opens the rule for a condition in the side panels, and has a Reference switch for phones", async () => {
+    window.localStorage.removeItem("atlas-ttrpg-sidebar");
+    api.run.mockResolvedValue(
+      run({ combatants: [brenna, combatant({ conditions: ["poisoned"] })] }),
+    );
+    page();
+    await screen.findByRole("heading", { name: "Goblin ambush" });
+    fireEvent.click(screen.getByRole("button", { name: "Read the rule for poisoned" }));
+    const panel = screen.getByRole("tabpanel");
+    await waitFor(() => expect(within(panel).getByText("Poisoned").closest("details")!.open).toBe(true));
+    expect(within(panel).getByText(/disadvantage on attack rolls and ability checks/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reference" })).toBeInTheDocument();
+  });
+
+  it("plays by hand: temp HP, whose turn, the round, initiative and who is out are all typed or tapped", async () => {
+    api.runAction.mockResolvedValue({ run: run(), action: null, replayed: false });
+    page();
+    await screen.findByRole("heading", { name: "Goblin ambush" });
+    const last = () => api.runAction.mock.calls.at(-1)![1];
+    const temp = screen.getByLabelText("Temporary HP of Goblin 1");
+    fireEvent.change(temp, { target: { value: "5" } });
+    await act(async () => {
+      fireEvent.blur(temp);
+    });
+    expect(last()).toEqual({ kind: "set_temp_hp", combatant_id: "g1", amount: 5 });
+    const init = screen.getByLabelText("Initiative of Goblin 1");
+    fireEvent.change(init, { target: { value: "-2" } });
+    await act(async () => {
+      fireEvent.blur(init);
+    });
+    expect(last()).toEqual({ kind: "set_initiative", combatant_id: "g1", initiative: -2 });
+    const setTurn = screen.getAllByRole("button", { name: "Set turn" })[0];
+    await act(async () => {
+      fireEvent.click(setTurn);
+    });
+    expect(last()).toEqual({ kind: "set_active", combatant_id: "g1" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Next round" }));
+    });
+    expect(last()).toEqual({ kind: "set_round", round_number: 2 });
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Goblin 1 is out of the fight"));
+    });
+    expect(last()).toEqual({ kind: "remove_combatant", combatant_id: "g1" });
+    // sorting is a button, and it is only offered when the order differs
+    expect(screen.getByRole("button", { name: "Sort by initiative" })).toBeDisabled();
   });
 
   it("shows condition reminders, death saves at 0 HP and resource buttons", async () => {

@@ -17,7 +17,8 @@ export type RailId = "today" | "inbox" | "tasks" | "projects" | "notes" | "setti
 export interface NavItem {
   to: string;
   label: string;
-  icon: IconName;
+  /** Omitted for a nested entry (a campaign), which is drawn with a dot. */
+  icon?: IconName;
   /** The rail destination this page belongs to (it lights up while the page is open). */
   group: RailId;
   /** True for the page the rail (and the mobile bottom nav) links to for its group. */
@@ -64,22 +65,30 @@ export const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
-/** The optional TTRPG entry (TTRPG-01); shown only while the feature is on. */
-export const TTRPG_NAV_ITEM: NavItem = {
-  to: "/ttrpg",
-  label: "TTRPG",
-  icon: "dices",
-  group: "projects",
-};
+/** The optional TTRPG entries: their own sidebar category, shown only while the module is on. */
+export const TTRPG_NAV_ITEMS: NavItem[] = [
+  { to: "/ttrpg", label: "Campaigns", icon: "dices", group: "projects" },
+  { to: "/ttrpg/creatures", label: "Creatures", icon: "skull", group: "projects" },
+  { to: "/ttrpg/rules", label: "Rules", icon: "book-open", group: "projects" },
+];
 
-/** The sidebar sections for the caller's enabled optional features. */
-export function navSectionsFor(features: { ttrpg: boolean }): NavSection[] {
+export const TTRPG_SECTION: NavSection = { id: "ttrpg", label: "TTRPG", items: TTRPG_NAV_ITEMS };
+
+/** The sidebar sections for the caller's enabled optional features: TTRPG is a category of its own. */
+export function navSectionsFor(
+  features: { ttrpg: boolean },
+  campaigns: readonly { id: string; title: string }[] = [],
+): NavSection[] {
   if (!features.ttrpg) return NAV_SECTIONS;
-  return NAV_SECTIONS.map((section) =>
-    section.id === "workspace"
-      ? { ...section, items: [...section.items, TTRPG_NAV_ITEM] }
-      : section,
-  );
+  const at = NAV_SECTIONS.findIndex((section) => section.id === "workspace");
+  const sections = [...NAV_SECTIONS];
+  const nested: NavItem[] = campaigns.map((campaign) => ({
+    to: `/ttrpg/${campaign.id}`,
+    label: campaign.title,
+    group: "projects",
+  }));
+  sections.splice(at < 0 ? sections.length : at + 1, 0, { ...TTRPG_SECTION, items: [...TTRPG_NAV_ITEMS, ...nested] });
+  return sections;
 }
 
 /** Every page in sidebar order (what the palette offers as "Go to …"). */
@@ -114,12 +123,23 @@ function normalise(pathname: string): string {
  * its page (`/projects/:id`) when the project is listed, else the Projects page. `null` for a path
  * that is not a known page.
  */
-export function activeNavKey(pathname: string, listedProjectIds: readonly string[] = []): string | null {
+export function activeNavKey(
+  pathname: string,
+  listedProjectIds: readonly string[] = [],
+  campaignIds: readonly string[] = [],
+): string | null {
   const path = normalise(pathname);
   const project = /^\/projects\/([^/]+)$/.exec(path);
   if (project) {
     const id = decodeURIComponent(project[1]);
     return listedProjectIds.includes(id) ? projectNavKey(id) : "/projects";
+  }
+  // Every TTRPG page belongs to the TTRPG category: its own page when it has one, else Campaigns.
+  if (path === "/ttrpg" || path.startsWith("/ttrpg/")) {
+    if (TTRPG_NAV_ITEMS.some((item) => item.to === path)) return path;
+    // a campaign's own page (and its encounters and fights) highlights that campaign when it is listed
+    const campaign = /^\/ttrpg\/([0-9a-f-]{36})$/.exec(path);
+    return campaign && campaignIds.includes(campaign[1]) ? path : "/ttrpg";
   }
   return NAV_ITEMS.some((item) => item.to === path) ? path : null;
 }

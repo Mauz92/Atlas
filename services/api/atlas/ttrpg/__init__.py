@@ -3,6 +3,7 @@
 from .campaigns import (
     CampaignFolderTakenError,
     CampaignIdTakenError,
+    CampaignNote,
     CampaignNotFoundError,
     CampaignRevisionError,
     CampaignService,
@@ -67,6 +68,7 @@ __all__ = [
     "CampaignFolderTakenError",
     "CampaignIdTakenError",
     "CampaignNotFoundError",
+    "CampaignNote",
     "CampaignRevisionError",
     "CampaignService",
     "CampaignValidationError",

@@ -48,7 +48,7 @@ export function EncountersPanel({ campaign }: { campaign: TtrpgCampaignDetail })
   }
 
   return (
-    <section aria-labelledby="ttrpg-encounters-title">
+    <section aria-labelledby="ttrpg-encounters-title" className="tt-card">
       <h2 id="ttrpg-encounters-title">Encounters</h2>
       {error && (
         <p className="error" role="alert">
@@ -76,7 +76,7 @@ export function EncountersPanel({ campaign }: { campaign: TtrpgCampaignDetail })
         ))}
       </ul>
       {!campaign.archived && (
-        <form className="ttrpg-row" onSubmit={(event) => void create(event)}>
+        <form className="tt-row" onSubmit={(event) => void create(event)}>
           <label>
             New encounter
             <input value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} />

@@ -4376,3 +4376,24 @@ Scope per ADR-0077 (Windows, macOS and iOS are out). Vocabulary: `PASS`, `FAIL`,
 | Live-preview editor on the combat screen | `PASS` | the notes pane uses the owner's editor mode (Live by default); the phone test types into it |
 | Command palette | `PASS` | "Go to TTRPG" while the module is on |
 | Still not verifiable here | | screen readers and the phone's on-screen keyboard (need a real device); the module inside the native shells on a device; CI |
+
+## TTRPG-08 — Rules reference (2026-11-23, branch `feat/rules-reference`)
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Available outside encounters | `PASS` | page `/ttrpg/rules` (sidebar "Rules" and palette entry while the module is on; link from the campaign list); `?rule=<id>` opens one entry; e2e: reached from the sidebar, searched, axe clean |
+| Beside a fight | `PASS` | a condition on a combatant opens its rule in the Rules pane (third column; Rules switch under 1100 px); `run.test.tsx`; e2e with a poisoned goblin; the notes/combat switch tests still pass |
+| Accuracy and licence | `PASS` | text copied word for word from `SRD_CC_v5.1.pdf` (conditions appendix, actions, attacks, cover, damage and healing, turn order, movement, resting); Wizards' attribution statement shown with it and pinned by `srdRules.test.ts`; plain text only (a test refuses any markup in the data); static, offline |
+| Search | `PASS` | all words, case-insensitive, titles and text (`srdRules.test.ts`, `RulesBrowser.test.tsx`) |
+| Accessibility | `PASS` (automated) | axe clean on the page and the fight with the rules pane; found and fixed: heading levels (group titles are h2 on the page, h3 under the fight's pane heading) |
+| Checks | `PASS` | `vitest` for the touched areas and the full web suite, `eslint`, `tsc`, CSS scale check, `ttrpg07-game-night.spec.ts` 11 passed |
+| Not covered | | the whole SRD (monsters, spells, classes): out of scope; only the rules a table needs mid-game |
+
+## TTRPG-08 follow-up: its own category and collected notes (2026-11-23, branch `feat/rules-reference`)
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| TTRPG is a category of its own | `PASS` | sidebar category after Workspace: Campaigns, Creatures, Rules, then each campaign (dot entries, current one highlighted; sub-pages count as Campaigns); palette entries; `features.test.tsx`, `navigation.test.ts`, e2e |
+| Notes collected per campaign, still beside the others | `PASS` | `GET /api/ttrpg/campaigns/{id}/notes`: home, sessions by number, NPCs, locations, other (everything inside the campaign folder), plus the linked home/session notes even when moved elsewhere; deleted ones drop out; unrelated notes excluded; the same notes appear in `/api/notes`; `test_ttrpg_campaigns.py` (3 new tests) |
+| Adding NPC / location / plain notes | `PASS` | `POST .../notes`: starter headings, `NPCs/` and `Locations/`, titles made path-safe (no segments from the title), duplicates get `(2)`, never overwrites, blank is refused, archived campaigns refused, per owner and behind the switch (404) |
+| UI | `PASS` | `CampaignNotes` (grouped links open the note), add form; unit and real-browser tests (12 in the TTRPG spec, axe clean) |

@@ -142,3 +142,24 @@ describe("shell preferences", () => {
     expect(ids).not.toContain("projects");
   });
 });
+
+describe("the TTRPG category", () => {
+  it("marks the right entry as current on every TTRPG page", async () => {
+    const { activeNavKey } = await import("./navigation");
+    expect(activeNavKey("/ttrpg")).toBe("/ttrpg");
+    expect(activeNavKey("/ttrpg/rules")).toBe("/ttrpg/rules");
+    expect(activeNavKey("/ttrpg/creatures")).toBe("/ttrpg/creatures");
+    expect(activeNavKey("/ttrpg/3f2c")).toBe("/ttrpg");
+    expect(activeNavKey("/ttrpg/runs/abc")).toBe("/ttrpg");
+    expect(activeNavKey("/ttrpg/encounters/abc")).toBe("/ttrpg");
+  });
+});
+
+describe("a listed campaign", () => {
+  it("is the current entry on its own page only when it is listed", async () => {
+    const { activeNavKey } = await import("./navigation");
+    const id = "3f2c3f2c-3f2c-3f2c-3f2c-3f2c3f2c3f2c";
+    expect(activeNavKey(`/ttrpg/${id}`, [], [id])).toBe(`/ttrpg/${id}`);
+    expect(activeNavKey(`/ttrpg/${id}`, [], [])).toBe("/ttrpg");
+  });
+});
