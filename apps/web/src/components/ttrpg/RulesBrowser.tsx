@@ -88,7 +88,7 @@ export function RulesBrowser({
         value={query}
         onChange={(event) => setQuery(event.target.value)}
       />
-      <div className="ttrpg-rules-list">
+      <div className="ttrpg-rules-list" tabIndex={0} role="region" aria-label="Rules">
         {found.length === 0 && <p className="muted">Nothing in these rules matches “{query}”.</p>}
         {RULE_GROUPS.map((group) => {
           const rules = found.filter((rule) => rule.group === group);

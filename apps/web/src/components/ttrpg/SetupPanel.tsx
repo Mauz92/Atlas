@@ -80,7 +80,7 @@ export function SetupPanel({ run, busy, perform }: Props) {
       <p className="muted">Enter the totals rolled at the table. Zero and negative totals are fine.</p>
       <ul>
         {live.map((c) => (
-          <li key={c.id} className="ttrpg-row">
+          <li key={c.id} className="tt-row">
             <label>
               Initiative for {c.name}
               <input
@@ -162,7 +162,7 @@ export function SetupPanel({ run, busy, perform }: Props) {
         </fieldset>
       )}
       <form
-        className="ttrpg-row"
+        className="tt-row"
         onSubmit={(event) => {
           event.preventDefault();
           void perform(
@@ -200,7 +200,7 @@ export function SetupPanel({ run, busy, perform }: Props) {
       {missing.length > 0 && (
         <p className="muted">Still needs initiative: {missing.map((c) => c.name).join(", ")}</p>
       )}
-      <div className="ttrpg-actions">
+      <div className="tt-actions">
         <button
           type="button"
           disabled={busy || invalid || !dirty}

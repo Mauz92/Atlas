@@ -58,7 +58,7 @@ export function MemberForm({ initial, submitLabel, busy, error, onSubmit, onCanc
   }
 
   return (
-    <form className="ttrpg-member-form" onSubmit={submit}>
+    <form className="tt-form" onSubmit={submit}>
       <label>
         Name
         <input value={card.name} maxLength={120} required onChange={(e) => set("name", e.target.value)} />
@@ -98,7 +98,7 @@ export function MemberForm({ initial, submitLabel, busy, error, onSubmit, onCanc
       <fieldset>
         <legend>Attacks</legend>
         {(card.attacks ?? []).map((attack, index) => (
-          <div key={index} className="ttrpg-row">
+          <div key={index} className="tt-row">
             <input
               aria-label={`Attack ${index + 1} name`}
               placeholder="Name"
@@ -140,7 +140,7 @@ export function MemberForm({ initial, submitLabel, busy, error, onSubmit, onCanc
       <fieldset>
         <legend>Abilities</legend>
         {(card.abilities ?? []).map((ability, index) => (
-          <div key={index} className="ttrpg-row">
+          <div key={index} className="tt-row">
             <input
               aria-label={`Ability ${index + 1} name`}
               placeholder="Name"
@@ -170,7 +170,7 @@ export function MemberForm({ initial, submitLabel, busy, error, onSubmit, onCanc
       <fieldset>
         <legend>Limited-use resources</legend>
         {(card.resources ?? []).map((resource, index) => (
-          <div key={resource.key} className="ttrpg-row">
+          <div key={resource.key} className="tt-row">
             <input
               aria-label={`Resource ${index + 1} name`}
               placeholder="Name"
@@ -228,7 +228,7 @@ export function MemberForm({ initial, submitLabel, busy, error, onSubmit, onCanc
           {error}
         </p>
       )}
-      <div className="ttrpg-actions">
+      <div className="tt-actions">
         <button type="submit" disabled={busy || !card.name.trim() || (card.resources ?? []).some((r) => !r.name.trim())}>
           {submitLabel}
         </button>

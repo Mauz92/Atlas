@@ -1,4 +1,11 @@
+import "@fontsource/cinzel/500.css";
+import "@fontsource/cinzel/700.css";
+import "@fontsource/alegreya-sans/400.css";
+import "@fontsource/alegreya-sans/500.css";
+import "@fontsource/alegreya-sans/700.css";
 import { Link, Route, Routes } from "react-router-dom";
+
+import "../ttrpg.css";
 
 import { CampaignList } from "../components/ttrpg/CampaignList";
 import { CreatureLibrary } from "../components/ttrpg/CreatureLibrary";
@@ -30,6 +37,7 @@ export function Ttrpg() {
     );
   }
   return (
+    <div className="ttrpg-theme">
     <Routes>
       <Route index element={<CampaignList />} />
       <Route path="runs/:runId" element={<RunPage />} />
@@ -38,5 +46,6 @@ export function Ttrpg() {
       <Route path="creatures" element={<CreatureLibrary />} />
       <Route path=":campaignId" element={<CampaignPage />} />
     </Routes>
+    </div>
   );
 }

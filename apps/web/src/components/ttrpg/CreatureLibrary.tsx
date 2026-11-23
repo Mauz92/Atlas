@@ -58,13 +58,19 @@ export function CreatureLibrary() {
   }
 
   return (
-    <section className="page ttrpg-page">
-      <p>
+    <section className="page">
+      <p className="tt-crumb">
         <Link to="/ttrpg">All campaigns</Link>
       </p>
-      <h1>Creatures</h1>
-      <label>
-        Search your creatures
+      <div className="tt-banner">
+        <div>
+          <h1>Creatures</h1>
+          <p className="sub">Your creature cards, and the SRD catalogue.</p>
+        </div>
+      </div>
+      <div className="tt-rule" aria-hidden="true" />
+      <label className="tt-form">
+        <span>Search your creatures</span>
         <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
       </label>
       {actionError && (
@@ -79,9 +85,9 @@ export function CreatureLibrary() {
       ) : items.length === 0 ? (
         <p className="muted">No creatures yet. Add one by hand or import one from the SRD below.</p>
       ) : (
-        <ul className="ttrpg-creatures">
+        <ul className="tt-creature-cards">
           {items.map((card) => (
-            <li key={card.id}>
+            <li key={card.id} className="tt-creature">
               <button
                 type="button"
                 className="ghost"
@@ -151,7 +157,7 @@ function CreatureDetail({
           }
         />
       )}
-      <div className="ttrpg-actions">
+      <div className="tt-actions">
         {card.source === "manual" && (
           <button type="button" className="ghost" disabled={busy} onClick={() => setEditing(true)}>
             Edit {card.name}
@@ -208,7 +214,7 @@ function CreatureForm({
   const [speed, setSpeed] = useState(initial?.speed ?? "");
   return (
     <form
-      className="ttrpg-new"
+      className="tt-card tt-form"
       onSubmit={(event) => {
         event.preventDefault();
         if (!busy)
@@ -244,7 +250,7 @@ function CreatureForm({
           {error}
         </p>
       )}
-      <div className="ttrpg-actions">
+      <div className="tt-actions">
         <button type="submit" disabled={busy || !card.name.trim()}>
           {submitLabel}
         </button>
@@ -330,13 +336,13 @@ function SrdSearchPanel({ onImported }: { onImported: () => Promise<void> }) {
   }
 
   return (
-    <section aria-labelledby="ttrpg-srd-title">
+    <section aria-labelledby="ttrpg-srd-title" className="tt-card">
       <h2 id="ttrpg-srd-title">Add from the SRD</h2>
       <p className="muted">
         Searching the catalogue sends only the request for the monster list or one monster; nothing
         about your campaigns leaves Atlas.
       </p>
-      <form className="ttrpg-row" onSubmit={(event) => void search(event)}>
+      <form className="tt-row" onSubmit={(event) => void search(event)}>
         <label>
           Search the SRD
           <input value={query} onChange={(e) => setQuery(e.target.value)} />

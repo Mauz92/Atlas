@@ -6,16 +6,23 @@ import { RulesBrowser } from "./RulesBrowser";
 export function RulesPage() {
   const [params] = useSearchParams();
   return (
-    <section className="page ttrpg-page">
-      <p>
+    <section className="page">
+      <p className="tt-crumb">
         <Link to="/ttrpg">All campaigns</Link>
       </p>
-      <h1>Rules reference</h1>
-      <p className="muted">
-        The System Reference Document 5.1: conditions, turn order, actions, attacks, cover, movement, damage and
-        healing, and resting. It works offline and nothing you read here is sent anywhere.
-      </p>
-      <RulesBrowser focusId={params.get("rule")} />
+      <div className="tt-banner">
+        <div>
+          <h1>Rules reference</h1>
+          <p className="sub">
+            The System Reference Document 5.1: conditions, turn order, actions, attacks, cover, movement, damage and
+            healing, and resting. It works offline and nothing you read here is sent anywhere.
+          </p>
+        </div>
+      </div>
+      <div className="tt-rule" aria-hidden="true" />
+      <div className="tt-card">
+        <RulesBrowser focusId={params.get("rule")} />
+      </div>
     </section>
   );
 }

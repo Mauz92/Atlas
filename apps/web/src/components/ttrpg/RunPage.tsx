@@ -14,7 +14,7 @@ import { useNoteAutosave } from "../../hooks/useNoteAutosave";
 import { readEditorMode } from "../../lib/notesPrefs";
 import { LoadError } from "../LoadError";
 import { NoteEditor } from "../NoteEditor";
-import { RulesBrowser } from "./RulesBrowser";
+import { SidePanels } from "./SidePanels";
 import { Skeleton } from "../Skeleton";
 import { CombatantRow } from "./CombatantRow";
 import { SetupPanel } from "./SetupPanel";
@@ -47,10 +47,10 @@ export function RunPage() {
   const [failure, setFailure] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState<"notes" | "combat" | "rules">("combat");
-  const [ruleId, setRuleId] = useState<string | null>(null);
+  const [view, setView] = useState<"notes" | "combat" | "side">("combat");
   // a new object each time, so reading the same rule twice still scrolls to it
-  const [ruleTick, setRuleTick] = useState(0);
+  const [ruleRequest, setRuleRequest] = useState<{ id: string; tick: number } | null>(null);
+  const [newcomer, setNewcomer] = useState({ name: "", ac: "12", hp: "10", initiative: "10" });
   const [note, setNote] = useState<NoteDetail | null>(null);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [campaignTitle, setCampaignTitle] = useState("");
@@ -185,10 +185,15 @@ export function RunPage() {
 
   const rows = inOrder(run);
   const fighting = run.status === "active" || run.status === "paused";
+  const live = run.status === "active" && !busy;
+  // sorting is an explicit act: the DM presses it, and it is only offered when the order differs
+  const inFight = rows.filter((c) => !c.removed);
+  const sorted = [...inFight].sort((a, b) => (b.initiative ?? -999) - (a.initiative ?? -999));
+  const alreadySorted = sorted.every((c, index) => c.id === inFight[index].id);
 
   return (
-    <section className="page ttrpg-page ttrpg-play" data-view={view}>
-      <p>
+    <section className="page tt-fight" data-view={view}>
+      <p className="tt-crumb">
         <Link to={`/ttrpg/${run.campaign_id}`}>{campaignTitle || "Campaign"}</Link>
         {run.encounter_id && (
           <>
@@ -197,41 +202,48 @@ export function RunPage() {
           </>
         )}
       </p>
-      <h1>{run.title}</h1>
-      <p role="status" className="ttrpg-standing">
-        {standing(run)}
-      </p>
-      {run.book_reference && <p className="muted">Book: {run.book_reference}</p>}
+      <div className="tt-banner">
+        <div>
+          <h1>{run.title}</h1>
+          <p className="sub" role="status">
+            {standing(run)}
+          </p>
+        </div>
+        {run.book_reference && <p className="muted">Book: {run.book_reference}</p>}
+      </div>
+      <div className="tt-rule" aria-hidden="true" />
       {run.setup_reminder && run.status === "setup" && <p className="muted">Setup: {run.setup_reminder}</p>}
 
-      <div className="ttrpg-play-switch" role="group" aria-label="Show">
+      <div className="tt-switch" role="group" aria-label="Show">
         <button type="button" aria-pressed={view === "notes"} onClick={() => setView("notes")}>
           Notes
         </button>
         <button type="button" aria-pressed={view === "combat"} onClick={() => setView("combat")}>
           Combat
         </button>
-        <button type="button" aria-pressed={view === "rules"} onClick={() => setView("rules")}>
-          Rules
+        <button type="button" aria-pressed={view === "side"} onClick={() => setView("side")}>
+          Reference
         </button>
       </div>
 
-      <div className="ttrpg-play-panes">
-        <div className="ttrpg-play-notes" data-pane="notes">
+      <div className="tt-fight-panes">
+        <section className="tt-card tt-pane-notes" aria-label="Session notes">
           <h2>{sessionTitle ? `${sessionTitle} notes` : "Session notes"}</h2>
           {note ? (
-            <NoteEditor
-              key={note.id}
-              value={snapshot?.content ?? note.content}
-              onChange={(text) => noteSession?.change(text)}
-              mode={readEditorMode()}
-            />
+            <div className="tt-note-editor">
+              <NoteEditor
+                key={note.id}
+                value={snapshot?.content ?? note.content}
+                onChange={(text) => noteSession?.change(text)}
+                mode={readEditorMode()}
+              />
+            </div>
           ) : (
-            <p className="muted">No session note is linked to this fight.</p>
+            <p className="tt-empty">No session note is linked to this fight.</p>
           )}
-        </div>
+        </section>
 
-        <div className="ttrpg-play-combat" data-pane="combat">
+        <section className="tt-card tt-pane-combat" aria-label="Fight tracker">
           {failure && (
             <div className="error" role="alert">
               <p>{failure}</p>
@@ -246,40 +258,136 @@ export function RunPage() {
           {run.status === "setup" && <SetupPanel run={run} busy={busy} perform={perform} />}
 
           {fighting && (
-            <div className="ttrpg-actions">
-              <button
-                type="button"
-                disabled={busy || run.status !== "active"}
-                onClick={() => void act({ kind: "next_turn" }, "Could not move to the next turn")}
-              >
-                Next turn
-              </button>
-              <button
-                type="button"
-                className="ghost"
-                disabled={busy || !run.undo_summary || run.status === "ended"}
-                onClick={() => {
-                  const key = crypto.randomUUID();
-                  setPending({ undo: true, key, failure: "Could not undo" });
-                  void settle(() => ttrpgApi.undoRun(run, key), "Could not undo");
-                }}
-              >
-                Undo{run.undo_summary ? `: ${run.undo_summary}` : ""}
-              </button>
-              {run.status === "active" ? (
-                <button type="button" className="ghost" disabled={busy} onClick={() => void act({ kind: "pause" }, "Could not pause")}>
-                  Pause
+            <>
+              <div className="tt-actions" style={{ justifyContent: "space-between" }}>
+                <span className="tt-round">
+                  <button
+                    type="button"
+                    aria-label="Previous round"
+                    disabled={!live || run.round <= 1}
+                    onClick={() => void act({ kind: "set_round", round_number: run.round - 1 }, "Could not change the round")}
+                  >
+                    -
+                  </button>
+                  <b>Round {run.round}</b>
+                  <button
+                    type="button"
+                    aria-label="Next round"
+                    disabled={!live}
+                    onClick={() => void act({ kind: "set_round", round_number: run.round + 1 }, "Could not change the round")}
+                  >
+                    +
+                  </button>
+                </span>
+                <span className="tt-actions">
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={!live || alreadySorted}
+                    onClick={() => void act({ kind: "reorder", order: sorted.map((c) => c.id) }, "Could not sort the order")}
+                  >
+                    Sort by initiative
+                  </button>
+                  <button type="button" className="primary" disabled={!live} onClick={() => void act({ kind: "next_turn" }, "Could not move to the next turn")}>
+                    Next turn
+                  </button>
+                </span>
+              </div>
+              <div className="tt-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={busy || !run.undo_summary || run.status === "ended"}
+                  onClick={() => {
+                    const key = crypto.randomUUID();
+                    setPending({ undo: true, key, failure: "Could not undo" });
+                    void settle(() => ttrpgApi.undoRun(run, key), "Could not undo");
+                  }}
+                >
+                  Undo{run.undo_summary ? `: ${run.undo_summary}` : ""}
                 </button>
-              ) : (
-                <button type="button" disabled={busy} onClick={() => void act({ kind: "resume" }, "Could not resume")}>
-                  Resume
-                </button>
-              )}
-            </div>
+                {run.status === "active" ? (
+                  <button type="button" className="ghost" disabled={busy} onClick={() => void act({ kind: "pause" }, "Could not pause")}>
+                    Pause
+                  </button>
+                ) : (
+                  <button type="button" disabled={busy} onClick={() => void act({ kind: "resume" }, "Could not resume")}>
+                    Resume
+                  </button>
+                )}
+              </div>
+            </>
           )}
+          {run.status === "setup" && (
+            <button type="button" className="ghost" disabled={busy} onClick={() => void act({ kind: "end" }, "Could not cancel")}>
+              Cancel this fight
+            </button>
+          )}
+
+          {run.status !== "setup" && (
+            <ul className="tt-combatants">
+              {rows.map((c) => (
+                <CombatantRow
+                  key={c.id}
+                  run={run}
+                  combatant={c}
+                  busy={busy}
+                  act={act}
+                  onRule={(id) => {
+                    setRuleRequest((current) => ({ id, tick: (current?.tick ?? 0) + 1 }));
+                    setView((current) => (window.matchMedia?.("(max-width: 1100px)").matches ? "side" : current));
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+
+          {run.status === "active" && (
+            <form
+              className="tt-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const hp = Number(newcomer.hp);
+                void act(
+                  {
+                    kind: "add_combatant",
+                    new_combatant: {
+                      name: newcomer.name.trim(),
+                      ac: Number(newcomer.ac),
+                      hp,
+                      initiative: Number(newcomer.initiative),
+                      side: "enemy",
+                    },
+                  },
+                  "Could not add the combatant",
+                ).then((ok) => ok && setNewcomer({ ...newcomer, name: "" }));
+              }}
+            >
+              <label>
+                Add a combatant
+                <input value={newcomer.name} maxLength={120} onChange={(e) => setNewcomer({ ...newcomer, name: e.target.value })} />
+              </label>
+              <label>
+                AC
+                <input type="number" value={newcomer.ac} onChange={(e) => setNewcomer({ ...newcomer, ac: e.target.value })} />
+              </label>
+              <label>
+                HP
+                <input type="number" min={1} value={newcomer.hp} onChange={(e) => setNewcomer({ ...newcomer, hp: e.target.value })} />
+              </label>
+              <label>
+                Initiative
+                <input type="number" value={newcomer.initiative} onChange={(e) => setNewcomer({ ...newcomer, initiative: e.target.value })} />
+              </label>
+              <button type="submit" disabled={busy || !newcomer.name.trim()}>
+                Add
+              </button>
+            </form>
+          )}
+
           {fighting && (
             <form
-              className="ttrpg-row"
+              className="tt-form"
               onSubmit={(e) => {
                 e.preventDefault();
                 void act({ kind: "end", outcome: outcome.trim() || undefined }, "Could not end the fight");
@@ -294,45 +402,20 @@ export function RunPage() {
               </button>
             </form>
           )}
-          {run.status === "setup" && (
-            <button type="button" className="ghost" disabled={busy} onClick={() => void act({ kind: "end" }, "Could not cancel")}>
-              Cancel this fight
-            </button>
-          )}
-
-          {run.status !== "setup" && (
-            <ul className="ttrpg-combatants">
-              {rows.map((c) => (
-                <CombatantRow
-                  key={c.id}
-                  run={run}
-                  combatant={c}
-                  busy={busy}
-                  act={act}
-                  onRule={(id) => {
-                    setRuleId(id);
-                    setRuleTick((n) => n + 1);
-                    setView((current) => (window.matchMedia?.("(max-width: 1100px)").matches ? "rules" : current));
-                  }}
-                />
-              ))}
-            </ul>
-          )}
 
           <h2>History</h2>
-          <ol className="ttrpg-history" reversed>
+          <ol className="tt-history" reversed>
             {run.history.map((entry) => (
-              <li key={entry.seq} className={entry.undone ? "muted" : undefined}>
+              <li key={entry.seq}>
                 {entry.summary}
                 {entry.undone ? " (undone)" : ""}
               </li>
             ))}
           </ol>
-        </div>
+        </section>
 
-        <div className="ttrpg-play-rules" data-pane="rules">
-          <h2>Rules</h2>
-          <RulesBrowser key={ruleTick} focusId={ruleId} compact groupLevel={3} />
+        <div className="tt-card tt-pane-side">
+          <SidePanels campaignId={run.campaign_id} ruleRequest={ruleRequest} groupLevel={3} />
         </div>
       </div>
     </section>

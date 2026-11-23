@@ -66,31 +66,66 @@ async function open() {
 }
 
 describe("PartyPanel", () => {
-  it("shows the card and play state", async () => {
+  it("shows the card with a health bar", async () => {
     await open();
-    expect(screen.getByText(/AC 17/)).toBeInTheDocument();
-    expect(screen.getByText("20")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Brenna: 20 of 28 hit points/ })).toBeInTheDocument();
+    expect(screen.getByText("17")).toBeInTheDocument();
     expect(screen.getByText(/Second Wind: 1\/1 left/)).toBeInTheDocument();
   });
 
-  it("sends damage with the revision it read, then reloads", async () => {
-    api.adjustHp.mockResolvedValue(member());
+  it("sets typed HP and nudged HP by hand, with the revision it read", async () => {
+    api.updateState.mockResolvedValue(member());
     await open();
-    fireEvent.change(screen.getByLabelText("Amount for Brenna"), { target: { value: "6" } });
+    const hp = screen.getByLabelText("Current HP of Brenna");
+    fireEvent.change(hp, { target: { value: "11" } });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Damage" }));
+      fireEvent.blur(hp);
     });
-    expect(api.adjustHp).toHaveBeenCalledWith(expect.objectContaining({ id: "m1" }), "damage", 6);
+    expect(api.updateState).toHaveBeenLastCalledWith(expect.objectContaining({ id: "m1" }), { current_hp: 11 });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Minus 5 HP for Brenna" }));
+    });
+    expect(api.updateState).toHaveBeenLastCalledWith(expect.anything(), { current_hp: 15 });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Plus 5 HP for Brenna" }));
+    });
+    expect(api.updateState).toHaveBeenLastCalledWith(expect.anything(), { current_hp: 25 });
     expect(api.party.mock.calls.length).toBeGreaterThanOrEqual(2);
-    await waitFor(() => expect(screen.getByLabelText("Amount for Brenna")).toHaveValue(null));
+  });
+
+  it("keeps HP between 0 and the maximum and ignores unchanged or blank input", async () => {
+    api.updateState.mockResolvedValue(member());
+    api.party.mockResolvedValue({ items: [member({}, { current_hp: 27 })], conditions: CONDITIONS });
+    await open();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Plus 5 HP for Brenna" }));
+    });
+    expect(api.updateState).toHaveBeenLastCalledWith(expect.anything(), { current_hp: 28 });
+    const before = api.updateState.mock.calls.length;
+    const hp = screen.getByLabelText("Current HP of Brenna");
+    fireEvent.change(hp, { target: { value: "" } });
+    await act(async () => {
+      fireEvent.blur(hp);
+    });
+    expect(api.updateState.mock.calls.length).toBe(before);
+  });
+
+  it("sets temporary HP to exactly the number typed", async () => {
+    api.updateState.mockResolvedValue(member());
+    await open();
+    const temp = screen.getByLabelText("Temporary HP of Brenna");
+    fireEvent.change(temp, { target: { value: "4" } });
+    await act(async () => {
+      fireEvent.blur(temp);
+    });
+    expect(api.updateState).toHaveBeenLastCalledWith(expect.anything(), { temp_hp: 4 });
   });
 
   it("explains a conflict and reloads instead of overwriting", async () => {
-    api.adjustHp.mockRejectedValue(new ApiError(409, "stale", undefined));
+    api.updateState.mockRejectedValue(new ApiError(409, "stale", undefined));
     await open();
-    fireEvent.change(screen.getByLabelText("Amount for Brenna"), { target: { value: "6" } });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Heal" }));
+      fireEvent.click(screen.getByRole("button", { name: "Plus 1 HP for Brenna" }));
     });
     expect(await screen.findByRole("alert")).toHaveTextContent(/changed this elsewhere/);
   });

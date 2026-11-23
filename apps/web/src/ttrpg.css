@@ -1,0 +1,396 @@
+/*
+ * The TTRPG area (campaigns, creatures, encounters, fights, rules).
+ * Look: a tavern table by lamplight in the dark theme, a stat-block page in the light one. Oxblood
+ * red, brass and aged vellum; Cinzel for headings and numbers, Alegreya Sans for reading (both
+ * bundled, nothing is fetched). Scoped to .ttrpg-theme so the rest of Atlas is untouched; spacing
+ * and type sizes come from the app's scale tokens (checked by scripts/check-css-scale.mjs).
+ */
+.ttrpg-theme {
+  --tt-wood: #1b130f;
+  --tt-surface: #221913;
+  --tt-surface-2: #2c211a;
+  --tt-line: #4a3a2c;
+  --tt-rule: #7a2a24;
+  --tt-fg: #efe4cf;
+  --tt-muted: #b3a38a;
+  --tt-brass: #d6a954;
+  --tt-blood: #b3322b;
+  --tt-on-blood: #fff6e6;
+  --tt-party: #6fbfae;
+  --tt-enemy: #d9703f;
+  --tt-ally: #d6a954;
+  --tt-ok: #7fb069;
+  --tt-warn: #e0b341;
+  --tt-crit: #d0463b;
+  --tt-temp: #6aa5cf;
+  --tt-display: Cinzel, "Trajan Pro", Georgia, serif;
+  --tt-body: "Alegreya Sans", "Gill Sans", system-ui, sans-serif;
+  color: var(--tt-fg);
+  font-family: var(--tt-body);
+  font-size: var(--fs-md);
+  background-color: var(--tt-wood);
+  background-image: radial-gradient(ellipse at 50% -10%, color-mix(in srgb, var(--tt-blood) 18%, transparent), transparent 55%);
+  min-height: 100%;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .ttrpg-theme {
+    --tt-wood: #e9dcb9; --tt-surface: #f6ecd0; --tt-surface-2: #efe2bf; --tt-line: #c9b58a; --tt-rule: #8c1f1a;
+    --tt-fg: #2a1c10; --tt-muted: #5e4a34; --tt-brass: #6f4e0c; --tt-blood: #8c1d18; --tt-on-blood: #fff6e6;
+    --tt-party: #0d6f61; --tt-enemy: #a84316; --tt-ally: #7d5a0e;
+    --tt-ok: #3d7a2a; --tt-warn: #8f6200; --tt-crit: #a8261d; --tt-temp: #2a6797;
+  }
+}
+:root[data-theme="light"] .ttrpg-theme {
+  --tt-wood: #e9dcb9; --tt-surface: #f6ecd0; --tt-surface-2: #efe2bf; --tt-line: #c9b58a; --tt-rule: #8c1f1a;
+  --tt-fg: #2a1c10; --tt-muted: #5e4a34; --tt-brass: #6f4e0c; --tt-blood: #8c1d18; --tt-on-blood: #fff6e6;
+  --tt-party: #0d6f61; --tt-enemy: #a84316; --tt-ally: #7d5a0e;
+  --tt-ok: #3d7a2a; --tt-warn: #8f6200; --tt-crit: #a8261d; --tt-temp: #2a6797;
+}
+
+/* ---- type, links, controls ---- */
+.ttrpg-theme h1,
+.ttrpg-theme h2,
+.ttrpg-theme h3 {
+  font-family: var(--tt-display);
+  letter-spacing: 0.03em;
+  margin: 0;
+  text-wrap: balance;
+}
+.ttrpg-theme h1 { font-size: var(--fs-2xl); }
+.ttrpg-theme h2 {
+  font-size: var(--fs-base);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--tt-blood);
+  border-bottom: 2px solid var(--tt-rule);
+  padding-bottom: var(--s-1);
+}
+.ttrpg-theme h3 { font-size: var(--fs-md); }
+.ttrpg-theme .muted, .ttrpg-theme .hint { color: var(--tt-muted); }
+.ttrpg-theme a { color: var(--tt-brass); }
+.ttrpg-theme p { margin: 0; }
+.ttrpg-theme .page { padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-4); max-width: 1500px; margin: 0 auto; }
+.ttrpg-theme button {
+  color: inherit; font-family: var(--tt-body); font-size: var(--fs-md);
+  background: var(--tt-surface-2); border: 1px solid var(--tt-line); border-radius: 6px; padding: var(--s-1) var(--s-3); cursor: pointer;
+}
+.ttrpg-theme button:hover:not(:disabled) { border-color: var(--tt-brass); }
+.ttrpg-theme button:disabled { opacity: 0.5; cursor: not-allowed; }
+.ttrpg-theme button:focus-visible, .ttrpg-theme input:focus-visible, .ttrpg-theme select:focus-visible,
+.ttrpg-theme textarea:focus-visible, .ttrpg-theme summary:focus-visible, .ttrpg-theme a:focus-visible { outline: 2px solid var(--tt-brass); outline-offset: 2px; }
+.ttrpg-theme button.primary, .ttrpg-theme button[type="submit"]:not(.ghost) {
+  background: var(--tt-blood); color: var(--tt-on-blood); border-color: color-mix(in srgb, var(--tt-brass) 70%, var(--tt-blood));
+  font-family: var(--tt-display); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; font-size: var(--fs-sm);
+}
+.ttrpg-theme button.ghost { background: transparent; }
+.ttrpg-theme input, .ttrpg-theme select, .ttrpg-theme textarea {
+  font-family: var(--tt-body); font-size: var(--fs-md); color: var(--tt-fg);
+  background: color-mix(in srgb, var(--tt-wood) 70%, var(--tt-surface)); border: 1px solid var(--tt-line); border-radius: 6px; padding: var(--s-1) var(--s-2); box-sizing: border-box;
+}
+.ttrpg-theme input[type="number"] { width: 4.5rem; text-align: center; }
+.ttrpg-theme label { color: var(--tt-muted); }
+.ttrpg-theme .error { color: var(--tt-crit); }
+.ttrpg-theme .tt-rule { height: 5px; background: linear-gradient(90deg, var(--tt-rule), var(--tt-rule) 55%, transparent); clip-path: polygon(0 0, 100% 50%, 0 100%); }
+.ttrpg-theme .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---- cards and panes ---- */
+.tt-card {
+  position: relative; background: var(--tt-surface); border: 1px solid var(--tt-line); border-radius: 4px; padding: var(--s-4);
+  display: flex; flex-direction: column; gap: var(--s-3); min-width: 0;
+  box-shadow: 0 0 0 3px var(--tt-surface), 0 0 0 4px var(--tt-line), 0 18px 30px -22px #000;
+}
+.tt-banner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: var(--s-2) var(--s-4); }
+.tt-banner .sub { font-style: italic; color: var(--tt-muted); }
+.tt-crumb { font-size: var(--fs-base); }
+.tt-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 24rem); gap: var(--s-4); align-items: start; }
+.tt-main { display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; }
+.tt-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
+.tt-row { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; min-width: 0; }
+.tt-form { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: flex-end; }
+.tt-form label { display: flex; flex-direction: column; gap: var(--s-1); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.08em; }
+.tt-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.tt-switch { display: none; gap: var(--s-2); }
+.tt-switch button[aria-pressed="true"] { background: var(--tt-blood); color: var(--tt-on-blood); border-color: var(--tt-brass); }
+
+/* ---- campaign list ---- */
+.tt-campaigns { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: var(--s-3); list-style: none; padding: 0; margin: 0; }
+.tt-campaign { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-4); border: 1px solid var(--tt-line); border-left: 5px solid var(--tt-blood); border-radius: 4px; background: var(--tt-surface-2); }
+.tt-campaign a { font-family: var(--tt-display); font-weight: 700; font-size: var(--fs-lg); text-decoration: none; letter-spacing: 0.03em; }
+.tt-campaign.archived { border-style: dashed; }
+
+/* ---- sessions ---- */
+.tt-session { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); align-items: center; padding: var(--s-2) var(--s-3); border: 1px solid var(--tt-line); border-radius: 4px; background: var(--tt-surface-2); }
+.tt-session[aria-current="true"] { border-color: var(--tt-brass); }
+.tt-session .num { font-family: var(--tt-display); font-weight: 700; color: var(--tt-brass); }
+.tt-handoff { border-left: 4px solid var(--tt-brass); padding: var(--s-2) var(--s-3); background: var(--tt-surface-2); }
+.tt-handoff pre { white-space: pre-wrap; margin: 0; font-family: var(--tt-body); }
+
+/* ---- notes inside the campaign ---- */
+.tt-notes { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr); gap: var(--s-3); align-items: start; }
+.tt-notes-nav { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
+.tt-notes-nav h3 { font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.12em; color: var(--tt-blood); border-bottom: 1px solid var(--tt-line); padding-bottom: var(--s-1); }
+.tt-notes-nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+.tt-note-pick { width: 100%; text-align: left; background: transparent; border-color: transparent; overflow-wrap: anywhere; }
+.tt-note-pick[aria-current="true"] { background: var(--tt-surface-2); border-color: var(--tt-brass); }
+.tt-note-editor { min-width: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.tt-note-editor .cm-editor { min-height: 18rem; max-height: 70vh; border: 1px solid var(--tt-line); border-radius: 6px; }
+
+/* ---- party and creature cards (stat-block style) ---- */
+.tt-party { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); gap: var(--s-3); }
+.tt-member { --k: var(--tt-party); display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3); border: 1px solid var(--tt-line); border-top: 4px solid var(--k); border-radius: 4px; background: var(--tt-surface-2); min-width: 0; }
+.tt-member.companion { --k: var(--tt-ally); }
+.tt-member.retired { border-style: dashed; }
+.tt-member h3 { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s-1) var(--s-2); align-items: baseline; }
+.tt-stats { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); font-size: var(--fs-base); color: var(--tt-muted); }
+.tt-stats b { color: var(--tt-fg); font-family: var(--tt-display); }
+.tt-creature-cards { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); gap: var(--s-3); }
+.tt-creature { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3); border: 1px solid var(--tt-line); border-top: 4px solid var(--tt-enemy); border-radius: 4px; background: var(--tt-surface-2); min-width: 0; }
+.tt-creature h3 { font-size: var(--fs-lg); }
+.tt-creature .tt-rule { margin: var(--s-1) 0; }
+.tt-creature p { font-size: var(--fs-base); }
+.tt-creature p strong { color: var(--tt-blood); font-style: italic; }
+
+/* ---- shield, d20, chips ---- */
+.tt-ac { width: 2.3rem; height: 2.7rem; display: grid; place-items: center; padding-bottom: var(--s-1); box-sizing: border-box; font-family: var(--tt-display); font-weight: 700; background: var(--tt-fg); color: var(--tt-surface); clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%); flex: none; }
+.tt-die { position: relative; width: 3.6rem; height: 4rem; display: grid; place-items: center; background: color-mix(in srgb, var(--k, var(--tt-party)) 26%, var(--tt-surface)); clip-path: polygon(50% 0, 100% 26%, 100% 74%, 50% 100%, 0 74%, 0 26%); flex: none; }
+.tt-die::before { content: ""; position: absolute; inset: 2px; background: var(--tt-surface-2); clip-path: inherit; }
+.tt-die input { position: relative; width: 2.4rem; border: 0; background: transparent; font-family: var(--tt-display); font-weight: 700; font-size: var(--fs-lg); padding: 0; text-align: center; }
+.tt-chip { display: inline-flex; align-items: center; border: 1px solid var(--tt-warn); border-radius: 99px; color: var(--tt-warn); font-size: var(--fs-base); overflow: hidden; background: color-mix(in srgb, var(--tt-warn) 10%, transparent); }
+.tt-chip button { border: 0; background: transparent; border-radius: 0; padding: 0 var(--s-2); font-size: inherit; text-transform: capitalize; }
+.tt-chip button.x { padding-left: var(--s-1); color: var(--tt-muted); }
+
+/* ---- health bar ---- */
+.tt-hp { --p: 100; --t: 0; --from: 100; position: relative; height: 1.75rem; border-radius: 4px; overflow: hidden; background: color-mix(in srgb, var(--tt-wood) 85%, #000); border: 1px solid var(--tt-line); box-shadow: inset 0 2px 5px #0008; }
+.tt-hp .trail { position: absolute; inset: 0 auto 0 0; width: calc(var(--from) * 1%); background: color-mix(in srgb, var(--hpc) 35%, #fff); opacity: 0.55; transition: width 0.9s ease 0.35s; }
+.tt-hp .fill { position: absolute; inset: 0 auto 0 0; width: calc(var(--p) * 1%); background: linear-gradient(180deg, color-mix(in srgb, var(--hpc) 82%, #fff), var(--hpc) 55%, color-mix(in srgb, var(--hpc) 80%, #000)); transition: width 0.5s ease; }
+.tt-hp .temp { position: absolute; inset: 0 auto 0 calc(var(--p) * 1%); width: calc(var(--t) * 1%); background: repeating-linear-gradient(135deg, var(--tt-temp) 0 6px, color-mix(in srgb, var(--tt-temp) 65%, #fff) 6px 12px); }
+.tt-hp .ticks { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, transparent calc(25% - 1px), #0006 calc(25% - 1px) 25%, transparent 25%, transparent calc(50% - 1px), #0009 calc(50% - 1px) 50%, transparent 50%, transparent calc(75% - 1px), #0006 calc(75% - 1px) 75%, transparent 75%); }
+.tt-hp .txt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 var(--s-2); font-family: var(--tt-display); font-weight: 700; font-size: var(--fs-md); color: #fff; text-shadow: 0 1px 2px #000, 0 0 3px #000; pointer-events: none; }
+.tt-hp .txt em { font-style: normal; font-family: var(--tt-body); font-size: var(--fs-xs); letter-spacing: 0.12em; text-transform: uppercase; }
+.tt-hp.ok { --hpc: var(--tt-ok); } .tt-hp.warn { --hpc: var(--tt-warn); } .tt-hp.crit { --hpc: var(--tt-crit); } .tt-hp.zero { --hpc: #6b6258; }
+.tt-hp-ctl { display: inline-flex; align-items: center; gap: var(--s-1); flex-wrap: wrap; }
+.tt-hp-ctl button { font-family: ui-monospace, Menlo, monospace; min-width: 2.3rem; padding: var(--s-1) var(--s-2); }
+.tt-hp-ctl .dn { border-color: color-mix(in srgb, var(--tt-crit) 60%, var(--tt-line)); }
+.tt-hp-ctl .up { border-color: color-mix(in srgb, var(--tt-ok) 60%, var(--tt-line)); }
+.tt-hp-ctl .of { color: var(--tt-muted); }
+
+/* ---- the fight ---- */
+.tt-fight-panes { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--s-4); align-items: start; }
+.tt-round { display: inline-flex; align-items: center; gap: var(--s-2); }
+.tt-round b { font-family: var(--tt-display); font-size: var(--fs-lg); padding: var(--s-1) var(--s-5); background: var(--tt-blood); color: var(--tt-on-blood); min-width: 7.5rem; text-align: center; letter-spacing: 0.08em; text-transform: uppercase; clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 50%, 100% 100%, 0 100%, 10px 50%); }
+.tt-combatants { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-3); }
+.tt-row-c { --k: var(--tt-party); position: relative; display: grid; grid-template-columns: 4.1rem minmax(0, 1fr); gap: var(--s-1) var(--s-3); padding: var(--s-3); border: 1px solid var(--tt-line); border-left: 5px solid var(--k); border-radius: 4px; background: var(--tt-surface-2); }
+.tt-row-c.enemy { --k: var(--tt-enemy); } .tt-row-c.ally { --k: var(--tt-ally); }
+.tt-row-c.acting { border-color: var(--tt-brass); border-left-color: var(--tt-brass); box-shadow: 0 0 0 1px var(--tt-brass), 0 0 18px -4px var(--tt-brass); }
+.tt-row-c.acting::before { content: "Acting"; position: absolute; top: -9px; right: var(--s-3); background: var(--tt-brass); color: #1b130f; font-family: var(--tt-display); font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; padding: 0 var(--s-3); border-radius: 2px; }
+.tt-row-c.out { border-style: dashed; }
+.tt-row-c.out .tt-name { text-decoration: line-through; color: var(--tt-muted); }
+.tt-row-c.out .tt-hp { filter: grayscale(1); }
+.tt-d20 { grid-row: 1 / span 4; display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
+.tt-d20 button { padding: 0 var(--s-2); font-family: var(--tt-display); font-size: var(--fs-xs); letter-spacing: 0.06em; text-transform: uppercase; }
+.tt-nameline { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); align-items: center; justify-content: space-between; min-width: 0; }
+.tt-name { font-family: var(--tt-display); font-weight: 700; font-size: var(--fs-lg); overflow-wrap: anywhere; }
+.tt-kind { font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.1em; color: var(--k); font-weight: 700; }
+.tt-badges { display: flex; align-items: center; gap: var(--s-2); }
+.tt-controls { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); align-items: center; min-width: 0; }
+.tt-controls label { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-base); }
+.tt-controls input[type="number"] { width: 3.8rem; }
+.tt-cond { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-2); align-items: center; min-width: 0; }
+.tt-cond select { font-size: var(--fs-base); }
+.tt-reminder { color: var(--tt-warn); font-style: italic; }
+.tt-history { margin: 0; padding-left: var(--s-5); display: flex; flex-direction: column; gap: var(--s-1); color: var(--tt-muted); font-size: var(--fs-base); }
+.tt-history li:first-child { color: var(--tt-fg); }
+
+/* ---- setup (initiative) ---- */
+.ttrpg-setup { display: flex; flex-direction: column; gap: var(--s-3); }
+.ttrpg-setup ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.ttrpg-setup li { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); align-items: center; padding: var(--s-2) var(--s-3); background: var(--tt-surface-2); border: 1px solid var(--tt-line); border-radius: 4px; }
+.ttrpg-setup fieldset { border: 1px solid var(--tt-line); border-radius: 4px; }
+.ttrpg-setup legend { font-family: var(--tt-display); }
+
+/* ---- the right sidebar (rules, a note, the party sheet) ---- */
+.tt-side { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
+.tt-tabs { display: flex; flex-wrap: wrap; gap: var(--s-1); align-items: center; border-bottom: 2px solid var(--tt-rule); padding-bottom: var(--s-1); }
+.tt-tablist { display: flex; flex-wrap: wrap; gap: var(--s-1); flex: 1 1 auto; }
+.tt-tab { border: 1px solid var(--tt-line); border-radius: 6px 6px 0 0; background: var(--tt-surface-2); padding: var(--s-1) var(--s-3); font-size: var(--fs-base); }
+.tt-tab[data-active="true"] { border-color: var(--tt-brass); background: var(--tt-blood); color: var(--tt-on-blood); }
+.tt-close { padding: var(--s-1) var(--s-2); }
+.tt-add { position: relative; }
+.tt-add summary { list-style: none; cursor: pointer; border: 1px dashed var(--tt-line); border-radius: 6px; padding: var(--s-1) var(--s-2); font-size: var(--fs-base); }
+.tt-add summary::-webkit-details-marker { display: none; }
+.tt-add[open] summary { border-color: var(--tt-brass); }
+.tt-add .menu { position: absolute; z-index: 5; top: 100%; right: 0; margin-top: var(--s-1); min-width: 14rem; display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-2); background: var(--tt-surface); border: 1px solid var(--tt-brass); border-radius: 6px; box-shadow: 0 10px 24px -10px #000; }
+.tt-add .menu button { text-align: left; }
+.tt-panel-body { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
+.tt-empty { color: var(--tt-muted); font-style: italic; }
+
+/* ---- rules reference ---- */
+.ttrpg-rules { display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
+.ttrpg-rules-search { width: 100%; }
+.ttrpg-rules-list { display: flex; flex-direction: column; gap: var(--s-3); max-height: 72vh; overflow-y: auto; }
+.ttrpg-rules.compact .ttrpg-rules-list { max-height: 64vh; }
+.ttrpg-rules-group { display: flex; flex-direction: column; gap: var(--s-2); }
+.ttrpg-theme .ttrpg-rules-group > h2, .ttrpg-theme .ttrpg-rules-group > h3 { font-size: var(--fs-sm); letter-spacing: 0.14em; text-transform: uppercase; color: var(--tt-blood); border-bottom: 1px solid var(--tt-line); padding-bottom: var(--s-1); }
+.ttrpg-rule { border: 1px solid var(--tt-line); border-radius: 4px; background: var(--tt-surface-2); }
+.ttrpg-rule > summary { cursor: pointer; padding: var(--s-2) var(--s-3); font-family: var(--tt-display); font-weight: 700; letter-spacing: 0.04em; }
+.ttrpg-rule[open] { border-color: var(--tt-brass); }
+.ttrpg-rule-body { display: flex; flex-direction: column; gap: var(--s-2); padding: 0 var(--s-3) var(--s-3); font-size: var(--fs-md); }
+.ttrpg-rule-body p, .ttrpg-rule-body ul { margin: 0; }
+.ttrpg-rule-body ul { padding-left: var(--s-5); display: flex; flex-direction: column; gap: var(--s-1); }
+.ttrpg-rule-body table { border-collapse: collapse; }
+.ttrpg-rule-body td, .ttrpg-rule-body th { text-align: left; padding: var(--s-1) var(--s-3) var(--s-1) 0; border-bottom: 1px solid var(--tt-line); }
+.ttrpg-rule.flash { outline: 2px solid var(--tt-brass); }
+.ttrpg-attribution { font-size: var(--fs-sm); color: var(--tt-muted); border-top: 1px dashed var(--tt-line); padding-top: var(--s-2); }
+
+/* ---- encounter prep ---- */
+.tt-slots { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.tt-slot { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); align-items: center; padding: var(--s-2) var(--s-3); border: 1px solid var(--tt-line); border-left: 4px solid var(--tt-enemy); border-radius: 4px; background: var(--tt-surface-2); }
+.tt-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s-2) var(--s-4); margin: 0; }
+.tt-facts > div { display: contents; }
+.tt-facts dt { color: var(--tt-muted); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.08em; }
+.tt-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.ttrpg-theme code { overflow-wrap: anywhere; }
+.ttrpg-theme input, .ttrpg-theme select { max-width: 100%; min-width: 0; }
+
+@media (max-width: 1100px) {
+  .tt-layout { grid-template-columns: minmax(0, 1fr); }
+  .tt-fight-panes { grid-template-columns: minmax(0, 1fr); }
+  .tt-switch { display: flex; }
+  .tt-fight[data-view="combat"] .tt-pane-notes, .tt-fight[data-view="combat"] .tt-pane-side,
+  .tt-fight[data-view="notes"] .tt-pane-combat, .tt-fight[data-view="notes"] .tt-pane-side,
+  .tt-fight[data-view="side"] .tt-pane-notes, .tt-fight[data-view="side"] .tt-pane-combat { display: none; }
+  .ttrpg-rules-list, .ttrpg-rules.compact .ttrpg-rules-list { max-height: none; }
+  .tt-notes { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .tt-row-c { grid-template-columns: 3.4rem minmax(0, 1fr); }
+  .tt-die { width: 3rem; height: 3.4rem; }
+  .tt-die input { width: 2rem; }
+}
+@media (prefers-reduced-motion: reduce) { .ttrpg-theme * { animation: none !important; transition: none !important; } }
+
+.ttrpg-unfinished { border-left: 4px solid var(--tt-brass); padding: var(--s-2) var(--s-3); background: var(--tt-surface-2); }
+.ttrpg-note-missing { display: inline-flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
+.ttrpg-rest { border: 1px solid var(--tt-brass); border-radius: 4px; padding: var(--s-3); background: var(--tt-surface-2); display: flex; flex-direction: column; gap: var(--s-2); }
+.ttrpg-creature-detail { display: flex; flex-direction: column; gap: var(--s-2); }
+.ttrpg-conditions, .ttrpg-deathsaves { border: 1px solid var(--tt-line); border-radius: 4px; display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); }
+.ttrpg-resources { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+
+/* ---- the campaign page: sections as tabs, and the note editor in the same parchment ---- */
+.tt-main > .tt-tabs { border-bottom-color: var(--tt-line); }
+.tt-main > .tt-tabs .tt-tab { border-radius: 4px 4px 0 0; }
+.tt-main > .tt-tabs .tt-tab { font-family: var(--tt-display); font-size: var(--fs-sm); letter-spacing: 0.08em; text-transform: uppercase; padding: var(--s-2) var(--s-4); }
+.tt-layout > .tt-card { box-shadow: none; background: transparent; border-color: var(--tt-line); }
+.tt-main .tt-card { box-shadow: none; }
+.ttrpg-theme .editor-host { background: var(--tt-surface-2); border: 1px solid var(--tt-line); border-radius: 4px; height: auto; }
+.ttrpg-theme .editor-host .cm-editor { background: transparent; color: var(--tt-fg); font-family: var(--tt-body); font-size: var(--fs-md); min-height: 18rem; }
+.ttrpg-theme .editor-host .cm-scroller { font-family: var(--tt-body); }
+.ttrpg-theme .editor-host .cm-content { caret-color: var(--tt-brass); padding: var(--s-3); }
+.ttrpg-theme .editor-host .cm-gutters { background: transparent; border: 0; color: var(--tt-muted); }
+.ttrpg-theme .editor-host .cm-activeLine, .ttrpg-theme .editor-host .cm-activeLineGutter { background: color-mix(in srgb, var(--tt-brass) 10%, transparent); }
+.ttrpg-theme .editor-host .cm-cursor { border-left-color: var(--tt-brass); }
+.ttrpg-theme .editor-host .cm-selectionBackground, .ttrpg-theme .editor-host .cm-focused .cm-selectionBackground { background: color-mix(in srgb, var(--tt-brass) 30%, transparent); }
+.ttrpg-theme .editor-host .cm-focused { outline: 1px solid var(--tt-brass); }
+.tt-note-editor { border: 0; }
+.tt-notes { gap: var(--s-4); }
+.tt-notes-nav { border-right: 1px solid var(--tt-line); padding-right: var(--s-3); }
+.tt-card > p.muted { font-size: var(--fs-base); }
+
+/* ---- seamless: the TTRPG area fills the whole content area and cards share its background ---- */
+.content:has(> .ttrpg-theme) { padding: 0; display: flex; flex-direction: column; }
+.content:has(> .ttrpg-theme) > .ttrpg-theme { flex: 1 1 auto; display: flex; flex-direction: column; }
+.ttrpg-theme > .page, .ttrpg-theme > div > .page { flex: 1 1 auto; width: 100%; box-sizing: border-box; }
+.ttrpg-theme .tt-card { background: transparent; border-color: transparent; box-shadow: none; border-radius: 0; }
+.ttrpg-theme .tt-layout { align-items: stretch; flex: 1 1 auto; }
+.ttrpg-theme .tt-layout > .tt-card { border-left: 1px solid var(--tt-line); padding-left: var(--s-4); }
+.ttrpg-theme .tt-main { height: 100%; }
+.ttrpg-theme .tt-main > .tt-card { flex: 1 1 auto; }
+.ttrpg-theme .tt-fight-panes { align-items: stretch; }
+.ttrpg-theme .tt-fight-panes > .tt-card + .tt-card { border-left: 1px solid var(--tt-line); }
+.ttrpg-theme .ttrpg-rule, .ttrpg-theme .tt-session, .ttrpg-theme .tt-handoff { background: color-mix(in srgb, var(--tt-surface) 55%, transparent); }
+.ttrpg-theme .editor-host { background: transparent; }
+
+/* the content area is a flex item of the main column: let it (and so the theme) take all the height,
+   down behind the fixed status bar */
+.main-column:has(.ttrpg-theme) { margin-bottom: 0; }
+.main-column > .content:has(> .ttrpg-theme) { flex: 1 1 auto; }
+.content:has(> .ttrpg-theme) > .ttrpg-theme { min-height: 100%; border-bottom: var(--statusbar) solid transparent; box-sizing: border-box; }
+
+/* a card holding a form: the fields sit in a responsive row, labels above their inputs */
+.tt-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--s-3); }
+.tt-fields label { display: flex; flex-direction: column; gap: var(--s-1); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.08em; }
+.tt-fields input { width: 100%; }
+
+/* ---- encounter prep ---- */
+.tt-slot { display: grid; grid-template-columns: minmax(8rem, 1fr) 4.5rem 4.5rem 7rem; gap: var(--s-2) var(--s-3); align-items: start; padding: var(--s-3); }
+.tt-slot.ally { border-left-color: var(--tt-ally); }
+.tt-slot-id { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.tt-slot-sub { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); font-size: var(--fs-sm); }
+.tt-slot-sub .tt-kind { color: var(--tt-enemy); }
+.tt-slot.ally .tt-slot-sub .tt-kind { color: var(--tt-ally); }
+.tt-slot-name { font-family: var(--tt-display); font-weight: 700; width: 100%; }
+.tt-num { display: flex; flex-direction: column; gap: var(--s-1); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.1em; }
+.tt-num input { width: 100%; }
+.tt-slot-actions { display: flex; gap: var(--s-1); justify-content: flex-end; align-self: end; }
+.tt-slot-actions button { min-width: 2.2rem; }
+.tt-pick { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.tt-pick label { display: inline-flex; align-items: center; gap: var(--s-2); padding: var(--s-1) var(--s-3); border: 1px solid var(--tt-line); border-radius: 99px; cursor: pointer; color: var(--tt-fg); }
+.tt-pick label.on { border-color: var(--tt-party); background: color-mix(in srgb, var(--tt-party) 16%, transparent); }
+.tt-add-slots { display: flex; flex-direction: column; gap: var(--s-3); padding-top: var(--s-3); border-top: 1px dashed var(--tt-line); }
+.tt-add-slots h3 { font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.12em; color: var(--tt-blood); }
+.tt-add-slots label { display: flex; flex-direction: column; gap: var(--s-1); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.1em; }
+.tt-custom > summary, .tt-details > summary { cursor: pointer; }
+.tt-custom > summary { color: var(--tt-muted); margin-bottom: var(--s-2); }
+.tt-details > summary h2 { display: inline; border: 0; }
+.tt-details[open] > summary { margin-bottom: var(--s-3); }
+
+.tt-add-slots .tt-row { align-items: flex-end; }
+.tt-add-slots button:not(:disabled) { background: var(--tt-blood); color: var(--tt-on-blood); border-color: var(--tt-brass); }
+.tt-pick input[type="checkbox"] { accent-color: var(--tt-party); }
+.tt-main > .tt-card + .tt-card { margin-top: var(--s-2); }
+.tt-main .tt-card > h2 { margin-bottom: var(--s-1); }
+.tt-slot-actions button.ghost { font-size: var(--fs-xl); line-height: 1; padding: var(--s-1) var(--s-2); color: var(--tt-muted); }
+.tt-slot-actions button.ghost:hover:not(:disabled) { color: var(--tt-crit); border-color: var(--tt-crit); }
+.tt-add-slots { padding-bottom: var(--s-2); }
+.tt-main { gap: var(--s-2); }
+
+/* ---- encounter prep: second pass ---- */
+.tt-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: var(--s-4); align-items: start; }
+.tt-pair .tt-facts { grid-template-columns: minmax(0, 1fr); gap: var(--s-1); }
+.tt-pair .tt-facts > div { display: flex; flex-direction: column; gap: var(--s-1); margin-bottom: var(--s-2); }
+.tt-pair .tt-row input:not([type="checkbox"]), .tt-pair select { width: 100%; }
+.tt-pair .tt-row { flex-wrap: nowrap; }
+.tt-pair code { display: block; font-size: var(--fs-sm); color: var(--tt-muted); margin-bottom: var(--s-1); }
+.tt-side-toggle { display: none; align-self: flex-start; }
+.tt-add-slots { border-top: 0; padding-top: 0; }
+.tt-slots + .tt-add-slots, .tt-empty + .tt-add-slots { border-top: 1px dashed var(--tt-line); padding-top: var(--s-3); }
+@media (max-width: 1100px) {
+  .tt-side-toggle { display: inline-flex; }
+  .tt-layout[data-side="closed"] > .tt-side-card { display: none; }
+  .tt-pair { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .tt-slot { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; }
+  .tt-slot-id { grid-column: 1 / -1; }
+  .tt-slot-actions { grid-column: auto; }
+}
+.tt-side-toggle { border: 1px solid var(--tt-brass); color: var(--tt-brass); }
+.tt-pair { gap: var(--s-2) var(--s-4); }
+.tt-main > .tt-card + .tt-card, .tt-main > .tt-pair { margin-top: 0; }
+.tt-main .tt-card { padding-top: var(--s-3); padding-bottom: var(--s-3); }
+
+/* add combatants: one compact row */
+.tt-add-slots { gap: var(--s-2); padding-top: var(--s-2); }
+.tt-add-slots > .tt-row { flex-wrap: nowrap; align-items: center; }
+.tt-add-slots > .tt-row > label { flex-direction: row; align-items: center; gap: var(--s-1); text-transform: none; letter-spacing: 0; font-size: var(--fs-md); }
+.tt-add-slots .tt-grow { flex: 1 1 auto; min-width: 0; }
+.tt-add-slots .tt-grow select { width: 100%; }
+.tt-add-slots .tt-count input { width: 3.6rem; }
+.tt-add-slots details > .tt-row { align-items: flex-end; }
+.tt-custom { margin: 0; }
+.tt-custom > summary { margin-bottom: 0; }
+.tt-custom[open] > summary { margin-bottom: var(--s-2); }
+.tt-main { gap: var(--s-2); }
+@media (max-width: 640px) { .tt-add-slots > .tt-row { flex-wrap: wrap; } }
+.tt-count::before { content: "×"; color: var(--tt-muted); }
+.ttrpg-theme .tt-main > .tt-card.tt-fit { flex: 0 0 auto; }

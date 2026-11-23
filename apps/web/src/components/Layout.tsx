@@ -6,7 +6,11 @@ import type { Project } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 import { noteSessions } from "../hooks/useNoteAutosave";
 import { useMediaQuery } from "../hooks/useMediaQuery";
-import { ProjectsProvider, activeProjects, useProjects } from "../hooks/useProjects";
+import {
+  ProjectsProvider,
+  activeProjects,
+  useProjects,
+} from "../hooks/useProjects";
 import { useCampaignsForNav } from "../hooks/useCampaignsForNav";
 import { useFeatures } from "../lib/features";
 import { useTaskEditor } from "../hooks/useTaskEditor";
@@ -59,7 +63,9 @@ function focusables(root: HTMLElement | null): HTMLElement[] {
     return [];
   }
   return Array.from(
-    root.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), input, select, textarea"),
+    root.querySelectorAll<HTMLElement>(
+      "a[href], button:not([disabled]), input, select, textarea",
+    ),
   ).filter((element) => !element.closest("[hidden]"));
 }
 
@@ -76,18 +82,26 @@ function Shell() {
   const listed = activeProjects(projects);
   const { pathname } = useLocation();
   const campaigns = useCampaignsForNav(features.ttrpg, pathname);
-  const wide = useMediaQuery(pathname.startsWith("/notes") ? NOTES_WIDE : WIDE, true);
+  const wide = useMediaQuery(
+    pathname.startsWith("/notes") ? NOTES_WIDE : WIDE,
+    true,
+  );
   const narrow = useMediaQuery(NARROW, false);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readSidebarCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [sections, setSections] = useState<CollapsedSections>(readCollapsedSections);
+  const [sections, setSections] = useState<CollapsedSections>(
+    readCollapsedSections,
+  );
   // A task opened from the palette is edited in a panel owned by the shell; after a change the page
   // behind it is remounted so it shows the new data.
   const [pageVersion, setPageVersion] = useState(0);
-  const refreshPage = useCallback(async () => setPageVersion((version) => version + 1), []);
+  const refreshPage = useCallback(
+    async () => setPageVersion((version) => version + 1),
+    [],
+  );
   const editor = useTaskEditor({ refresh: refreshPage });
 
   const sidebar = useRef<HTMLElement>(null);
@@ -129,7 +143,10 @@ function Shell() {
     } else if (drawerOpen) {
       closeDrawer(true);
     } else {
-      drawerOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      drawerOpener.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
       setDrawerOpen(true);
     }
   }, [wide, collapsed, drawerOpen, closeDrawer]);
@@ -183,7 +200,10 @@ function Shell() {
   const logoutRef = useRef(logout);
   logoutRef.current = logout;
   // Stable identities for the palette, whose command list is memoised on its props.
-  const paletteToggleSidebar = useCallback(() => toggleSidebarRef.current(), []);
+  const paletteToggleSidebar = useCallback(
+    () => toggleSidebarRef.current(),
+    [],
+  );
   // Text typed in a note but not yet saved is sent before the session ends (UX-05).
   const signOut = useCallback(
     () => void noteSessions.flushAll(false).finally(() => logoutRef.current()),
@@ -191,7 +211,8 @@ function Shell() {
   );
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      const modifier = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
+      const modifier =
+        (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey;
       const key = event.key.toLowerCase();
       if (modifier && key === "k") {
         event.preventDefault();
@@ -258,7 +279,9 @@ function Shell() {
   const name = user?.display_name || user?.email || "";
 
   return (
-    <div className={`app-shell${sidebarVisible && wide ? " has-sidebar" : ""}${drawer ? " has-drawer" : ""}${wide ? "" : " compact"}`}>
+    <div
+      className={`app-shell${sidebarVisible && wide ? " has-sidebar" : ""}${drawer ? " has-drawer" : ""}${wide ? "" : " compact"}`}
+    >
       <a className="skip-link" href={`#${MAIN_ID}`} inert={drawer}>
         Skip to content
       </a>
@@ -291,23 +314,39 @@ function Shell() {
           </div>
         ) : null}
         <ul className="rail-group">
-          {RAIL_ITEMS.filter((item) => item.group !== "settings").map((item) => (
-            <li key={item.to}>
-              <RailLink item={item} pathname={pathname} current={currentRail} />
-            </li>
-          ))}
+          {RAIL_ITEMS.filter((item) => item.group !== "settings").map(
+            (item) => (
+              <li key={item.to}>
+                <RailLink
+                  item={item}
+                  pathname={pathname}
+                  current={currentRail}
+                />
+              </li>
+            ),
+          )}
         </ul>
         <ul className="rail-group rail-bottom">
-          {RAIL_ITEMS.filter((item) => item.group === "settings").map((item) => (
-            <li key={item.to}>
-              <RailLink item={item} pathname={pathname} current={currentRail} />
-            </li>
-          ))}
+          {RAIL_ITEMS.filter((item) => item.group === "settings").map(
+            (item) => (
+              <li key={item.to}>
+                <RailLink
+                  item={item}
+                  pathname={pathname}
+                  current={currentRail}
+                />
+              </li>
+            ),
+          )}
         </ul>
       </nav>
 
       {drawer ? (
-        <div className="drawer-scrim" aria-hidden="true" onClick={() => closeDrawer(true)} />
+        <div
+          className="drawer-scrim"
+          aria-hidden="true"
+          onClick={() => closeDrawer(true)}
+        />
       ) : null}
 
       <aside
@@ -360,6 +399,7 @@ function Shell() {
               section={section}
               collapsed={!!sections[section.id]}
               projectsCollapsed={!!sections.projects}
+              campaignsCollapsed={!!sections.campaigns}
               onToggle={toggleSection}
               currentKey={currentKey}
               projects={listed}
@@ -433,18 +473,22 @@ function Shell() {
         {narrow ? (
           <nav className="bottom-nav" aria-label="Bottom navigation">
             <ul>
-              {RAIL_ITEMS.filter((item) => item.group !== "settings").map((item) => (
-                <li key={item.to}>
-                  <Link
-                    to={item.to}
-                    className={currentRail === item.group ? "active" : undefined}
-                    aria-current={railCurrent(item, pathname, currentRail)}
-                  >
-                    {item.icon && <Icon name={item.icon} size={20} />}
-                    <span>{item.label}</span>
-                  </Link>
-                </li>
-              ))}
+              {RAIL_ITEMS.filter((item) => item.group !== "settings").map(
+                (item) => (
+                  <li key={item.to}>
+                    <Link
+                      to={item.to}
+                      className={
+                        currentRail === item.group ? "active" : undefined
+                      }
+                      aria-current={railCurrent(item, pathname, currentRail)}
+                    >
+                      {item.icon && <Icon name={item.icon} size={20} />}
+                      <span>{item.label}</span>
+                    </Link>
+                  </li>
+                ),
+              )}
             </ul>
           </nav>
         ) : null}
@@ -454,14 +498,26 @@ function Shell() {
 }
 
 /** `page` on the item for the page shown, `true` on the rail entry of its group, else nothing. */
-function railCurrent(item: NavItem, pathname: string, current: string | null): "page" | "true" | undefined {
+function railCurrent(
+  item: NavItem,
+  pathname: string,
+  current: string | null,
+): "page" | "true" | undefined {
   if (current !== item.group) {
     return undefined;
   }
   return activeNavKey(pathname) === item.to ? "page" : "true";
 }
 
-function RailLink({ item, pathname, current }: { item: NavItem; pathname: string; current: string | null }) {
+function RailLink({
+  item,
+  pathname,
+  current,
+}: {
+  item: NavItem;
+  pathname: string;
+  current: string | null;
+}) {
   return (
     <Link
       to={item.to}
@@ -479,6 +535,7 @@ function SidebarSection({
   section,
   collapsed,
   projectsCollapsed,
+  campaignsCollapsed,
   onToggle,
   currentKey,
   projects,
@@ -486,6 +543,7 @@ function SidebarSection({
   section: NavSection;
   collapsed: boolean;
   projectsCollapsed: boolean;
+  campaignsCollapsed: boolean;
   onToggle: (id: string) => void;
   currentKey: string | null;
   projects: Project[];
@@ -504,43 +562,100 @@ function SidebarSection({
         <span>{section.label}</span>
       </button>
       <ul id={listId} hidden={collapsed}>
-        {section.items.map((item) => (
-          <li key={item.to}>
-            <div className="nav-row">
-              <NavEntry to={item.to} label={item.label} icon={item.icon} current={currentKey === item.to} />
-              {item.to === "/projects" && projects.length > 0 ? (
-                <button
-                  type="button"
-                  className="ghost icon-button nav-row-toggle"
-                  aria-label={projectsCollapsed ? "Show active projects" : "Hide active projects"}
-                  aria-expanded={!projectsCollapsed}
-                  aria-controls="nav-projects"
-                  onClick={() => onToggle("projects")}
-                >
-                  <Icon name={projectsCollapsed ? "chevron-right" : "chevron-down"} size={14} />
-                </button>
-              ) : null}
-            </div>
-            {item.to === "/projects" && projects.length > 0 ? (
-              <ul
-                id="nav-projects"
-                className="sidebar-projects"
-                aria-label="Active projects"
-                hidden={projectsCollapsed}
-              >
-                {projects.map((project) => (
-                  <li key={project.id}>
-                    <NavEntry
-                      to={`/projects/${project.id}`}
-                      label={project.name}
-                      current={currentKey === projectNavKey(project.id)}
+        {section.items
+          .filter((item) => item.icon)
+          .map((item) => (
+            <li key={item.to}>
+              <div className="nav-row">
+                <NavEntry
+                  to={item.to}
+                  label={item.label}
+                  icon={item.icon}
+                  current={currentKey === item.to}
+                />
+                {item.to === "/ttrpg" &&
+                section.items.some((entry) => !entry.icon) ? (
+                  <button
+                    type="button"
+                    className="ghost icon-button nav-row-toggle"
+                    aria-label={
+                      campaignsCollapsed ? "Show campaigns" : "Hide campaigns"
+                    }
+                    aria-expanded={!campaignsCollapsed}
+                    aria-controls="nav-campaigns"
+                    onClick={() => onToggle("campaigns")}
+                  >
+                    <Icon
+                      name={
+                        campaignsCollapsed ? "chevron-right" : "chevron-down"
+                      }
+                      size={14}
                     />
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </li>
-        ))}
+                  </button>
+                ) : null}
+                {item.to === "/projects" && projects.length > 0 ? (
+                  <button
+                    type="button"
+                    className="ghost icon-button nav-row-toggle"
+                    aria-label={
+                      projectsCollapsed
+                        ? "Show active projects"
+                        : "Hide active projects"
+                    }
+                    aria-expanded={!projectsCollapsed}
+                    aria-controls="nav-projects"
+                    onClick={() => onToggle("projects")}
+                  >
+                    <Icon
+                      name={
+                        projectsCollapsed ? "chevron-right" : "chevron-down"
+                      }
+                      size={14}
+                    />
+                  </button>
+                ) : null}
+              </div>
+              {item.to === "/ttrpg" &&
+              section.items.some((entry) => !entry.icon) ? (
+                <ul
+                  id="nav-campaigns"
+                  className="sidebar-projects"
+                  aria-label="Campaigns"
+                  hidden={campaignsCollapsed}
+                >
+                  {section.items
+                    .filter((entry) => !entry.icon)
+                    .map((entry) => (
+                      <li key={entry.to}>
+                        <NavEntry
+                          to={entry.to}
+                          label={entry.label}
+                          current={currentKey === entry.to}
+                        />
+                      </li>
+                    ))}
+                </ul>
+              ) : null}
+              {item.to === "/projects" && projects.length > 0 ? (
+                <ul
+                  id="nav-projects"
+                  className="sidebar-projects"
+                  aria-label="Active projects"
+                  hidden={projectsCollapsed}
+                >
+                  {projects.map((project) => (
+                    <li key={project.id}>
+                      <NavEntry
+                        to={`/projects/${project.id}`}
+                        label={project.name}
+                        current={currentKey === projectNavKey(project.id)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </li>
+          ))}
       </ul>
     </div>
   );
@@ -558,8 +673,16 @@ function NavEntry({
   current: boolean;
 }) {
   return (
-    <Link to={to} className={`nav-link${current ? " active" : ""}`} aria-current={current ? "page" : undefined}>
-      {icon ? <Icon name={icon} /> : <span className="nav-dot" aria-hidden="true" />}
+    <Link
+      to={to}
+      className={`nav-link${current ? " active" : ""}`}
+      aria-current={current ? "page" : undefined}
+    >
+      {icon ? (
+        <Icon name={icon} />
+      ) : (
+        <span className="nav-dot" aria-hidden="true" />
+      )}
       <span className="nav-label">{label}</span>
     </Link>
   );

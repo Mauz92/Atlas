@@ -5,11 +5,23 @@ import { ApiError, ttrpgApi, type TtrpgCampaignDetail } from "../../api/client";
 import { CampaignList } from "./CampaignList";
 import { CampaignPage } from "./CampaignPage";
 
+vi.mock("../NoteEditor", () => ({
+  NoteEditor: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <textarea aria-label="Note text" value={value} onChange={(e) => onChange(e.target.value)} />
+  ),
+}));
+vi.mock("../../hooks/useNoteAutosave", () => ({
+  useNoteAutosave: () => ({ session: { change: vi.fn() }, snapshot: null }),
+}));
+
 vi.mock("../../api/client", async () => {
   const actual = await vi.importActual<typeof import("../../api/client")>("../../api/client");
   return {
     ...actual,
-    notesApi: { list: vi.fn().mockResolvedValue({ notes: [{ id: "n9", path: "Mine/Replacement.md" }], folders: [] }) },
+    notesApi: {
+      list: vi.fn().mockResolvedValue({ notes: [{ id: "n9", path: "Mine/Replacement.md" }], folders: [] }),
+      get: vi.fn().mockResolvedValue({ id: "h", title: "Lost Mine", content: "# Lost Mine\n", revision: 1 }),
+    },
     ttrpgApi: {
       campaigns: vi.fn(),
       createCampaign: vi.fn(),
@@ -193,12 +205,18 @@ describe("CampaignPage", () => {
       .mockResolvedValue({ items: [] });
     api.createCampaignNote.mockResolvedValue(note("n2", "npc", "Klarg"));
     page();
+    fireEvent.click(await screen.findByRole("tab", { name: "Notes" }));
     const group = async (name: string) => within(await screen.findByRole("group", { name }));
-    expect((await group("Campaign home")).getByRole("link", { name: "Lost Mine" })).toHaveAttribute("href", "/notes?open=h");
-    expect((await group("Sessions")).getByRole("link", { name: "1. Session 01" })).toBeInTheDocument();
-    expect((await group("NPCs")).getByRole("link", { name: "Sildar Hallwinter" })).toBeInTheDocument();
-    expect((await group("Locations")).getByRole("link", { name: "Cragmaw Hideout" })).toBeInTheDocument();
-    expect((await group("Other notes")).getByRole("link", { name: "Loot list" })).toBeInTheDocument();
+    const pick = async (name: string, button: string) =>
+      (await group(name)).getByRole("button", { name: button });
+    expect(await pick("Campaign home", "Lost Mine")).toHaveAttribute("aria-current", "true"); // opened by default
+    expect(await pick("Sessions", "1. Session 01")).toBeInTheDocument();
+    expect(await pick("NPCs", "Sildar Hallwinter")).toBeInTheDocument();
+    expect(await pick("Locations", "Cragmaw Hideout")).toBeInTheDocument();
+    expect(await pick("Other notes", "Loot list")).toBeInTheDocument();
+    // the note opens in an editor inside the campaign, with a link to the full Notes page
+    expect(await screen.findByLabelText("Note text")).toHaveValue("# Lost Mine\n");
+    expect(screen.getByRole("link", { name: "Open in Notes" })).toHaveAttribute("href", "/notes?open=h");
     const form = (await screen.findByRole("button", { name: "Add note" })).closest("form")!;
     fireEvent.change(within(form).getByLabelText("Title"), { target: { value: "Klarg" } });
     await act(async () => {

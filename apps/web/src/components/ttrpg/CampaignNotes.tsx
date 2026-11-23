@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { ApiError, ttrpgApi, type CampaignNote } from "../../api/client";
+import { ApiError, notesApi, ttrpgApi, type CampaignNote, type NoteDetail } from "../../api/client";
+import { useNoteAutosave } from "../../hooks/useNoteAutosave";
+import { readEditorMode } from "../../lib/notesPrefs";
+import { NoteEditor } from "../NoteEditor";
 
 const GROUPS: { kind: CampaignNote["kind"]; title: string }[] = [
   { kind: "home", title: "Campaign home" },
@@ -12,19 +15,25 @@ const GROUPS: { kind: CampaignNote["kind"]; title: string }[] = [
 ];
 
 /**
- * All of a campaign's notes in one place. They are ordinary notes and stay in the notes tree beside
- * every other note; this is the campaign's own view of them (and a quick way to add an NPC or a place).
+ * The campaign's notes, collected and editable in place. They are ordinary notes that stay in the
+ * notes tree beside every other note; here they are grouped by kind and open in an editor without
+ * leaving the campaign. A quick form adds an NPC, a location or a plain note.
  */
 export function CampaignNotes({ campaignId, archived, refreshKey }: { campaignId: string; archived: boolean; refreshKey: unknown }) {
   const [notes, setNotes] = useState<CampaignNote[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [kind, setKind] = useState<"npc" | "location" | "note">("npc");
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      setNotes((await ttrpgApi.campaignNotes(campaignId)).items);
+      const list = (await ttrpgApi.campaignNotes(campaignId)).items;
+      setNotes(list);
+      setSelected((current) =>
+        current && list.some((note) => note.id === current) ? current : (list.find((n) => n.kind === "home") ?? list[0])?.id ?? null,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load the notes");
     }
@@ -40,9 +49,10 @@ export function CampaignNotes({ campaignId, archived, refreshKey }: { campaignId
     setBusy(true);
     setError(null);
     try {
-      await ttrpgApi.createCampaignNote(campaignId, { kind, title: title.trim() });
+      const created = await ttrpgApi.createCampaignNote(campaignId, { kind, title: title.trim() });
       setTitle("");
       await load();
+      setSelected(created.id);
     } catch (err) {
       setError(err instanceof ApiError || err instanceof Error ? err.message : "Could not add the note");
     } finally {
@@ -51,10 +61,10 @@ export function CampaignNotes({ campaignId, archived, refreshKey }: { campaignId
   }
 
   return (
-    <section aria-labelledby="ttrpg-notes-title" className="ttrpg-campaign-notes">
+    <section aria-labelledby="ttrpg-notes-title" className="tt-card">
       <h2 id="ttrpg-notes-title">Notes</h2>
       <p className="muted">
-        Everything you have written for this campaign. These are your normal notes; they stay in your notes
+        Everything you have written for this campaign, in one place. They are your normal notes and stay in your notes
         folder next to all the others.
       </p>
       {error && (
@@ -65,26 +75,37 @@ export function CampaignNotes({ campaignId, archived, refreshKey }: { campaignId
       {notes === null ? (
         <p className="muted">Loading notes…</p>
       ) : (
-        GROUPS.map(({ kind: groupKind, title: groupTitle }) => {
-          const items = notes.filter((note) => note.kind === groupKind);
-          if (items.length === 0) return null;
-          return (
-            <div key={groupKind} role="group" aria-label={groupTitle}>
-              <h3>{groupTitle}</h3>
-              <ul>
-                {items.map((note) => (
-                  <li key={note.id}>
-                    <Link to={`/notes?open=${note.id}`}>{note.label ?? note.title}</Link>
-                    <span className="muted"> {note.path}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })
+        <div className="tt-notes">
+          <nav className="tt-notes-nav" aria-label="Campaign notes">
+            {GROUPS.map(({ kind: groupKind, title: groupTitle }) => {
+              const items = notes.filter((note) => note.kind === groupKind);
+              if (items.length === 0) return null;
+              return (
+                <div key={groupKind} role="group" aria-label={groupTitle}>
+                  <h3>{groupTitle}</h3>
+                  <ul>
+                    {items.map((note) => (
+                      <li key={note.id}>
+                        <button
+                          type="button"
+                          className="tt-note-pick"
+                          aria-current={note.id === selected ? "true" : undefined}
+                          onClick={() => setSelected(note.id)}
+                        >
+                          {note.label ?? note.title}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </nav>
+          <NoteWorkspace noteId={selected} />
+        </div>
       )}
       {!archived && (
-        <form className="ttrpg-row" onSubmit={(event) => void add(event)}>
+        <form className="tt-form" onSubmit={(event) => void add(event)}>
           <label>
             New note
             <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
@@ -103,5 +124,51 @@ export function CampaignNotes({ campaignId, archived, refreshKey }: { campaignId
         </form>
       )}
     </section>
+  );
+}
+
+function NoteWorkspace({ noteId }: { noteId: string | null }) {
+  const [note, setNote] = useState<NoteDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!noteId) {
+      setNote(null);
+      return;
+    }
+    let cancelled = false;
+    setError(null);
+    notesApi
+      .get(noteId)
+      .then((loaded) => !cancelled && setNote(loaded))
+      .catch(() => {
+        if (!cancelled) {
+          setNote(null);
+          setError("That note could not be opened.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [noteId]);
+
+  const { session, snapshot } = useNoteAutosave(note);
+
+  if (error) {
+    return (
+      <p className="error" role="alert">
+        {error}
+      </p>
+    );
+  }
+  if (!note) return <p className="tt-empty">Choose a note to read or edit it here.</p>;
+  return (
+    <div className="tt-note-editor">
+      <div className="tt-row" style={{ justifyContent: "space-between" }}>
+        <strong>{note.title}</strong>
+        <Link to={`/notes?open=${note.id}`}>Open in Notes</Link>
+      </div>
+      <NoteEditor key={note.id} value={snapshot?.content ?? note.content} onChange={(text) => session?.change(text)} mode={readEditorMode()} />
+    </div>
   );
 }

@@ -5227,13 +5227,17 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "damage" | "heal" | "temp_hp" | "set_hp" | "add_condition" | "remove_condition" | "death_save" | "spend_resource" | "next_turn" | "set_defeated" | "remove_combatant" | "restore_combatant" | "add_combatant" | "reorder" | "pause" | "resume" | "end";
+            kind: "damage" | "heal" | "temp_hp" | "set_hp" | "set_temp_hp" | "set_active" | "set_round" | "set_initiative" | "add_condition" | "remove_condition" | "death_save" | "spend_resource" | "next_turn" | "set_defeated" | "remove_combatant" | "restore_combatant" | "add_combatant" | "reorder" | "pause" | "resume" | "end";
             /** Combatant Id */
             combatant_id?: string | null;
             /** Amount */
             amount?: number | null;
             /** Hp */
             hp?: number | null;
+            /** Initiative */
+            initiative?: number | null;
+            /** Round Number */
+            round_number?: number | null;
             /** Condition */
             condition?: string | null;
             /** Expires Round */

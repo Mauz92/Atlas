@@ -73,6 +73,7 @@ test("create the campaign, the party and the creature cards", async ({ page }) =
   await page.getByRole("link", { name: CAMPAIGN }).click();
   await expect(page.getByRole("heading", { name: CAMPAIGN })).toBeVisible();
   await expect(page.locator('a[href^="/notes?open="]').first()).toBeVisible();
+  await page.getByRole("tab", { name: "Party" }).click();
 
   // the fighter, with a limited-use resource
   await page.getByRole("button", { name: "Add member" }).click();
@@ -95,7 +96,7 @@ test("create the campaign, the party and the creature cards", async ({ page }) =
   await page.getByLabel("Max HP").fill("20");
   await page.getByRole("button", { name: "Add to party" }).click();
   await expect(page.getByRole("heading", { name: /Sildar/ })).toBeVisible();
-  await expect(page.getByText(/HP 28\/28|HP .*28.*\/28/).first()).toBeVisible();
+  await expect(page.getByRole("img", { name: /Brenna: 28 of 28 hit points/ })).toBeVisible();
 
   // creature cards by hand; the blocked catalogue fails cleanly and leaves them working
   await page.goto("/ttrpg/creatures");
@@ -116,6 +117,7 @@ test("prepare the ambush: book reference, three goblins, one override, a launch 
   await ensureOwner(page);
   const cid = await campaignId(page);
   await page.goto(`/ttrpg/${cid}`);
+  await page.getByRole("tab", { name: "Encounters" }).click();
   await page.getByLabel("New encounter").fill("Goblin ambush");
   await page.getByRole("button", { name: "Prepare encounter" }).click();
   await page.getByRole("link", { name: "Goblin ambush" }).click();
@@ -134,12 +136,12 @@ test("prepare the ambush: book reference, three goblins, one override, a launch 
 
   await page.getByLabel("Creature").selectOption({ label: "Goblin (AC 15, HP 7)" });
   await page.getByLabel("How many").fill("3");
-  await page.getByRole("button", { name: "Add from card" }).click();
+  await page.getByRole("button", { name: "Add to lineup" }).click();
   await expect(page.getByLabel("Name of Goblin 3")).toBeVisible();
   // the first goblin is tougher at this table
   await page.getByLabel("HP of Goblin 1").fill("12");
   await page.getByRole("button", { name: "Save Goblin 1" }).click();
-  await expect(page.getByText(/set by hand: hp/)).toBeVisible();
+  await expect(page.getByText(/edited here: hp/)).toBeVisible();
 
   await page.getByRole("button", { name: "Add to session note" }).click();
   await expect(page.getByText("Link added under Prep in the session note.")).toBeVisible();
@@ -155,6 +157,7 @@ test("run the fight: initiative, refresh midway, undo, resource, pause and resum
   await ensureOwner(page);
   const cid = await campaignId(page);
   await page.goto(`/ttrpg/${cid}`);
+  await page.getByRole("tab", { name: "Encounters" }).click();
   await page.getByRole("link", { name: "Goblin ambush" }).click();
   await page.getByRole("button", { name: "Launch encounter" }).click();
   await expect(page).toHaveURL(/\/ttrpg\/runs\//);
@@ -178,18 +181,21 @@ test("run the fight: initiative, refresh midway, undo, resource, pause and resum
   await page.getByRole("button", { name: "Start the fight" }).click();
   await expect(page.getByRole("status").first()).toContainText("Round 1: Brenna's turn");
 
-  // damage, undo it, and spend a party resource
-  await page.getByLabel("Amount for Brenna").fill("9");
-  await page.getByRole("button", { name: "Damage Brenna" }).click();
-  const history = page.locator(".ttrpg-history");
-  await expect(history.getByText("Brenna took 9 (HP 28 → 19)")).toBeVisible();
-  await page.getByRole("button", { name: /^Undo: Brenna took 9/ }).click();
-  await expect(history.getByText("Brenna took 9 (HP 28 → 19) (undone)")).toBeVisible();
-  await page.getByLabel("Amount for Brenna").fill("6");
-  await page.getByRole("button", { name: "Damage Brenna" }).click();
+  // set HP by hand (the number typed is the number set), undo it, and spend a party resource
+  const hp = async (name: string, value: string) => {
+    const field = page.getByLabel(`Current HP of ${name}`);
+    await field.fill(value);
+    await field.blur();
+  };
+  await hp("Brenna", "19");
+  const history = page.locator(".tt-history");
+  await expect(history.getByText("Brenna set to 19 HP (HP 28 → 19)")).toBeVisible();
+  await page.getByRole("button", { name: /^Undo: Brenna set to 19/ }).click();
+  await expect(history.getByText("Brenna set to 19 HP (HP 28 → 19) (undone)")).toBeVisible();
+  await hp("Brenna", "22");
+  await expect(page.getByRole("img", { name: /Brenna: 22 of 28 hit points/ })).toBeVisible();
   await page.getByRole("button", { name: "Spend Second Wind (Brenna)" }).click();
-  await page.getByLabel("Amount for Goblin 2").fill("7");
-  await page.getByRole("button", { name: "Damage Goblin 2" }).click();
+  await hp("Goblin 2", "0");
   await page.getByRole("button", { name: "Next turn" }).click();
   // the tie at 10 was settled by hand: Goblin 1 acts before Sildar
   await expect(page.getByRole("status").first()).toContainText("Round 1: Goblin 1's turn");
@@ -208,6 +214,7 @@ test("run the fight: initiative, refresh midway, undo, resource, pause and resum
   await expect(page.getByRole("status").first()).toContainText("Paused.");
   await expect(page.getByRole("button", { name: "Next turn" })).toBeDisabled();
   await page.goto(`/ttrpg/${cid}`);
+  await page.getByRole("tab", { name: "Encounters" }).click();
   await expect(page.getByText(/A fight is not finished/)).toBeVisible();
   await page.getByRole("link", { name: "Goblin ambush" }).first().click();
   await expect(page.getByRole("status").first()).toContainText("Paused.");
@@ -231,6 +238,7 @@ test("a second fight carries the party forward; the next session opens with the 
   });
 
   await page.goto(`/ttrpg/${cid}`);
+  await page.getByRole("tab", { name: "Encounters" }).click();
   await page.getByRole("link", { name: "Goblin ambush" }).click();
   await page.getByRole("button", { name: "Launch encounter" }).click();
   await expect(page.getByRole("heading", { name: "Initiative" })).toBeVisible();
@@ -315,22 +323,24 @@ test("a campaign's notes are collected under TTRPG while staying beside the othe
   await expect(page.getByRole("heading", { name: CAMPAIGN })).toBeVisible();
   await expect(entry).toHaveAttribute("aria-current", "page");
 
+  await page.getByRole("tab", { name: "Notes" }).click();
   const notes = page.locator("section", { has: page.getByRole("heading", { name: "Notes", exact: true }) }).first();
   await expect(notes.getByRole("group", { name: "Sessions" })).toBeVisible();
   await notes.getByLabel("New note").selectOption("npc");
   await notes.getByLabel("Title").fill("Sildar Hallwinter");
   await notes.getByRole("button", { name: "Add note" }).click();
-  await expect(notes.getByRole("group", { name: "NPCs" }).getByRole("link", { name: "Sildar Hallwinter" })).toBeVisible();
+  await expect(notes.getByRole("group", { name: "NPCs" }).getByRole("button", { name: "Sildar Hallwinter" })).toBeVisible();
   await notes.getByLabel("New note").selectOption("location");
   await notes.getByLabel("Title").fill("Cragmaw Hideout");
   await notes.getByRole("button", { name: "Add note" }).click();
-  await expect(notes.getByRole("group", { name: "Locations" }).getByRole("link", { name: "Cragmaw Hideout" })).toBeVisible();
+  await expect(notes.getByRole("group", { name: "Locations" }).getByRole("button", { name: "Cragmaw Hideout" })).toBeVisible();
   await axe(page, "campaign notes");
 
   // the same notes are ordinary notes in the notes list, next to everything else
   const all = await apiCall<{ notes: { path: string }[] }>(page, "GET", "/api/notes");
   expect(all.notes.map((n) => n.path)).toContain("TTRPG/Lost Mine of Phandelver/NPCs/Sildar Hallwinter.md");
-  await notes.getByRole("link", { name: "Sildar Hallwinter" }).click();
+  await notes.getByRole("button", { name: "Sildar Hallwinter" }).click();
+  await notes.getByRole("link", { name: "Open in Notes" }).click();
   await expect(page).toHaveURL(/\/notes\?open=/);
 });
 
@@ -362,7 +372,7 @@ test("the rules reference works on its own page and from a condition in a fight"
   await apiCall(page, "POST", `/api/ttrpg/runs/${run.id}/actions`, { kind: "add_condition", combatant_id: npc.id, condition: "poisoned", base_revision: started.revision, mutation_key: "rules-e2e-poisoned-0001" });
   await page.goto(`/ttrpg/runs/${run.id}`);
   await page.getByRole("button", { name: "Read the rule for poisoned" }).click();
-  await expect(page.locator('[data-pane="rules"]').getByText(/disadvantage on attack rolls and ability checks/)).toBeVisible();
+  await expect(page.getByRole("tabpanel").getByText(/disadvantage on attack rolls and ability checks/)).toBeVisible();
   await axe(page, "fight with the rules pane");
   await page.getByLabel(/How did it end/).fill("Rules test.");
   await page.getByRole("button", { name: "End the fight" }).click();
@@ -374,6 +384,7 @@ test("on a phone the notes and the combat tracker switch without losing what was
   await page.setViewportSize({ width: 390, height: 844 });
   const cid = await campaignId(page);
   await page.goto(`/ttrpg/${cid}`);
+  await page.getByRole("tab", { name: "Encounters" }).click();
   await page.getByRole("link", { name: "Goblin ambush" }).click();
   await page.getByRole("button", { name: "Launch encounter" }).click();
   await expect(page.getByRole("heading", { name: "Initiative" })).toBeVisible();
@@ -382,7 +393,7 @@ test("on a phone the notes and the combat tracker switch without losing what was
   await expect(switcher).toBeVisible();
   await expect(switcher.getByRole("button", { name: "Combat" })).toHaveAttribute("aria-pressed", "true");
   await switcher.getByRole("button", { name: "Notes" }).click();
-  const editor = page.locator(".ttrpg-play-notes .cm-content");
+  const editor = page.locator(".tt-pane-notes .cm-content");
   await expect(editor).toBeVisible();
   await editor.click();
   await page.keyboard.press("Control+End");
@@ -452,5 +463,6 @@ test("switching the module off hides it and keeps the campaign; switching on res
   await expect(page.getByRole("switch", { name: /TTRPG/ })).toBeChecked();
   await page.goto(`/ttrpg/${cid}`);
   await expect(page.getByRole("heading", { name: CAMPAIGN })).toBeVisible();
+  await page.getByRole("tab", { name: "Party" }).click();
   await expect(page.getByRole("heading", { name: /Brenna/ })).toBeVisible();
 });

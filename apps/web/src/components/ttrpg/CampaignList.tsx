@@ -30,40 +30,47 @@ export function CampaignList() {
   }, [load]);
 
   return (
-    <section className="page ttrpg-page">
-      <h1>TTRPG</h1>
-      <p>
-        <Link to="/ttrpg/creatures">Creature library</Link> · <Link to="/ttrpg/rules">Rules reference</Link>
-      </p>
+    <section className="page">
+      <div className="tt-banner">
+        <div>
+          <h1>Campaigns</h1>
+          <p className="sub">Your tabletop campaigns, their notes, parties and fights.</p>
+        </div>
+        <p className="tt-actions">
+          <Link to="/ttrpg/creatures">Creature library</Link> · <Link to="/ttrpg/rules">Rules reference</Link>
+        </p>
+      </div>
+      <div className="tt-rule" aria-hidden="true" />
       <NewCampaign onCreated={load} />
-      <label className="settings-switch">
-        <input
-          type="checkbox"
-          checked={showArchived}
-          onChange={(event) => setShowArchived(event.target.checked)}
-        />
-        Show archived
-      </label>
-      {error ? (
-        <LoadError message={error} onRetry={() => void load()} />
-      ) : items === null ? (
-        <Skeleton label="Loading campaigns" rows={3} kind="line" />
-      ) : items.length === 0 ? (
-        <EmptyState icon="dices">
-          No campaigns yet. Start one above: Atlas creates a home note and a first session note in
-          your notes folder.
-        </EmptyState>
-      ) : (
-        <ul className="ttrpg-campaigns">
-          {items.map((campaign) => (
-            <li key={campaign.id}>
-              <Link to={`/ttrpg/${campaign.id}`}>{campaign.title}</Link>
-              {campaign.book_title && <span className="muted"> · {campaign.book_title}</span>}
-              {campaign.archived && <span className="muted"> · archived</span>}
-            </li>
-          ))}
-        </ul>
-      )}
+      <section className="tt-card" aria-labelledby="tt-campaigns-title">
+        <h2 id="tt-campaigns-title">Your campaigns</h2>
+        <label className="tt-row">
+          <input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />
+          Show archived
+        </label>
+        {error ? (
+          <LoadError message={error} onRetry={() => void load()} />
+        ) : items === null ? (
+          <Skeleton label="Loading campaigns" rows={3} kind="line" />
+        ) : items.length === 0 ? (
+          <EmptyState icon="dices">
+            No campaigns yet. Start one above: Atlas creates a home note and a first session note in
+            your notes folder.
+          </EmptyState>
+        ) : (
+          <ul className="tt-campaigns">
+            {items.map((campaign) => (
+              <li key={campaign.id} className={`tt-campaign${campaign.archived ? " archived" : ""}`}>
+                <Link to={`/ttrpg/${campaign.id}`}>{campaign.title}</Link>
+                <span className="muted">
+                  {campaign.book_title ?? "D&D 5e (2014)"}
+                  {campaign.archived ? " · archived" : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </section>
   );
 }
@@ -103,8 +110,9 @@ function NewCampaign({ onCreated }: { onCreated: () => Promise<void> }) {
   }
 
   return (
-    <form className="ttrpg-new" onSubmit={(event) => void submit(event)}>
-      <h2>New campaign</h2>
+    <form className="tt-card" aria-labelledby="tt-new-campaign" onSubmit={(event) => void submit(event)}>
+      <h2 id="tt-new-campaign">New campaign</h2>
+      <div className="tt-fields">
       <label>
         Title
         <input value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={200} />
@@ -121,13 +129,14 @@ function NewCampaign({ onCreated }: { onCreated: () => Promise<void> }) {
           placeholder="TTRPG/<title>"
         />
       </label>
+      </div>
       <p className="muted">Rules preset: D&amp;D 5e (2014)</p>
       {error && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
-      <button type="submit" disabled={busy || !title.trim()}>
+      <button type="submit" className="primary" style={{ alignSelf: "flex-start" }} disabled={busy || !title.trim()}>
         {busy ? "Creating…" : "Create campaign"}
       </button>
     </form>

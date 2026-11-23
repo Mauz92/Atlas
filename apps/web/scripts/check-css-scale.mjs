@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const files = process.argv.slice(2).length
   ? process.argv.slice(2)
-  : [path.join(here, "..", "src", "styles.css")];
+  : [path.join(here, "..", "src", "styles.css"), path.join(here, "..", "src", "ttrpg.css")];
 
 const RULES = [
   { property: /^font-size$/, token: /^var\(--fs-(xs|sm|base|md|lg|xl|2xl)\)$/ },

@@ -110,7 +110,7 @@ describe("EncounterPage", () => {
     fireEvent.change(screen.getByLabelText("Creature"), { target: { value: "g" } });
     fireEvent.change(screen.getByLabelText("How many"), { target: { value: "3" } });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Add from card" }));
+      fireEvent.click(screen.getByRole("button", { name: "Add to lineup" }));
     });
     expect(api.addSlots).toHaveBeenCalledWith(expect.objectContaining({ id: "e1", revision: 3 }), {
       creature_id: "g",
