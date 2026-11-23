@@ -68,6 +68,10 @@ it owns the instance.
 Use the moon/sun button at the bottom of the sidebar, *Toggle theme* in the palette, or **Settings → Appearance**. Your choice is remembered
 in this browser and follows your system preference until you change it.
 
+### Style (Tavern)
+
+**Settings → Appearance → Style** switches the whole app between **Neutral** (the default) and **Tavern**: warm parchment and oxblood in the light theme, lamplit wood and brass in the dark theme, with a serif for page and section titles. Only colours and heading type change. It follows the Theme setting, is remembered in this browser only, and replaces the accent colour while it is on.
+
 ### Accent colour
 
 **Settings → Appearance → Accent colour** lets you pick the colour used for buttons, links, the selected item in the menus and

@@ -4,7 +4,13 @@ import { BrowserRouter } from "react-router-dom";
 
 import App from "./App";
 import { AuthProvider } from "./auth/AuthProvider";
+import "@fontsource/cinzel/500.css";
+import "@fontsource/cinzel/700.css";
+import "@fontsource/alegreya-sans/400.css";
+import "@fontsource/alegreya-sans/500.css";
+import "@fontsource/alegreya-sans/700.css";
 import "./styles.css";
+import "./tavern.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

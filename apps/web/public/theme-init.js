@@ -17,6 +17,14 @@
     // Storage unavailable (private mode, blocked): follow the system theme.
   }
   try {
+    // The Tavern palette (src/lib/look.ts): a stored choice goes on <html data-palette>.
+    if (window.localStorage.getItem("atlas-palette") === "tavern") {
+      document.documentElement.setAttribute("data-palette", "tavern");
+    }
+  } catch (e) {
+    // Storage unavailable: the default palette.
+  }
+  try {
     var accent = window.localStorage.getItem("atlas-accent");
     var accents = ["blue", "indigo", "violet", "pink", "red", "orange", "amber", "green", "teal"];
     if (accents.indexOf(accent) !== -1) {
