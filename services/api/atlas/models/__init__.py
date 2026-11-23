@@ -5,6 +5,7 @@ from .calendar import CalendarSource, ExternalEvent, OAuthState, SyncCursor
 from .change import ChangeLog
 from .credential import CredentialProvider, ProviderCredential
 from .device import Device
+from .feature import UserFeature
 from .hint import DeviceHint
 from .idempotency import IdempotencyKey
 from .instance import InstanceMeta
@@ -23,6 +24,18 @@ from .reminder import (
 from .resolution import SyncResolution
 from .session import AuthSession
 from .task import RecurrenceSeries, Task, TaskLink, TaskPriority, TaskStatus, TaskTag
+from .ttrpg import (
+    TtrpgCampaign,
+    TtrpgCombatAction,
+    TtrpgCombatant,
+    TtrpgCombatRun,
+    TtrpgCreature,
+    TtrpgEncounter,
+    TtrpgEncounterSlot,
+    TtrpgPartyMember,
+    TtrpgPartyState,
+    TtrpgSession,
+)
 from .user import User
 
 __all__ = [
@@ -64,5 +77,16 @@ __all__ = [
     "TaskStatus",
     "TaskTag",
     "TimestampMixin",
+    "TtrpgCampaign",
+    "TtrpgCombatAction",
+    "TtrpgCombatRun",
+    "TtrpgCombatant",
+    "TtrpgCreature",
+    "TtrpgEncounter",
+    "TtrpgEncounterSlot",
+    "TtrpgPartyMember",
+    "TtrpgPartyState",
+    "TtrpgSession",
     "User",
+    "UserFeature",
 ]

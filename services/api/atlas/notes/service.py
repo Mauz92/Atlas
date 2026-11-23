@@ -442,6 +442,18 @@ class NotesService:
         )
         return await self.create(normalized, content)
 
+    async def is_path_taken(self, path: str) -> bool:
+        """Is a file or a live note already at ``path``? (public form of the create-time check)"""
+        return await self._path_taken(normalize_note_path(path), fold_case=True)
+
+    async def adopt(self, path: str) -> NoteIndex:
+        """Index the existing file at ``path`` (or return its live row) without touching its text.
+
+        For a caller that must never overwrite a file a user may already have edited, such as a
+        retried scaffold (TTRPG-02).
+        """
+        return await self._adopt(normalize_note_path(path))
+
     async def _adopt(self, path: str) -> NoteIndex:
         """Return the live index row for a file that exists, indexing the file if it has none."""
         existing = await self.session.scalar(

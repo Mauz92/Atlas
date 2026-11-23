@@ -37,7 +37,10 @@ _TRUNCATE = (
     "TRUNCATE TABLE jobs, sessions, users, change_log, notes, tags, note_links, note_tags, "
     "note_projects, projects, tasks, recurrence_series, task_tags, task_links, idempotency_keys, "
     "provider_credentials, external_events, sync_cursors, calendar_sources, oauth_states, "
-    "reminder_deliveries, reminders, reminder_policies, notification_devices CASCADE"
+    "reminder_deliveries, reminders, reminder_policies, notification_devices, user_features, "
+    "ttrpg_campaigns, ttrpg_sessions, ttrpg_party_members, ttrpg_party_state, "
+    "ttrpg_creatures, ttrpg_encounters, ttrpg_encounter_slots, ttrpg_combat_runs, "
+    "ttrpg_combatants, ttrpg_combat_actions CASCADE"
 )
 
 
