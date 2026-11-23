@@ -32,6 +32,7 @@ from ..ttrpg import (
     Attack,
     CampaignFolderTakenError,
     CampaignIdTakenError,
+    CampaignNote,
     CampaignNotFoundError,
     CampaignRevisionError,
     CampaignService,
@@ -472,6 +473,75 @@ async def relink_note(
     except Exception as exc:
         await session.rollback()
         _translate(exc)
+
+
+# --- the campaign's notes, collected -------------------------------------------
+
+
+class CampaignNoteOut(BaseModel):
+    id: uuid.UUID
+    path: str
+    title: str
+    kind: Literal["home", "session", "npc", "location", "other"]
+    #: a session note's "1. Session 01"; otherwise null
+    label: str | None
+
+
+class CampaignNotesOut(BaseModel):
+    items: list[CampaignNoteOut]
+
+
+class CampaignNoteCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["npc", "location", "note"]
+    title: str = Field(min_length=1, max_length=400)
+
+
+def _note_item(note: CampaignNote) -> CampaignNoteOut:
+    return CampaignNoteOut(
+        id=note.id, path=note.path, title=note.title, kind=note.kind, label=note.label
+    )
+
+
+@router.get("/campaigns/{campaign_id}/notes", response_model=CampaignNotesOut)
+async def campaign_notes(
+    campaign_id: uuid.UUID, user: TtrpgUser, session: DbSession, storage: Storage
+) -> CampaignNotesOut:
+    """Every note of the campaign in one place: home, sessions, NPCs, locations, the rest.
+
+    They remain ordinary notes in the notes tree; this is the campaign's own view of them.
+    """
+    try:
+        notes = await _service(session, user, storage).campaign_notes(campaign_id)
+    except Exception as exc:
+        _translate(exc)
+    return CampaignNotesOut(items=[_note_item(n) for n in notes])
+
+
+@router.post(
+    "/campaigns/{campaign_id}/notes",
+    response_model=CampaignNoteOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_campaign_note(
+    campaign_id: uuid.UUID,
+    payload: CampaignNoteCreate,
+    user: TtrpgUser,
+    session: DbSession,
+    storage: Storage,
+) -> CampaignNoteOut:
+    """A new NPC, location or plain note inside the campaign's folder (never overwrites a file)."""
+    service = _service(session, user, storage)
+    try:
+        note = await service.create_campaign_note(
+            campaign_id, kind=payload.kind, title=payload.title
+        )
+        await session.commit()
+    except Exception as exc:
+        await session.rollback()
+        _translate(exc)
+    return _note_item(note)
 
 
 # --- sessions ----------------------------------------------------------------

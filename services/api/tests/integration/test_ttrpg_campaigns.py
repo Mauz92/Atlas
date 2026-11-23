@@ -486,3 +486,125 @@ def test_extract_section_handles_levels_fences_and_absence() -> None:
     )
     assert extract_section("## Next session\n\n## After\n", "Next session") == ""
     assert extract_section("# nothing\n", "Next session") is None
+
+
+async def test_the_campaign_collects_its_notes_while_they_stay_beside_the_others(
+    owner: AsyncClient, notes_storage: NotesStorage
+) -> None:
+    created = await make(owner, title="Phandelver")
+    cid = created["id"]
+    two = (
+        await owner.post(f"/api/ttrpg/campaigns/{cid}/sessions", json={}, headers=h(owner))
+    ).json()
+    npc = await owner.post(
+        f"/api/ttrpg/campaigns/{cid}/notes",
+        json={"kind": "npc", "title": "Sildar Hallwinter"},
+        headers=h(owner),
+    )
+    assert npc.status_code == 201, npc.text
+    assert npc.json()["path"] == "TTRPG/Phandelver/NPCs/Sildar Hallwinter.md"
+    assert npc.json()["kind"] == "npc"
+    loc = await owner.post(
+        f"/api/ttrpg/campaigns/{cid}/notes",
+        json={"kind": "location", "title": "Cragmaw Hideout"},
+        headers=h(owner),
+    )
+    assert loc.json()["path"].endswith("Locations/Cragmaw Hideout.md")
+    plain = await owner.post(
+        f"/api/ttrpg/campaigns/{cid}/notes",
+        json={"kind": "note", "title": "Loot list"},
+        headers=h(owner),
+    )
+    assert plain.json()["kind"] == "other"
+    # a note typed into the folder by hand, and an unrelated note elsewhere
+    await owner.post(
+        "/api/notes",
+        json={"path": "TTRPG/Phandelver/Rumours.md", "content": "# R"},
+        headers=h(owner),
+    )
+    await owner.post("/api/notes", json={"path": "Shopping.md", "content": "# S"}, headers=h(owner))
+
+    items = (await owner.get(f"/api/ttrpg/campaigns/{cid}/notes")).json()["items"]
+    assert [(i["kind"], i["title"]) for i in items] == [
+        ("home", "Phandelver"),
+        ("session", "Session 01"),
+        ("session", "Session 02"),
+        ("npc", "Sildar Hallwinter"),
+        ("location", "Cragmaw Hideout"),
+        ("other", "Loot list"),
+        ("other", "R"),  # titled by its own heading
+    ]
+    assert [i["label"] for i in items if i["kind"] == "session"] == [
+        "1. Session 01",
+        "2. Session 02",
+    ]
+    assert "Shopping" not in [i["title"] for i in items]
+    # real Markdown with a heading, listed in the ordinary notes too
+    text = notes_storage.read(npc.json()["path"]).content
+    assert text.startswith("# Sildar Hallwinter") and "## Who they are" in text
+    everything = (await owner.get("/api/notes")).json()["notes"]
+    assert npc.json()["id"] in [n["id"] for n in everything]
+
+    # a session note moved out of the folder still belongs to the campaign
+    moved = await owner.post(
+        f"/api/notes/{two['note']['note_id']}/move",
+        json={"path": "Elsewhere/Second night.md"},
+        headers=h(owner),
+    )
+    assert moved.status_code == 200
+    after = (await owner.get(f"/api/ttrpg/campaigns/{cid}/notes")).json()["items"]
+    moved_item = next(i for i in after if i["kind"] == "session" and i["label"] == "2. Session 02")
+    assert moved_item["path"] == "Elsewhere/Second night.md"
+    # a deleted linked note drops out (it is reported missing on the campaign page instead)
+    await owner.delete(f"/api/notes/{two['note']['note_id']}", headers=h(owner))
+    gone = (await owner.get(f"/api/ttrpg/campaigns/{cid}/notes")).json()["items"]
+    assert "2. Session 02" not in [i["label"] for i in gone]
+
+
+async def test_new_campaign_notes_are_safe_and_never_overwrite(owner: AsyncClient) -> None:
+    cid = (await make(owner, title="Safe"))["id"]
+    url = f"/api/ttrpg/campaigns/{cid}/notes"
+    one = await owner.post(url, json={"kind": "npc", "title": "Klarg/../x"}, headers=h(owner))
+    assert one.status_code == 201
+    assert (
+        one.json()["path"].count("/") == 3
+    )  # one file inside NPCs/, no path segments from the title
+    assert one.json()["path"].startswith("TTRPG/Safe/NPCs/")
+    a = await owner.post(url, json={"kind": "npc", "title": "Twin"}, headers=h(owner))
+    b = await owner.post(url, json={"kind": "npc", "title": "Twin"}, headers=h(owner))
+    assert a.status_code == b.status_code == 201 and a.json()["path"] != b.json()["path"]
+    blank = await owner.post(url, json={"kind": "npc", "title": "  "}, headers=h(owner))
+    assert blank.status_code == 400  # refused by the service: nothing is written
+    for bad in ({"kind": "monster", "title": "x"}, {"kind": "npc"}):
+        assert (await owner.post(url, json=bad, headers=h(owner))).status_code == 422
+    await owner.patch(
+        f"/api/ttrpg/campaigns/{cid}", json={"base_revision": 1, "archived": True}, headers=h(owner)
+    )
+    assert (
+        await owner.post(url, json={"kind": "npc", "title": "Late"}, headers=h(owner))
+    ).status_code == 400
+
+
+async def test_the_collected_notes_are_per_owner_and_behind_the_switch(
+    app: FastAPI, owner: AsyncClient
+) -> None:
+    cid = (await make(owner, title="Mine"))["id"]
+    async with session_scope() as session:
+        session.add(
+            User(email="two@example.com", display_name="Two", password_hash=hash_password(PASSWORD))
+        )
+    other = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+    try:
+        await other.post("/api/auth/login", json={"email": "two@example.com", "password": PASSWORD})
+        await other.put("/api/features/ttrpg", json={"enabled": True}, headers=h(other))
+        assert (await other.get(f"/api/ttrpg/campaigns/{cid}/notes")).status_code == 404
+        made = await other.post(
+            f"/api/ttrpg/campaigns/{cid}/notes",
+            json={"kind": "npc", "title": "X"},
+            headers=h(other),
+        )
+        assert made.status_code == 404
+    finally:
+        await other.aclose()
+    await owner.put("/api/features/ttrpg", json={"enabled": False}, headers=h(owner))
+    assert (await owner.get(f"/api/ttrpg/campaigns/{cid}/notes")).status_code == 404
