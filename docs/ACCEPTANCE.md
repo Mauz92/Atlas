@@ -4356,9 +4356,9 @@ Scope per ADR-0077 (Windows, macOS and iOS are out). Vocabulary: `PASS`, `FAIL`,
 | Check | Result | Command / evidence |
 |---|---|---|
 | Backend lint, format, types | `PASS` | `ruff check .`, `ruff format --check .`, `mypy` (176 source files) |
-| Backend tests | `PASS` | `pytest` in `services/api` against PostgreSQL 17: **4965 passed, 14 skipped, 0 failed** (includes the migration-vs-model check and the device-scope contract) |
-| Web lint, types, tests | `PASS` | `npm run lint` (0 errors, 1 pre-existing warning), `npm run typecheck`, `npm run test`: **1616 passed, 5 skipped** |
-| Real-stack browser suite | `PASS` | `playwright test -c playwright.real.config.ts`: **97 passed** (96 in the full run; the 97th, a 6-minute accent sweep, run alone after the full run's time limit) |
+| Backend tests | `PASS` | `pytest` in `services/api` against PostgreSQL 17: **4967 passed, 14 skipped, 0 failed** (re-run after the follow-up changes; includes the migration-vs-model check and the device-scope contract) |
+| Web lint, types, tests | `PASS` | `npm run lint` (0 errors, 1 pre-existing warning), `npm run typecheck`, `npm run test`: **1619 passed, 5 skipped** |
+| Real-stack browser suite | `PASS` | `playwright test -c playwright.real.config.ts`: **97 passed** before the follow-up (96 in the full run; the 97th, a 6-minute accent sweep, run alone after the full run's time limit); after it the TTRPG spec (now 10 tests) was re-run alone: 10 passed; the other specs were not re-run |
 | Mocked browser suite | `PASS` | `playwright test`: 12 passed |
 | CI | `NOT RUN` | nothing is committed |
 | Statuses | | TTRPG-01 to TTRPG-07 `DONE` locally in `ROADMAP.md`; the plan's "Game-night acceptance" passes in `ttrpg07-game-night.spec.ts` |
