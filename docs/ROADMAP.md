@@ -1625,6 +1625,8 @@ Seven vertical slices, feature off by default throughout. Product decision recor
 | TTRPG-06 | Initiative, combat actions, undo, history, pause/resume | 05 | `DONE` (local PASS; CI NOT RUN) | `ACCEPTANCE.md` "TTRPG-06"; not committed |
 | TTRPG-07 | Restore/export, mobile layout, accessibility, full DM journey, docs | 06 | `DONE` (local PASS; CI NOT RUN) | `ACCEPTANCE.md` "TTRPG-07"; not committed |
 
+| TTRPG-08 | Rules reference (SRD 5.1) outside fights and beside them | 06 | `DONE` (local PASS; CI NOT RUN) | `ACCEPTANCE.md` "TTRPG-08"; branch `feat/rules-reference`, not merged |
+
 Acceptance criteria per task are the table in the plan's "Delivery sequence" section (not duplicated here).
 
 **Exit state (2026-11-23).** All seven tasks pass locally; nothing is committed and CI has not run (its `e2e-real` job will run the new `ttrpg07-game-night.spec.ts`). Final local gate: `ruff`, `ruff format --check`, `mypy` clean; `pytest` **4967 passed, 14 skipped**; web `eslint` (0 errors), `tsc`, `vitest` **1619 passed, 5 skipped**; real-stack Playwright **97 passed** before the follow-up, then the TTRPG spec (10 tests) re-run alone: 10 passed; mocked Playwright **12 passed**. Follow-up closed R-90 (polling), R-91 (routes open to device credentials, not run on a device) and R-92 (compaction), and verified the SRD notice against the PDF (R-89 accepted: the provider publishes no terms). Still open: screen-reader and on-screen-keyboard checks and the shells on a real device, CI.
