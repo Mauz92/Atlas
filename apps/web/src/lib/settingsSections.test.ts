@@ -7,7 +7,7 @@ import {
 } from "./settingsSections";
 
 describe("settings sections", () => {
-  it("lists the eight sections in the approved order", () => {
+  it("lists the nine sections in the approved order", () => {
     expect(SETTINGS_SECTIONS.map((section) => section.label)).toEqual([
       "Account",
       "Appearance",
@@ -16,6 +16,7 @@ describe("settings sections", () => {
       "Sync",
       "Devices",
       "Data and backups",
+      "Plugins",
       "About",
     ]);
     expect(new Set(SETTINGS_SECTIONS.map((section) => section.id)).size).toBe(SETTINGS_SECTIONS.length);

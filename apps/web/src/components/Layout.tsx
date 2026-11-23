@@ -7,9 +7,10 @@ import { useAuth } from "../auth/AuthProvider";
 import { noteSessions } from "../hooks/useNoteAutosave";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { ProjectsProvider, activeProjects, useProjects } from "../hooks/useProjects";
+import { useFeatures } from "../lib/features";
 import { useTaskEditor } from "../hooks/useTaskEditor";
 import {
-  NAV_SECTIONS,
+  navSectionsFor,
   RAIL_ITEMS,
   activeNavKey,
   activeRail,
@@ -69,6 +70,7 @@ function focusables(root: HTMLElement | null): HTMLElement[] {
  */
 function Shell() {
   const { user, logout } = useAuth();
+  const { features } = useFeatures();
   const { projects } = useProjects();
   const listed = activeProjects(projects);
   const { pathname } = useLocation();
@@ -349,7 +351,7 @@ function Shell() {
           <kbd aria-hidden="true">Ctrl K</kbd>
         </button>
         <nav className="sidebar-nav" aria-label="Main navigation">
-          {NAV_SECTIONS.map((section) => (
+          {navSectionsFor(features).map((section) => (
             <SidebarSection
               key={section.id}
               section={section}

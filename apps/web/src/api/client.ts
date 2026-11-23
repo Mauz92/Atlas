@@ -54,6 +54,33 @@ export type SearchResults = components["schemas"]["SearchOut"];
 export type SearchTask = components["schemas"]["SearchTaskOut"];
 export type InstanceInfo = components["schemas"]["InstanceInfo"];
 export type UpdateStatus = components["schemas"]["UpdateStatus"];
+export type Features = components["schemas"]["FeaturesOut"];
+export type TtrpgCampaign = components["schemas"]["CampaignOut"];
+export type TtrpgCampaignDetail = components["schemas"]["CampaignDetailOut"];
+export type TtrpgSession = components["schemas"]["SessionOut"];
+export type TtrpgSessionDetail = components["schemas"]["SessionDetailOut"];
+export type TtrpgNoteLink = components["schemas"]["TtrpgNoteLinkOut"];
+export type PartyMember = components["schemas"]["PartyMemberOut"];
+export type PartyList = components["schemas"]["PartyListOut"];
+export type PartyCard = Omit<components["schemas"]["PartyMemberCreate"], "id">;
+export type PartyStateChange = components["schemas"]["StateFields"];
+export type RestPreview = components["schemas"]["RestPreviewOut"];
+export type Creature = components["schemas"]["CreatureOut"];
+export type CreatureCard = Omit<components["schemas"]["CreatureCreate"], "id">;
+export type SrdSearch = components["schemas"]["SrdSearchOut"];
+export type Encounter = components["schemas"]["EncounterOut"];
+export type EncounterSummary = components["schemas"]["EncounterSummaryOut"];
+export type EncounterSlot = components["schemas"]["SlotOut"];
+export type EncounterRefresh = components["schemas"]["EncounterRefreshOut"];
+export type Run = components["schemas"]["RunOut"];
+export type RunCombatant = components["schemas"]["CombatantOut"];
+export type RunSummary = components["schemas"]["RunSummaryOut"];
+export type RunActionResult = components["schemas"]["RunActionResultOut"];
+/** The change itself; the run revision and the mutation key are added by `runAction`. */
+export type RunActionBody = Omit<
+  components["schemas"]["RunActionRequest"],
+  "mutation_key" | "base_revision"
+>;
 export type RecurrencePreview = components["schemas"]["RecurrencePreviewOut"];
 
 export class ApiError extends Error {
@@ -251,6 +278,250 @@ export const resolutionsApi = {
 
 export const instanceApi = {
   get: () => apiFetch<InstanceInfo>("/api/instance"),
+};
+
+/** Optional feature switches (TTRPG-01): off until the owner enables one in Settings. */
+export const featuresApi = {
+  get: () => apiFetch<Features>("/api/features"),
+  set: (feature: keyof Features, enabled: boolean) =>
+    apiFetch<Features>(`/api/features/${feature}`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+};
+
+/** The TTRPG module (TTRPG-02): campaigns, sessions and their notes. Every call is 404 while the module is off. */
+export const ttrpgApi = {
+  campaigns: (includeArchived = false) =>
+    apiFetch<components["schemas"]["CampaignListOut"]>(
+      `/api/ttrpg/campaigns${includeArchived ? "?include_archived=true" : ""}`,
+    ),
+  /** `id` makes a retry idempotent: the same id never creates a second campaign or note. */
+  createCampaign: (body: {
+    id: string;
+    title: string;
+    folder?: string | null;
+    book_title?: string | null;
+  }) =>
+    apiFetch<TtrpgCampaignDetail>("/api/ttrpg/campaigns", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  campaign: (id: string) => apiFetch<TtrpgCampaignDetail>(`/api/ttrpg/campaigns/${id}`),
+  updateCampaign: (
+    campaign: { id: string; revision: number },
+    changes: { title?: string; book_title?: string | null; archived?: boolean },
+  ) =>
+    apiFetch<TtrpgCampaignDetail>(`/api/ttrpg/campaigns/${campaign.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ base_revision: campaign.revision, ...changes }),
+    }),
+  addSession: (campaignId: string, body: { id: string; title?: string | null }) =>
+    apiFetch<TtrpgSessionDetail>(`/api/ttrpg/campaigns/${campaignId}/sessions`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  session: (id: string) => apiFetch<TtrpgSessionDetail>(`/api/ttrpg/sessions/${id}`),
+  updateSession: (
+    session: { id: string; revision: number },
+    changes: { title?: string; status?: TtrpgSession["status"]; session_date?: string | null },
+  ) =>
+    apiFetch<TtrpgSessionDetail>(`/api/ttrpg/sessions/${session.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ base_revision: session.revision, ...changes }),
+    }),
+  runs: (campaignId: string, unfinished = false) =>
+    apiFetch<{ items: RunSummary[] }>(
+      `/api/ttrpg/campaigns/${campaignId}/runs${unfinished ? "?unfinished=true" : ""}`,
+    ),
+  /** Launch an encounter (or improvise one); `id` makes a retry return the same run. */
+  createRun: (campaignId: string, body: { id: string; encounter_id?: string | null }) =>
+    apiFetch<Run>(`/api/ttrpg/campaigns/${campaignId}/runs`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  run: (id: string) => apiFetch<Run>(`/api/ttrpg/runs/${id}`),
+  setupRun: (
+    run: { id: string; revision: number },
+    changes: {
+      initiative?: Record<string, number | null>;
+      add?: { name: string; ac: number; hp: number; initiative?: number | null; side?: "enemy" | "ally" }[];
+      set_removed?: Record<string, boolean>;
+    },
+  ) =>
+    apiFetch<Run>(`/api/ttrpg/runs/${run.id}/setup`, {
+      method: "PATCH",
+      body: JSON.stringify({ base_revision: run.revision, ...changes }),
+    }),
+  startRun: (run: { id: string; revision: number }, tieOrder?: string[]) =>
+    apiFetch<Run>(`/api/ttrpg/runs/${run.id}/start`, {
+      method: "POST",
+      body: JSON.stringify({ base_revision: run.revision, tie_order: tieOrder?.length ? tieOrder : null }),
+    }),
+  /**
+   * One change to a running fight. Send the same `mutationKey` again to retry: a change that already
+   * went through is answered as a replay and is not applied twice.
+   */
+  runAction: (run: { id: string; revision: number }, body: RunActionBody, mutationKey: string) =>
+    apiFetch<RunActionResult>(`/api/ttrpg/runs/${run.id}/actions`, {
+      method: "POST",
+      body: JSON.stringify({ ...body, base_revision: run.revision, mutation_key: mutationKey }),
+    }),
+  undoRun: (run: { id: string; revision: number }, mutationKey: string) =>
+    apiFetch<RunActionResult>(`/api/ttrpg/runs/${run.id}/undo`, {
+      method: "POST",
+      body: JSON.stringify({ base_revision: run.revision, mutation_key: mutationKey }),
+    }),
+  encounters: (campaignId: string) =>
+    apiFetch<components["schemas"]["EncounterListOut"]>(
+      `/api/ttrpg/campaigns/${campaignId}/encounters`,
+    ),
+  createEncounter: (
+    campaignId: string,
+    body: { id: string; title: string; session_id?: string | null; party_member_ids?: string[] },
+  ) =>
+    apiFetch<Encounter>(`/api/ttrpg/campaigns/${campaignId}/encounters`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  encounter: (id: string) => apiFetch<Encounter>(`/api/ttrpg/encounters/${id}`),
+  updateEncounter: (
+    encounter: { id: string; revision: number },
+    changes: {
+      title?: string;
+      book_reference?: string | null;
+      setup_reminder?: string | null;
+      session_id?: string | null;
+      party_member_ids?: string[];
+      archived?: boolean;
+    },
+  ) =>
+    apiFetch<Encounter>(`/api/ttrpg/encounters/${encounter.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ base_revision: encounter.revision, ...changes }),
+    }),
+  addSlots: (
+    encounter: { id: string; revision: number },
+    spec: {
+      creature_id?: string | null;
+      count?: number;
+      side?: "enemy" | "ally";
+      name?: string | null;
+      ac?: number | null;
+      hp?: number | null;
+    },
+  ) =>
+    apiFetch<Encounter>(`/api/ttrpg/encounters/${encounter.id}/slots`, {
+      method: "POST",
+      body: JSON.stringify({ base_revision: encounter.revision, ...spec }),
+    }),
+  updateSlot: (
+    encounter: { id: string; revision: number },
+    slotId: string,
+    changes: { name?: string; ac?: number; hp?: number; initiative_mod?: number; side?: "enemy" | "ally" },
+  ) =>
+    apiFetch<Encounter>(`/api/ttrpg/encounters/${encounter.id}/slots/${slotId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ base_revision: encounter.revision, ...changes }),
+    }),
+  removeSlot: (encounter: { id: string; revision: number }, slotId: string) =>
+    apiFetch<Encounter>(
+      `/api/ttrpg/encounters/${encounter.id}/slots/${slotId}?base_revision=${encounter.revision}`,
+      { method: "DELETE" },
+    ),
+  refreshEncounter: (encounter: { id: string; revision: number }) =>
+    apiFetch<EncounterRefresh>(`/api/ttrpg/encounters/${encounter.id}/refresh`, {
+      method: "POST",
+      body: JSON.stringify({ base_revision: encounter.revision }),
+    }),
+  linkEncounterToNote: (id: string) =>
+    apiFetch<{ link: string; changed: boolean }>(`/api/ttrpg/encounters/${id}/link-to-note`, {
+      method: "POST",
+    }),
+  creatures: (query = "", includeArchived = false) =>
+    apiFetch<components["schemas"]["CreatureListOut"]>(
+      `/api/ttrpg/creatures?q=${encodeURIComponent(query)}${includeArchived ? "&include_archived=true" : ""}`,
+    ),
+  createCreature: (card: CreatureCard & { id: string }) =>
+    apiFetch<Creature>("/api/ttrpg/creatures", { method: "POST", body: JSON.stringify(card) }),
+  updateCreature: (creature: { id: string; revision: number }, card: CreatureCard) =>
+    apiFetch<Creature>(`/api/ttrpg/creatures/${creature.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ ...card, base_revision: creature.revision }),
+    }),
+  duplicateCreature: (id: string, newId: string) =>
+    apiFetch<Creature>(`/api/ttrpg/creatures/${id}/duplicate`, {
+      method: "POST",
+      body: JSON.stringify({ id: newId }),
+    }),
+  archiveCreature: (creature: { id: string; revision: number }, archived: boolean) =>
+    apiFetch<Creature>(`/api/ttrpg/creatures/${creature.id}/archive`, {
+      method: "POST",
+      body: JSON.stringify({ base_revision: creature.revision, archived }),
+    }),
+  /** Explicit refresh of an imported card: the only way upstream changes reach it. */
+  refreshCreature: (creature: { id: string; revision: number }) =>
+    apiFetch<Creature>(`/api/ttrpg/creatures/${creature.id}/refresh`, {
+      method: "POST",
+      body: JSON.stringify({ base_revision: creature.revision }),
+    }),
+  searchSrd: (query: string) =>
+    apiFetch<SrdSearch>(`/api/ttrpg/srd/monsters?q=${encodeURIComponent(query)}`),
+  importSrd: (index: string) =>
+    apiFetch<Creature>("/api/ttrpg/srd/import", {
+      method: "POST",
+      body: JSON.stringify({ index }),
+    }),
+  party: (campaignId: string, includeArchived = false) =>
+    apiFetch<PartyList>(
+      `/api/ttrpg/campaigns/${campaignId}/party${includeArchived ? "?include_archived=true" : ""}`,
+    ),
+  /** `id` makes a retry idempotent (the same id never adds a second member). */
+  addMember: (campaignId: string, card: PartyCard & { id: string }) =>
+    apiFetch<PartyMember>(`/api/ttrpg/campaigns/${campaignId}/party`, {
+      method: "POST",
+      body: JSON.stringify(card),
+    }),
+  updateCard: (member: { id: string; revision: number }, card: PartyCard) =>
+    apiFetch<PartyMember>(`/api/ttrpg/party/${member.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ ...card, base_revision: member.revision }),
+    }),
+  archiveMember: (member: { id: string; revision: number }, archived: boolean) =>
+    apiFetch<PartyMember>(`/api/ttrpg/party/${member.id}/archive`, {
+      method: "POST",
+      body: JSON.stringify({ base_revision: member.revision, archived }),
+    }),
+  updateState: (member: PartyMember, changes: PartyStateChange) =>
+    apiFetch<PartyMember>(`/api/ttrpg/party/${member.id}/state`, {
+      method: "PATCH",
+      body: JSON.stringify({ base_revision: member.state.revision, ...changes }),
+    }),
+  adjustHp: (member: PartyMember, kind: "damage" | "heal" | "temp_hp", amount: number) =>
+    apiFetch<PartyMember>(`/api/ttrpg/party/${member.id}/hp`, {
+      method: "POST",
+      body: JSON.stringify({ base_revision: member.state.revision, kind, amount }),
+    }),
+  previewRest: (campaignId: string, kind: "short" | "long") =>
+    apiFetch<RestPreview>(`/api/ttrpg/campaigns/${campaignId}/rest/preview`, {
+      method: "POST",
+      body: JSON.stringify({ kind }),
+    }),
+  applyRest: (
+    campaignId: string,
+    kind: "short" | "long",
+    members: { member_id: string; base_revision: number; overrides?: PartyStateChange | null }[],
+  ) =>
+    apiFetch<PartyList>(`/api/ttrpg/campaigns/${campaignId}/rest`, {
+      method: "POST",
+      body: JSON.stringify({ kind, members }),
+    }),
+  /** Repair a missing note link: link `noteId`, or recreate the note when it is omitted. */
+  relink: (campaignId: string, target: string, noteId?: string) =>
+    apiFetch<TtrpgCampaignDetail>(`/api/ttrpg/campaigns/${campaignId}/relink`, {
+      method: "POST",
+      body: JSON.stringify({ target, note_id: noteId ?? null }),
+    }),
 };
 
 /** Updating the server from Settings (REL-01): the API only passes a request to the host updater. */

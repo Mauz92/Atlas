@@ -1849,6 +1849,703 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/features": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Features */
+        get: operations["get_features_api_features_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/features/{feature}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Feature */
+        put: operations["put_feature_api_features__feature__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ttrpg Status */
+        get: operations["ttrpg_status_api_ttrpg_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/campaigns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Campaigns */
+        get: operations["list_campaigns_api_ttrpg_campaigns_get"];
+        put?: never;
+        /**
+         * Create Campaign
+         * @description Create a campaign with a home note and a first session note (never overwrites a file).
+         *
+         *     A retry with the same ``id`` returns the existing campaign (``200``) after completing any
+         *     missing scaffold.
+         */
+        post: operations["create_campaign_api_ttrpg_campaigns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/campaigns/{campaign_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Campaign */
+        get: operations["get_campaign_api_ttrpg_campaigns__campaign_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Campaign */
+        patch: operations["update_campaign_api_ttrpg_campaigns__campaign_id__patch"];
+        trace?: never;
+    };
+    "/api/ttrpg/campaigns/{campaign_id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Session */
+        post: operations["add_session_api_ttrpg_campaigns__campaign_id__sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/campaigns/{campaign_id}/relink": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Relink Note
+         * @description Repair a missing note link: point it at an existing note, or recreate the note.
+         */
+        post: operations["relink_note_api_ttrpg_campaigns__campaign_id__relink_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session
+         * @description A session with the previous session's written handoff ("Next session" section).
+         */
+        get: operations["get_session_api_ttrpg_sessions__session_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Session */
+        patch: operations["update_session_api_ttrpg_sessions__session_id__patch"];
+        trace?: never;
+    };
+    "/api/ttrpg/campaigns/{campaign_id}/party": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Party */
+        get: operations["list_party_api_ttrpg_campaigns__campaign_id__party_get"];
+        put?: never;
+        /**
+         * Add Party Member
+         * @description Add a card; a retry with the same ``id`` returns the existing member (``200``).
+         */
+        post: operations["add_party_member_api_ttrpg_campaigns__campaign_id__party_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/party/{member_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Party Member */
+        get: operations["get_party_member_api_ttrpg_party__member_id__get"];
+        /**
+         * Update Party Card
+         * @description Replace a card (revision-checked). Play state is clamped to the new card, never reset.
+         */
+        put: operations["update_party_card_api_ttrpg_party__member_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/party/{member_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Party Member */
+        post: operations["archive_party_member_api_ttrpg_party__member_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/party/{member_id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Party State
+         * @description Direct, revision-checked correction of play state (any subset of fields).
+         */
+        patch: operations["update_party_state_api_ttrpg_party__member_id__state_patch"];
+        trace?: never;
+    };
+    "/api/ttrpg/party/{member_id}/hp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adjust Party Hp
+         * @description Damage (temporary HP first), healing (capped at the maximum) or temporary HP.
+         */
+        post: operations["adjust_party_hp_api_ttrpg_party__member_id__hp_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/campaigns/{campaign_id}/rest/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Rest
+         * @description What a short or long rest would change for each active member. Changes nothing.
+         */
+        post: operations["preview_rest_api_ttrpg_campaigns__campaign_id__rest_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/campaigns/{campaign_id}/rest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Rest
+         * @description Apply a confirmed rest to the listed members, all or none (a stale member is a 409).
+         */
+        post: operations["apply_rest_api_ttrpg_campaigns__campaign_id__rest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/creatures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Creatures */
+        get: operations["list_creatures_api_ttrpg_creatures_get"];
+        put?: never;
+        /**
+         * Create Creature
+         * @description A manual card (name, AC and HP are enough). A retry with the same ``id`` returns it (200).
+         */
+        post: operations["create_creature_api_ttrpg_creatures_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/creatures/{creature_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Creature */
+        get: operations["get_creature_api_ttrpg_creatures__creature_id__get"];
+        /**
+         * Update Creature
+         * @description Replace a manual card (revision-checked). An imported card must be duplicated first.
+         */
+        put: operations["update_creature_api_ttrpg_creatures__creature_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/creatures/{creature_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate Creature
+         * @description An editable manual variant of any card (an SRD source keeps its attribution).
+         */
+        post: operations["duplicate_creature_api_ttrpg_creatures__creature_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/creatures/{creature_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Creature */
+        post: operations["archive_creature_api_ttrpg_creatures__creature_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/creatures/{creature_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Creature
+         * @description Re-fetch an imported card from the catalogue: the only way upstream changes reach it.
+         */
+        post: operations["refresh_creature_api_ttrpg_creatures__creature_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/srd/monsters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Srd
+         * @description Search the SRD monster index by name (the search runs locally on a cached copy).
+         */
+        get: operations["search_srd_api_ttrpg_srd_monsters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/srd/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Srd
+         * @description Import one SRD creature as a read-only card with provenance. Importing it again returns
+         *     the existing card (200) and does not contact the catalogue.
+         */
+        post: operations["import_srd_api_ttrpg_srd_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/campaigns/{campaign_id}/encounters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Encounters */
+        get: operations["list_encounters_api_ttrpg_campaigns__campaign_id__encounters_get"];
+        put?: never;
+        /**
+         * Create Encounter
+         * @description Prepare an encounter; a retry with the same ``id`` returns it (``200``).
+         */
+        post: operations["create_encounter_api_ttrpg_campaigns__campaign_id__encounters_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/encounters/{encounter_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Encounter */
+        get: operations["get_encounter_api_ttrpg_encounters__encounter_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Encounter
+         * @description Edit prep fields (revision-checked). A field sent as ``null`` clears it where optional.
+         */
+        patch: operations["update_encounter_api_ttrpg_encounters__encounter_id__patch"];
+        trace?: never;
+    };
+    "/api/ttrpg/encounters/{encounter_id}/slots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Encounter Slots
+         * @description Add ``count`` independent slots from a card (or a custom entry). Stats are copied.
+         */
+        post: operations["add_encounter_slots_api_ttrpg_encounters__encounter_id__slots_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/encounters/{encounter_id}/slots/{slot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Encounter Slot */
+        delete: operations["remove_encounter_slot_api_ttrpg_encounters__encounter_id__slots__slot_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Encounter Slot
+         * @description Override a slot's name, AC, HP or initiative modifier for this table.
+         */
+        patch: operations["update_encounter_slot_api_ttrpg_encounters__encounter_id__slots__slot_id__patch"];
+        trace?: never;
+    };
+    "/api/ttrpg/encounters/{encounter_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Encounter
+         * @description Explicitly pull the current creature cards into this encounter's slots.
+         *
+         *     Fields the DM overrode and slot names are kept; a slot whose card is gone or archived is
+         *     reported and left as it was.
+         */
+        post: operations["refresh_encounter_api_ttrpg_encounters__encounter_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/encounters/{encounter_id}/link-to-note": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link Encounter Into Note
+         * @description Add this encounter's launch link under "Prep" in its session's note (idempotent).
+         */
+        post: operations["link_encounter_into_note_api_ttrpg_encounters__encounter_id__link_to_note_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/campaigns/{campaign_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description The campaign's fights, newest first; ``unfinished`` lists only one that can be resumed.
+         */
+        get: operations["list_runs_api_ttrpg_campaigns__campaign_id__runs_get"];
+        put?: never;
+        /**
+         * Create Run
+         * @description Launch a prepared encounter (or improvise one) into initiative setup.
+         *
+         *     Enemies start fresh from the encounter's copied stats; the party's hit points, conditions and
+         *     resources are read from the party's existing play state. A campaign has at most one unfinished
+         *     fight (409 with its id). A retry with the same ``id`` returns the same run (``200``).
+         */
+        post: operations["create_run_api_ttrpg_campaigns__campaign_id__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run
+         * @description The whole fight as stored: reload recovers the same round, actor, initiative, HP and
+         *     conditions.
+         */
+        get: operations["get_run_api_ttrpg_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/runs/{run_id}/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Setup Run
+         * @description Before the start: enter initiative totals (zero and negative are fine), add or remove
+         *     combatants.
+         */
+        patch: operations["setup_run_api_ttrpg_runs__run_id__setup_patch"];
+        trace?: never;
+    };
+    "/api/ttrpg/runs/{run_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Run
+         * @description Sort by initiative (ties in the given order) and begin round one.
+         */
+        post: operations["start_run_api_ttrpg_runs__run_id__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/runs/{run_id}/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run History
+         * @description The history, newest first (page with ``before_seq``). Readable after the fight ends.
+         */
+        get: operations["run_history_api_ttrpg_runs__run_id__actions_get"];
+        put?: never;
+        /**
+         * Run Action
+         * @description Apply one change to a running fight.
+         *
+         *     Send the run ``base_revision`` you saw, a unique ``mutation_key`` and, for a change to a party
+         *     member, that member's current ``party_revisions``. A stale revision is a 409 and nothing
+         *     changes; a retry with the same key is a replay and applies nothing twice.
+         */
+        post: operations["run_action_api_ttrpg_runs__run_id__actions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ttrpg/runs/{run_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Run Action
+         * @description Undo the most recent reversible action, party effects included, in one transaction.
+         *
+         *     If anything else changed the affected state since (another edit of the party member, say) the
+         *     answer is ``409 undo_conflict`` and the newer state is kept.
+         */
+        post: operations["undo_run_action_api_ttrpg_runs__run_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/instance": {
         parameters: {
             query?: never;
@@ -1921,6 +2618,16 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Ability */
+        Ability: {
+            /** Name */
+            name: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+        };
         /** AccountsOut */
         AccountsOut: {
             /** Providers */
@@ -1930,6 +2637,23 @@ export interface components {
         ApplyRequest: {
             /** Version */
             version: string;
+        };
+        /** Attack */
+        Attack: {
+            /** Name */
+            name: string;
+            /** To Hit */
+            to_hit?: number | null;
+            /**
+             * Damage
+             * @default
+             */
+            damage: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
         };
         /** BackupLatest */
         BackupLatest: {
@@ -2028,6 +2752,92 @@ export interface components {
             /** Providers */
             providers: components["schemas"]["ProviderSyncStatusOut"][];
         };
+        /** CampaignCreate */
+        CampaignCreate: {
+            /** Id */
+            id?: string | null;
+            /** Title */
+            title: string;
+            /** Folder */
+            folder?: string | null;
+            /** Book Title */
+            book_title?: string | null;
+            /**
+             * Rules Preset
+             * @default dnd5e-2014
+             */
+            rules_preset: string;
+        };
+        /** CampaignDetailOut */
+        CampaignDetailOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Rules Preset */
+            rules_preset: string;
+            /** Book Title */
+            book_title: string | null;
+            /** Folder */
+            folder: string;
+            /** Archived */
+            archived: boolean;
+            /** Revision */
+            revision: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            home: components["schemas"]["TtrpgNoteLinkOut"];
+            /** Sessions */
+            sessions: components["schemas"]["SessionOut"][];
+        };
+        /** CampaignListOut */
+        CampaignListOut: {
+            /** Items */
+            items: components["schemas"]["CampaignOut"][];
+        };
+        /** CampaignOut */
+        CampaignOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Rules Preset */
+            rules_preset: string;
+            /** Book Title */
+            book_title: string | null;
+            /** Folder */
+            folder: string;
+            /** Archived */
+            archived: boolean;
+            /** Revision */
+            revision: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            home: components["schemas"]["TtrpgNoteLinkOut"];
+        };
+        /** CampaignUpdate */
+        CampaignUpdate: {
+            /** Base Revision */
+            base_revision: number;
+            /** Title */
+            title?: string | null;
+            /** Book Title */
+            book_title?: string | null;
+            /** Archived */
+            archived?: boolean | null;
+        };
         /**
          * ChangeOut
          * @description One item of the per-user change feed (M7-01).
@@ -2117,10 +2927,209 @@ export interface components {
              */
             floor: number;
         };
+        /** CombatantOut */
+        CombatantOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "npc" | "party";
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "enemy" | "ally" | "party";
+            /** Party Member Id */
+            party_member_id: string | null;
+            /** Name */
+            name: string;
+            /** Ac */
+            ac: number;
+            /** Hp */
+            hp: number;
+            /** Max Hp */
+            max_hp: number;
+            /** Temp Hp */
+            temp_hp: number;
+            /** Conditions */
+            conditions: string[];
+            /** Condition Reminders */
+            condition_reminders: {
+                [key: string]: number;
+            };
+            /** Initiative Mod */
+            initiative_mod: number;
+            /** Initiative */
+            initiative: number | null;
+            /** Order Index */
+            order_index: number | null;
+            /** Defeated */
+            defeated: boolean;
+            /** Removed */
+            removed: boolean;
+            /** Active */
+            active: boolean;
+            /** Party Revision */
+            party_revision: number | null;
+            /** Death Save Successes */
+            death_save_successes: number;
+            /** Death Save Failures */
+            death_save_failures: number;
+            /** Resources */
+            resources: components["schemas"]["RunResourceOut"][];
+            /** Attacks */
+            attacks: components["schemas"]["RunActionLineOut"][];
+        };
         /** ConnectOut */
         ConnectOut: {
             /** Authorization Url */
             authorization_url: string;
+        };
+        /** CreatureAction */
+        CreatureAction: {
+            /** Name */
+            name: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+            /**
+             * Kind
+             * @default action
+             * @enum {string}
+             */
+            kind: "action" | "reaction" | "legendary";
+            /** To Hit */
+            to_hit?: number | null;
+            /**
+             * Damage
+             * @default
+             */
+            damage: string;
+        };
+        /** CreatureArchive */
+        CreatureArchive: {
+            /** Base Revision */
+            base_revision: number;
+            /** Archived */
+            archived: boolean;
+        };
+        /** CreatureCreate */
+        CreatureCreate: {
+            /** Name */
+            name: string;
+            /** Ac */
+            ac: number;
+            /** Hp */
+            hp: number;
+            /** Speed */
+            speed?: string | null;
+            /**
+             * Initiative Mod
+             * @default 0
+             */
+            initiative_mod: number;
+            /** Challenge Rating */
+            challenge_rating?: string | null;
+            /** Size */
+            size?: string | null;
+            /** Creature Type */
+            creature_type?: string | null;
+            /** Traits */
+            traits?: components["schemas"]["Trait"][];
+            /** Actions */
+            actions?: components["schemas"]["CreatureAction"][];
+            /** Id */
+            id?: string | null;
+        };
+        /** CreatureListOut */
+        CreatureListOut: {
+            /** Items */
+            items: components["schemas"]["CreatureOut"][];
+        };
+        /** CreatureOut */
+        CreatureOut: {
+            /** Name */
+            name: string;
+            /** Ac */
+            ac: number;
+            /** Hp */
+            hp: number;
+            /** Speed */
+            speed: string | null;
+            /**
+             * Initiative Mod
+             * @default 0
+             */
+            initiative_mod: number;
+            /** Challenge Rating */
+            challenge_rating: string | null;
+            /** Size */
+            size: string | null;
+            /** Creature Type */
+            creature_type: string | null;
+            /** Traits */
+            traits: components["schemas"]["Trait"][];
+            /** Actions */
+            actions: components["schemas"]["CreatureAction"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "manual" | "srd";
+            /** Source Edition */
+            source_edition: string | null;
+            /** External Id */
+            external_id: string | null;
+            /** Attribution */
+            attribution: string | null;
+            /** Imported At */
+            imported_at: string | null;
+            /** Derived From Id */
+            derived_from_id: string | null;
+            /** Archived */
+            archived: boolean;
+            /** Revision */
+            revision: number;
+        };
+        /** CreatureUpdate */
+        CreatureUpdate: {
+            /** Name */
+            name: string;
+            /** Ac */
+            ac: number;
+            /** Hp */
+            hp: number;
+            /** Speed */
+            speed?: string | null;
+            /**
+             * Initiative Mod
+             * @default 0
+             */
+            initiative_mod: number;
+            /** Challenge Rating */
+            challenge_rating?: string | null;
+            /** Size */
+            size?: string | null;
+            /** Creature Type */
+            creature_type?: string | null;
+            /** Traits */
+            traits?: components["schemas"]["Trait"][];
+            /** Actions */
+            actions?: components["schemas"]["CreatureAction"][];
+            /** Base Revision */
+            base_revision: number;
         };
         /**
          * CredentialProvider
@@ -2300,6 +3309,133 @@ export interface components {
          * @enum {string}
          */
         DueState: "none" | "overdue" | "today" | "upcoming";
+        /** DuplicateRequest */
+        DuplicateRequest: {
+            /** Id */
+            id?: string | null;
+        };
+        /** EncounterCreate */
+        EncounterCreate: {
+            /** Id */
+            id?: string | null;
+            /** Title */
+            title: string;
+            /** Book Reference */
+            book_reference?: string | null;
+            /** Setup Reminder */
+            setup_reminder?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+            /** Location Note Id */
+            location_note_id?: string | null;
+            /** Party Member Ids */
+            party_member_ids?: string[];
+        };
+        /** EncounterListOut */
+        EncounterListOut: {
+            /** Items */
+            items: components["schemas"]["EncounterSummaryOut"][];
+        };
+        /** EncounterOut */
+        EncounterOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Campaign Id
+             * Format: uuid
+             */
+            campaign_id: string;
+            /** Title */
+            title: string;
+            /** Book Reference */
+            book_reference: string | null;
+            /** Setup Reminder */
+            setup_reminder: string | null;
+            /** Session Id */
+            session_id: string | null;
+            /** Session Title */
+            session_title: string | null;
+            location: components["schemas"]["TtrpgNoteLinkOut"] | null;
+            /** Party */
+            party: components["schemas"]["EncounterPartyOut"][];
+            /** Slots */
+            slots: components["schemas"]["SlotOut"][];
+            /** Archived */
+            archived: boolean;
+            /** Revision */
+            revision: number;
+            /** Path */
+            path: string;
+            /** Link */
+            link: string;
+        };
+        /** EncounterPartyOut */
+        EncounterPartyOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Role */
+            role: string;
+            /** Retired */
+            retired: boolean;
+        };
+        /** EncounterRefreshOut */
+        EncounterRefreshOut: {
+            encounter: components["schemas"]["EncounterOut"];
+            /** Slots */
+            slots: components["schemas"]["SlotRefreshOut"][];
+        };
+        /** EncounterSummaryOut */
+        EncounterSummaryOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Campaign Id
+             * Format: uuid
+             */
+            campaign_id: string;
+            /** Title */
+            title: string;
+            /** Book Reference */
+            book_reference: string | null;
+            /** Session Id */
+            session_id: string | null;
+            /** Slot Count */
+            slot_count: number;
+            /** Archived */
+            archived: boolean;
+            /** Revision */
+            revision: number;
+        };
+        /** EncounterUpdate */
+        EncounterUpdate: {
+            /** Base Revision */
+            base_revision: number;
+            /** Title */
+            title?: string | null;
+            /** Book Reference */
+            book_reference?: string | null;
+            /** Setup Reminder */
+            setup_reminder?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+            /** Location Note Id */
+            location_note_id?: string | null;
+            /** Party Member Ids */
+            party_member_ids?: string[] | null;
+            /** Archived */
+            archived?: boolean | null;
+        };
         /** EventDetailOut */
         EventDetailOut: {
             /**
@@ -2408,6 +3544,16 @@ export interface components {
             /** Location */
             location: string | null;
         };
+        /** FeatureUpdate */
+        FeatureUpdate: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /** FeaturesOut */
+        FeaturesOut: {
+            /** Ttrpg */
+            ttrpg: boolean;
+        };
         /** FeedCreateRequest */
         FeedCreateRequest: {
             /** Url */
@@ -2447,6 +3593,19 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HandoffOut */
+        HandoffOut: {
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+            /** Title */
+            title: string;
+            note: components["schemas"]["TtrpgNoteLinkOut"];
+            /** Handoff */
+            handoff: string | null;
         };
         /**
          * HintRegisterRequest
@@ -2515,6 +3674,18 @@ export interface components {
             /** Time Zone */
             time_zone?: string | null;
         };
+        /** HpAdjustRequest */
+        HpAdjustRequest: {
+            /** Base Revision */
+            base_revision: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "damage" | "heal" | "temp_hp";
+            /** Amount */
+            amount: number;
+        };
         /**
          * ImportContent
          * @description The text of an ``.ics`` file.
@@ -2574,12 +3745,43 @@ export interface components {
             /** Epoch */
             epoch: string;
         };
+        /** IntChangeOut */
+        IntChangeOut: {
+            /** Before */
+            before: number;
+            /** After */
+            after: number;
+        };
         /** LoginRequest */
         LoginRequest: {
             /** Email */
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * NewCombatant
+         * @description A reinforcement or an improvised combatant.
+         */
+        NewCombatant: {
+            /** Creature Id */
+            creature_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Ac */
+            ac?: number | null;
+            /** Hp */
+            hp?: number | null;
+            /** Initiative Mod */
+            initiative_mod?: number | null;
+            /**
+             * Side
+             * @default enemy
+             * @enum {string}
+             */
+            side: "enemy" | "ally";
+            /** Initiative */
+            initiative?: number | null;
         };
         /** NoteConflictCopyRequest */
         NoteConflictCopyRequest: {
@@ -2680,6 +3882,13 @@ export interface components {
             target_path: string;
             /** Target Note Id */
             target_note_id: string | null;
+        };
+        /** NoteLinkResultOut */
+        NoteLinkResultOut: {
+            /** Link */
+            link: string;
+            /** Changed */
+            changed: boolean;
         };
         /** NoteListOut */
         NoteListOut: {
@@ -2839,6 +4048,177 @@ export interface components {
              * @description Sync mode (required): the `content_hash` of the text the edit was made from. The server merges against that text when `base_revision` is no longer current; ignored outside sync mode.
              */
             base_hash?: string | null;
+        };
+        /** PartyArchiveRequest */
+        PartyArchiveRequest: {
+            /** Base Revision */
+            base_revision: number;
+            /** Archived */
+            archived: boolean;
+        };
+        /** PartyCardUpdate */
+        PartyCardUpdate: {
+            /**
+             * Role
+             * @default pc
+             * @enum {string}
+             */
+            role: "pc" | "companion";
+            /** Name */
+            name: string;
+            /** Level */
+            level?: number | null;
+            /** Ac */
+            ac: number;
+            /** Max Hp */
+            max_hp: number;
+            /** Speed */
+            speed?: number | null;
+            /**
+             * Initiative Mod
+             * @default 0
+             */
+            initiative_mod: number;
+            /** Passive Perception */
+            passive_perception?: number | null;
+            /** Attacks */
+            attacks?: components["schemas"]["Attack"][];
+            /** Abilities */
+            abilities?: components["schemas"]["Ability"][];
+            /** Resources */
+            resources?: components["schemas"]["Resource"][];
+            /** Base Revision */
+            base_revision: number;
+        };
+        /** PartyListOut */
+        PartyListOut: {
+            /** Items */
+            items: components["schemas"]["PartyMemberOut"][];
+            /** Conditions */
+            conditions: string[];
+        };
+        /** PartyMemberCreate */
+        PartyMemberCreate: {
+            /**
+             * Role
+             * @default pc
+             * @enum {string}
+             */
+            role: "pc" | "companion";
+            /** Name */
+            name: string;
+            /** Level */
+            level?: number | null;
+            /** Ac */
+            ac: number;
+            /** Max Hp */
+            max_hp: number;
+            /** Speed */
+            speed?: number | null;
+            /**
+             * Initiative Mod
+             * @default 0
+             */
+            initiative_mod: number;
+            /** Passive Perception */
+            passive_perception?: number | null;
+            /** Attacks */
+            attacks?: components["schemas"]["Attack"][];
+            /** Abilities */
+            abilities?: components["schemas"]["Ability"][];
+            /** Resources */
+            resources?: components["schemas"]["Resource"][];
+            /** Id */
+            id?: string | null;
+        };
+        /** PartyMemberOut */
+        PartyMemberOut: {
+            /**
+             * Role
+             * @default pc
+             * @enum {string}
+             */
+            role: "pc" | "companion";
+            /** Name */
+            name: string;
+            /** Level */
+            level: number | null;
+            /** Ac */
+            ac: number;
+            /** Max Hp */
+            max_hp: number;
+            /** Speed */
+            speed: number | null;
+            /**
+             * Initiative Mod
+             * @default 0
+             */
+            initiative_mod: number;
+            /** Passive Perception */
+            passive_perception: number | null;
+            /** Attacks */
+            attacks: components["schemas"]["Attack"][];
+            /** Abilities */
+            abilities: components["schemas"]["Ability"][];
+            /** Resources */
+            resources: components["schemas"]["Resource"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Campaign Id
+             * Format: uuid
+             */
+            campaign_id: string;
+            /** Archived */
+            archived: boolean;
+            /** Revision */
+            revision: number;
+            state: components["schemas"]["PartyStateOut"];
+        };
+        /** PartyStateOut */
+        PartyStateOut: {
+            /** Current Hp */
+            current_hp: number;
+            /** Temp Hp */
+            temp_hp: number;
+            /** Conditions */
+            conditions: string[];
+            /** Exhaustion Level */
+            exhaustion_level: number;
+            /** Death Save Successes */
+            death_save_successes: number;
+            /** Death Save Failures */
+            death_save_failures: number;
+            /** Resources Used */
+            resources_used: {
+                [key: string]: number;
+            };
+            /** Revision */
+            revision: number;
+        };
+        /** PartyStateUpdate */
+        PartyStateUpdate: {
+            /** Current Hp */
+            current_hp?: number | null;
+            /** Temp Hp */
+            temp_hp?: number | null;
+            /** Conditions */
+            conditions?: string[] | null;
+            /** Exhaustion Level */
+            exhaustion_level?: number | null;
+            /** Death Save Successes */
+            death_save_successes?: number | null;
+            /** Death Save Failures */
+            death_save_failures?: number | null;
+            /** Resources Used */
+            resources_used?: {
+                [key: string]: number;
+            } | null;
+            /** Base Revision */
+            base_revision: number;
         };
         /** PasswordChange */
         PasswordChange: {
@@ -3377,6 +4757,13 @@ export interface components {
              */
             limit: number;
         };
+        /** RelinkRequest */
+        RelinkRequest: {
+            /** Target */
+            target: string;
+            /** Note Id */
+            note_id?: string | null;
+        };
         /** ReminderActionOut */
         ReminderActionOut: {
             reminder: components["schemas"]["ReminderOut"];
@@ -3428,6 +4815,18 @@ export interface components {
              * @description When the owner acted (device clock, with an offset). Clamped by the server.
              */
             acted_at?: string | null;
+        };
+        /** ReminderDueOut */
+        ReminderDueOut: {
+            /**
+             * Combatant Id
+             * Format: uuid
+             */
+            combatant_id: string;
+            /** Condition */
+            condition: string;
+            /** Round */
+            round: number;
         };
         /** ReminderListOut */
         ReminderListOut: {
@@ -3641,12 +5040,315 @@ export interface components {
             resolution: components["schemas"]["ResolutionOut"];
             undo: components["schemas"]["ResolutionOut"];
         };
+        /** Resource */
+        Resource: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Max */
+            max: number;
+            /**
+             * Reset
+             * @default long
+             * @enum {string}
+             */
+            reset: "short" | "long" | "none";
+        };
+        /** RestApplyRequest */
+        RestApplyRequest: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "short" | "long";
+            /** Members */
+            members: components["schemas"]["RestConfirmMember"][];
+        };
+        /** RestConfirmMember */
+        RestConfirmMember: {
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /** Base Revision */
+            base_revision: number;
+            overrides?: components["schemas"]["StateFields"] | null;
+        };
+        /** RestMemberPreview */
+        RestMemberPreview: {
+            /**
+             * Member Id
+             * Format: uuid
+             */
+            member_id: string;
+            /** Name */
+            name: string;
+            /** State Revision */
+            state_revision: number;
+            hp: components["schemas"]["IntChangeOut"] | null;
+            temp_hp: components["schemas"]["IntChangeOut"] | null;
+            exhaustion_level: components["schemas"]["IntChangeOut"] | null;
+            /** Death Saves Cleared */
+            death_saves_cleared: boolean;
+            /** Resources Used */
+            resources_used: {
+                [key: string]: components["schemas"]["IntChangeOut"];
+            };
+            /** Unchanged */
+            unchanged: boolean;
+        };
+        /** RestPreviewOut */
+        RestPreviewOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "short" | "long";
+            /** Members */
+            members: components["schemas"]["RestMemberPreview"][];
+            /** Notes */
+            notes: string[];
+        };
+        /** RestPreviewRequest */
+        RestPreviewRequest: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "short" | "long";
+        };
         /**
          * ResyncReason
          * @description Why a client must resync instead of pulling incrementally (SYNC-01).
          * @enum {string}
          */
         ResyncReason: "below_floor" | "cursor_ahead";
+        /** RevisionRequest */
+        RevisionRequest: {
+            /** Base Revision */
+            base_revision: number;
+        };
+        /** RunActionLineOut */
+        RunActionLineOut: {
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** To Hit */
+            to_hit: number | null;
+            /** Damage */
+            damage: string;
+        };
+        /** RunActionOut */
+        RunActionOut: {
+            /** Seq */
+            seq: number;
+            /** Kind */
+            kind: string;
+            /** Summary */
+            summary: string;
+            /** Combatant Id */
+            combatant_id: string | null;
+            /** Reversible */
+            reversible: boolean;
+            /** Undone */
+            undone: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** RunActionRequest */
+        RunActionRequest: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "damage" | "heal" | "temp_hp" | "set_hp" | "add_condition" | "remove_condition" | "death_save" | "spend_resource" | "next_turn" | "set_defeated" | "remove_combatant" | "restore_combatant" | "add_combatant" | "reorder" | "pause" | "resume" | "end";
+            /** Combatant Id */
+            combatant_id?: string | null;
+            /** Amount */
+            amount?: number | null;
+            /** Hp */
+            hp?: number | null;
+            /** Condition */
+            condition?: string | null;
+            /** Expires Round */
+            expires_round?: number | null;
+            /** Death Save */
+            death_save?: ("success" | "failure" | "reset") | null;
+            /** Resource Key */
+            resource_key?: string | null;
+            /** Delta */
+            delta?: (-1 | 1) | null;
+            /** Defeated */
+            defeated?: boolean | null;
+            /** Order */
+            order?: string[] | null;
+            new_combatant?: components["schemas"]["NewCombatant"] | null;
+            /** Outcome */
+            outcome?: string | null;
+            /** Party Revisions */
+            party_revisions?: {
+                [key: string]: number;
+            };
+            /** Mutation Key */
+            mutation_key: string;
+            /** Base Revision */
+            base_revision: number;
+        };
+        /** RunActionResultOut */
+        RunActionResultOut: {
+            run: components["schemas"]["RunOut"];
+            action: components["schemas"]["RunActionOut"] | null;
+            /** Replayed */
+            replayed: boolean;
+        };
+        /** RunCreate */
+        RunCreate: {
+            /** Id */
+            id?: string | null;
+            /** Encounter Id */
+            encounter_id?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Party Member Ids */
+            party_member_ids?: string[] | null;
+        };
+        /** RunHistoryOut */
+        RunHistoryOut: {
+            /** Items */
+            items: components["schemas"]["RunActionOut"][];
+        };
+        /** RunListOut */
+        RunListOut: {
+            /** Items */
+            items: components["schemas"]["RunSummaryOut"][];
+        };
+        /** RunOut */
+        RunOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Campaign Id
+             * Format: uuid
+             */
+            campaign_id: string;
+            /** Session Id */
+            session_id: string | null;
+            /** Encounter Id */
+            encounter_id: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "setup" | "active" | "paused" | "ended";
+            /** Round */
+            round: number;
+            /** Active Combatant Id */
+            active_combatant_id: string | null;
+            /** Revision */
+            revision: number;
+            /** Outcome */
+            outcome: string | null;
+            /** End Reason */
+            end_reason: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /** Book Reference */
+            book_reference: string | null;
+            /** Setup Reminder */
+            setup_reminder: string | null;
+            /** Combatants */
+            combatants: components["schemas"]["CombatantOut"][];
+            /** Ties */
+            ties: string[][];
+            /** Undo Summary */
+            undo_summary: string | null;
+            /** History */
+            history: components["schemas"]["RunActionOut"][];
+            /** Reminders Due */
+            reminders_due: components["schemas"]["ReminderDueOut"][];
+            /** Conditions */
+            conditions: string[];
+        };
+        /** RunResourceOut */
+        RunResourceOut: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Max */
+            max: number;
+            /** Used */
+            used: number;
+        };
+        /** RunSetup */
+        RunSetup: {
+            /** Base Revision */
+            base_revision: number;
+            /** Initiative */
+            initiative?: {
+                [key: string]: number | null;
+            } | null;
+            /** Add */
+            add?: components["schemas"]["NewCombatant"][] | null;
+            /** Set Removed */
+            set_removed?: {
+                [key: string]: boolean;
+            } | null;
+        };
+        /** RunStart */
+        RunStart: {
+            /** Base Revision */
+            base_revision: number;
+            /** Tie Order */
+            tie_order?: string[] | null;
+        };
+        /** RunSummaryOut */
+        RunSummaryOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "setup" | "active" | "paused" | "ended";
+            /** Round */
+            round: number;
+            /** Revision */
+            revision: number;
+            /** Outcome */
+            outcome: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+        };
+        /** RunUndoRequest */
+        RunUndoRequest: {
+            /** Mutation Key */
+            mutation_key: string;
+            /** Base Revision */
+            base_revision: number;
+        };
         /**
          * SearchNoteOut
          * @description A matching note: identity and location only, never its content.
@@ -3706,6 +5408,79 @@ export interface components {
             /** Project Id */
             project_id: string | null;
         };
+        /** SessionCreate */
+        SessionCreate: {
+            /** Id */
+            id?: string | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** SessionDetailOut */
+        SessionDetailOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Campaign Id
+             * Format: uuid
+             */
+            campaign_id: string;
+            /** Title */
+            title: string;
+            /** Sequence */
+            sequence: number;
+            /** Session Date */
+            session_date: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "planned" | "active" | "done";
+            /** Revision */
+            revision: number;
+            note: components["schemas"]["TtrpgNoteLinkOut"];
+            previous: components["schemas"]["HandoffOut"] | null;
+        };
+        /** SessionOut */
+        SessionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Campaign Id
+             * Format: uuid
+             */
+            campaign_id: string;
+            /** Title */
+            title: string;
+            /** Sequence */
+            sequence: number;
+            /** Session Date */
+            session_date: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "planned" | "active" | "done";
+            /** Revision */
+            revision: number;
+            note: components["schemas"]["TtrpgNoteLinkOut"];
+        };
+        /** SessionUpdate */
+        SessionUpdate: {
+            /** Base Revision */
+            base_revision: number;
+            /** Title */
+            title?: string | null;
+            /** Status */
+            status?: ("planned" | "active" | "done") | null;
+            /** Session Date */
+            session_date?: string | null;
+        };
         /** SetupRequest */
         SetupRequest: {
             /** Email */
@@ -3745,6 +5520,93 @@ export interface components {
              * @default true
              */
             recovery_enabled: boolean;
+        };
+        /** SlotAddRequest */
+        SlotAddRequest: {
+            /** Creature Id */
+            creature_id?: string | null;
+            /**
+             * Count
+             * @default 1
+             */
+            count: number;
+            /**
+             * Side
+             * @default enemy
+             * @enum {string}
+             */
+            side: "enemy" | "ally";
+            /** Name */
+            name?: string | null;
+            /** Ac */
+            ac?: number | null;
+            /** Hp */
+            hp?: number | null;
+            /** Initiative Mod */
+            initiative_mod?: number | null;
+            /** Base Revision */
+            base_revision: number;
+        };
+        /** SlotOut */
+        SlotOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "enemy" | "ally";
+            /** Creature Id */
+            creature_id: string | null;
+            /** Name */
+            name: string;
+            /** Ac */
+            ac: number;
+            /** Hp */
+            hp: number;
+            /** Initiative Mod */
+            initiative_mod: number;
+            /** Overrides */
+            overrides: string[];
+            /** Snapshot */
+            snapshot: {
+                [key: string]: unknown;
+            };
+        };
+        /** SlotRefreshOut */
+        SlotRefreshOut: {
+            /**
+             * Slot Id
+             * Format: uuid
+             */
+            slot_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "refreshed" | "unchanged" | "no_card" | "card_archived";
+        };
+        /** SlotUpdateRequest */
+        SlotUpdateRequest: {
+            /** Name */
+            name?: string | null;
+            /** Ac */
+            ac?: number | null;
+            /** Hp */
+            hp?: number | null;
+            /** Initiative Mod */
+            initiative_mod?: number | null;
+            /** Side */
+            side?: ("enemy" | "ally") | null;
+            /** Base Revision */
+            base_revision: number;
         };
         /**
          * SourceOut
@@ -3793,6 +5655,49 @@ export interface components {
             color?: string | null;
             /** Name */
             name?: string | null;
+        };
+        /** SrdEntryOut */
+        SrdEntryOut: {
+            /** Index */
+            index: string;
+            /** Name */
+            name: string;
+            /** Imported As */
+            imported_as: string | null;
+        };
+        /** SrdImportRequest */
+        SrdImportRequest: {
+            /** Index */
+            index: string;
+        };
+        /** SrdSearchOut */
+        SrdSearchOut: {
+            /** Items */
+            items: components["schemas"]["SrdEntryOut"][];
+            /** Attribution */
+            attribution: string;
+        };
+        /**
+         * StateFields
+         * @description Direct corrections of play state; every field is optional.
+         */
+        StateFields: {
+            /** Current Hp */
+            current_hp?: number | null;
+            /** Temp Hp */
+            temp_hp?: number | null;
+            /** Conditions */
+            conditions?: string[] | null;
+            /** Exhaustion Level */
+            exhaustion_level?: number | null;
+            /** Death Save Successes */
+            death_save_successes?: number | null;
+            /** Death Save Failures */
+            death_save_failures?: number | null;
+            /** Resources Used */
+            resources_used?: {
+                [key: string]: number;
+            } | null;
         };
         /**
          * SyncConflictOut
@@ -4258,6 +6163,35 @@ export interface components {
          * @enum {string}
          */
         TaskView: "inbox" | "today" | "upcoming";
+        /** Trait */
+        Trait: {
+            /** Name */
+            name: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+        };
+        /** TtrpgNoteLinkOut */
+        TtrpgNoteLinkOut: {
+            /** Note Id */
+            note_id: string | null;
+            /** Path */
+            path: string | null;
+            /** Title */
+            title: string | null;
+            /** Missing */
+            missing: boolean;
+        };
+        /** TtrpgStatus */
+        TtrpgStatus: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+        };
         /** UpdateStatus */
         UpdateStatus: {
             /** Configured */
@@ -7414,6 +9348,1535 @@ export interface operations {
                 };
                 content: {
                     "application/zip": unknown;
+                };
+            };
+        };
+    };
+    get_features_api_features_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeaturesOut"];
+                };
+            };
+        };
+    };
+    put_feature_api_features__feature__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feature: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeatureUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeaturesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ttrpg_status_api_ttrpg_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TtrpgStatus"];
+                };
+            };
+        };
+    };
+    list_campaigns_api_ttrpg_campaigns_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CampaignListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_campaign_api_ttrpg_campaigns_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CampaignCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CampaignDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_campaign_api_ttrpg_campaigns__campaign_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CampaignDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_campaign_api_ttrpg_campaigns__campaign_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CampaignUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CampaignDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_session_api_ttrpg_campaigns__campaign_id__sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    relink_note_api_ttrpg_campaigns__campaign_id__relink_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CampaignDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_api_ttrpg_sessions__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_session_api_ttrpg_sessions__session_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_party_api_ttrpg_campaigns__campaign_id__party_get: {
+        parameters: {
+            query?: {
+                include_archived?: boolean;
+            };
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_party_member_api_ttrpg_campaigns__campaign_id__party_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PartyMemberCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyMemberOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_party_member_api_ttrpg_party__member_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyMemberOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_party_card_api_ttrpg_party__member_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PartyCardUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyMemberOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_party_member_api_ttrpg_party__member_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PartyArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyMemberOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_party_state_api_ttrpg_party__member_id__state_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PartyStateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyMemberOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adjust_party_hp_api_ttrpg_party__member_id__hp_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HpAdjustRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyMemberOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_rest_api_ttrpg_campaigns__campaign_id__rest_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_rest_api_ttrpg_campaigns__campaign_id__rest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartyListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_creatures_api_ttrpg_creatures_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                include_archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatureListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_creature_api_ttrpg_creatures_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatureCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatureOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_creature_api_ttrpg_creatures__creature_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                creature_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatureOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_creature_api_ttrpg_creatures__creature_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                creature_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatureUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatureOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_creature_api_ttrpg_creatures__creature_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                creature_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuplicateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatureOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_creature_api_ttrpg_creatures__creature_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                creature_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatureArchive"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatureOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_creature_api_ttrpg_creatures__creature_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                creature_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatureOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_srd_api_ttrpg_srd_monsters_get: {
+        parameters: {
+            query?: {
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrdSearchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_srd_api_ttrpg_srd_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrdImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatureOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_encounters_api_ttrpg_campaigns__campaign_id__encounters_get: {
+        parameters: {
+            query?: {
+                session_id?: string | null;
+                include_archived?: boolean;
+            };
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EncounterListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_encounter_api_ttrpg_campaigns__campaign_id__encounters_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EncounterCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EncounterOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_encounter_api_ttrpg_encounters__encounter_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EncounterOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_encounter_api_ttrpg_encounters__encounter_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EncounterUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EncounterOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_encounter_slots_api_ttrpg_encounters__encounter_id__slots_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SlotAddRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EncounterOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_encounter_slot_api_ttrpg_encounters__encounter_id__slots__slot_id__delete: {
+        parameters: {
+            query: {
+                base_revision: number;
+            };
+            header?: never;
+            path: {
+                encounter_id: string;
+                slot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EncounterOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_encounter_slot_api_ttrpg_encounters__encounter_id__slots__slot_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounter_id: string;
+                slot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SlotUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EncounterOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_encounter_api_ttrpg_encounters__encounter_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EncounterRefreshOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    link_encounter_into_note_api_ttrpg_encounters__encounter_id__link_to_note_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteLinkResultOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_ttrpg_campaigns__campaign_id__runs_get: {
+        parameters: {
+            query?: {
+                unfinished?: boolean;
+            };
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_run_api_ttrpg_campaigns__campaign_id__runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_ttrpg_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_run_api_ttrpg_runs__run_id__setup_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunSetup"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_run_api_ttrpg_runs__run_id__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_history_api_ttrpg_runs__run_id__actions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                before_seq?: number | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunHistoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_action_api_ttrpg_runs__run_id__actions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunActionResultOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_run_action_api_ttrpg_runs__run_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunUndoRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunActionResultOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

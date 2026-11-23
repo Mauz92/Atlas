@@ -59,12 +59,15 @@ export function MarkdownPreview({
   content,
   notes = NO_NOTES,
   onOpenNote,
+  onNavigate,
 }: {
   content: string;
   /** Notes `[[links]]` are resolved against. */
   notes?: readonly Pick<NoteSummary, "id" | "path">[];
   /** A `[[link]]` to a note was activated; without it the link navigates normally. */
   onOpenNote?: (id: string) => void;
+  /** An in-app link (`/ttrpg/...`, e.g. an encounter launch link) was activated; without it the link navigates normally. */
+  onNavigate?: (path: string) => void;
 }) {
   const markdown = useMemo(() => markdownFor(notes), [notes]);
   const html = useMemo(() => {
@@ -88,6 +91,13 @@ export function MarkdownPreview({
         if (link?.dataset.noteId && onOpenNote && plain) {
           event.preventDefault();
           onOpenNote(link.dataset.noteId);
+          return;
+        }
+        const app = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
+        const href = app?.getAttribute("href") ?? "";
+        if (onNavigate && plain && /^\/ttrpg\/[A-Za-z0-9/_-]*$/.test(href)) {
+          event.preventDefault();
+          onNavigate(href);
         }
       }}
       dangerouslySetInnerHTML={{ __html: html }}

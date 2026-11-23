@@ -286,6 +286,7 @@ describe("Settings", () => {
       "Sync",
       "Devices",
       "Data and backups",
+      "Plugins",
       "About",
     ]);
     expect(within(list).getByRole("link", { name: "Sync" })).toHaveAttribute(

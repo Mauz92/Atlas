@@ -7,7 +7,8 @@ import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useProjects } from "../hooks/useProjects";
 import { useUnifiedSearch } from "../hooks/useUnifiedSearch";
-import { PALETTE_PAGES } from "../lib/navigation";
+import { useFeatures } from "../lib/features";
+import { PALETTE_PAGES, TTRPG_NAV_ITEM } from "../lib/navigation";
 import { SHEET_QUERY } from "../lib/phone";
 import { rankByQuery } from "../lib/palette";
 import { localDate } from "../lib/taskForm";
@@ -84,6 +85,7 @@ export function CommandPalette({
     };
   }, []);
 
+  const { features } = useFeatures();
   const entries = useMemo<Entry[]>(() => {
     const go = (to: string) => () => {
       onClose();
@@ -121,8 +123,11 @@ export function CommandPalette({
       });
     }
 
+    const pages = features.ttrpg
+      ? [...PALETTE_PAGES, { to: TTRPG_NAV_ITEM.to, label: TTRPG_NAV_ITEM.label }]
+      : PALETTE_PAGES;
     const commands = [
-      ...PALETTE_PAGES.map((item) => ({
+      ...pages.map((item) => ({
         id: `go-${item.to}`,
         group: "Commands",
         label: `Go to ${item.label}`,
@@ -249,6 +254,7 @@ export function CommandPalette({
     onToggleSidebar,
     onSignOut,
     reloadProjects,
+    features.ttrpg,
   ]);
 
   // A new list starts on its best match; with only "create" entries nothing is active.
