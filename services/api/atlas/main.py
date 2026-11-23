@@ -22,6 +22,7 @@ from .api import (
     changes_router,
     devices_router,
     export_router,
+    features_router,
     folders_router,
     health_router,
     instance_router,
@@ -34,6 +35,7 @@ from .api import (
     sync_wait_router,
     system_update_router,
     tasks_router,
+    ttrpg_router,
 )
 from .api.sync_gate import sync_error_response, sync_gate
 from .calendar import oauth
@@ -145,6 +147,8 @@ def create_app() -> FastAPI:
     app.include_router(notifications_router)
     app.include_router(reminders_router)
     app.include_router(export_router)
+    app.include_router(features_router)
+    app.include_router(ttrpg_router)
     app.include_router(instance_router)
     app.include_router(system_update_router)
 
