@@ -15,13 +15,31 @@ SESSION_HEADINGS = (
 )
 
 
+def _sections(*items: tuple[str, str | None]) -> list[str]:
+    """Headings, each with an optional one-line prompt in italics, as lines of Markdown."""
+    lines: list[str] = []
+    for heading, hint in items:
+        lines += [f"## {heading}", ""]
+        if hint:
+            lines += [f"*{hint}*", ""]
+    return lines
+
+
 def home_note(title: str, book_title: str | None) -> str:
     lines = [f"# {title}", ""]
     if book_title:
         lines += [f"Book: {book_title}", ""]
+    lines += _sections(
+        ("Premise", "The pitch in two or three sentences: who the party are and what is at stake."),
+        (
+            "Tone and table rules",
+            "Themes, content lines, house rules, how the group likes to play.",
+        ),
+        ("The party", "Who is at the table, with a one-line hook for each character."),
+        ("Open threads", "Mysteries, promises, debts and villains' plans that are still moving."),
+        ("Factions and key NPCs", "Who wants what. Link the NPC notes here."),
+    )
     lines += [
-        "## Overview",
-        "",
         "## Sessions",
         "",
         "Session notes live in the `Sessions/` folder; NPC and location notes go in `NPCs/` and",
@@ -29,6 +47,45 @@ def home_note(title: str, book_title: str | None) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+def npc_note(name: str) -> str:
+    return "\n".join(
+        [
+            f"# {name}",
+            "",
+            "Role: · Where: · Attitude:",
+            "",
+            *_sections(
+                ("Who they are", "Look, voice, manner: what the players notice first."),
+                ("What they want", "Their goal, and what they would do to get it."),
+                ("Secrets", "What they hide, and who else knows."),
+                ("Relationships", "Allies, rivals and debts. Link other notes."),
+                ("Stats", "Link or name the creature card to use, with any changes."),
+                ("Notes", None),
+            ),
+        ]
+    )
+
+
+def location_note(name: str) -> str:
+    return "\n".join(
+        [
+            f"# {name}",
+            "",
+            *_sections(
+                ("What it looks like", "Sights, sounds and smells on arrival."),
+                ("Who is here", "Inhabitants and creatures; link their notes."),
+                ("Secrets and hazards", "Hidden doors, traps, treasure, what is not as it seems."),
+                ("Connected to", "Exits, nearby places and the threads that lead here."),
+                ("Notes", None),
+            ),
+        ]
+    )
+
+
+def plain_note(name: str) -> str:
+    return "\n".join([f"# {name}", "", "## Notes", ""])
 
 
 def session_note(title: str, left_off: str | None = None) -> str:

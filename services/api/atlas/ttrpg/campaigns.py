@@ -33,7 +33,15 @@ from ..notes import (
     UnsafePathError,
     normalize_rel_path,
 )
-from .templates import HANDOFF_HEADING, extract_section, home_note, session_note
+from .templates import (
+    HANDOFF_HEADING,
+    extract_section,
+    home_note,
+    location_note,
+    npc_note,
+    plain_note,
+    session_note,
+)
 
 MAX_TITLE = 200
 DEFAULT_ROOT = "TTRPG"
@@ -397,18 +405,13 @@ class CampaignService:
         if campaign.archived_at is not None:
             raise CampaignValidationError("an archived campaign cannot get new notes")
         name = _clean_title(title)
-        folder, sections = {
-            "npc": (f"{campaign.folder}/{NPC_DIR}", ("Who they are", "What they want", "Notes")),
-            "location": (
-                f"{campaign.folder}/{LOCATION_DIR}",
-                ("What it looks like", "Who is here", "Notes"),
-            ),
-            "note": (campaign.folder, ("Notes",)),
+        folder, make = {
+            "npc": (f"{campaign.folder}/{NPC_DIR}", npc_note),
+            "location": (f"{campaign.folder}/{LOCATION_DIR}", location_note),
+            "note": (campaign.folder, plain_note),
         }[kind]
         path = await self._unused_path(f"{folder}/{safe_name(name, 'Untitled')}")
-        content = "\n".join(
-            [f"# {name}", ""] + [line for h in sections for line in (f"## {h}", "")]
-        )
+        content = make(name)
         created = await self.notes.create(path, content)
         return CampaignNote(
             created.id,
