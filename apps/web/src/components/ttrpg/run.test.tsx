@@ -247,6 +247,19 @@ describe("RunPage", () => {
     expect(await screen.findByText("Ended: Won.")).toBeInTheDocument();
   });
 
+  it("opens the rule for a condition in the rules pane, and has a Rules switch for phones", async () => {
+    api.run.mockResolvedValue(
+      run({ combatants: [brenna, combatant({ conditions: ["poisoned"] })] }),
+    );
+    page();
+    await screen.findByRole("heading", { name: "Goblin ambush" });
+    fireEvent.click(screen.getByRole("button", { name: "Read the rule for poisoned" }));
+    const pane = document.querySelector('[data-pane="rules"]') as HTMLElement;
+    await waitFor(() => expect(within(pane).getByText("Poisoned").closest("details")!.open).toBe(true));
+    expect(within(pane).getByText(/disadvantage on attack rolls and ability checks/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rules" })).toBeInTheDocument();
+  });
+
   it("shows condition reminders, death saves at 0 HP and resource buttons", async () => {
     api.run.mockResolvedValue(
       run({

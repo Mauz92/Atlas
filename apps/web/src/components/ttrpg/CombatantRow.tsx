@@ -7,10 +7,12 @@ type Props = {
   combatant: RunCombatant;
   busy: boolean;
   act: (body: RunActionBody, failure: string) => Promise<boolean>;
+  /** Open this rule in the rules pane (a condition's name). */
+  onRule?: (ruleId: string) => void;
 };
 
 /** One combatant of a running fight: stats, quick HP changes, conditions, defeat and removal. */
-export function CombatantRow({ run, combatant: c, busy, act }: Props) {
+export function CombatantRow({ run, combatant: c, busy, act, onRule }: Props) {
   const [amount, setAmount] = useState("");
   const [condition, setCondition] = useState("");
   const [until, setUntil] = useState("");
@@ -58,7 +60,13 @@ export function CombatantRow({ run, combatant: c, busy, act }: Props) {
         <ul className="ttrpg-chips" aria-label={`Conditions of ${c.name}`}>
           {c.conditions.map((name) => (
             <li key={name}>
-              {name}
+              {onRule ? (
+                <button type="button" className="ghost" aria-label={`Read the rule for ${name}`} onClick={() => onRule(name)}>
+                  {name}
+                </button>
+              ) : (
+                name
+              )}
               {c.condition_reminders[name] ? ` (until round ${c.condition_reminders[name]})` : ""}
               <button
                 type="button"

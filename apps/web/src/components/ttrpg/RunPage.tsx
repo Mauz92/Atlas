@@ -14,6 +14,7 @@ import { useNoteAutosave } from "../../hooks/useNoteAutosave";
 import { readEditorMode } from "../../lib/notesPrefs";
 import { LoadError } from "../LoadError";
 import { NoteEditor } from "../NoteEditor";
+import { RulesBrowser } from "./RulesBrowser";
 import { Skeleton } from "../Skeleton";
 import { CombatantRow } from "./CombatantRow";
 import { SetupPanel } from "./SetupPanel";
@@ -46,7 +47,10 @@ export function RunPage() {
   const [failure, setFailure] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState<"notes" | "combat">("combat");
+  const [view, setView] = useState<"notes" | "combat" | "rules">("combat");
+  const [ruleId, setRuleId] = useState<string | null>(null);
+  // a new object each time, so reading the same rule twice still scrolls to it
+  const [ruleTick, setRuleTick] = useState(0);
   const [note, setNote] = useState<NoteDetail | null>(null);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [campaignTitle, setCampaignTitle] = useState("");
@@ -207,6 +211,9 @@ export function RunPage() {
         <button type="button" aria-pressed={view === "combat"} onClick={() => setView("combat")}>
           Combat
         </button>
+        <button type="button" aria-pressed={view === "rules"} onClick={() => setView("rules")}>
+          Rules
+        </button>
       </div>
 
       <div className="ttrpg-play-panes">
@@ -296,7 +303,18 @@ export function RunPage() {
           {run.status !== "setup" && (
             <ul className="ttrpg-combatants">
               {rows.map((c) => (
-                <CombatantRow key={c.id} run={run} combatant={c} busy={busy} act={act} />
+                <CombatantRow
+                  key={c.id}
+                  run={run}
+                  combatant={c}
+                  busy={busy}
+                  act={act}
+                  onRule={(id) => {
+                    setRuleId(id);
+                    setRuleTick((n) => n + 1);
+                    setView((current) => (window.matchMedia?.("(max-width: 1100px)").matches ? "rules" : current));
+                  }}
+                />
               ))}
             </ul>
           )}
@@ -310,6 +328,11 @@ export function RunPage() {
               </li>
             ))}
           </ol>
+        </div>
+
+        <div className="ttrpg-play-rules" data-pane="rules">
+          <h2>Rules</h2>
+          <RulesBrowser key={ruleTick} focusId={ruleId} compact groupLevel={3} />
         </div>
       </div>
     </section>

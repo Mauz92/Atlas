@@ -72,12 +72,20 @@ export const TTRPG_NAV_ITEM: NavItem = {
   group: "projects",
 };
 
+/** The rules reference (static SRD text), listed with the TTRPG entry while the module is on. */
+export const TTRPG_RULES_NAV_ITEM: NavItem = {
+  to: "/ttrpg/rules",
+  label: "Rules",
+  icon: "book-open",
+  group: "projects",
+};
+
 /** The sidebar sections for the caller's enabled optional features. */
 export function navSectionsFor(features: { ttrpg: boolean }): NavSection[] {
   if (!features.ttrpg) return NAV_SECTIONS;
   return NAV_SECTIONS.map((section) =>
     section.id === "workspace"
-      ? { ...section, items: [...section.items, TTRPG_NAV_ITEM] }
+      ? { ...section, items: [...section.items, TTRPG_NAV_ITEM, TTRPG_RULES_NAV_ITEM] }
       : section,
   );
 }

@@ -2,6 +2,7 @@ import { Link, Route, Routes } from "react-router-dom";
 
 import { CampaignList } from "../components/ttrpg/CampaignList";
 import { CreatureLibrary } from "../components/ttrpg/CreatureLibrary";
+import { RulesPage } from "../components/ttrpg/RulesPage";
 import { RunPage } from "../components/ttrpg/RunPage";
 import { EncounterPage } from "../components/ttrpg/EncounterPage";
 import { CampaignPage } from "../components/ttrpg/CampaignPage";
@@ -33,6 +34,7 @@ export function Ttrpg() {
       <Route index element={<CampaignList />} />
       <Route path="runs/:runId" element={<RunPage />} />
       <Route path="encounters/:encounterId" element={<EncounterPage />} />
+      <Route path="rules" element={<RulesPage />} />
       <Route path="creatures" element={<CreatureLibrary />} />
       <Route path=":campaignId" element={<CampaignPage />} />
     </Routes>

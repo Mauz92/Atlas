@@ -28,7 +28,9 @@ describe("optional features (TTRPG-01)", () => {
     expect(navSectionsFor({ ttrpg: false })).toBe(NAV_SECTIONS);
     const on = navSectionsFor({ ttrpg: true });
     expect(on.flatMap((section) => section.items).map((item) => item.to)).toContain("/ttrpg");
+    expect(on.flatMap((section) => section.items).map((item) => item.to)).toContain("/ttrpg/rules");
     expect(NAV_SECTIONS.flatMap((section) => section.items).map((item) => item.to)).not.toContain("/ttrpg");
+    expect(NAV_SECTIONS.flatMap((section) => section.items).map((item) => item.to)).not.toContain("/ttrpg/rules");
   });
 
   it("the route shows only how to enable it while the module is off", async () => {

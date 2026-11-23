@@ -33,7 +33,7 @@ export function CampaignList() {
     <section className="page ttrpg-page">
       <h1>TTRPG</h1>
       <p>
-        <Link to="/ttrpg/creatures">Creature library</Link>
+        <Link to="/ttrpg/creatures">Creature library</Link> · <Link to="/ttrpg/rules">Rules reference</Link>
       </p>
       <NewCampaign onCreated={load} />
       <label className="settings-switch">

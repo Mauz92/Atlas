@@ -300,6 +300,41 @@ test("a deleted session note can be repaired by linking another note", async ({ 
   await axe(page, "campaign page after repair");
 });
 
+test("the rules reference works on its own page and from a condition in a fight", async ({ page }) => {
+  await ensureOwner(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const nav = page.getByRole("navigation", { name: "Main navigation" });
+  await nav.getByRole("link", { name: "Rules" }).click();
+  await expect(page.getByRole("heading", { name: "Rules reference", level: 1 })).toBeVisible();
+  await page.getByLabel("Search the rules").fill("three-quarters");
+  await expect(page.getByText("Cover", { exact: true })).toBeVisible();
+  await expect(page.getByText(/\+5 bonus to AC and Dexterity saving throws/)).toBeVisible();
+  await expect(page.getByText(/System Reference Document 5\.1/).first()).toBeVisible();
+  await axe(page, "rules reference");
+  // a link to one rule opens it
+  await page.goto("/ttrpg/rules?rule=prone");
+  await expect(page.getByText(/only movement option is to crawl/)).toBeVisible();
+
+  // inside a fight: a condition opens its rule beside the tracker
+  const cid = await campaignId(page);
+  const encounters = await apiCall<{ items: { id: string }[] }>(page, "GET", `/api/ttrpg/campaigns/${cid}/encounters`);
+  const run = await apiCall<{ id: string; revision: number; combatants: { id: string; name: string }[] }>(
+    page, "POST", `/api/ttrpg/campaigns/${cid}/runs`, { encounter_id: encounters.items[0].id });
+  const totals = Object.fromEntries(run.combatants.map((c, i) => [c.id, 20 - i]));
+  const setup = await apiCall<{ revision: number }>(page, "PATCH", `/api/ttrpg/runs/${run.id}/setup`, { base_revision: run.revision, initiative: totals });
+  const started = await apiCall<{ revision: number; combatants: { id: string; name: string; party_member_id: string | null; party_revision: number | null }[] }>(
+    page, "POST", `/api/ttrpg/runs/${run.id}/start`, { base_revision: setup.revision });
+  const npc = started.combatants.find((c) => !c.party_member_id)!;
+  await apiCall(page, "POST", `/api/ttrpg/runs/${run.id}/actions`, { kind: "add_condition", combatant_id: npc.id, condition: "poisoned", base_revision: started.revision, mutation_key: "rules-e2e-poisoned-0001" });
+  await page.goto(`/ttrpg/runs/${run.id}`);
+  await page.getByRole("button", { name: "Read the rule for poisoned" }).click();
+  await expect(page.locator('[data-pane="rules"]').getByText(/disadvantage on attack rolls and ability checks/)).toBeVisible();
+  await axe(page, "fight with the rules pane");
+  await page.getByLabel(/How did it end/).fill("Rules test.");
+  await page.getByRole("button", { name: "End the fight" }).click();
+  await expect(page.getByRole("status").first()).toContainText("Ended");
+});
+
 test("on a phone the notes and the combat tracker switch without losing what was typed", async ({ page }) => {
   await ensureOwner(page);
   await page.setViewportSize({ width: 390, height: 844 });

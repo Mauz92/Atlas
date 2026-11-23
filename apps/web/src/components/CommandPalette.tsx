@@ -8,7 +8,7 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useProjects } from "../hooks/useProjects";
 import { useUnifiedSearch } from "../hooks/useUnifiedSearch";
 import { useFeatures } from "../lib/features";
-import { PALETTE_PAGES, TTRPG_NAV_ITEM } from "../lib/navigation";
+import { PALETTE_PAGES, TTRPG_NAV_ITEM, TTRPG_RULES_NAV_ITEM } from "../lib/navigation";
 import { SHEET_QUERY } from "../lib/phone";
 import { rankByQuery } from "../lib/palette";
 import { localDate } from "../lib/taskForm";
@@ -124,7 +124,11 @@ export function CommandPalette({
     }
 
     const pages = features.ttrpg
-      ? [...PALETTE_PAGES, { to: TTRPG_NAV_ITEM.to, label: TTRPG_NAV_ITEM.label }]
+      ? [
+          ...PALETTE_PAGES,
+          { to: TTRPG_NAV_ITEM.to, label: TTRPG_NAV_ITEM.label },
+          { to: TTRPG_RULES_NAV_ITEM.to, label: "TTRPG rules reference" },
+        ]
       : PALETTE_PAGES;
     const commands = [
       ...pages.map((item) => ({
