@@ -43,7 +43,8 @@ test("the module is off by default and appears only after it is switched on", as
   await ensureOwner(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   const nav = page.getByRole("navigation", { name: "Main navigation" });
-  await expect(nav.getByRole("link", { name: "TTRPG" })).toHaveCount(0);
+  await expect(nav.getByRole("link", { name: "Campaigns" })).toHaveCount(0);
+  await expect(nav.getByText("TTRPG", { exact: true })).toHaveCount(0);
   await page.goto("/ttrpg");
   await expect(page.getByText("This module is off.")).toBeVisible();
   const direct = await apiCall<unknown>(page, "GET", "/api/ttrpg/campaigns").catch((err: Error) => err.message);
@@ -54,7 +55,9 @@ test("the module is off by default and appears only after it is switched on", as
   await expect(toggle).not.toBeChecked();
   await toggle.click();
   await expect(toggle).toBeChecked();
-  await expect(nav.getByRole("link", { name: "TTRPG" })).toBeVisible();
+  // TTRPG is a sidebar category of its own with three entries
+  await expect(nav.getByText("TTRPG", { exact: true })).toBeVisible();
+  for (const name of ["Campaigns", "Creatures", "Rules"]) await expect(nav.getByRole("link", { name })).toBeVisible();
   await axe(page, "Settings > Plugins");
   // enablement alone creates nothing
   await page.goto("/ttrpg");
@@ -403,7 +406,7 @@ test("switching the module off hides it and keeps the campaign; switching on res
   await page.goto("/settings/plugins");
   await page.getByRole("switch", { name: /TTRPG/ }).click();
   await expect(page.getByRole("switch", { name: /TTRPG/ })).not.toBeChecked();
-  await expect(page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "TTRPG" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Campaigns" })).toHaveCount(0);
   await page.goto(`/ttrpg/${cid}`);
   await expect(page.getByText("This module is off.")).toBeVisible();
   // a full export still holds the campaign: disabling hides the module, never the data

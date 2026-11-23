@@ -27,6 +27,11 @@ describe("optional features (TTRPG-01)", () => {
   it("is off by default in the navigation", () => {
     expect(navSectionsFor({ ttrpg: false })).toBe(NAV_SECTIONS);
     const on = navSectionsFor({ ttrpg: true });
+    // TTRPG is a category of its own, right after Workspace, with Campaigns, Creatures and Rules
+    expect(on.map((section) => section.id)).toEqual(["planning", "workspace", "ttrpg", "more"]);
+    expect(on.find((section) => section.id === "ttrpg")).toMatchObject({ label: "TTRPG" });
+    expect(on.find((section) => section.id === "ttrpg")!.items.map((item) => item.label)).toEqual(["Campaigns", "Creatures", "Rules"]);
+    expect(on.find((section) => section.id === "workspace")!.items.map((item) => item.to)).not.toContain("/ttrpg");
     expect(on.flatMap((section) => section.items).map((item) => item.to)).toContain("/ttrpg");
     expect(on.flatMap((section) => section.items).map((item) => item.to)).toContain("/ttrpg/rules");
     expect(NAV_SECTIONS.flatMap((section) => section.items).map((item) => item.to)).not.toContain("/ttrpg");

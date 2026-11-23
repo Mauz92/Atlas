@@ -64,30 +64,22 @@ export const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
-/** The optional TTRPG entry (TTRPG-01); shown only while the feature is on. */
-export const TTRPG_NAV_ITEM: NavItem = {
-  to: "/ttrpg",
-  label: "TTRPG",
-  icon: "dices",
-  group: "projects",
-};
+/** The optional TTRPG entries: their own sidebar category, shown only while the module is on. */
+export const TTRPG_NAV_ITEMS: NavItem[] = [
+  { to: "/ttrpg", label: "Campaigns", icon: "dices", group: "projects" },
+  { to: "/ttrpg/creatures", label: "Creatures", icon: "skull", group: "projects" },
+  { to: "/ttrpg/rules", label: "Rules", icon: "book-open", group: "projects" },
+];
 
-/** The rules reference (static SRD text), listed with the TTRPG entry while the module is on. */
-export const TTRPG_RULES_NAV_ITEM: NavItem = {
-  to: "/ttrpg/rules",
-  label: "Rules",
-  icon: "book-open",
-  group: "projects",
-};
+export const TTRPG_SECTION: NavSection = { id: "ttrpg", label: "TTRPG", items: TTRPG_NAV_ITEMS };
 
-/** The sidebar sections for the caller's enabled optional features. */
+/** The sidebar sections for the caller's enabled optional features: TTRPG is a category of its own. */
 export function navSectionsFor(features: { ttrpg: boolean }): NavSection[] {
   if (!features.ttrpg) return NAV_SECTIONS;
-  return NAV_SECTIONS.map((section) =>
-    section.id === "workspace"
-      ? { ...section, items: [...section.items, TTRPG_NAV_ITEM, TTRPG_RULES_NAV_ITEM] }
-      : section,
-  );
+  const at = NAV_SECTIONS.findIndex((section) => section.id === "workspace");
+  const sections = [...NAV_SECTIONS];
+  sections.splice(at < 0 ? sections.length : at + 1, 0, TTRPG_SECTION);
+  return sections;
 }
 
 /** Every page in sidebar order (what the palette offers as "Go to …"). */
@@ -128,6 +120,10 @@ export function activeNavKey(pathname: string, listedProjectIds: readonly string
   if (project) {
     const id = decodeURIComponent(project[1]);
     return listedProjectIds.includes(id) ? projectNavKey(id) : "/projects";
+  }
+  // Every TTRPG page belongs to the TTRPG category: its own page when it has one, else Campaigns.
+  if (path === "/ttrpg" || path.startsWith("/ttrpg/")) {
+    return TTRPG_NAV_ITEMS.some((item) => item.to === path) ? path : "/ttrpg";
   }
   return NAV_ITEMS.some((item) => item.to === path) ? path : null;
 }
