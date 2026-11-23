@@ -26,7 +26,7 @@ SYNC-03; **[PLANNED]** specified, owned by a later task; **[UNVERIFIED]** not ch
 | §7 resync and restore: server side (`below_floor`, `cursor_ahead`, snapshot, `epoch`, `atlas-admin record-restore`) | **[DONE]** | client behaviour (7.3 shadow walk, 7.4 confirmation, 7.5 storm control) is modelled by the simulation client, **[PLANNED]** in `sync-core` (SYNC-08); per-device rate limits need device ids (SYNC-06) |
 | §8 errors | **[DONE]** | `401 unauthenticated`/`token_revoked`/`token_expired`, `403 forbidden_scope`, `429 rate_limited` per device (SYNC-06) |
 | §9 resolution log, `resolution` feed entity, list, undo | **[DONE]** SYNC-05 | ADR-0061; table `sync_resolutions`; refused deletes are not logged (nothing was written); `device_id` is filled from SYNC-06 on (`NULL` for a browser session) |
-| §10.1 devices | **[DONE]** SYNC-06 | ADR-0065; table `devices`; per-device rate limits are 600 requests and 120 writes a minute; the feed-page (60/min) and snapshot-start (10/hour) limits of §8.3 are **not built** (R-53) |
+| §10.1 devices | **[DONE]** SYNC-06; ADR-0084 adds `GET /api/features` and the optional TTRPG module routes to the device-open list (online-only, not part of the sync feed) | ADR-0065; table `devices`; per-device rate limits are 600 requests and 120 writes a minute; the feed-page (60/min) and snapshot-start (10/hour) limits of §8.3 are **not built** (R-53) |
 | §10.2 versioning: `Atlas-Sync`, `426`, `GET /api/instance` `sync` block, `Atlas-Epoch` | **[DONE]** | |
 | §11 desktop folder rules | client obligations, **[PLANNED]** SYNC-09 | portable-path check is in `sync-core` (`portable.ts`); the folder watcher/scanner is SYNC-09 |
 

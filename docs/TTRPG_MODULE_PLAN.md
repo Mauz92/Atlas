@@ -1,6 +1,6 @@
 # Atlas TTRPG module implementation plan
 
-**Status:** Planned. This document is the implementation handoff. Read [AGENTS.md](../AGENTS.md) and the [roadmap](ROADMAP.md) first. Reconcile the delivery sequence below with the current milestone, track implementation task status in the roadmap, and record actual verification in [ACCEPTANCE.md](ACCEPTANCE.md). Confirm proposed integration points against the current checkout before writing code.
+**Status:** Implemented locally (TTRPG-01 to TTRPG-07, 2026-11-23; not committed, CI not run). Verification and the deviations from this plan are in [ACCEPTANCE.md](ACCEPTANCE.md) and ADR-0081 to ADR-0084; the roadmap tracks the tasks. This document was the implementation handoff. Read [AGENTS.md](../AGENTS.md) and the [roadmap](ROADMAP.md) first. Reconcile the delivery sequence below with the current milestone, track implementation task status in the roadmap, and record actual verification in [ACCEPTANCE.md](ACCEPTANCE.md). Confirm proposed integration points against the current checkout before writing code.
 
 ## Product goal
 
@@ -69,7 +69,7 @@ Manual cards work with a name, AC, and HP at minimum. Allow duplication of a car
 
 ## Delivery sequence and acceptance criteria
 
-All stages are planned. Implement focused vertical slices and keep the feature off by default throughout development.
+All stages are implemented (see the roadmap). Implement focused vertical slices and keep the feature off by default throughout development.
 
 | ID | Depends on | Deliverable and verification |
 | --- | --- | --- |

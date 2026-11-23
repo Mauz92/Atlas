@@ -17,6 +17,7 @@ import { RecoveryCodeSetup } from "./pages/RecoveryCodeSetup";
 import { SearchPage } from "./pages/Search";
 import { Settings } from "./pages/Settings";
 import { Setup } from "./pages/Setup";
+import { Ttrpg } from "./pages/Ttrpg";
 import { Tasks } from "./pages/Tasks";
 import { Today } from "./pages/Today";
 import { Upcoming } from "./pages/Upcoming";
@@ -78,6 +79,7 @@ export default function App() {
               </Suspense>
             }
           />
+          <Route path="/ttrpg/*" element={<Ttrpg />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/settings/:section" element={<Settings />} />
         </Route>

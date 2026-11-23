@@ -46,6 +46,7 @@ from .. import __version__
 from ..models import NoteIndex, NoteLink, NoteProject, NoteTag, Project, Tag, Task
 from ..notes import NotesStorage
 from ..projects import ZERO_PROGRESS, ProjectExport, ProjectsService, build_document
+from ..ttrpg.export import TTRPG_FILENAME, collect_ttrpg_document
 from . import document as doc
 from .verify import ExportVerification, verify_export_set
 
@@ -85,6 +86,8 @@ class _Collected:
     tags: Mapping[uuid.UUID, Sequence[str]]
     links: Mapping[uuid.UUID, Sequence[tuple[str, uuid.UUID | None]]]
     projects_by_note: Mapping[uuid.UUID, Sequence[uuid.UUID]]
+    #: the optional TTRPG document and its counts (``None`` for an owner without TTRPG data)
+    ttrpg: tuple[dict[str, Any], dict[str, int]] | None = None
 
 
 def zip_export_set(directory: str | Path, fileobj: IO[bytes], *, root: str | None = None) -> int:
@@ -167,6 +170,18 @@ class ExportService:
             data_bytes = _json_bytes(data_document)
             (target / doc.DATA_FILENAME).write_bytes(data_bytes)
 
+            ttrpg_files: list[dict[str, Any]] = []
+            ttrpg_counts: dict[str, int] = {}
+            if collected.ttrpg is not None:
+                ttrpg_document, ttrpg_counts = collected.ttrpg
+                ttrpg_bytes = _json_bytes(ttrpg_document)
+                (target / TTRPG_FILENAME).write_bytes(ttrpg_bytes)
+                ttrpg_files.append(
+                    doc.file_record(
+                        TTRPG_FILENAME, sha256=_sha256(ttrpg_bytes), size=len(ttrpg_bytes)
+                    )
+                )
+
             files = [
                 doc.file_record(
                     doc.DATA_FILENAME,
@@ -179,6 +194,7 @@ class ExportService:
                     size=len(index_bytes),
                 ),
                 *note_files,
+                *ttrpg_files,
             ]
             total_tasks = sum(len(entry.tasks) for entry in collected.entries) + len(
                 collected.unfiled_tasks
@@ -195,6 +211,7 @@ class ExportService:
                     "note_project_links": sum(
                         len(ids) for ids in collected.projects_by_note.values()
                     ),
+                    **ttrpg_counts,
                 },
             )
             doc.write_manifest(target / doc.MANIFEST_NAME, manifest)
@@ -259,7 +276,9 @@ class ExportService:
             )
             for project in projects
         ]
+        ttrpg = await collect_ttrpg_document(self.session, self.user_id, generated_at=self._now())
         return _Collected(
+            ttrpg=ttrpg,
             projects=projects,
             entries=entries,
             unfiled_tasks=unfiled,

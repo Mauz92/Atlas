@@ -57,6 +57,13 @@ export const SETTINGS_SECTIONS = [
       "Take your notes, tasks and projects with you, and see whether backups are running.",
   },
   {
+    id: "plugins",
+    label: "Plugins",
+    palette: "Plugins",
+    description:
+      "Optional modules that are bundled with Atlas and off by default. Turning one off hides it and keeps everything you created, ready for when you turn it back on.",
+  },
+  {
     id: "about",
     label: "About",
     palette: "About Atlas",
@@ -87,6 +94,7 @@ const BROWSER_ONLY_SECTIONS: ReadonlySet<string> = new Set([
   "calendar",
   "devices",
   "data",
+  "plugins",
 ]);
 
 export type SettingsSectionId =

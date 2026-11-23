@@ -4240,3 +4240,139 @@ Scope per ADR-0077 (Windows, macOS and iOS are out). Vocabulary: `PASS`, `FAIL`,
 | Migration | `PASS` | `b7d4e1a8c5f3` adds two nullable columns; the whole integration suite runs on it; downgrade drops them (documented data loss: stored files) |
 | Not done | | real-world export files from the four vendors; a per-user storage quota |
 | Full backend suite with this change | `PASS` | `pytest` **4770 passed, 14 skipped** (2026-11-13, 8 min on a quiet machine); `ruff`, `ruff format --check`, `mypy` clean; `npm run lint`, `typecheck`, `test` (1567) clean |
+
+## TTRPG-01 — Feature switch, guarded API and shell route (2026-11-23, `IN_REVIEW`)
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Default off for a fresh account and for an existing account | `PASS` | `test_features.py::test_a_fresh_account_has_ttrpg_off...` (no row is created by reading); `test_features_migration.py` (account present before `e1f7a3c9d5b2` has no features after; downgrade keeps users; down/up) |
+| Protected direct access | `PASS` | `/api/ttrpg/status` is 401 anonymous, 404 while off, 200 when on; another account's switch does not leak |
+| Retention after toggling | `PASS` | disabling keeps the `user_features` row (`enabled=false`) and re-enabling restores access; no feature data exists yet to lose (revisit in TTRPG-02) |
+| Switching is safe | `PASS` | idempotent PUT, CSRF required, unknown feature 404, bad body 422 |
+| UI: Settings > Plugins switch, hidden nav entry, route shows how to enable | `PASS` | `features.test.tsx` (4); `navSectionsFor`; failed load counts as off |
+| Checks | `PASS` (ruff, format, mypy, ESLint 0 errors, tsc, `vitest` for touched areas) | full web run earlier: 1569 passed with the 2 expected section-list updates then fixed |
+| Not done / unverified | | real-stack Playwright; desktop/phone shells (the routes are browser-only, so they show the module as off until TTRPG-07 opens a read endpoint) |
+
+## TTRPG-02 — Campaigns and sessions linked through the note service (2026-11-23, `IN_REVIEW`)
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Creation scaffolds real Markdown (home note, first session with the five headings) through `NotesService`; enabling the module creates nothing | `PASS` | `test_ttrpg_campaigns.py::test_creating_a_campaign_scaffolds...`, `::test_enabling_the_feature_creates_no_campaign_or_notes` |
+| Retry after a partial scaffold failure does not duplicate or overwrite | `PASS` | a simulated crash after the home file was written rolls the transaction back; the retry (same `id`) adopts the leftover file, keeps text a person typed into it and completes the session; exactly two index rows. Same-id retry of a finished create returns 200 with nothing new |
+| Note move keeps the association | `PASS` | `test_notes_keep_their_association_through_a_move` (id stable, path follows) |
+| Missing-note repair | `PASS` | deleted notes are `missing: true`; relink to an existing note, or recreate at the standard path; healthy, duplicate and foreign links are refused (400/404) |
+| Ownership checks | `PASS` | every route 404 for another account and while the module is off; foreign client id is 409 without detail |
+| Handoff | `PASS` | the previous session's "Next session" text is returned with the next session and copied into its "Where we left off"; `extract_section` unit-tested (levels, fences, absence) |
+| Concurrency/validation | `PASS` | revision-checked PATCHes (409 with current revision), one active session per campaign, unique folder per owner, traversal/absolute/reserved folders refused (found and fixed: `/abs` was accepted), archived campaigns take no sessions |
+| Migration `f2c8b4d6e1a3` | `PASS` | `test_ttrpg_migration.py`: empty start, constraints, `ON DELETE SET NULL`, downgrade keeps users and notes; documented data loss on downgrade: campaign and session rows |
+| UI | `PASS` | `ttrpg.test.tsx` (6): list/empty/create with one id kept across a failed attempt, note links by id, missing note recreate, new session, status, 409 reload, archive |
+| Not done | | real-stack Playwright; existing-note picker for relink in the UI (API supports it); notes-folder choice UI is a free-text field |
+
+## TTRPG-03 — Party reference cards and persistent play state (2026-11-23, `IN_REVIEW`)
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Validation | `PASS` | `test_ttrpg_party.py::test_invalid_cards...` (13 invalid cards: blank name, AC/level/HP/initiative ranges, role, unknown field, bad/duplicate resource keys, attack limits) all 422 with nothing stored; state corrections reject unknown conditions/resources, HP above max, negative temp HP, 4 death saves, saves above 0 HP |
+| Rules arithmetic | `PASS` | `tests/unit/test_ttrpg_rules.py` (13): temp HP absorbs first, never below 0, healing capped, temp HP does not stack, negative amounts refused, rest previews |
+| Concurrent edits | `PASS` | two simultaneous damage calls with the same revision: exactly one 200 and one 409 (current revision returned), damage applied once; stale PATCH/PUT never overwrites; a rest with one stale member changes nobody |
+| Resources | `PASS` | definitions on the card, usage on the state; spend/restore bounded 0..max; removing a resource from a card drops its usage; lowering max HP clamps current HP without resetting the rest of the state; identical card save does not bump the revision |
+| Manual corrections | `PASS` | direct HP, temp HP, conditions (de-duplicated, preset list), exhaustion, death saves, resources, each revision-checked; healing above 0 clears death saves |
+| Confirmed rest adjustments | `PASS` | preview changes nothing; short rest restores short resources only and leaves HP to the DM (hit dice not tracked, said so in the response); long rest restores HP, ends temp HP, clears saves, drops exhaustion one level, restores short/long resources, leaves conditions; DM overrides apply field by field; all-or-none; duplicate or foreign-campaign members refused |
+| Persistence/ownership | `PASS` | state kept between fights and while the module is off; retired members leave the roster and rests but still resolve by id; all routes 404 for another account; a foreign member id cannot be claimed (409) |
+| Migration `a4e0d6f8b3c5` | `PASS` | `test_ttrpg_migration.py`: defaults, check constraints, cascade from campaign, downgrade keeps campaigns (documented loss: all party cards and states) |
+| UI | `PASS` | `party.test.tsx` (9) + campaign tests: card and state, damage/heal with revision, conflict reload message, conditions, spend/restore, death saves only at 0 HP, add with a stable id after a failure, rest preview/override/skip/apply, stale-rest message, retire |
+| Not done | | real-stack Playwright; character-sheet depth is intentionally out of scope (plan); no custom conditions (preset list only) |
+
+## TTRPG-04 — Manual creature cards and one SRD adapter (2026-11-23, `IN_REVIEW`)
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Manual cards need only name, AC, HP; validated; idempotent create; revision-checked edit | `PASS` | `test_ttrpg_creatures.py` (bad cards 422, same-id retry 200, stale 409, unchanged save keeps the revision, wildcard-safe search) |
+| Successful import with source information | `PASS` | provenance (`source`, edition `2014`, external id, attribution text, import time), normalised AC/HP/initiative/CR/actions; attribution also returned with every search |
+| Timeout, outage, redirect, oversized and garbage answers | `PASS` | adapter unit tests and API tests: 502 with a content-free message (no host/body echoed), nothing imported, redirects never followed, manual cards still work, a stale cached index survives an outage |
+| Malformed payload | `PASS` | 16 mutated payloads (missing/wrong-typed AC, HP, name, index, abilities, NaN, bool, out-of-range CR) all refused; nothing half-imported |
+| Repeat import | `PASS` | second import returns the first card and does not call the catalogue; 3 concurrent imports yield one card (partial unique index); owners are independent |
+| Catalogue edits do not change cards silently | `PASS` | an upstream change is invisible until the explicit refresh; refresh is revision-checked, bumps the revision only on change, keeps the card on failure |
+| Imported cards read-only; variants editable | `PASS` | PUT on an SRD card is 400 ("duplicate it"); a variant keeps the attribution and `derived_from_id`; the source stays unchanged |
+| Inert text | `PASS` | control characters stripped, lengths capped, markup stored as text and rendered as text (UI test: no `<img>` created) |
+| Network scope | `PASS` | only `GET /api/2014/monsters[/index]`, never a query string; bad indexes never reach the network; `TTRPG_SRD_ENABLED=false` makes search/import 404 |
+| External calls kept out of CI | `PASS` | fake `httpx.MockTransport` (`tests/fakes/srd_provider.py`) |
+| Migration `b5f1e7a9c4d6` | `PASS` | constraints (source/external id pairing, one SRD import per owner, positive HP) and downgrade checked in `test_ttrpg_migration.py` |
+| UI | `PASS` | `creatures.test.tsx` (7) |
+| Unverified | | provider terms not confirmed on the provider's own pages (see ADR-0082/DEPENDENCIES); real service never contacted from this session; real-stack Playwright |
+
+## TTRPG-05 — Prepared encounters and note launch links (2026-11-23, `IN_REVIEW`)
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Book reference, setup reminder, session, location note, party selection | `PASS` | `test_ttrpg_encounters.py::test_prepare_the_phandelver_ambush`, `::test_party_selection_session_and_location_are_validated` (foreign/retired/unknown members, foreign session, unknown note refused; duplicates removed; a retired member stays visible but flagged; a deleted location note is reported missing) |
+| Repeated monsters | `PASS` | three goblins from one card become independent slots (own name, HP); later batches keep counting; custom entries and allies; names stay distinguishable |
+| Overrides | `PASS` | name/AC/HP/initiative set by hand are recorded per slot (`overrides`) and survive a refresh; other slots unaffected |
+| Custom entries | `PASS` | need name, AC and HP; no card, empty snapshot; invalid specs (9 shapes, 0/61 count, unknown side/field, archived or foreign card) change nothing |
+| Snapshot stability after catalogue/card edits | `PASS` | an upstream change plus an explicit card refresh leaves slots untouched; only the explicit encounter refresh updates non-overridden stats and reports each slot (refreshed/unchanged/no_card/card_archived); an archived or outage-hit card leaves the encounter playable and unchanged |
+| Note launch links | `PASS` | `link-to-note` inserts `- Encounter: [title](/ttrpg/encounters/<id>)` at the end of the session note's Prep section (adds the section if missing, ignores fenced headings, keeps CRLF), once (idempotent), in order; an external edit of the note is a 409 and the file is untouched; needs a session with a live note. The note preview opens `/ttrpg/...` links inside the app (`encounters.test.tsx`; ctrl/shift-click and other links untouched) |
+| Concurrency | `PASS` | every slot/prep write is checked against the encounter revision; two tabs adding with one revision: one 200, one 409, one slot stored |
+| Ownership / disabled | `PASS` | every route 404 for another account and while off; data kept while off |
+| Migration `c6a2f8b0d5e7` | `PASS` | constraints, `ON DELETE SET NULL` on the card (slot keeps its stats), cascade, downgrade keeps campaigns |
+| UI | `PASS` | `encounters.test.tsx` (10) |
+| Found and fixed | | a whitespace-only title was stored as an empty title (now 422) |
+| Launching a run from the prep page | not in this task | TTRPG-06 adds Launch to this page |
+
+## TTRPG-06 — Initiative, combat actions, undo, history, pause and resume (2026-11-23, `IN_REVIEW`)
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Round wrap | `PASS` | unit `test_ttrpg_combat.py` (10) and API `test_turns_advance_wrap_the_round_and_skip_the_defeated`: order Brenna, Goblin 1, Sildar, (defeated Goblin 2 skipped), Goblin 3, then round 2 |
+| Ties | `PASS` | ties listed per equal total in setup; the DM's tie order is honoured; without one, roster position decides; zero and negative totals sort correctly; start refused until everyone has initiative |
+| Removal of active actors | `PASS` | removing the active seat passes the turn to the next eligible one and wraps into the next round; removing the last eligible seat (or defeating the last one and advancing) ends the fight with `end_reason=no_eligible_combatants`; removed combatants take no actions and can be restored |
+| Independent monster HP | `PASS` | three goblins from one slot set damage/heal/temp HP/set HP independently; 0 HP marks `defeated`, healing from 0 revives |
+| Party carry-over | `PASS` | damage, temp HP, conditions, death saves and resources written during a fight are the party panel's state (same row); a second fight reads the same HP/resources/conditions while the new goblins start at full HP and initiative starts over; an improvised fight takes all active members and NPCs added in setup |
+| Refresh recovery | `PASS` | `GET /runs/{id}` after pause equals the screen (round, actor, initiative, HP, conditions, order); the run does not depend on the prep (deleting an encounter slot leaves the run intact) |
+| Duplicate retries | `PASS` | same mutation key and request: replay (`replayed: true`, nothing applied twice, same action number); same key with a different request: 409; an undo retried with its key does not undo a second action |
+| Conflicting edits from another tab | `PASS` | two simultaneous actions on one revision: one 200, one 409 with the current revision, HP applied once, one history row; a party member edited in the party panel after the DM's screen loaded gives `party_stale` (409) and the run does not move; a missing party revision is a 400 |
+| Undo | `PASS` | restores NPC and party effects together (HP, defeated flag, conditions, turn/round, removal, a reinforcement and the order); stack order (two undos undo two actions); history marks undone actions; nothing to undo is a 400; a party edit after the action makes the undo `409 undo_conflict` and keeps the newer state; pausing/resuming does not block undo |
+| Pause, resume, end | `PASS` | paused: actions refused, reload identical, unfinished run listed for the next session and blocks starting another; end records the outcome, keeps history (paged) and the final party state, then frees the campaign; setup can be cancelled |
+| Atomicity | `PASS` | run, combatants, party state and history commit together; a rejected action (stale party, invalid) changes nothing (`revision` and history length unchanged) |
+| Ownership / disabled | `PASS` | all 8 run routes 404 for another account and while the module is off; the run and party state are kept |
+| Migration `d7b3a9c1e6f8` | `PASS` | one unfinished run per campaign enforced, finished runs unlimited, NPC-owns-HP check, unique `(run, seq)` and `(run, key)`, cascade, downgrade keeps campaigns; `test_migrations_match_models` passes |
+| UI | `PASS` | `run.test.tsx` (13): standing and order, note and tracker together with a Notes/Combat switch that keeps the same editor element, party revision and key sent, a failed change kept with the typed amount and retried with the same key, conflict reload, undo and undo-conflict message, pause/resume, end with outcome, reminders, death saves, resources, initiative entry (zero/negative, range), tie ordering |
+| Not done | | real-time push to a second device; real-stack Playwright; the live (CodeMirror) note editor on the combat screen is Source mode, not Live preview |
+
+## TTRPG-07 — Restore, export, mobile layout, accessibility and the complete DM journey (2026-11-23)
+
+| Criterion | Result | Evidence |
+|---|---|---|
+| Backup restores Markdown plus structured campaign state, including paused combat | `PASS` | `test_ttrpg_export_restore.py::test_a_backup_restores_notes_and_campaign_state_including_a_paused_fight`: a real `atlas-backup` set (verified manifest) holds the campaign and session Markdown in `notes.tar.gz`; its `database.sql` restored with `psql` into a scratch database gives the campaign, 2 party members, the paused run (status, round, active combatant), 5 combatants, the action history, Brenna's HP and spent resource, a defeated goblin's HP, and the one-unfinished-run unique index still rejects a second run; the scratch database is dropped |
+| Full export has a readable, versioned representation of structured campaign data | `PASS` | `ttrpg.json` (`atlas.ttrpg-export` v1) in the export set: campaigns, sessions with note paths, party cards and state, creatures with provenance, encounters and slots, runs with combatants and the complete before/after history; in the manifest with checksum and counts; the note files it names are in the same set; SRD attribution present only when SRD cards exist; unchanged set for owners without TTRPG data; included while the module is off; per-owner |
+| Mobile layout | `PASS` | `ttrpg07-game-night.spec.ts`: no sideways scroll at 360, 390, 768 and 1440 px on Plugins settings, the campaign list, campaign, encounter and creature pages; at 390 px the Notes/Combat switch hides one pane at a time and the typed note text is still there after switching (the same editor stays mounted). Found and fixed by this run: a 24 px overflow on the encounter page at 360 px |
+| Accessibility | `PASS` (automated) | axe-core (WCAG 2.0/2.1 A and AA, best practice) is clean on Settings > Plugins, creature library, encounter prep, run setup, run in progress, campaign page, the run at phone width, and each page at four widths. Found and fixed by this run: dimmed defeated combatants failed colour contrast (replaced `opacity` by a dashed border and strikethrough); an encounter "Session" field whose label swallowed its options (now `aria-label`). **Not covered:** screen readers, the phone's on-screen keyboard, real taps (`TESTING.md` §13) |
+| Complete DM journey (game-night acceptance) | `PASS` | `ttrpg07-game-night.spec.ts`, 8 tests in Chromium against the real API and PostgreSQL with the catalogue blocked: module off by default and invisible, direct API 404; campaign + fighter + companion; blocked catalogue fails cleanly and manual cards work; ambush with a book reference, three goblin slots, one override; launch link written into the session note; physical initiative with zero/negative totals and a tie settled by hand (the chosen goblin acts before the companion); refresh midway recovers the same round, actor, HP and resource; undo of a damage action; resource spent; pause, leave, find the unfinished fight, resume, finish with an outcome; a second fight starts with the party at 22/28 and fresh goblins; the next session opens with the handoff ("Follow the wagon tracks to Cragmaw Hideout."); switching the module off hides it, the export still holds the campaign, switching on restores everything |
+| Documentation, attribution and release limits | `PASS` | `USER_GUIDE.md` (new section with the SRD notice and the limits), `CHANGELOG.md`, `DECISIONS.md` ADR-0081..0084, `DEPENDENCIES.md`, `SECURITY.md`, `RISKS.md` R-89..R-92, `OPERATOR_GUIDE.md` (catalogue settings), `DATA_MODEL.md`, `TESTING.md` §13, `OPERATIONS.md` unchanged (the existing procedure restores it) |
+| Defects found by the real browser | fixed | saving one slot field marked name, AC and HP as set by hand (a later refresh would then skip them): now only changed fields are sent; ties were only shown after saving (now from the typed totals); a controlled switch that flips after the server answers |
+| Not done / unverified | | CI (`e2e-real` job) not run; provider terms of the SRD service not confirmed on its own pages (R-89); the desktop and Android apps do not show the module (R-91); no real screen-reader or on-screen-keyboard check |
+
+## TTRPG module: final verification (2026-11-23)
+
+| Check | Result | Command / evidence |
+|---|---|---|
+| Backend lint, format, types | `PASS` | `ruff check .`, `ruff format --check .`, `mypy` (176 source files) |
+| Backend tests | `PASS` | `pytest` in `services/api` against PostgreSQL 17: **4967 passed, 14 skipped, 0 failed** (re-run after the follow-up changes; includes the migration-vs-model check and the device-scope contract) |
+| Web lint, types, tests | `PASS` | `npm run lint` (0 errors, 1 pre-existing warning), `npm run typecheck`, `npm run test`: **1619 passed, 5 skipped** |
+| Real-stack browser suite | `PASS` | `playwright test -c playwright.real.config.ts`: **97 passed** before the follow-up (96 in the full run; the 97th, a 6-minute accent sweep, run alone after the full run's time limit); after it the TTRPG spec (now 10 tests) was re-run alone: 10 passed; the other specs were not re-run |
+| Mocked browser suite | `PASS` | `playwright test`: 12 passed |
+| CI | `NOT RUN` | nothing is committed |
+| Statuses | | TTRPG-01 to TTRPG-07 `DONE` locally in `ROADMAP.md`; the plan's "Game-night acceptance" passes in `ttrpg07-game-night.spec.ts` |
+
+## TTRPG follow-up: closing the known limitations (2026-11-23)
+
+| Item | Result | Evidence |
+|---|---|---|
+| SRD 5.1 notice | `PASS` | compared with the "Legal Information" page of `SRD_CC_v5.1.pdf` (read from the PDF itself): the stored text now matches word for word (it differed only by the curly quotes and parentheses around "SRD 5.1"); `test_srd_adapter.py::test_the_attribution_is_wizards_own_wording_for_srd_5_1` pins it and checks that nothing else about Wizards is claimed. SRD 5.2.1 (2024 rules, different notice) read too: out of scope for v1 |
+| Provider hosting terms (R-89) | Accepted | the 5e-srd-api README publishes no terms, rate limit or caching rule (code is MIT); FAQ pages returned 404. Mitigations and the self-host option recorded; not closable by us |
+| Desktop and Android apps (R-91) | `PASS` (server contract) / not run on a device | `test_devices` contract now lists `features` and `ttrpg` and asserts `PUT /api/features/{feature}` stays browser-only; `test_features.py::test_a_device_reads_the_switches...` (a device reads the switches, uses the module, is refused a switch change, sees the browser's data). The native shells were not run |
+| No push between devices (R-90) | `PASS` | an idle, visible fight screen looks every 5 s and when it becomes visible, never during its own change, stops when the fight ends (`run.test.tsx`, fake timers); real browser: a second tab follows a change on its own (`ttrpg07-game-night.spec.ts`) |
+| History growth (R-92) | `PASS` | `test_ending_a_fight_drops_the_undo_payload_but_keeps_the_readable_history`: before/after cleared and `reversible` false on every action of an ended fight, summaries, numbering and the party's final state kept; live fights keep the payload |
+| Relink to an existing note in the UI | `PASS` | "Link another note" picker (`ttrpg.test.tsx`; real browser repairs a deleted session note and axe stays clean) |
+| Live-preview editor on the combat screen | `PASS` | the notes pane uses the owner's editor mode (Live by default); the phone test types into it |
+| Command palette | `PASS` | "Go to TTRPG" while the module is on |
+| Still not verifiable here | | screen readers and the phone's on-screen keyboard (need a real device); the module inside the native shells on a device; CI |

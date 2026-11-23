@@ -251,6 +251,7 @@ async def test_the_set_of_endpoints_open_to_devices_is_exactly_this() -> None:
         "calendar",
         "changes",
         "devices",
+        "features",
         "folders",
         "instance",
         "notes",
@@ -259,7 +260,14 @@ async def test_the_set_of_endpoints_open_to_devices_is_exactly_this() -> None:
         "search",
         "sync",
         "tasks",
+        "ttrpg",
     }
+    # ADR-0084: devices may read the optional-feature switches (to show or hide a module) but
+    # never change one; the module's own routes are open because it is user content, not account
+    assert {(m, p) for m, p in open_to_devices if p.startswith("/api/features")} == {
+        ("GET", "/api/features")
+    }
+    assert ("PUT", "/api/features/{feature}") in browser_only
     # M8-04a: the reminder actions (snooze/dismiss) and the list are the only reminder routes a
     # device may call; the timing preferences stay browser-only
     assert {p for _m, p in open_to_devices if p.startswith("/api/reminders")} == {

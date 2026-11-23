@@ -182,6 +182,9 @@ export default async function globalSetup() {
       MICROSOFT_CLIENT_SECRET: "fake-client-secret",
       ICS_ALLOW_HTTP: "true",
       ICS_ALLOW_PRIVATE_HOSTS: "true",
+      // TTRPG-07: the monster catalogue is unreachable (a closed local port), so no run touches the
+      // internet and the "catalogue is down" path is the one the journey exercises.
+      TTRPG_SRD_BASE_URL: "http://127.0.0.1:9",
     };
     run(path.join(binDir, "atlas-migrate"), [], apiEnv);
 

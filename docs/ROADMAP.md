@@ -1610,3 +1610,23 @@ Plan, form answers and copy: `PLAY_STORE.md`. Deferred by the owner (no paid dis
 - **Acceptance.** (1) The script produces an APK that `apksigner` reports as signed with the sideload key; (2) it installs over the current app and the phone e2e passes; (3) `--upload` attaches it to a release and the checksum verifies.
 - **Verification so far (2026-11-17).** `release-android.sh 0.1.0` **PASS**: built `Atlas_0.1.0_android-arm64.apk` (9.8 MB), `apksigner verify` true (v2 scheme, one signer `CN=Atlas (self-hosted)`, cert SHA-256 `3663e5f0...86bea8f`); the dry run's other jobs (gate, images, Linux) **PASS**. `--upload` **PASS** (PR #2 merged, CI 5/5; pre-release `android-v0.1.0` carries the APK and `SHA256SUMS`, checksum matches the local file; a pre-release was used because creating `v0.1.0` would trigger the full release pipeline). Manual install from GitHub over the current app (owner) and the phone e2e **NOT RUN**.
 - **Status.** `IN_REVIEW`.
+
+## TTRPG — Optional TTRPG module (plan: `TTRPG_MODULE_PLAN.md`; implemented 2026-11-23, `DONE` locally)
+
+Seven vertical slices, feature off by default throughout. Product decision recorded: ADR-0081 (switches). Work one task at a time; the plan's "Game-night acceptance" is the module's exit gate.
+
+| ID | Title | Depends on | Status | Verification evidence |
+|---|---|---|---|---|
+| TTRPG-01 | Feature switch, guarded API and shell route | integration points confirmed (Settings sections, `deps.py`, nav) | `DONE` (local PASS; CI NOT RUN) | `ACCEPTANCE.md` "TTRPG-01"; not committed |
+| TTRPG-02 | Campaigns and sessions linked through the note service | 01 | `DONE` (local PASS; CI NOT RUN) | `ACCEPTANCE.md` "TTRPG-02"; not committed |
+| TTRPG-03 | Party cards and persistent play state | 02 | `DONE` (local PASS; CI NOT RUN) | `ACCEPTANCE.md` "TTRPG-03"; not committed |
+| TTRPG-04 | Manual creature cards and one SRD adapter | 02 | `DONE` (local PASS; CI NOT RUN) | `ACCEPTANCE.md` "TTRPG-04"; not committed |
+| TTRPG-05 | Prepared encounters and note launch links | 03, 04 | `DONE` (local PASS; CI NOT RUN) | `ACCEPTANCE.md` "TTRPG-05"; not committed |
+| TTRPG-06 | Initiative, combat actions, undo, history, pause/resume | 05 | `DONE` (local PASS; CI NOT RUN) | `ACCEPTANCE.md` "TTRPG-06"; not committed |
+| TTRPG-07 | Restore/export, mobile layout, accessibility, full DM journey, docs | 06 | `DONE` (local PASS; CI NOT RUN) | `ACCEPTANCE.md` "TTRPG-07"; not committed |
+
+Acceptance criteria per task are the table in the plan's "Delivery sequence" section (not duplicated here).
+
+**Exit state (2026-11-23).** All seven tasks pass locally; nothing is committed and CI has not run (its `e2e-real` job will run the new `ttrpg07-game-night.spec.ts`). Final local gate: `ruff`, `ruff format --check`, `mypy` clean; `pytest` **4967 passed, 14 skipped**; web `eslint` (0 errors), `tsc`, `vitest` **1619 passed, 5 skipped**; real-stack Playwright **97 passed** before the follow-up, then the TTRPG spec (10 tests) re-run alone: 10 passed; mocked Playwright **12 passed**. Follow-up closed R-90 (polling), R-91 (routes open to device credentials, not run on a device) and R-92 (compaction), and verified the SRD notice against the PDF (R-89 accepted: the provider publishes no terms). Still open: screen-reader and on-screen-keyboard checks and the shells on a real device, CI.
+
+**Next recommended task.** Review and commit the work in logical commits (the owner decides; AGENTS.md section 17), let CI run, then decide whether the desktop/Android apps should get the module (needs a reviewed opening of the device-scope contract and sync semantics for fights).

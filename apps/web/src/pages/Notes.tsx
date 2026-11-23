@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   notesApi,
@@ -105,6 +105,7 @@ export function Notes() {
   const optionsButton = useRef<HTMLButtonElement | null>(null);
 
   // `/notes?open=<id>` opens that note (the command palette and the Search page link here).
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const openId = params.get("open");
   // `/notes?new=template` (the palette's "New note from template") opens the template menu.
@@ -1124,6 +1125,7 @@ export function Notes() {
                     content={snapshot?.content ?? ""}
                     notes={notes}
                     onOpenNote={(id) => void openNote(id)}
+                    onNavigate={navigate}
                   />
                 ) : null}
               </div>

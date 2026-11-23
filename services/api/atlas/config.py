@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     note_history_keep_days: int = 90
     note_history_max_revisions: int = 200
     note_history_max_bytes: int = 64 * 1024 * 1024
+    # TTRPG module (TTRPG-04): the optional D&D 5e SRD monster catalogue. Only catalogue requests
+    # (a monster index and one monster at a time) are sent to this origin; campaign names, notes and
+    # player data never leave Atlas. Set ``TTRPG_SRD_ENABLED=false`` for a fully offline install:
+    # manual creature cards keep working.
+    ttrpg_srd_enabled: bool = True
+    ttrpg_srd_base_url: str = "https://www.dnd5eapi.co"
+    ttrpg_srd_timeout_seconds: float = 8.0
     # How often (seconds) the worker scans every connected calendar and re-syncs it from its stored
     # cursor, recovering any change a lost/never-received provider notification did not deliver
     # (M5-10). Notifications are hints, never a complete change log (AGENTS.md §10).

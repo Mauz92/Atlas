@@ -64,6 +64,24 @@ export const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
+/** The optional TTRPG entry (TTRPG-01); shown only while the feature is on. */
+export const TTRPG_NAV_ITEM: NavItem = {
+  to: "/ttrpg",
+  label: "TTRPG",
+  icon: "dices",
+  group: "projects",
+};
+
+/** The sidebar sections for the caller's enabled optional features. */
+export function navSectionsFor(features: { ttrpg: boolean }): NavSection[] {
+  if (!features.ttrpg) return NAV_SECTIONS;
+  return NAV_SECTIONS.map((section) =>
+    section.id === "workspace"
+      ? { ...section, items: [...section.items, TTRPG_NAV_ITEM] }
+      : section,
+  );
+}
+
 /** Every page in sidebar order (what the palette offers as "Go to …"). */
 export const NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((section) => section.items);
 

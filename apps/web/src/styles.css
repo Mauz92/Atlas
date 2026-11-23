@@ -7069,3 +7069,123 @@ a.button-link:hover {
 :root[data-accent-text="on"] .accent-heading-sample {
   color: var(--accent-text);
 }
+
+/* TTRPG module (TTRPG-02) */
+.ttrpg-new {
+  display: grid;
+  gap: var(--s-2);
+  max-width: 28rem;
+  margin-bottom: var(--s-4);
+}
+.ttrpg-campaigns,
+.ttrpg-sessions {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--s-2);
+}
+.ttrpg-sessions li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+.ttrpg-actions {
+  display: flex;
+  gap: var(--s-2);
+  margin: var(--s-3) 0;
+}
+.ttrpg-handoff pre {
+  white-space: pre-wrap;
+}
+.ttrpg-member-form {
+  display: grid;
+  gap: var(--s-2);
+  max-width: 36rem;
+}
+.ttrpg-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: center;
+}
+.ttrpg-party-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--s-3);
+}
+.ttrpg-member.retired {
+  border: 1px dashed currentColor;
+}
+.ttrpg-conditions label {
+  margin-right: var(--s-2);
+}
+.ttrpg-play-switch {
+  display: none;
+}
+.ttrpg-play-panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: var(--s-4);
+  align-items: start;
+}
+.ttrpg-combatants {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: var(--s-3);
+}
+.ttrpg-combatant.active {
+  outline: 2px solid currentColor;
+}
+.ttrpg-combatant {
+  border: 1px solid transparent;
+}
+/* No opacity: dimmed text fails the contrast rule. A dashed edge and a struck-through name mark it. */
+.ttrpg-combatant.defeated,
+.ttrpg-combatant.removed {
+  border: 1px dashed currentColor;
+}
+.ttrpg-combatant.defeated > h3 {
+  text-decoration: line-through;
+}
+.ttrpg-chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: 0;
+}
+@media (max-width: 900px) {
+  .ttrpg-play-switch {
+    display: flex;
+    gap: var(--s-2);
+  }
+  .ttrpg-play-panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ttrpg-play[data-view="combat"] .ttrpg-play-notes,
+  .ttrpg-play[data-view="notes"] .ttrpg-play-combat {
+    display: none;
+  }
+}
+/* Narrow screens: long links wrap and form fields shrink instead of pushing the page sideways. */
+.ttrpg-page code {
+  overflow-wrap: anywhere;
+}
+.ttrpg-page input,
+.ttrpg-page select {
+  max-width: 100%;
+  min-width: 0;
+}
+.ttrpg-row > label {
+  min-width: 0;
+}
+.ttrpg-page .settings-facts dd,
+.ttrpg-page .ttrpg-row {
+  min-width: 0;
+}
+.ttrpg-page .settings-facts dd .ttrpg-row input {
+  flex: 1 1 8rem;
+}
