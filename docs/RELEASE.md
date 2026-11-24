@@ -16,6 +16,12 @@ does **not** claim production-readiness and it does **not** present blocked work
 
 ## 1. Release label
 
+> **Current release: `0.3.2` (2026-11-24).** Tags `v0.2.0`, `v0.3.0`, `v0.3.1` and `v0.3.2` have been cut, each through the
+> release workflow (CI gate, server images, Linux desktop build, GitHub release). What changed in each is in
+> [`CHANGELOG.md`](CHANGELOG.md). The `0.1.0` plan below is kept for its checklist and known limitations, which still apply
+> (private use only, Linux and Android only, calendars read-only). The Windows installer job is experimental and was
+> skipped in 0.3.1; the first in-app update on the live server is still unverified (updates so far used `scripts/deploy-update.sh`).
+
 > ## **`0.1.0` — first release, for private use (own devices, tailnet-only). Plan, 2026-11-13.**
 > The tag is **not cut yet**: see the open list below. Until it is, the label is `0.1.0-pre`.
 

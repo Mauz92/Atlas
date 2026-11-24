@@ -473,6 +473,19 @@ docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec api al
 curl -fsS http://127.0.0.1:8080/health/ready
 ```
 
+**4a. Update a server over SSH (what the owner uses).** From a checkout of the tag you want, `scripts/deploy-update.sh` backs up,
+copies `services`, `apps/web` and `deploy`, rebuilds and restarts, and never touches `.env` or the certificates:
+
+```bash
+ATLAS_DEPLOY_HOST=user@server ATLAS_DEPLOY_KEY=~/.ssh/atlas_deploy scripts/deploy-update.sh
+```
+
+It sets the version shown in Settings > About from `git describe` (override with `ATLAS_VERSION=...`); before 0.3.3 a source build
+showed `0.1.0`. After a release with migrations the API can take **a couple of minutes** to start (the health check may report
+`unhealthy` meanwhile) and `docker compose up` may then leave the worker in `Created`: wait for the API to become healthy and run
+`docker compose -p atlas --env-file .env -f deploy/docker-compose.yml up -d` again. Free disk space with `docker builder prune -af`
+(build cache only; it does not touch volumes or other applications' images).
+
 **5. Recovery.** Forgotten password (signs the account out everywhere; verified):
 `docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec api atlas-admin list-users`, then
 `docker compose -p atlas --env-file .env -f deploy/docker-compose.yml exec api atlas-admin reset-password --email you@example.com` (hidden

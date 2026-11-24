@@ -1625,9 +1625,13 @@ Seven vertical slices, feature off by default throughout. Product decision recor
 | TTRPG-06 | Initiative, combat actions, undo, history, pause/resume | 05 | `DONE` (local PASS; CI NOT RUN) | `ACCEPTANCE.md` "TTRPG-06"; not committed |
 | TTRPG-07 | Restore/export, mobile layout, accessibility, full DM journey, docs | 06 | `DONE` (local PASS; CI NOT RUN) | `ACCEPTANCE.md` "TTRPG-07"; not committed |
 
-| TTRPG-08 | Rules reference (SRD 5.1) outside fights and beside them | 06 | `DONE` (local PASS; CI NOT RUN) | `ACCEPTANCE.md` "TTRPG-08"; branch `feat/rules-reference`, not merged |
+| TTRPG-08 | Rules reference (SRD 5.1) outside fights and beside them | 06 | `DONE` (CI PASS; released in 0.3.1) | `ACCEPTANCE.md` "TTRPG-08" |
+| TTRPG-09 | Fight scene, themed and tabbed campaign pages, configurable sidebar (ADR-0085) | 08 | `DONE` (CI PASS; released in 0.3.1) | `CHANGELOG.md` 0.3.1 |
+| STYLE-01 | Opt-in "Tavern" style for the whole app | TTRPG-09 | `DONE` (CI PASS on the branch; released in 0.3.2) | `CHANGELOG.md` 0.3.2 |
 
 Acceptance criteria per task are the table in the plan's "Delivery sequence" section (not duplicated here).
+
+**Release state (2026-11-24).** The module is committed, merged, CI-gated and released: 0.3.0 (TTRPG-01..07), 0.3.1 (TTRPG-08/09) and 0.3.2 (Tavern style), with 0.3.3 (version label and phone tab fixes) pending. The live server runs 0.3.2. The note below is the original local exit state.
 
 **Exit state (2026-11-23).** All seven tasks pass locally; nothing is committed and CI has not run (its `e2e-real` job will run the new `ttrpg07-game-night.spec.ts`). Final local gate: `ruff`, `ruff format --check`, `mypy` clean; `pytest` **4967 passed, 14 skipped**; web `eslint` (0 errors), `tsc`, `vitest` **1619 passed, 5 skipped**; real-stack Playwright **97 passed** before the follow-up, then the TTRPG spec (10 tests) re-run alone: 10 passed; mocked Playwright **12 passed**. Follow-up closed R-90 (polling), R-91 (routes open to device credentials, not run on a device) and R-92 (compaction), and verified the SRD notice against the PDF (R-89 accepted: the provider publishes no terms). Still open: screen-reader and on-screen-keyboard checks and the shells on a real device, CI.
 

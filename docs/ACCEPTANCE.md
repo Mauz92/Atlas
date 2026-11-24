@@ -4397,3 +4397,13 @@ Scope per ADR-0077 (Windows, macOS and iOS are out). Vocabulary: `PASS`, `FAIL`,
 | Notes collected per campaign, still beside the others | `PASS` | `GET /api/ttrpg/campaigns/{id}/notes`: home, sessions by number, NPCs, locations, other (everything inside the campaign folder), plus the linked home/session notes even when moved elsewhere; deleted ones drop out; unrelated notes excluded; the same notes appear in `/api/notes`; `test_ttrpg_campaigns.py` (3 new tests) |
 | Adding NPC / location / plain notes | `PASS` | `POST .../notes`: starter headings, `NPCs/` and `Locations/`, titles made path-safe (no segments from the title), duplicates get `(2)`, never overwrites, blank is refused, archived campaigns refused, per owner and behind the switch (404) |
 | UI | `PASS` | `CampaignNotes` (grouped links open the note), add form; unit and real-browser tests (12 in the TTRPG spec, axe clean) |
+
+## 0.3.x releases (2026-11-23 to 2026-11-24)
+
+| Item | Result | Evidence |
+|---|---|---|
+| v0.3.1 CI on main and Release run | `PASS` | CI run 45265996295 and Release run 45266002125: all five CI jobs (real-stack journeys, backend, frontend, docs/hygiene, images), server images, Linux desktop build and GitHub release passed. The Windows job did not run. The v0.3.0 Release run had failed once on `ux08-settings-states.spec.ts` ("the heading did not move") while CI for the same commit passed; it passed in both v0.3.1 runs, so it is treated as a timing flake (not hardened yet). |
+| Tavern style (STYLE-01) | `PASS` locally | frontend vitest 1653 passed; contrast and parity test `tavern.test.ts`; axe on the main pages in both themes |
+| v0.3.2 CI and Release run | `PASS` | CI run 45334501092 and Release run 45334502540 both succeeded (2026-11-24) |
+| Live server update to 0.3.2 | `PASS` | `scripts/deploy-update.sh` on the owner's server: backup taken, schema at `d7b3a9c1e6f8` (head), `/health/ready` ok, API reports 0.3.2 after the 0.3.3 build fix. First start after the migration took about two minutes; the worker needed a second `up -d`. |
+| 0.3.3 fixes (version label, phone tabs) | `PARTIAL` | version verified on the server; the tab fix has the CSS scale check and the TTRPG vitest suite but no screenshot check |

@@ -8,14 +8,14 @@
 </p>
 
 <p align="center">
-  <img alt="status" src="https://img.shields.io/badge/status-0.1.0%20pre--release-orange">
+  <img alt="status" src="https://img.shields.io/badge/status-0.3.2%20private%20use-orange">
   <img alt="backend" src="https://img.shields.io/badge/API-FastAPI%20%2B%20PostgreSQL-2563eb">
   <img alt="clients" src="https://img.shields.io/badge/clients-web%20%C2%B7%20Linux%20%C2%B7%20Android-2563eb">
   <img alt="licence" src="https://img.shields.io/badge/licence-MIT-green">
   <img alt="deploy" src="https://img.shields.io/badge/deploy-Docker%20Compose-2563eb">
 </p>
 
-> **Status: `0.1.0` pre-release, for private use.** Atlas is built for your own devices on a private network
+> **Status: `0.3.2`, for private use.** Atlas is built for your own devices on a private network
 > (for example a tailnet). It has had careful review but **no independent security audit**, so do not expose it to
 > the open internet without reading [`docs/SECURITY.md`](docs/SECURITY.md) and [`docs/RELEASE.md`](docs/RELEASE.md).
 
@@ -61,6 +61,10 @@
     <td align="center"><img src="docs/assets/icons/self-hosted.svg" width="40" alt=""></td>
     <td><strong>Self-hosted and low-maintenance.</strong> One Docker Compose stack, daily verified backups, one-click export, and an in-app update with automatic rollback.</td>
   </tr>
+  <tr>
+    <td align="center"><img src="docs/assets/icons/notes.svg" width="40" alt=""></td>
+    <td><strong>Tabletop campaigns (optional).</strong> Turn on the TTRPG plugin to run a published D&amp;D 5e adventure at the table: campaigns with real Markdown session notes, a party sheet, prepared encounters, a hand-run fight tracker with health bars, and a searchable rules reference. Atlas complements the physical game: you count, it remembers. A warm &ldquo;Tavern&rdquo; style can also be applied to the whole app.</td>
+  </tr>
 </table>
 
 ### What works today
@@ -74,10 +78,12 @@
 | Android app (signed APK you install yourself) | Available |
 | ICS calendar links and import, unified calendar views | Available (read-only); a real Proton link is still unverified |
 | Backups, restore, export, upgrade and rollback | Available (the in-app updater has not yet run on a live server) |
-| TTRPG module (optional, off by default): campaigns, party, encounters, combat tracker for D&D 5e (2014) | Available in the browser and, once enabled there, the desktop and Android apps (not exercised on a real device); CI not yet run. Creature text from the SRD 5.1 is licensed CC-BY-4.0 ([notice](docs/USER_GUIDE.md)) |
+| TTRPG module (optional, off by default): campaigns, party, encounters, a hand-run fight tracker and a rules reference for D&D 5e (2014) | Available since 0.3.0 and verified in CI; in the browser and, once enabled there, the desktop and Android apps (not exercised on a real device). Creature and rules text from the SRD 5.1 is licensed CC-BY-4.0 ([notice](docs/USER_GUIDE.md)) |
+| "Tavern" style for the whole app (optional) | Available since 0.3.2: Settings > Appearance > Style; Neutral stays the default |
 | Google / Microsoft calendar sync, calendar editing | Not available (deferred) |
 | Windows, macOS, iOS | Not available |
 
+Release notes for every version are in [`docs/CHANGELOG.md`](docs/CHANGELOG.md) (latest: **0.3.2**, 2026-11-24).
 The authoritative status and the full list of known limitations are in [`docs/RELEASE.md`](docs/RELEASE.md) and
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 

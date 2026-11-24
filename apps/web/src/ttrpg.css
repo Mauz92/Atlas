@@ -394,3 +394,9 @@
 @media (max-width: 640px) { .tt-add-slots > .tt-row { flex-wrap: wrap; } }
 .tt-count::before { content: "×"; color: var(--tt-muted); }
 .ttrpg-theme .tt-main > .tt-card.tt-fit { flex: 0 0 auto; }
+
+/* Campaign tabs stay on one line on a phone: tighter type, equal shares, scroll as the last resort. */
+@media (max-width: 640px) {
+  .tt-main > .tt-tabs .tt-tablist { flex-wrap: nowrap; gap: var(--s-1); overflow-x: auto; scrollbar-width: none; }
+  .tt-main > .tt-tabs .tt-tab { flex: 1 1 auto; white-space: nowrap; letter-spacing: 0.03em; padding: var(--s-2) var(--s-2); text-align: center; }
+}

@@ -92,6 +92,8 @@ services:
   api:
     build:
       context: ../services/api
+      args:
+        ATLAS_VERSION: ${ATLAS_VERSION:-}
     restart: unless-stopped
     depends_on:
       db:
@@ -117,6 +119,8 @@ services:
   worker:
     build:
       context: ../services/api
+      args:
+        ATLAS_VERSION: ${ATLAS_VERSION:-}
     restart: unless-stopped
     depends_on:
       db:

@@ -13,6 +13,8 @@ KEY="${ATLAS_DEPLOY_KEY:-$HOME/.ssh/id_ed25519}"
 DIR="${ATLAS_DEPLOY_DIR:-atlas}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SSH=(ssh -i "$KEY" -o BatchMode=yes)
+# Reported as the instance version (Settings > About); a source build has no release tag to read it from.
+VERSION="${ATLAS_VERSION:-$(git -C "$(dirname "$0")/.." describe --tags --always 2>/dev/null | sed 's/^v//')}"
 
 cd "$ROOT"
 echo "== backup first"
@@ -27,6 +29,6 @@ done
 
 echo "== rebuild and restart"
 "${SSH[@]}" "$HOST" "cd $DIR && TLS=''; [ -f certs/fullchain.pem ] && TLS='-f deploy/docker-compose.tls.yml'; \
-  C=\"docker compose -p atlas --env-file .env -f deploy/docker-compose.yml \$TLS\"; \$C up -d --build 2>&1 | tail -6; sleep 12; \
+  C=\"env ATLAS_VERSION=$VERSION docker compose -p atlas --env-file .env -f deploy/docker-compose.yml \$TLS\"; \$C up -d --build 2>&1 | tail -6; sleep 12; \
   \$C ps --format '{{.Name}} {{.Status}} {{.Ports}}'; \$C exec -T api alembic current 2>&1 | tail -1; df -h / | tail -1"
 echo "== done: check the health endpoint of your public base URL"
