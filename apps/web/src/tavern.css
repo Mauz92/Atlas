@@ -1,0 +1,69 @@
+/*
+ * The Tavern palette: an opt-in look (Settings > Appearance > Style) that carries the TTRPG area's
+ * parchment, oxblood and brass across the app. It replaces colour tokens and heading type only (no
+ * layout), so every component keeps working; it follows the Theme setting (light = parchment,
+ * dark = lamplit wood). The values appear for Light, System-dark and explicit Dark, like the
+ * accents in styles.css; src/tavern.test.ts keeps the three copies identical and checks contrast.
+ * Fonts are bundled (OFL-1.1) and loaded only when used. Scale rules still apply (no raw sizes).
+ */
+
+:root[data-palette="tavern"] {
+  color-scheme: light;
+  --font-ui: "Alegreya Sans", "Gill Sans", system-ui, sans-serif;
+  --font-display: Cinzel, "Trajan Pro", Georgia, serif;
+  --bg: #f8f1dc; --bg-sidebar: #ecdfbc; --bg-raised: #fbf5e4; --bg-hover: #eadcb6; --bg-selected: #e2d1a3;
+  --border: #d8c7a0; --border-strong: #bfa97a; --border-control: #84693e;
+  --text: #2a1c10; --text-2: #5e4a34; --text-3: #6a553d;
+  --accent: #8c1d18; --accent-hover: #741510; --accent-contrast: #fff6e6; --accent-text: #8c1d18; --accent-soft: #ecd9ba;
+  --bg-page: #efe3c3; --bg-card: #fbf5e4; --bg-section: #e6d7b0; --row-sep: #d9c9a3;
+  --danger: #b42318; --danger-soft: #f6dcd2; --warning: #7d4f00; --warning-soft: #f4e4bb;
+  --success: #2f6a1d; --success-soft: #e0ebc9;
+  --due-overdue: #b42318; --due-overdue-soft: #f6dcd2; --due-today: #1f5f92; --due-today-soft: #dde8ec;
+  --priority-urgent: #b42318; --priority-high: #7d4f00;
+  --shadow-1: 0 1px 2px rgb(60 40 10 / 0.12); --shadow-2: 0 8px 24px rgb(60 40 10 / 0.2);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="tavern"]:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #1b130f; --bg-sidebar: #150f0b; --bg-raised: #221913; --bg-hover: #2c211a; --bg-selected: #3a2b20;
+    --border: #3a2d22; --border-strong: #4a3a2c; --border-control: #8a7658;
+    --text: #efe4cf; --text-2: #cbbba0; --text-3: #b3a38a;
+    --accent: #d6a954; --accent-hover: #e6bd6c; --accent-contrast: #1b130f; --accent-text: #d6a954; --accent-soft: #3a2b20;
+    --bg-page: #130e0b; --bg-card: #221913; --bg-section: #2c211a; --row-sep: #3a2d22;
+    --danger: #ff8f7e; --danger-soft: #3d1f1a; --warning: #e0b341; --warning-soft: #3a2c0f;
+    --success: #8fc477; --success-soft: #1f2e18;
+    --due-overdue: #ff8f7e; --due-overdue-soft: #3d1f1a; --due-today: #7fb8de; --due-today-soft: #172a3a;
+    --priority-urgent: #ff8f7e; --priority-high: #e0b341;
+  }
+}
+
+:root[data-palette="tavern"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1b130f; --bg-sidebar: #150f0b; --bg-raised: #221913; --bg-hover: #2c211a; --bg-selected: #3a2b20;
+  --border: #3a2d22; --border-strong: #4a3a2c; --border-control: #8a7658;
+  --text: #efe4cf; --text-2: #cbbba0; --text-3: #b3a38a;
+  --accent: #d6a954; --accent-hover: #e6bd6c; --accent-contrast: #1b130f; --accent-text: #d6a954; --accent-soft: #3a2b20;
+  --bg-page: #130e0b; --bg-card: #221913; --bg-section: #2c211a; --row-sep: #3a2d22;
+  --danger: #ff8f7e; --danger-soft: #3d1f1a; --warning: #e0b341; --warning-soft: #3a2c0f;
+  --success: #8fc477; --success-soft: #1f2e18;
+  --due-overdue: #ff8f7e; --due-overdue-soft: #3d1f1a; --due-today: #7fb8de; --due-today-soft: #172a3a;
+  --priority-urgent: #ff8f7e; --priority-high: #e0b341;
+}
+
+/* Display type for page and section titles; the body stays in the reading face. */
+:root[data-palette="tavern"] h1,
+:root[data-palette="tavern"] h2,
+:root[data-palette="tavern"] .page h1 {
+  font-family: var(--font-display);
+  letter-spacing: 0.03em;
+}
+:root[data-palette="tavern"] button.sidebar-section-header {
+  font-family: var(--font-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+:root[data-palette="tavern"] body {
+  background-image: radial-gradient(ellipse at 50% -10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 55%);
+  background-attachment: fixed;
+}

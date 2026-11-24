@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { applyTheme, readThemePreference, subscribeTheme, THEME_PREFERENCES } from "../../lib/theme";
 import { applyAccentHeadings, readAccent, readAccentHeadings, subscribeAccent } from "../../lib/accent";
+import { applyPalette, PALETTES, readPalette, subscribePalette } from "../../lib/look";
 import { AccentPicker } from "./AccentPicker";
 import { SettingsRow } from "./SettingsRow";
 
@@ -11,6 +12,7 @@ export function AppearanceSection() {
   const preference = useSyncExternalStore(subscribeTheme, readThemePreference);
   const headings = useSyncExternalStore(subscribeAccent, readAccentHeadings);
   const accent = useSyncExternalStore(subscribeAccent, readAccent);
+  const palette = useSyncExternalStore(subscribePalette, readPalette);
   return (
     <div className="settings-group">
       <SettingsRow
@@ -29,6 +31,26 @@ export function AppearanceSection() {
                 onChange={() => applyTheme(value)}
               />
               {THEME_LABELS[value]}
+            </label>
+          ))}
+        </div>
+      </SettingsRow>
+      <SettingsRow
+        label="Style"
+        labelId="settings-palette-label"
+        description="Tavern carries the TTRPG look (parchment and oxblood in light, lamplit wood and brass in dark) across the app. It replaces the accent colour while it is on. Remembered in this browser only."
+      >
+        <div className="settings-radio" role="radiogroup" aria-labelledby="settings-palette-label">
+          {PALETTES.map(({ id, label }) => (
+            <label key={id}>
+              <input
+                type="radio"
+                name="palette"
+                value={id}
+                checked={palette === id}
+                onChange={() => applyPalette(id)}
+              />
+              {label}
             </label>
           ))}
         </div>
