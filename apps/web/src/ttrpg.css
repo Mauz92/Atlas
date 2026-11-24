@@ -37,14 +37,14 @@
     --tt-wood: #e9dcb9; --tt-surface: #f6ecd0; --tt-surface-2: #efe2bf; --tt-line: #c9b58a; --tt-rule: #8c1f1a;
     --tt-fg: #2a1c10; --tt-muted: #5e4a34; --tt-brass: #6f4e0c; --tt-blood: #8c1d18; --tt-on-blood: #fff6e6;
     --tt-party: #0d6f61; --tt-enemy: #a84316; --tt-ally: #7d5a0e;
-    --tt-ok: #3d7a2a; --tt-warn: #8f6200; --tt-crit: #a8261d; --tt-temp: #2a6797;
+    --tt-ok: #3d7a2a; --tt-warn: #7d4f00; --tt-crit: #a8261d; --tt-temp: #2a6797;
   }
 }
 :root[data-theme="light"] .ttrpg-theme {
   --tt-wood: #e9dcb9; --tt-surface: #f6ecd0; --tt-surface-2: #efe2bf; --tt-line: #c9b58a; --tt-rule: #8c1f1a;
   --tt-fg: #2a1c10; --tt-muted: #5e4a34; --tt-brass: #6f4e0c; --tt-blood: #8c1d18; --tt-on-blood: #fff6e6;
   --tt-party: #0d6f61; --tt-enemy: #a84316; --tt-ally: #7d5a0e;
-  --tt-ok: #3d7a2a; --tt-warn: #8f6200; --tt-crit: #a8261d; --tt-temp: #2a6797;
+  --tt-ok: #3d7a2a; --tt-warn: #7d4f00; --tt-crit: #a8261d; --tt-temp: #2a6797;
 }
 
 /* ---- type, links, controls ---- */

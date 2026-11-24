@@ -105,6 +105,7 @@ key). Ask if the host is not known. Use the key, not any password pasted into th
 
 - **Flaky test:** `apps/web/e2e-real/ux08-settings-states.spec.ts` ("the heading did not move") failed once in a Release run and passed on
   the same code elsewhere. Re-run once; if it recurs, harden it (wait for the heading position to stay unchanged across two animation frames).
+- **Light theme:** Playwright and axe run against whichever theme the browser reports, so a colour that only fails in light can pass on a dark local machine and fail in CI. When a colour changes, check both themes (see `src/ttrpg.test.ts`, `src/tavern.test.ts`).
 - **Dependabot:** a failing "cargo in /spikes/tauri for glib" run on `main` is unrelated to the release; report it, do not block on it.
 - **Windows job** is experimental and skipped by default; the Windows installer is not part of a release.
 - **Source builds** (`scripts/deploy-update.sh`) take the version from `git describe`; run it from a checkout of the tag, or set `ATLAS_VERSION`.
