@@ -51,6 +51,7 @@ The following files define the project:
 | `docs/CALENDAR_SYNC.md` | Calendar integration and sync semantics |
 | `docs/MARKDOWN_STORAGE.md` | Markdown storage, revisions and conflict handling |
 | `docs/DEPLOYMENT.md` | Installation, upgrades and deployment |
+| `docs/RELEASE_PROCEDURE.md` | Step-by-step checklist for cutting a release and updating the server |
 | `docs/OPERATIONS.md` | Backups, recovery, monitoring and maintenance |
 | `docs/CHANGELOG.md` | User-visible changes |
 

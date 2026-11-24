@@ -1631,7 +1631,7 @@ Seven vertical slices, feature off by default throughout. Product decision recor
 
 Acceptance criteria per task are the table in the plan's "Delivery sequence" section (not duplicated here).
 
-**Release state (2026-11-24).** The module is committed, merged, CI-gated and released: 0.3.0 (TTRPG-01..07), 0.3.1 (TTRPG-08/09) and 0.3.2 (Tavern style), with 0.3.3 (version label and phone tab fixes) pending. The live server runs 0.3.2. The note below is the original local exit state.
+**Release state (2026-11-24).** The module is committed, merged, CI-gated and released: 0.3.0 (TTRPG-01..07), 0.3.1 (TTRPG-08/09) and 0.3.2 (Tavern style), and 0.3.3 (version label and phone tab fixes). The live server runs 0.3.3. The note below is the original local exit state.
 
 **Exit state (2026-11-23).** All seven tasks pass locally; nothing is committed and CI has not run (its `e2e-real` job will run the new `ttrpg07-game-night.spec.ts`). Final local gate: `ruff`, `ruff format --check`, `mypy` clean; `pytest` **4967 passed, 14 skipped**; web `eslint` (0 errors), `tsc`, `vitest` **1619 passed, 5 skipped**; real-stack Playwright **97 passed** before the follow-up, then the TTRPG spec (10 tests) re-run alone: 10 passed; mocked Playwright **12 passed**. Follow-up closed R-90 (polling), R-91 (routes open to device credentials, not run on a device) and R-92 (compaction), and verified the SRD notice against the PDF (R-89 accepted: the provider publishes no terms). Still open: screen-reader and on-screen-keyboard checks and the shells on a real device, CI.
 

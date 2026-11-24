@@ -8,14 +8,14 @@
 </p>
 
 <p align="center">
-  <img alt="status" src="https://img.shields.io/badge/status-0.3.2%20private%20use-orange">
+  <img alt="status" src="https://img.shields.io/badge/status-0.3.3%20private%20use-orange">
   <img alt="backend" src="https://img.shields.io/badge/API-FastAPI%20%2B%20PostgreSQL-2563eb">
   <img alt="clients" src="https://img.shields.io/badge/clients-web%20%C2%B7%20Linux%20%C2%B7%20Android-2563eb">
   <img alt="licence" src="https://img.shields.io/badge/licence-MIT-green">
   <img alt="deploy" src="https://img.shields.io/badge/deploy-Docker%20Compose-2563eb">
 </p>
 
-> **Status: `0.3.2`, for private use.** Atlas is built for your own devices on a private network
+> **Status: `0.3.3`, for private use.** Atlas is built for your own devices on a private network
 > (for example a tailnet). It has had careful review but **no independent security audit**, so do not expose it to
 > the open internet without reading [`docs/SECURITY.md`](docs/SECURITY.md) and [`docs/RELEASE.md`](docs/RELEASE.md).
 
@@ -83,7 +83,7 @@
 | Google / Microsoft calendar sync, calendar editing | Not available (deferred) |
 | Windows, macOS, iOS | Not available |
 
-Release notes for every version are in [`docs/CHANGELOG.md`](docs/CHANGELOG.md) (latest: **0.3.2**, 2026-11-24).
+Release notes for every version are in [`docs/CHANGELOG.md`](docs/CHANGELOG.md) (latest: **0.3.3**, 2026-11-24).
 The authoritative status and the full list of known limitations are in [`docs/RELEASE.md`](docs/RELEASE.md) and
 [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
@@ -174,7 +174,7 @@ npm run gen:api        # regenerate API types from the backend OpenAPI schema
 | **Run it** | [Operator guide](docs/OPERATOR_GUIDE.md) · [Deployment](docs/DEPLOYMENT.md) · [Operations and backups](docs/OPERATIONS.md) |
 | **Understand it** | [Product spec](docs/PRODUCT_SPEC.md) · [Architecture](docs/ARCHITECTURE.md) · [Data model](docs/DATA_MODEL.md) · [Sync protocol](docs/SYNC_PROTOCOL.md) · [Markdown storage](docs/MARKDOWN_STORAGE.md) · [Calendar sync](docs/CALENDAR_SYNC.md) |
 | **Trust it** | [Security](docs/SECURITY.md) · [Testing](docs/TESTING.md) · [Acceptance evidence](docs/ACCEPTANCE.md) · [Risks](docs/RISKS.md) |
-| **Follow it** | [Roadmap](docs/ROADMAP.md) · [Decisions](docs/DECISIONS.md) · [Release status](docs/RELEASE.md) · [Changelog](docs/CHANGELOG.md) · [Dependencies](docs/DEPENDENCIES.md) |
+| **Follow it** | [Roadmap](docs/ROADMAP.md) · [Decisions](docs/DECISIONS.md) · [Release status](docs/RELEASE.md) · [Release procedure](docs/RELEASE_PROCEDURE.md) · [Changelog](docs/CHANGELOG.md) · [Dependencies](docs/DEPENDENCIES.md) |
 
 ## Security
 

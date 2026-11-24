@@ -4,13 +4,13 @@ All notable, user-visible changes to Atlas are recorded here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.3] — Unreleased
+## [0.3.3] — 2026-11-24
 
 Fixes found while updating the live server to 0.3.2. Nothing here changes data or the API.
 
 - Fixed: **Settings > About showed `0.1.0` on a server built from source.** A source build (`scripts/deploy-update.sh`) did not pass the release version into the image, so the API fell back to the `0.1.0` in `pyproject.toml`; only the GitHub release images carried the real version. `deploy/docker-compose.yml` now passes `ATLAS_VERSION` as a build argument to the API and worker images, and `scripts/deploy-update.sh` sets it from the git tag (override with `ATLAS_VERSION=...`).
 - Fixed: **the campaign tabs (Sessions, Notes, Party, Encounters) wrapped onto two lines on a phone.** They now stay on one line at phone width (tighter lettering, equal shares, a sideways scroll only as a last resort).
-- Documented: README, release label and roadmap brought up to date for 0.3.x; the source-build update path (`scripts/deploy-update.sh`, version label, slow first start after a migration) in `DEPLOYMENT.md`.
+- Documented: README, release label, roadmap and acceptance record brought up to date for 0.3.x; the source-build update path (`scripts/deploy-update.sh`, version label, slow first start after a migration) in `DEPLOYMENT.md`; a new [`RELEASE_PROCEDURE.md`](RELEASE_PROCEDURE.md), the step-by-step checklist for cutting a release (documents to update, checks, tag, watching the workflow, updating and verifying the server).
 
 ## [0.3.2] — 2026-11-24
 

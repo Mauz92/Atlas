@@ -510,6 +510,8 @@ update loses nothing: a verified backup is taken first and a version that does n
 
 ### 13.1 Cutting a release (owner)
 
+The full checklist (documents to update, checks, watching the workflow, updating the server) is in [`RELEASE_PROCEDURE.md`](RELEASE_PROCEDURE.md).
+
 ```bash
 git tag v0.2.0 && git push origin v0.2.0        # the tag must be on main
 ```
