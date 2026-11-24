@@ -50,6 +50,7 @@ Do all of these; if one does not apply, say so in the commit message rather than
 
 ## 3. Commit and push `main`
 
+- [ ] Review `git show --stat` of each commit for files that do not belong (see the first gotcha below).
 - [ ] Small, coherent commits; commit message states intent; end with the attribution lines the session asks for.
 - [ ] No secrets, personal notes, database dumps or real calendar data in the commit.
 - [ ] `git push origin main`, then **wait for the CI run on that exact commit to finish green**: `gh run list --limit 3`,
@@ -97,6 +98,10 @@ key). Ask if the host is not known. Use the key, not any password pasted into th
       (`AGENTS.md` §20).
 
 ## Known gotchas
+
+- **Never commit a worktree shortcut.** `git status` and `git show --stat` before every commit: look for `node_modules`, `.env`, build output or a
+  symlink. `.gitignore` now ignores `node_modules` as folder or link (v0.3.2 shipped a self-pointing `apps/web/node_modules` symlink by accident,
+  and merging it replaced the real folder in the main checkout). If a worktree needs dependencies, run `npm ci` there instead of linking.
 
 - **Flaky test:** `apps/web/e2e-real/ux08-settings-states.spec.ts` ("the heading did not move") failed once in a Release run and passed on
   the same code elsewhere. Re-run once; if it recurs, harden it (wait for the heading position to stay unchanged across two animation frames).

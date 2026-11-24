@@ -26,7 +26,7 @@ dist/
 build/
 
 # --- Node / frontend ---
-node_modules/
+node_modules
 .next/
 out/
 coverage/
