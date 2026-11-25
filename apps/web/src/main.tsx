@@ -11,6 +11,11 @@ import "@fontsource/alegreya-sans/500.css";
 import "@fontsource/alegreya-sans/700.css";
 import "./styles.css";
 import "./tavern.css";
+import { syncPalette } from "./lib/look";
+
+// theme-init.js applies the stored palette before first paint, but it is a fixed-URL file a browser or
+// WebView may serve stale from cache; the hashed bundle never is, so apply the stored choice here too.
+syncPalette();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
